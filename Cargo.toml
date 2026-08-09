@@ -1,0 +1,40 @@
+[package]
+name = "mcp-doctor"
+version = "0.1.0"
+edition = "2024"
+description = "Diagnose protocol, schema, and runtime failures in MCP servers"
+license = "MIT"
+repository = "https://github.com/EnjoyableWork/mcp-doctor"
+homepage = "https://github.com/EnjoyableWork/mcp-doctor"
+readme = "README.md"
+keywords = ["mcp", "testing", "diagnostics", "cli", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
+publish = ["crates-io"]
+include = [
+    "/src/**",
+    "/tests/**",
+    "/scripts/check.ps1",
+    "/scripts/check.sh",
+    "/AGENTS.md",
+    "/CODE_OF_CONDUCT.md",
+    "/CONTRIBUTING.md",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/PROJECT.md",
+    "/SECURITY.md",
+    "/SUPPORT.md",
+    "/LICENSE",
+    "/README.md",
+    "/deny.toml",
+    "/rust-toolchain.toml",
+]
+
+[[bin]]
+name = "mcp-doctor"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

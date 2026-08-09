@@ -1,0 +1,72 @@
+name: Bug report
+description: Report reproducible incorrect mcp-doctor behavior using safe, redacted evidence.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, authentication headers, private endpoints, complete configuration, customer data, raw tool results, or unreviewed server logs. Suspected vulnerabilities use private vulnerability reporting instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide `mcp-doctor --version` output or the exact commit.
+      placeholder: mcp-doctor 0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - GNU/Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: architecture
+    attributes:
+      label: Architecture
+      placeholder: ARM64 or x64
+    validations:
+      required: true
+  - type: input
+    id: protocol
+    attributes:
+      label: MCP revision and transport
+      placeholder: 2026-07-28 over STDIO
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic reproduction
+      description: Provide the smallest synthetic server, fixture, or structural steps that reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Redacted actual outcome
+      description: Describe finding codes, status, and structure without pasting raw values or logs.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, private endpoints, user/customer data, raw tool results, environment values, and unreviewed logs.
+          required: true
+        - label: This report does not describe a suspected vulnerability or exposed secret.
+          required: true
