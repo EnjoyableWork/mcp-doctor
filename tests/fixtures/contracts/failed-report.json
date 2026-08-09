@@ -1,0 +1,88 @@
+{
+  "schema_version": "mcp-doctor.report/v1alpha1",
+  "protocol_revision": "2026-07-28",
+  "outcome": "failed",
+  "exit_code": 1,
+  "limits": {
+    "startup_ms": 10000,
+    "discovery_ms": 10000,
+    "request_ms": 30000,
+    "response_ms": 30000,
+    "shutdown_grace_ms": 2000,
+    "total_ms": 120000,
+    "message_bytes": 1048576,
+    "stdout_bytes": 8388608,
+    "stderr_bytes": 1048576,
+    "aggregate_output_bytes": 8388608,
+    "message_count": 1024,
+    "protocol_revisions": 32,
+    "catalog_items": 10000,
+    "schema_bytes": 1048576,
+    "instance_bytes": 1048576,
+    "schema_nodes": 100000,
+    "schema_depth": 64,
+    "schema_ref_depth": 32,
+    "schema_evaluation_steps": 100000,
+    "validation_errors": 100,
+    "report_findings": 256,
+    "active_cases": 100,
+    "redirects": 0,
+    "retries": 0,
+    "concurrency": 1
+  },
+  "summary": {
+    "checks": 3,
+    "required": 2,
+    "optional": 1,
+    "performed": 2,
+    "skipped": 1,
+    "passed": 1,
+    "warned": 0,
+    "failed": 1,
+    "required_skipped": 0,
+    "findings": {
+      "info": 0,
+      "warning": 0,
+      "error": 1,
+      "critical": 0
+    }
+  },
+  "checks": [
+    {
+      "id": "protocol.revision",
+      "requirement": "required",
+      "state": "performed",
+      "outcome": "passed",
+      "findings": []
+    },
+    {
+      "id": "schema.contracts",
+      "requirement": "required",
+      "state": "performed",
+      "outcome": "failed",
+      "findings": [
+        {
+          "code": "MCP-LIMIT-001",
+          "severity": "error",
+          "protocol_revision": "2026-07-28",
+          "location": "tools[3].inputSchema",
+          "message": "A configured diagnostic safety limit was exceeded.",
+          "evidence": {
+            "kind": "limit_violation",
+            "limit": "message_bytes",
+            "unit": "bytes",
+            "observed": 1048577,
+            "maximum": 1048576
+          }
+        }
+      ]
+    },
+    {
+      "id": "runtime.tools",
+      "requirement": "optional",
+      "state": "skipped",
+      "skip_reason": "not_authorized",
+      "findings": []
+    }
+  ]
+}
