@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a focused diagnostic, transport, report, or workflow improvement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the concrete server-author or CI problem, not only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired observable outcome
+      description: Explain what a user can do or diagnose when this is complete.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Execution and data-safety considerations
+      description: Address tool calls, process/network scope, limits, cleanup, credentials, redaction, and production impact.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Protocol, transport, platform, or output scope
+      description: Identify affected MCP revisions and compatibility boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: List fixtures or journeys that would prove the outcome safely.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Safe content
+      options:
+        - label: This proposal contains no credential, private endpoint, user/customer data, raw tool result, or unreviewed log.
+          required: true

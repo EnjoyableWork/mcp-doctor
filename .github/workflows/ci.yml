@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    name: Dependency policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check advisories, licenses, bans, and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1; cargo-deny 0.20.2
+        with:
+          arguments: --all-features --locked
+
+  unix-quality:
+    name: ${{ matrix.name }} — format, Clippy, and test
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GNU/Linux x64
+            runner: ubuntu-24.04
+            rust_host: x86_64-unknown-linux-gnu
+          - name: macOS ARM64
+            runner: macos-15
+            rust_host: aarch64-apple-darwin
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report the selected Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustc --version --verbose
+          cargo --version
+
+      - name: Verify the native Rust host
+        env:
+          EXPECTED_RUST_HOST: ${{ matrix.rust_host }}
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$EXPECTED_RUST_HOST"
+
+      - name: Run quality gates through a disposable environment
+        run: ./scripts/check.sh
+
+  windows-quality:
+    name: Windows x64 — format, Clippy, and test
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report the selected Rust toolchain
+        shell: pwsh
+        run: |
+          rustup show active-toolchain
+          rustc --version --verbose
+          cargo --version
+
+      - name: Verify the native Rust host
+        shell: pwsh
+        env:
+          EXPECTED_RUST_HOST: x86_64-pc-windows-msvc
+        run: |
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:EXPECTED_RUST_HOST) {
+              throw "Expected Rust host $env:EXPECTED_RUST_HOST but found $actualRustHost"
+          }
+
+      - name: Run quality gates through a disposable environment
+        shell: pwsh
+        run: ./scripts/check.ps1
