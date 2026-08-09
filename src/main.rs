@@ -1,3 +1,7 @@
+mod contract;
+
+use std::process::ExitCode;
+
 use clap::Parser;
 
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
@@ -5,8 +9,9 @@ use clap::Parser;
 #[command(name = "mcp-doctor", version)]
 struct Cli;
 
-fn main() {
+fn main() -> ExitCode {
     Cli::parse();
+    contract::success_exit()
 }
 
 #[cfg(test)]

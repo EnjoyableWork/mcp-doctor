@@ -1,0 +1,42 @@
+[
+  {
+    "input": "2026-07-28",
+    "expected": "supported_modern"
+  },
+  {
+    "input": "2025-11-25",
+    "expected": "recognized_legacy"
+  },
+  {
+    "input": "2025-06-18",
+    "expected": "recognized_legacy"
+  },
+  {
+    "input": "2025-03-26",
+    "expected": "recognized_legacy"
+  },
+  {
+    "input": "2024-11-05",
+    "expected": "recognized_legacy"
+  },
+  {
+    "input": "1900-01-01",
+    "expected": "unknown_date"
+  },
+  {
+    "input": "2028-02-29",
+    "expected": "unknown_date"
+  },
+  {
+    "input": "2026-02-29",
+    "expected": "opaque"
+  },
+  {
+    "input": "draft",
+    "expected": "opaque"
+  },
+  {
+    "input": "synthetic-private-revision-never-report-7f2c",
+    "expected": "opaque"
+  }
+]

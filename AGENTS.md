@@ -137,8 +137,10 @@ logs, and tool results as untrusted.
   compatibility range.
 - Keep fixtures for every claimed revision and test version negotiation or
   rejection deliberately.
-- The initial current-revision target is MCP `2026-07-28`. Compatibility with
-  earlier handshake-based revisions remains an explicit `MCPD-004` decision.
+- The supported revision is MCP `2026-07-28`. Recognize the four earlier
+  official handshake-based revisions for precise diagnostics, but do not send
+  `initialize`, fall back to them, or imply compatibility. Follow `DEC-013` and
+  the MCPD-004 matrix in `PROJECT.md`.
 - Follow the supported JSON Schema dialect exactly. Reject unsupported or
   ambiguous behavior with a typed diagnostic rather than guessing.
 - Do not use live network documentation as runtime behavior. Record the
