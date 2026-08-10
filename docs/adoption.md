@@ -3,6 +3,7 @@
 - Opened: 2026-08-10
 - Release under review: `mcp-doctor` `v0.1.0`
 - Initial baseline: zero independent adoption reports at opening
+- Public collection record: [M2 adoption checkpoint issue 5](https://github.com/EnjoyableWork/mcp-doctor/issues/5)
 
 This checkpoint asks whether the passive preflight earns repeat use before the
 project adds active tool calls, remote targets, adversarial generation, or a
