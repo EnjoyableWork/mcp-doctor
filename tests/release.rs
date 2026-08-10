@@ -342,6 +342,10 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "release version script executes only in Unix release jobs"
+)]
 fn release_version_guard_accepts_only_canonical_intentional_versions() {
     let accepted: &[&[&str]] = &[
         &["future", "v0.1.1", "0.1.1", "0.1.0"],
