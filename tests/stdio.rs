@@ -14,6 +14,8 @@ use support::TestEnvironment;
 
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
 const CATALOG_SENTINEL: &str = "synthetic-secret-payload-never-report-7f2c";
+const REPORT_ONLY_HUMAN: &str = include_str!("fixtures/reports/unsupported-revision.txt");
+const REPORT_ONLY_JSON: &str = include_str!("fixtures/reports/unsupported-revision.json");
 
 fn fixture() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_mcp-doctor-stdio-fixture"))
@@ -25,6 +27,18 @@ fn inspect_command(environment: &TestEnvironment, mode: &str) -> Command {
     command
 }
 
+fn json_inspect_command(environment: &TestEnvironment, mode: &str) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg(mode);
+    command
+}
+
 fn run_mode(mode: &str) -> Output {
     let environment = TestEnvironment::new();
     inspect_command(&environment, mode)
@@ -32,10 +46,21 @@ fn run_mode(mode: &str) -> Output {
         .expect("mcp-doctor should inspect the fixture")
 }
 
+fn run_json_mode(mode: &str) -> Output {
+    let environment = TestEnvironment::new();
+    json_inspect_command(&environment, mode)
+        .output()
+        .expect("mcp-doctor should inspect the fixture as JSON")
+}
+
 fn text(output: &Output) -> (&str, &str) {
     let stdout = std::str::from_utf8(&output.stdout).expect("STDOUT should be UTF-8");
     let stderr = std::str::from_utf8(&output.stderr).expect("STDERR should be UTF-8");
     (stdout, stderr)
+}
+
+fn json_report(output: &Output) -> serde_json::Value {
+    serde_json::from_slice(&output.stdout).expect("machine output should be one JSON report")
 }
 
 #[test]
@@ -216,6 +241,263 @@ fn valid_paginated_catalogs_and_complex_local_schemas_pass_passively() {
 }
 
 #[test]
+fn experimental_json_is_a_complete_passive_built_binary_report() {
+    let output = run_json_mode("catalog-valid");
+    let (_, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert!(output.status.success(), "{report:#}");
+    assert!(stderr.is_empty(), "{stderr}");
+    assert_eq!(report["schema_version"], "mcp-doctor.report/v1alpha1");
+    assert_eq!(report["schema_stability"], "experimental");
+    assert_eq!(report["protocol_revision"], "2026-07-28");
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert!(report["primary_diagnosis"].is_null());
+    assert_eq!(report["independent_findings"], serde_json::json!([]));
+    assert_eq!(report["summary"]["checks"], 6);
+    assert_eq!(report["summary"]["performed"], 5);
+    assert_eq!(report["summary"]["skipped"], 1);
+    assert_eq!(report["limits"]["total_ms"], 120_000);
+
+    let runtime = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "runtime.tools")
+        .expect("runtime.tools should remain explicit");
+    assert_eq!(runtime["state"], "skipped");
+    assert_eq!(runtime["skip_reason"], "not_authorized");
+    assert!(runtime.get("blocked_by").is_none());
+}
+
+#[test]
+fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
+    let human_output = run_mode("protocol-unsupported");
+    let json_output = run_json_mode("protocol-unsupported");
+    let (human, human_stderr) = text(&human_output);
+    let (json, json_stderr) = text(&json_output);
+
+    assert_eq!(human_output.status.code(), Some(1), "{human}");
+    assert_eq!(json_output.status.code(), Some(1), "{json}");
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert_eq!(human, REPORT_ONLY_HUMAN);
+    assert_eq!(json, REPORT_ONLY_JSON);
+
+    // From this point onward the assertions consume only the checked-in reports;
+    // they do not inspect the fixture response, target stderr, or implementation.
+    let report: serde_json::Value =
+        serde_json::from_str(REPORT_ONLY_JSON).expect("report-only JSON should parse");
+    let diagnosis = &report["primary_diagnosis"];
+    let diagnosis_check = diagnosis["check_id"]
+        .as_str()
+        .expect("the primary check should be named");
+    let diagnosis_finding = diagnosis["findings"]
+        .as_array()
+        .expect("primary findings should be an array")
+        .first()
+        .expect("the primary diagnosis should reference a finding");
+    let finding = find_json_check(&report, diagnosis_check)["findings"]
+        .as_array()
+        .expect("the diagnosed check should contain findings")
+        .iter()
+        .find(|candidate| {
+            candidate["code"] == diagnosis_finding["code"]
+                && candidate["location"] == diagnosis_finding["location"]
+        })
+        .expect("the primary reference should resolve inside the ordinary report");
+
+    assert_eq!(diagnosis_check, "protocol.revision");
+    assert_eq!(finding["code"], "MCP-PROTOCOL-002");
+    assert_eq!(finding["location"], "server.supportedVersions");
+    assert_eq!(
+        finding["message"],
+        "The server does not advertise the required protocol revision."
+    );
+    assert_eq!(
+        finding["impact"],
+        "Applying 2026-07-28 rules to another revision could produce a false diagnosis."
+    );
+    assert_eq!(
+        finding["expectation"],
+        "server/discover must advertise MCP protocol revision 2026-07-28."
+    );
+    assert_eq!(
+        finding["remediation"],
+        "Add MCP 2026-07-28 support and advertise it from server/discover."
+    );
+    assert_eq!(
+        finding["reference"],
+        "MCP 2026-07-28 server/discover contract"
+    );
+    for field in [
+        "location",
+        "message",
+        "impact",
+        "expectation",
+        "remediation",
+        "reference",
+    ] {
+        assert!(
+            REPORT_ONLY_HUMAN.contains(
+                finding[field]
+                    .as_str()
+                    .expect("report-only action field should be text")
+            ),
+            "human report should carry the same {field}"
+        );
+    }
+    assert!(REPORT_ONLY_HUMAN.contains("blocked by protocol.revision"));
+    assert!(!REPORT_ONLY_HUMAN.contains("synthetic-private-revision"));
+    assert!(!REPORT_ONLY_JSON.contains("synthetic-private-revision"));
+}
+
+#[test]
+fn human_and_json_choose_the_same_earliest_layer_and_causal_skips() {
+    for (mode, expected_layer, expected_code, blocked_checks) in [
+        (
+            "malformed",
+            "transport.stdio",
+            "MCP-TRANSPORT-003",
+            [
+                "protocol.envelope",
+                "protocol.revision",
+                "discovery.catalogs",
+                "schema.contracts",
+            ]
+            .as_slice(),
+        ),
+        (
+            "protocol-unsupported",
+            "protocol.revision",
+            "MCP-PROTOCOL-002",
+            ["discovery.catalogs", "schema.contracts"].as_slice(),
+        ),
+        (
+            "layered-protocol-failure",
+            "protocol.envelope",
+            "MCP-CATALOG-001",
+            ["discovery.catalogs", "schema.contracts"].as_slice(),
+        ),
+        (
+            "catalog-blocks-schema",
+            "discovery.catalogs",
+            "MCP-CATALOG-001",
+            ["schema.contracts"].as_slice(),
+        ),
+        (
+            "schema-invalid",
+            "schema.contracts",
+            "MCP-SCHEMA-001",
+            [].as_slice(),
+        ),
+    ] {
+        let human_output = run_mode(mode);
+        let json_output = run_json_mode(mode);
+        let (human, human_stderr) = text(&human_output);
+        let (_, json_stderr) = text(&json_output);
+        let report = json_report(&json_output);
+
+        assert_eq!(human_output.status.code(), Some(1), "{mode}: {human}");
+        assert_eq!(json_output.status.code(), Some(1), "{mode}: {report:#}");
+        assert!(human_stderr.is_empty(), "{mode}: {human_stderr}");
+        assert!(json_stderr.is_empty(), "{mode}: {json_stderr}");
+        assert_eq!(
+            report["primary_diagnosis"]["check_id"], expected_layer,
+            "{mode}: {report:#}"
+        );
+        assert!(
+            report["primary_diagnosis"]["findings"]
+                .as_array()
+                .expect("primary findings should be an array")
+                .iter()
+                .any(|finding| finding["code"] == expected_code),
+            "{mode}: {report:#}"
+        );
+        assert!(
+            human.contains(&format!("PRIMARY DIAGNOSIS · {expected_layer}")),
+            "{mode}: {human}"
+        );
+        assert!(human.contains(expected_code), "{mode}: {human}");
+
+        for check_id in blocked_checks {
+            let check = find_json_check(&report, check_id);
+            assert_eq!(check["state"], "skipped", "{mode}: {check:#}");
+            assert_eq!(
+                check["blocked_by"]["check_id"], expected_layer,
+                "{mode}: {check:#}"
+            );
+            assert!(
+                human.contains(&format!("blocked by {expected_layer}")),
+                "{mode}: {human}"
+            );
+        }
+
+        let runtime = find_json_check(&report, "runtime.tools");
+        assert_eq!(runtime["skip_reason"], "not_authorized");
+        assert!(runtime.get("blocked_by").is_none());
+        assert_human_json_summary_and_limits_match(human, &report);
+        assert_report_findings_are_actionable(&report, human);
+        for sentinel in [
+            REDACTION_SENTINEL,
+            CATALOG_SENTINEL,
+            "synthetic-private-revision-never-report-7f2c",
+            "synthetic-private-result-never-report-7f2c",
+            "synthetic-private-tools-never-report-7f2c",
+        ] {
+            assert!(!human.contains(sentinel), "{mode}: {human}");
+            assert!(
+                !String::from_utf8_lossy(&json_output.stdout).contains(sentinel),
+                "{mode}: {report:#}"
+            );
+        }
+    }
+}
+
+#[test]
+fn built_binary_keeps_independent_cleanup_failure_out_of_the_primary_cause() {
+    let human_environment = TestEnvironment::new();
+    let human_output = inspect_command(&human_environment, "malformed")
+        .env("MCP_DOCTOR_INTERNAL_TEST_CLEANUP_FAILURE", "1")
+        .output()
+        .expect("mcp-doctor should render the synthetic independent failure");
+    let json_environment = TestEnvironment::new();
+    let json_output = json_inspect_command(&json_environment, "malformed")
+        .env("MCP_DOCTOR_INTERNAL_TEST_CLEANUP_FAILURE", "1")
+        .output()
+        .expect("mcp-doctor should render the synthetic independent failure as JSON");
+    let (human, human_stderr) = text(&human_output);
+    let (_, json_stderr) = text(&json_output);
+    let report = json_report(&json_output);
+
+    assert_eq!(human_output.status.code(), Some(1), "{human}");
+    assert_eq!(json_output.status.code(), Some(1), "{report:#}");
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert_eq!(report["primary_diagnosis"]["check_id"], "transport.stdio");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"],
+        serde_json::json!([{
+            "code": "MCP-TRANSPORT-003",
+            "location": "process.stdout.message[0]"
+        }])
+    );
+    assert_eq!(
+        report["independent_findings"],
+        serde_json::json!([{
+            "check_id": "transport.stdio",
+            "code": "MCP-SAFETY-001",
+            "location": "process"
+        }])
+    );
+    assert!(human.contains("PRIMARY DIAGNOSIS · transport.stdio"));
+    assert!(human.contains("INDEPENDENT SAFETY FINDINGS · 1"));
+    assert!(human.contains("MCP-SAFETY-001 · transport.stdio · process"));
+    assert_human_json_summary_and_limits_match(human, &report);
+}
+
+#[test]
 fn invalid_catalog_is_deterministic_redacted_and_actionable() {
     let first = run_mode("catalog-invalid");
     let second = run_mode("catalog-invalid");
@@ -368,6 +650,85 @@ fn report_finding_limit_does_not_fire_at_the_exact_maximum() {
     assert!(stderr.is_empty(), "{stderr}");
     assert!(stdout.contains("MCP-CATALOG-001"), "{stdout}");
     assert!(!stdout.contains("report_findings observed"), "{stdout}");
+}
+
+fn find_json_check<'a>(report: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == id)
+        .unwrap_or_else(|| panic!("report should contain check {id}"))
+}
+
+fn assert_human_json_summary_and_limits_match(human: &str, report: &serde_json::Value) {
+    let summary = &report["summary"];
+    let summary_line = format!(
+        "{} failed · {} warned · {} passed · {} skipped · outcome {} · exit {}",
+        summary["failed"]
+            .as_u64()
+            .expect("failed should be a count"),
+        summary["warned"]
+            .as_u64()
+            .expect("warned should be a count"),
+        summary["passed"]
+            .as_u64()
+            .expect("passed should be a count"),
+        summary["skipped"]
+            .as_u64()
+            .expect("skipped should be a count"),
+        report["outcome"]
+            .as_str()
+            .expect("outcome should be a string"),
+        report["exit_code"]
+            .as_u64()
+            .expect("exit_code should be a number")
+    );
+    assert!(human.contains(&summary_line), "{human}");
+
+    for (name, value) in report["limits"]
+        .as_object()
+        .expect("limits should be an object")
+    {
+        let value = value.as_u64().expect("every limit should be an integer");
+        assert!(
+            human.contains(&format!("{name}={value}")),
+            "human report is missing JSON limit {name}={value}: {human}"
+        );
+    }
+}
+
+fn assert_report_findings_are_actionable(report: &serde_json::Value, human: &str) {
+    for check in report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+    {
+        for finding in check["findings"]
+            .as_array()
+            .expect("findings should be an array")
+        {
+            for field in [
+                "code",
+                "severity",
+                "protocol_revision",
+                "location",
+                "message",
+                "impact",
+                "expectation",
+                "remediation",
+                "reference",
+            ] {
+                let value = finding[field]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{field} should be a string in {finding:#}"));
+                assert!(!value.is_empty(), "{field} should not be empty");
+                assert!(
+                    human.contains(value),
+                    "human report should contain JSON {field} value {value:?}: {human}"
+                );
+            }
+        }
+    }
 }
 
 fn contains_path(output: &str, path: &Path) -> bool {

@@ -1,9 +1,21 @@
 mcp-doctor report · MCP 2026-07-28 · mcp-doctor.report/v1alpha1
 
+PRIMARY DIAGNOSIS · schema.contracts
+  MCP-LIMIT-001 · tools[3].inputSchema
+
+LIMITS
+  time · startup_ms=10000 · discovery_ms=10000 · request_ms=30000 · response_ms=30000 · shutdown_grace_ms=2000 · total_ms=120000
+  io · message_bytes=1048576 · stdout_bytes=8388608 · stderr_bytes=1048576 · aggregate_output_bytes=8388608 · message_count=1024
+  discovery · protocol_revisions=32 · catalog_items=10000 · report_findings=256
+  schema · schema_bytes=1048576 · instance_bytes=1048576 · schema_nodes=100000 · schema_depth=64 · schema_ref_depth=32 · schema_evaluation_steps=100000 · validation_errors=100
+  reserved · active_cases=100 · redirects=0 · retries=0 · concurrency=1
+
 PASS  protocol.revision      required
 FAIL  schema.contracts       required
-      MCP-LIMIT-001  error    tools[3].inputSchema
-      A configured diagnostic safety limit was exceeded.
+      MCP-LIMIT-001  error
+      Where: tools[3].inputSchema
+      What: A configured diagnostic safety limit was exceeded.
+      Why: Continuing past this bound could make inspection unsafe or unbounded.
       message_bytes observed 1048577 bytes; maximum 1048576 bytes
       Expected: Passive inspection must remain within every configured safety limit.
       Fix: Reduce the advertised data or work below the reported maximum, then rerun inspect.

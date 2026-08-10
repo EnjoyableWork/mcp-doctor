@@ -1,0 +1,99 @@
+{
+  "schema_version": "mcp-doctor.compatibility/v1",
+  "protocol_revision": "2026-07-28",
+  "tool_execution": "forbidden",
+  "transport": "stdio",
+  "release_position": "broad-current-revision",
+  "last_verified": {
+    "date": "2026-08-10",
+    "host": "macOS ARM64",
+    "server_runtime": "Linux ARM64 containers",
+    "result": "4/4 passed"
+  },
+  "runtimes": {
+    "node": {
+      "version": "24.12.0",
+      "image": "docker.io/library/node@sha256:929c026d5a4e4a59685b3c1dbc1a8c3eb090aa95373d3a4fd668daa2493c8331",
+      "package_manager": "pnpm 10.26.1"
+    },
+    "go": {
+      "version": "1.25.0",
+      "image": "docker.io/library/golang@sha256:81dc45d05a7444ead8c92a389621fafabc8e40f8fd1a19d7e5df14e61e98bc1a"
+    },
+    "dart": {
+      "version": "3.10.8",
+      "image": "docker.io/library/dart@sha256:a2a76f3bc4d52ce15005a980cbb87db13d156b7cad2d2e686f97a977c3cf77cf"
+    },
+    "php": {
+      "version": "8.4.14",
+      "image": "docker.io/library/composer@sha256:5248900ab8b5f7f880c2d62180e40960cd87f60149ec9a1abfd62ac72a02577c",
+      "package_manager": "Composer 2.8.12"
+    }
+  },
+  "cases": [
+    {
+      "id": "official-typescript-todos",
+      "provenance": "official",
+      "language": "TypeScript",
+      "repository": "https://github.com/modelcontextprotocol/typescript-sdk.git",
+      "release": "@modelcontextprotocol/fastify@2.0.0",
+      "release_published": "2026-07-27",
+      "commit": "cc4b41617ce3601b1290d67216ea0b194a3cd9ac",
+      "server": "examples/todos-server/server.ts",
+      "dependency_lock": {
+        "source": "upstream",
+        "path": "pnpm-lock.yaml",
+        "sha256": "2f4c1c672bf0609f1095b73cf3e371e3a750b09c38a42a470d115ca0aa2e8a31"
+      },
+      "expected_outcome": "passed"
+    },
+    {
+      "id": "official-go-hello",
+      "provenance": "official",
+      "language": "Go",
+      "repository": "https://github.com/modelcontextprotocol/go-sdk.git",
+      "release": "v1.7.0",
+      "release_published": "2026-07-28",
+      "commit": "bc72835f62eb94d0fb484439f886b6885b075f36",
+      "server": "examples/server/hello",
+      "dependency_lock": {
+        "source": "upstream",
+        "path": "go.sum",
+        "sha256": "1c855ba6f1dbddbe295ac0027add07877cd022198bc32e7bec3731dcb8df3142"
+      },
+      "expected_outcome": "passed"
+    },
+    {
+      "id": "independent-dart-strict-current",
+      "provenance": "independent",
+      "language": "Dart",
+      "repository": "https://github.com/leehack/mcp_dart.git",
+      "release": "v2.4.0",
+      "release_published": "2026-07-31",
+      "commit": "b104df00e17340026c32a8742835ccbe905303ed",
+      "server": "example/mcp_2026_07_28/server.dart",
+      "dependency_lock": {
+        "source": "mcp-doctor-reviewed",
+        "path": "tests/compatibility/locks/mcp_dart-v2.4.0.pubspec.lock",
+        "sha256": "12a5151bd678c8a73ad4ae05a69c262710f0bd4012991f1462d489c21d28b858"
+      },
+      "expected_outcome": "passed"
+    },
+    {
+      "id": "independent-php-simple",
+      "provenance": "independent",
+      "language": "PHP",
+      "repository": "https://github.com/logiscape/mcp-sdk-php.git",
+      "release": "v2.0.0",
+      "release_published": "2026-07-28",
+      "commit": "b3a8882b81a891014ef6374522dd983284496ca1",
+      "server": "examples/simple_server_stdio.php",
+      "dependency_lock": {
+        "source": "mcp-doctor-reviewed",
+        "path": "tests/compatibility/locks/mcp-sdk-php-v2.0.0.composer.lock",
+        "sha256": "fed35639579915001487ed17500072bf9e7301c7c31e818cd230b1afc41f66b8"
+      },
+      "expected_outcome": "passed"
+    }
+  ]
+}

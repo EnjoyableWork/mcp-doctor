@@ -34,7 +34,10 @@ fn main() -> ExitCode {
         Some("early-exit") => early_exit(),
         Some("resistant-child") => resistant_child(&remaining),
         Some("catalog-valid") => catalog_valid(),
+        Some("protocol-unsupported") => protocol_unsupported(),
+        Some("layered-protocol-failure") => layered_protocol_failure(),
         Some("catalog-invalid") => catalog_invalid(),
+        Some("catalog-blocks-schema") => catalog_blocks_schema(),
         Some("catalog-invalid-resources") => catalog_invalid_resources(),
         Some("catalog-duplicate") => catalog_duplicate(),
         Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
@@ -239,11 +242,61 @@ fn catalog_valid() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn protocol_unsupported() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": [
+                "2025-11-25",
+                "synthetic-private-revision-never-report-7f2c"
+            ],
+            "capabilities": {},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn layered_protocol_failure() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_result(
+        1,
+        json!({
+            "resultType": "synthetic-private-result-never-report-7f2c",
+            "supportedVersions": ["2025-11-25"],
+            "capabilities": {},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
 fn catalog_invalid() -> ExitCode {
     serve_single_catalog(
         "prompts",
         "prompts/list",
         include_str!("catalogs/invalid-catalog.json"),
+    )
+}
+
+fn catalog_blocks_schema() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": "synthetic-private-tools-never-report-7f2c"
+        }),
     )
 }
 

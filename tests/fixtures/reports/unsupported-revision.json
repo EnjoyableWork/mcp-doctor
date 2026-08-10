@@ -1,0 +1,143 @@
+{
+  "schema_version": "mcp-doctor.report/v1alpha1",
+  "schema_stability": "experimental",
+  "protocol_revision": "2026-07-28",
+  "primary_diagnosis": {
+    "check_id": "protocol.revision",
+    "findings": [
+      {
+        "code": "MCP-PROTOCOL-002",
+        "location": "server.supportedVersions"
+      }
+    ]
+  },
+  "independent_findings": [],
+  "outcome": "failed",
+  "exit_code": 1,
+  "limits": {
+    "startup_ms": 10000,
+    "discovery_ms": 10000,
+    "request_ms": 30000,
+    "response_ms": 30000,
+    "shutdown_grace_ms": 2000,
+    "total_ms": 120000,
+    "message_bytes": 1048576,
+    "stdout_bytes": 8388608,
+    "stderr_bytes": 1048576,
+    "aggregate_output_bytes": 8388608,
+    "message_count": 1024,
+    "protocol_revisions": 32,
+    "catalog_items": 10000,
+    "schema_bytes": 1048576,
+    "instance_bytes": 1048576,
+    "schema_nodes": 100000,
+    "schema_depth": 64,
+    "schema_ref_depth": 32,
+    "schema_evaluation_steps": 100000,
+    "validation_errors": 100,
+    "report_findings": 256,
+    "active_cases": 100,
+    "redirects": 0,
+    "retries": 0,
+    "concurrency": 1
+  },
+  "summary": {
+    "checks": 6,
+    "required": 5,
+    "optional": 1,
+    "performed": 3,
+    "skipped": 3,
+    "passed": 2,
+    "warned": 0,
+    "failed": 1,
+    "required_skipped": 2,
+    "findings": {
+      "info": 0,
+      "warning": 0,
+      "error": 1,
+      "critical": 0
+    }
+  },
+  "checks": [
+    {
+      "id": "transport.stdio",
+      "requirement": "required",
+      "state": "performed",
+      "outcome": "passed",
+      "findings": []
+    },
+    {
+      "id": "protocol.envelope",
+      "requirement": "required",
+      "state": "performed",
+      "outcome": "passed",
+      "findings": []
+    },
+    {
+      "id": "protocol.revision",
+      "requirement": "required",
+      "state": "performed",
+      "outcome": "failed",
+      "findings": [
+        {
+          "code": "MCP-PROTOCOL-002",
+          "severity": "error",
+          "protocol_revision": "2026-07-28",
+          "location": "server.supportedVersions",
+          "message": "The server does not advertise the required protocol revision.",
+          "impact": "Applying 2026-07-28 rules to another revision could produce a false diagnosis.",
+          "expectation": "server/discover must advertise MCP protocol revision 2026-07-28.",
+          "remediation": "Add MCP 2026-07-28 support and advertise it from server/discover.",
+          "reference": "MCP 2026-07-28 server/discover contract",
+          "evidence": {
+            "kind": "revision_advertisement",
+            "required": "2026-07-28",
+            "offered": 2,
+            "recognized_legacy": 1,
+            "unknown_date": 0,
+            "opaque": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "discovery.catalogs",
+      "requirement": "required",
+      "state": "skipped",
+      "skip_reason": "unsupported_revision",
+      "blocked_by": {
+        "check_id": "protocol.revision",
+        "findings": [
+          {
+            "code": "MCP-PROTOCOL-002",
+            "location": "server.supportedVersions"
+          }
+        ]
+      },
+      "findings": []
+    },
+    {
+      "id": "schema.contracts",
+      "requirement": "required",
+      "state": "skipped",
+      "skip_reason": "unsupported_revision",
+      "blocked_by": {
+        "check_id": "protocol.revision",
+        "findings": [
+          {
+            "code": "MCP-PROTOCOL-002",
+            "location": "server.supportedVersions"
+          }
+        ]
+      },
+      "findings": []
+    },
+    {
+      "id": "runtime.tools",
+      "requirement": "optional",
+      "state": "skipped",
+      "skip_reason": "not_authorized",
+      "findings": []
+    }
+  ]
+}

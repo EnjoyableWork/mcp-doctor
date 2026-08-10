@@ -5,7 +5,7 @@ mod transport;
 use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
 #[derive(Debug, Parser)]
@@ -23,25 +23,46 @@ enum Command {
 
 #[derive(Debug, Args)]
 struct InspectArgs {
+    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    format: OutputFormat,
+
     /// Server executable followed by its literal arguments.
     #[arg(last = true, required = true, num_args = 1.., allow_hyphen_values = true)]
     target: Vec<OsString>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum OutputFormat {
+    Human,
+    Json,
+}
+
+impl From<OutputFormat> for contract::ReportFormat {
+    fn from(format: OutputFormat) -> Self {
+        match format {
+            OutputFormat::Human => Self::Human,
+            OutputFormat::Json => Self::Json,
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     match Cli::parse().command {
         None => contract::success_exit(),
-        Some(Command::Inspect(arguments)) => match inspect::run(arguments.target).await {
-            Ok(diagnostic) => {
-                print!("{}", diagnostic.output);
-                diagnostic.exit
+        Some(Command::Inspect(arguments)) => {
+            match inspect::run(arguments.target, arguments.format.into()).await {
+                Ok(diagnostic) => {
+                    print!("{}", diagnostic.output);
+                    diagnostic.exit
+                }
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    ExitCode::from(2)
+                }
             }
-            Err(error) => {
-                eprintln!("error: {error}");
-                ExitCode::from(2)
-            }
-        },
+        }
     }
 }
 

@@ -7,8 +7,8 @@ use super::redaction::RedactedValue;
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum CheckId {
     TransportStdio,
-    ProtocolRevision,
     ProtocolEnvelope,
+    ProtocolRevision,
     DiscoveryCatalogs,
     SchemaContracts,
     RuntimeTools,
@@ -79,6 +79,13 @@ impl SkipReason {
             Self::LimitReached => "a safety limit prevented the check",
             Self::NotApplicable => "the check does not apply to this target",
         }
+    }
+
+    pub(super) const fn is_causal(self) -> bool {
+        matches!(
+            self,
+            Self::UnsupportedRevision | Self::PrerequisiteFailed | Self::LimitReached
+        )
     }
 }
 
@@ -205,6 +212,59 @@ impl FindingCode {
         }
     }
 
+    pub(super) const fn impact(self) -> &'static str {
+        match self {
+            Self::ProcessStartFailed => {
+                "No protocol or contract check can run until the target starts."
+            }
+            Self::StdioIoFailed => {
+                "A broken channel prevents the passive inspection from completing reliably."
+            }
+            Self::InvalidStdioMessage => {
+                "MCP clients cannot interpret this output as a JSON-RPC response."
+            }
+            Self::ServerExitedEarly => {
+                "The pending passive request cannot complete after the server exits."
+            }
+            Self::ProtocolRevisionConfirmed => {
+                "The advertised revision determines which protocol rules can be applied."
+            }
+            Self::UnsupportedProtocolRevision => {
+                "Applying 2026-07-28 rules to another revision could produce a false diagnosis."
+            }
+            Self::InvalidProtocolRevisionValue => {
+                "A valid protocol rule set cannot be selected from this advertisement."
+            }
+            Self::DeprecatedProtocolFeature => {
+                "Deprecated behavior may stop working in a future protocol revision."
+            }
+            Self::LimitExceeded => {
+                "Continuing past this bound could make inspection unsafe or unbounded."
+            }
+            Self::CleanupFailed => {
+                "A surviving process can keep consuming resources or running after inspection."
+            }
+            Self::CatalogContractInvalid => {
+                "Clients cannot reliably discover or use a capability with this structure."
+            }
+            Self::DuplicateCatalogIdentifier => {
+                "Clients cannot reliably choose between items with the same identifier."
+            }
+            Self::PaginationCursorRepeated => {
+                "The repeated cursor would prevent discovery from reaching a complete result."
+            }
+            Self::SchemaContractInvalid => {
+                "Clients cannot safely construct or validate values from this schema."
+            }
+            Self::UnsupportedSchemaDialect => {
+                "Interpreting another dialect as Draft 2020-12 could produce incorrect results."
+            }
+            Self::ExternalSchemaReferenceBlocked => {
+                "Resolving this contract would require network or file access that was not authorized."
+            }
+        }
+    }
+
     pub(super) const fn expectation(self) -> &'static str {
         match self {
             Self::ProcessStartFailed => "The target must be a directly executable local program.",
@@ -322,6 +382,10 @@ impl FindingCode {
                 "MCP 2026-07-28 Tool contract and JSON Schema Draft 2020-12"
             }
         }
+    }
+
+    pub(super) const fn is_independent_safety(self) -> bool {
+        matches!(self, Self::CleanupFailed)
     }
 }
 
@@ -844,12 +908,20 @@ impl Finding {
         self.code.expectation()
     }
 
+    pub(super) const fn impact(&self) -> &'static str {
+        self.code.impact()
+    }
+
     pub(super) const fn remediation(&self) -> &'static str {
         self.code.remediation()
     }
 
     pub(super) const fn reference(&self) -> &'static str {
         self.code.reference()
+    }
+
+    pub(super) const fn is_independent_safety(&self) -> bool {
+        self.code.is_independent_safety()
     }
 }
 
@@ -1047,6 +1119,7 @@ mod tests {
             assert_eq!(code.as_str(), stable_code);
             assert_eq!(code.severity(), severity);
             assert!(!code.title().is_empty());
+            assert!(!code.impact().is_empty());
             assert!(!code.expectation().is_empty());
             assert!(!code.remediation().is_empty());
             assert!(!code.reference().is_empty());
@@ -1057,8 +1130,8 @@ mod tests {
     fn check_ids_and_skip_reasons_have_stable_report_values() {
         let check_ids = [
             (CheckId::TransportStdio, "transport.stdio"),
-            (CheckId::ProtocolRevision, "protocol.revision"),
             (CheckId::ProtocolEnvelope, "protocol.envelope"),
+            (CheckId::ProtocolRevision, "protocol.revision"),
             (CheckId::DiscoveryCatalogs, "discovery.catalogs"),
             (CheckId::SchemaContracts, "schema.contracts"),
             (CheckId::RuntimeTools, "runtime.tools"),
@@ -1079,6 +1152,10 @@ mod tests {
             assert_eq!(reason.as_str(), expected);
             assert!(!reason.description().is_empty());
         }
+        assert!(SkipReason::PrerequisiteFailed.is_causal());
+        assert!(SkipReason::UnsupportedRevision.is_causal());
+        assert!(SkipReason::LimitReached.is_causal());
+        assert!(!SkipReason::NotAuthorized.is_causal());
     }
 
     #[test]

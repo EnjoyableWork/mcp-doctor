@@ -5,13 +5,19 @@ use serde::Serialize;
 
 use super::limits::{DiagnosticLimits, LimitValues};
 use super::model::{
-    CheckId, CheckOutcome, CheckResult, Finding, FindingEvidence, Requirement, RuleViolation,
-    Severity,
+    CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence, Location,
+    Requirement, RuleViolation, Severity,
 };
 use super::protocol::SupportedRevision;
 use super::redaction::REDACTION_MARKER;
 
 pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1alpha1";
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ReportFormat {
+    Human,
+    Json,
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) enum OverallOutcome {
@@ -98,6 +104,8 @@ pub(super) struct DiagnosticReport {
     revision: SupportedRevision,
     limits: DiagnosticLimits,
     checks: Vec<CheckResult>,
+    primary_diagnosis: Option<Diagnosis>,
+    independent_findings: Vec<FindingReference>,
     summary: ReportSummary,
     outcome: OverallOutcome,
 }
@@ -155,11 +163,32 @@ impl DiagnosticReport {
         } else {
             OverallOutcome::Passed
         };
+        let (primary_diagnosis, independent_findings) = classify_findings(&checks);
+
+        for check in &checks {
+            let Some(reason) = check.skip_reason() else {
+                continue;
+            };
+            if !reason.is_causal() {
+                continue;
+            }
+            let Some(diagnosis) = primary_diagnosis.as_ref() else {
+                return Err(ReportContractError::CausalSkipWithoutDiagnosis(check.id()));
+            };
+            if check.id() <= diagnosis.check() {
+                return Err(ReportContractError::CausalSkipPrecedesDiagnosis {
+                    check: check.id(),
+                    diagnosis: diagnosis.check(),
+                });
+            }
+        }
 
         Ok(Self {
             revision,
             limits,
             checks,
+            primary_diagnosis,
+            independent_findings,
             summary,
             outcome,
         })
@@ -177,6 +206,14 @@ impl DiagnosticReport {
         &self.checks
     }
 
+    pub(super) fn primary_diagnosis(&self) -> Option<&Diagnosis> {
+        self.primary_diagnosis.as_ref()
+    }
+
+    pub(super) fn independent_findings(&self) -> &[FindingReference] {
+        &self.independent_findings
+    }
+
     pub(super) const fn summary(&self) -> ReportSummary {
         self.summary
     }
@@ -188,6 +225,98 @@ impl DiagnosticReport {
     pub(super) const fn exit_status(&self) -> ExitStatus {
         self.outcome.exit_status()
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct FindingReference {
+    check: CheckId,
+    code: FindingCode,
+    location: Location,
+}
+
+impl FindingReference {
+    fn new(check: CheckId, finding: &Finding) -> Self {
+        Self {
+            check,
+            code: finding.code(),
+            location: finding.location().clone(),
+        }
+    }
+
+    pub(super) const fn check(&self) -> CheckId {
+        self.check
+    }
+
+    pub(super) const fn code(&self) -> FindingCode {
+        self.code
+    }
+
+    pub(super) const fn location(&self) -> &Location {
+        &self.location
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct Diagnosis {
+    check: CheckId,
+    findings: Vec<FindingReference>,
+}
+
+impl Diagnosis {
+    pub(super) const fn check(&self) -> CheckId {
+        self.check
+    }
+
+    pub(super) fn findings(&self) -> &[FindingReference] {
+        &self.findings
+    }
+}
+
+fn classify_findings(checks: &[CheckResult]) -> (Option<Diagnosis>, Vec<FindingReference>) {
+    let independent_findings = checks
+        .iter()
+        .flat_map(|check| {
+            check
+                .findings()
+                .unwrap_or_default()
+                .iter()
+                .filter(|finding| finding.is_independent_safety())
+                .map(|finding| FindingReference::new(check.id(), finding))
+        })
+        .collect::<Vec<_>>();
+
+    let primary = checks
+        .iter()
+        .find_map(|check| {
+            let findings = check
+                .findings()?
+                .iter()
+                .filter(|finding| {
+                    finding.severity().is_failure() && !finding.is_independent_safety()
+                })
+                .map(|finding| FindingReference::new(check.id(), finding))
+                .collect::<Vec<_>>();
+            (!findings.is_empty()).then_some(Diagnosis {
+                check: check.id(),
+                findings,
+            })
+        })
+        .or_else(|| {
+            checks.iter().find_map(|check| {
+                let findings = check
+                    .findings()?
+                    .iter()
+                    .filter(|finding| finding.severity().is_failure())
+                    .map(|finding| FindingReference::new(check.id(), finding))
+                    .collect::<Vec<_>>();
+                (!findings.is_empty()).then_some(Diagnosis {
+                    check: check.id(),
+                    findings,
+                })
+            })
+        });
+
+    (primary, independent_findings)
 }
 
 fn summarize(checks: &[CheckResult]) -> ReportSummary {
@@ -235,6 +364,11 @@ pub(super) enum ReportContractError {
         finding: SupportedRevision,
         report: SupportedRevision,
     },
+    CausalSkipWithoutDiagnosis(CheckId),
+    CausalSkipPrecedesDiagnosis {
+        check: CheckId,
+        diagnosis: CheckId,
+    },
 }
 
 impl fmt::Display for ReportContractError {
@@ -254,6 +388,23 @@ impl fmt::Display for ReportContractError {
                 formatter,
                 "finding revision {finding} for {check} does not match report revision {report}"
             ),
+            Self::CausalSkipWithoutDiagnosis(check) => write!(
+                formatter,
+                "causally skipped check {check} has no failing diagnosis"
+            ),
+            Self::CausalSkipPrecedesDiagnosis { check, diagnosis } => write!(
+                formatter,
+                "causally skipped check {check} does not follow diagnosis {diagnosis}"
+            ),
+        }
+    }
+}
+
+pub(super) fn render_report(report: &DiagnosticReport, format: ReportFormat) -> String {
+    match format {
+        ReportFormat::Human => HumanReporter::render(report),
+        ReportFormat::Json => {
+            JsonReporter::render(report).expect("a typed diagnostic report must serialize as JSON")
         }
     }
 }
@@ -271,6 +422,11 @@ impl HumanReporter {
         .expect("writing to a String cannot fail");
         output.push('\n');
 
+        write_human_diagnosis(&mut output, report);
+        output.push('\n');
+        write_human_limits(&mut output, report.limits().values());
+        output.push('\n');
+
         for check in report.checks() {
             if let Some(outcome) = check.outcome() {
                 writeln!(
@@ -285,13 +441,16 @@ impl HumanReporter {
                 for finding in check.findings().expect("performed check findings exist") {
                     writeln!(
                         output,
-                        "      {}  {:<8} {}",
+                        "      {}  {}",
                         finding.code().as_str(),
-                        finding.severity().as_str(),
-                        finding.location()
+                        finding.severity().as_str()
                     )
                     .expect("writing to a String cannot fail");
-                    writeln!(output, "      {}", finding.code().title())
+                    writeln!(output, "      Where: {}", finding.location())
+                        .expect("writing to a String cannot fail");
+                    writeln!(output, "      What: {}", finding.code().title())
+                        .expect("writing to a String cannot fail");
+                    writeln!(output, "      Why: {}", finding.impact())
                         .expect("writing to a String cannot fail");
                     write_human_evidence(&mut output, finding);
                     writeln!(output, "      Expected: {}", finding.expectation())
@@ -305,10 +464,11 @@ impl HumanReporter {
                 let reason = check.skip_reason().expect("skipped check has a reason");
                 writeln!(
                     output,
-                    "SKIP  {:<22} {} · {}",
+                    "SKIP  {:<22} {} · {}{}",
                     check.id().as_str(),
                     check.requirement().as_str(),
-                    reason.description()
+                    reason.description(),
+                    human_blocked_by(report, reason)
                 )
                 .expect("writing to a String cannot fail");
             }
@@ -329,6 +489,116 @@ impl HumanReporter {
         .expect("writing to a String cannot fail");
         output
     }
+}
+
+fn write_human_limits(output: &mut String, values: LimitValues) {
+    writeln!(output, "LIMITS").expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  time · startup_ms={} · discovery_ms={} · request_ms={} · response_ms={} · shutdown_grace_ms={} · total_ms={}",
+        values.startup_ms,
+        values.discovery_ms,
+        values.request_ms,
+        values.response_ms,
+        values.shutdown_grace_ms,
+        values.total_ms
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  io · message_bytes={} · stdout_bytes={} · stderr_bytes={} · aggregate_output_bytes={} · message_count={}",
+        values.message_bytes,
+        values.stdout_bytes,
+        values.stderr_bytes,
+        values.aggregate_output_bytes,
+        values.message_count
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  discovery · protocol_revisions={} · catalog_items={} · report_findings={}",
+        values.protocol_revisions, values.catalog_items, values.report_findings
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  schema · schema_bytes={} · instance_bytes={} · schema_nodes={} · schema_depth={} · schema_ref_depth={} · schema_evaluation_steps={} · validation_errors={}",
+        values.schema_bytes,
+        values.instance_bytes,
+        values.schema_nodes,
+        values.schema_depth,
+        values.schema_ref_depth,
+        values.schema_evaluation_steps,
+        values.validation_errors
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  reserved · active_cases={} · redirects={} · retries={} · concurrency={}",
+        values.active_cases, values.redirects, values.retries, values.concurrency
+    )
+    .expect("writing to a String cannot fail");
+}
+
+fn write_human_diagnosis(output: &mut String, report: &DiagnosticReport) {
+    if let Some(diagnosis) = report.primary_diagnosis() {
+        writeln!(output, "PRIMARY DIAGNOSIS · {}", diagnosis.check())
+            .expect("writing to a String cannot fail");
+        for finding in diagnosis.findings() {
+            writeln!(
+                output,
+                "  {} · {}",
+                finding.code().as_str(),
+                finding.location()
+            )
+            .expect("writing to a String cannot fail");
+        }
+    } else {
+        writeln!(output, "PRIMARY DIAGNOSIS · none").expect("writing to a String cannot fail");
+    }
+
+    if !report.independent_findings().is_empty() {
+        writeln!(
+            output,
+            "INDEPENDENT SAFETY FINDINGS · {}",
+            report.independent_findings().len()
+        )
+        .expect("writing to a String cannot fail");
+        for finding in report.independent_findings() {
+            writeln!(
+                output,
+                "  {} · {} · {}",
+                finding.code().as_str(),
+                finding.check(),
+                finding.location()
+            )
+            .expect("writing to a String cannot fail");
+        }
+    }
+}
+
+fn human_blocked_by(report: &DiagnosticReport, reason: super::model::SkipReason) -> String {
+    if !reason.is_causal() {
+        return String::new();
+    }
+    let diagnosis = report
+        .primary_diagnosis()
+        .expect("the report contract requires a diagnosis for a causal skip");
+    let mut rendered = format!(" · blocked by {} (", diagnosis.check());
+    for (index, finding) in diagnosis.findings().iter().enumerate() {
+        if index > 0 {
+            rendered.push_str(", ");
+        }
+        write!(
+            rendered,
+            "{} at {}",
+            finding.code().as_str(),
+            finding.location()
+        )
+        .expect("writing to a String cannot fail");
+    }
+    rendered.push(')');
+    rendered
 }
 
 fn write_human_evidence(output: &mut String, finding: &Finding) {
@@ -400,7 +670,10 @@ impl JsonReporter {
 #[derive(Serialize)]
 struct JsonReport {
     schema_version: &'static str,
+    schema_stability: &'static str,
     protocol_revision: &'static str,
+    primary_diagnosis: Option<JsonDiagnosis>,
+    independent_findings: Vec<JsonIndependentFinding>,
     outcome: &'static str,
     exit_code: u8,
     limits: JsonLimits,
@@ -412,12 +685,74 @@ impl From<&DiagnosticReport> for JsonReport {
     fn from(report: &DiagnosticReport) -> Self {
         Self {
             schema_version: REPORT_SCHEMA_VERSION,
+            schema_stability: "experimental",
             protocol_revision: report.revision().as_str(),
+            primary_diagnosis: report.primary_diagnosis().map(JsonDiagnosis::from),
+            independent_findings: report
+                .independent_findings()
+                .iter()
+                .map(JsonIndependentFinding::from)
+                .collect(),
             outcome: report.outcome().as_str(),
             exit_code: report.exit_status().code(),
             limits: JsonLimits::from(report.limits().values()),
             summary: report.summary(),
-            checks: report.checks().iter().map(JsonCheck::from).collect(),
+            checks: report
+                .checks()
+                .iter()
+                .map(|check| JsonCheck::from_parts(check, report.primary_diagnosis()))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonDiagnosis {
+    check_id: &'static str,
+    findings: Vec<JsonDiagnosisFinding>,
+}
+
+impl From<&Diagnosis> for JsonDiagnosis {
+    fn from(diagnosis: &Diagnosis) -> Self {
+        Self {
+            check_id: diagnosis.check().as_str(),
+            findings: diagnosis
+                .findings()
+                .iter()
+                .map(JsonDiagnosisFinding::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonDiagnosisFinding {
+    code: &'static str,
+    location: String,
+}
+
+impl From<&FindingReference> for JsonDiagnosisFinding {
+    fn from(finding: &FindingReference) -> Self {
+        Self {
+            code: finding.code().as_str(),
+            location: finding.location().to_string(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonIndependentFinding {
+    check_id: &'static str,
+    code: &'static str,
+    location: String,
+}
+
+impl From<&FindingReference> for JsonIndependentFinding {
+    fn from(finding: &FindingReference) -> Self {
+        Self {
+            check_id: finding.check().as_str(),
+            code: finding.code().as_str(),
+            location: finding.location().to_string(),
         }
     }
 }
@@ -492,11 +827,14 @@ struct JsonCheck {
     outcome: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     skip_reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blocked_by: Option<JsonDiagnosis>,
     findings: Vec<JsonFinding>,
 }
 
-impl From<&CheckResult> for JsonCheck {
-    fn from(check: &CheckResult) -> Self {
+impl JsonCheck {
+    fn from_parts(check: &CheckResult, diagnosis: Option<&Diagnosis>) -> Self {
+        let reason = check.skip_reason();
         Self {
             id: check.id().as_str(),
             requirement: check.requirement().as_str(),
@@ -506,7 +844,11 @@ impl From<&CheckResult> for JsonCheck {
                 "skipped"
             },
             outcome: check.outcome().map(CheckOutcome::as_str),
-            skip_reason: check.skip_reason().map(|reason| reason.as_str()),
+            skip_reason: reason.map(|reason| reason.as_str()),
+            blocked_by: reason
+                .filter(|reason| reason.is_causal())
+                .and(diagnosis)
+                .map(JsonDiagnosis::from),
             findings: check
                 .findings()
                 .unwrap_or_default()
@@ -524,6 +866,7 @@ struct JsonFinding {
     protocol_revision: &'static str,
     location: String,
     message: &'static str,
+    impact: &'static str,
     expectation: &'static str,
     remediation: &'static str,
     reference: &'static str,
@@ -538,6 +881,7 @@ impl From<&Finding> for JsonFinding {
             protocol_revision: finding.revision().as_str(),
             location: finding.location().to_string(),
             message: finding.code().title(),
+            impact: finding.impact(),
             expectation: finding.expectation(),
             remediation: finding.remediation(),
             reference: finding.reference(),
@@ -617,8 +961,8 @@ mod tests {
     };
     use crate::contract::limits::{DiagnosticLimits, LimitKind, LimitValues, LimitViolation};
     use crate::contract::model::{
-        CheckId, CheckResult, ExpectedShape, Finding, JsonKind, Location, LocationField,
-        Requirement, RuleViolation, SkipReason,
+        CheckId, CheckResult, ExpectedShape, Finding, FindingCode, JsonKind, Location,
+        LocationField, Requirement, RuleViolation, SkipReason,
     };
     use crate::contract::protocol::SupportedRevision;
     use crate::contract::redaction::Sensitive;
@@ -763,7 +1107,7 @@ mod tests {
                 CheckResult::skipped(
                     CheckId::DiscoveryCatalogs,
                     Requirement::Required,
-                    SkipReason::PrerequisiteFailed,
+                    SkipReason::NotAdvertised,
                 ),
             ],
         )
@@ -913,6 +1257,8 @@ mod tests {
         )
         .expect("warning report should satisfy the contract");
         assert_eq!(warning_report.outcome(), OverallOutcome::Passed);
+        assert!(warning_report.primary_diagnosis().is_none());
+        assert!(warning_report.independent_findings().is_empty());
 
         let critical = Finding::cleanup_failed(
             SupportedRevision::CURRENT,
@@ -929,6 +1275,105 @@ mod tests {
         )
         .expect("critical report should satisfy the contract");
         assert_eq!(critical_report.outcome(), OverallOutcome::Failed);
+        let diagnosis = critical_report
+            .primary_diagnosis()
+            .expect("an independent-only failure remains the primary fallback");
+        assert_eq!(diagnosis.check(), CheckId::RuntimeTools);
+        assert_eq!(diagnosis.findings()[0].code(), FindingCode::CleanupFailed);
+        assert_eq!(critical_report.independent_findings().len(), 1);
+    }
+
+    #[test]
+    fn independent_safety_failure_does_not_replace_a_later_actionable_cause() {
+        let cleanup = Finding::cleanup_failed(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Process),
+        );
+        let catalog = Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Tools),
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::Array,
+                observed: JsonKind::String,
+            },
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            vec![
+                CheckResult::performed(
+                    CheckId::TransportStdio,
+                    Requirement::Required,
+                    vec![cleanup],
+                ),
+                CheckResult::performed(
+                    CheckId::DiscoveryCatalogs,
+                    Requirement::Required,
+                    vec![catalog],
+                ),
+            ],
+        )
+        .expect("mixed safety and diagnostic failures should satisfy the contract");
+
+        let diagnosis = report
+            .primary_diagnosis()
+            .expect("the actionable catalog failure should be primary");
+        assert_eq!(diagnosis.check(), CheckId::DiscoveryCatalogs);
+        assert_eq!(
+            diagnosis.findings()[0].code(),
+            FindingCode::CatalogContractInvalid
+        );
+        assert_eq!(report.independent_findings().len(), 1);
+        assert_eq!(
+            report.independent_findings()[0].code(),
+            FindingCode::CleanupFailed
+        );
+    }
+
+    #[test]
+    fn causal_skips_require_an_earlier_primary_diagnosis() {
+        assert_eq!(
+            DiagnosticReport::new(
+                SupportedRevision::CURRENT,
+                DiagnosticLimits::M1_DEFAULTS,
+                vec![CheckResult::skipped(
+                    CheckId::ProtocolEnvelope,
+                    Requirement::Required,
+                    SkipReason::PrerequisiteFailed,
+                )],
+            ),
+            Err(ReportContractError::CausalSkipWithoutDiagnosis(
+                CheckId::ProtocolEnvelope,
+            ))
+        );
+
+        let revision_failure = Finding::invalid_revision_value(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+            Sensitive::new(b"synthetic-invalid-revision").redacted(),
+        );
+        assert_eq!(
+            DiagnosticReport::new(
+                SupportedRevision::CURRENT,
+                DiagnosticLimits::M1_DEFAULTS,
+                vec![
+                    CheckResult::skipped(
+                        CheckId::ProtocolEnvelope,
+                        Requirement::Required,
+                        SkipReason::PrerequisiteFailed,
+                    ),
+                    CheckResult::performed(
+                        CheckId::ProtocolRevision,
+                        Requirement::Required,
+                        vec![revision_failure],
+                    ),
+                ],
+            ),
+            Err(ReportContractError::CausalSkipPrecedesDiagnosis {
+                check: CheckId::ProtocolEnvelope,
+                diagnosis: CheckId::ProtocolRevision,
+            })
+        );
     }
 
     #[test]

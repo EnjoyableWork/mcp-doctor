@@ -1,6 +1,17 @@
 {
   "schema_version": "mcp-doctor.report/v1alpha1",
+  "schema_stability": "experimental",
   "protocol_revision": "2026-07-28",
+  "primary_diagnosis": {
+    "check_id": "schema.contracts",
+    "findings": [
+      {
+        "code": "MCP-LIMIT-001",
+        "location": "tools[3].inputSchema"
+      }
+    ]
+  },
+  "independent_findings": [],
   "outcome": "failed",
   "exit_code": 1,
   "limits": {
@@ -67,6 +78,7 @@
           "protocol_revision": "2026-07-28",
           "location": "tools[3].inputSchema",
           "message": "A configured diagnostic safety limit was exceeded.",
+          "impact": "Continuing past this bound could make inspection unsafe or unbounded.",
           "expectation": "Passive inspection must remain within every configured safety limit.",
           "remediation": "Reduce the advertised data or work below the reported maximum, then rerun inspect.",
           "reference": "mcp-doctor M1 passive STDIO safety contract",

@@ -30,7 +30,7 @@ $ mcp-doctor inspect -- node ./dist/weather-server.js
 
   mcp-doctor  weather-server · STDIO
 
-  PASS  protocol       MCP 2026-07-28 negotiated
+  PASS  protocol       MCP 2026-07-28 supported
   PASS  discovery      8 tools · 2 resources · 1 prompt
   FAIL  tool/schema    weather_forecast.inputSchema.required
         expected an array of unique strings, found a string
@@ -100,7 +100,7 @@ mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
 The default report is made for people. Add `--format json` to get the same
-findings as stable JSON with secrets removed.
+findings as experimental, versioned JSON with secrets removed.
 
 ## Inspect. Check. Break.
 
@@ -159,6 +159,11 @@ Checks skipped because of this issue:
 The human and JSON reports use the same findings. This prevents CI from hiding
 a failure, choosing a different main issue, or turning a skipped check into a
 pass.
+
+The passive STDIO path is checked against pinned official TypeScript and Go
+servers and independent Dart and PHP servers. See the
+[compatibility evidence](tests/compatibility/README.md) for the exact scope and
+results.
 
 ## Bring it into CI
 

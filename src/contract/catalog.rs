@@ -323,6 +323,7 @@ struct Analyzer {
     discovery_valid: bool,
     revision_checked: bool,
     revision_supported: bool,
+    revision_block: Option<SkipReason>,
     catalog_limit_reached: bool,
     tools_catalog_valid: bool,
     tools_advertised: bool,
@@ -349,6 +350,7 @@ impl Analyzer {
             discovery_valid: false,
             revision_checked: false,
             revision_supported: false,
+            revision_block: None,
             catalog_limit_reached: false,
             tools_catalog_valid: true,
             tools_advertised: false,
@@ -481,6 +483,7 @@ impl Analyzer {
                 true
             }
             RevisionSelection::Unsupported(summary) => {
+                self.revision_block = Some(SkipReason::UnsupportedRevision);
                 self.push(
                     FindingBucket::Revision,
                     Finding::unsupported_revision(SupportedRevision::CURRENT, location, summary),
@@ -488,6 +491,7 @@ impl Analyzer {
                 false
             }
             RevisionSelection::LimitExceeded(violation) => {
+                self.revision_block = Some(SkipReason::LimitReached);
                 self.push(
                     FindingBucket::Revision,
                     Finding::limit_exceeded(SupportedRevision::CURRENT, location, violation),
@@ -1167,6 +1171,16 @@ impl Analyzer {
 
     fn into_checks(mut self) -> Vec<CheckResult> {
         self.finish_overflow();
+        let downstream_skip_reason = if self
+            .envelope
+            .iter()
+            .any(|finding| finding.severity().is_failure())
+        {
+            SkipReason::PrerequisiteFailed
+        } else {
+            self.revision_block
+                .unwrap_or(SkipReason::PrerequisiteFailed)
+        };
         let revision_check = if self.revision_checked {
             CheckResult::performed(
                 CheckId::ProtocolRevision,
@@ -1195,14 +1209,14 @@ impl Analyzer {
             CheckResult::skipped(
                 CheckId::DiscoveryCatalogs,
                 Requirement::Required,
-                SkipReason::PrerequisiteFailed,
+                downstream_skip_reason,
             )
         };
         let schema_check = if !self.discovery_valid || !self.revision_supported {
             CheckResult::skipped(
                 CheckId::SchemaContracts,
                 Requirement::Required,
-                SkipReason::PrerequisiteFailed,
+                downstream_skip_reason,
             )
         } else if self.catalog_limit_reached {
             CheckResult::skipped(

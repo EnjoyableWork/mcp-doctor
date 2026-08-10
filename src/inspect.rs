@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    PassiveCatalogConversation, RenderedDiagnostic, StdioDiagnostic, StdioLimitKind,
+    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, StdioDiagnostic, StdioLimitKind,
     StdioPrimaryFailure, StdioStream as ContractStream, m1_stdio_limit_profile,
     render_catalog_diagnostic, render_stdio_diagnostic,
 };
@@ -9,7 +9,10 @@ use crate::transport::stdio::{
     StdioFailure, StdioLimit, StdioLimits, StdioStream, StdioTarget, StdioTransport, TargetError,
 };
 
-pub(crate) async fn run(target: Vec<OsString>) -> Result<RenderedDiagnostic, TargetError> {
+pub(crate) async fn run(
+    target: Vec<OsString>,
+    format: ReportFormat,
+) -> Result<RenderedDiagnostic, TargetError> {
     let (executable, arguments) = target
         .split_first()
         .expect("clap requires an inspect target");
@@ -34,17 +37,30 @@ pub(crate) async fn run(target: Vec<OsString>) -> Result<RenderedDiagnostic, Tar
     debug_assert!(result.failure().is_some() || result.response().is_some());
     let diagnostic = StdioDiagnostic {
         primary: result.failure().map(map_failure),
-        cleanup_failed: result.cleanup_failed(),
+        cleanup_failed: result.cleanup_failed() || internal_test_cleanup_failure(),
     };
     if result.failure().is_some() {
-        Ok(render_stdio_diagnostic(diagnostic))
+        Ok(render_stdio_diagnostic(diagnostic, format))
     } else {
         Ok(render_catalog_diagnostic(
             diagnostic,
             &conversation,
             result.responses(),
+            format,
         ))
     }
+}
+
+#[cfg(feature = "internal-test-fixtures")]
+fn internal_test_cleanup_failure() -> bool {
+    std::env::var_os("MCP_DOCTOR_TEST_MODE").as_deref() == Some(std::ffi::OsStr::new("1"))
+        && std::env::var_os("MCP_DOCTOR_INTERNAL_TEST_CLEANUP_FAILURE").as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+}
+
+#[cfg(not(feature = "internal-test-fixtures"))]
+const fn internal_test_cleanup_failure() -> bool {
+    false
 }
 
 fn map_failure(failure: StdioFailure) -> StdioPrimaryFailure {

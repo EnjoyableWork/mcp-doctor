@@ -6,13 +6,13 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Bounded local STDIO discovery, catalog, and JSON Schema 2020-12 diagnosis complete; full earliest-layer/report parity, real-server compatibility, and network transport remain unimplemented |
-| Current milestone | M1 — passive local MVP in progress |
-| Overall status | M0 plus `MCPD-004` through `MCPD-006` pass locally; the next hosted PR must confirm the expanded passive matrix on every native CI host |
-| Current focus | `MCPD-007` — ready for the next goal |
+| Product state | The passive local STDIO MVP, earliest-layer report parity, and pinned current-revision compatibility matrix pass locally; active tool calls and network transport remain unimplemented |
+| Current milestone | M1 — passive local MVP awaiting hosted confirmation |
+| Overall status | `MCPD-007` passes the complete 71-test local gate, dependency and package checks, and four pinned compatibility cases; native hosted CI and the manual hosted compatibility run remain |
+| Current focus | `MCPD-007` — local acceptance complete; hosted confirmation pending |
 | Public release | None |
 | Last reviewed | 2026-08-10 |
-| Next review trigger | The next hosted native transport matrix; the `MCPD-007` registry recheck, compatibility evidence and positioning, real-server, earliest-layer, reporter, and conditional testing-tool review; any dependency or testing-tool adoption, update, ownership change, advisory, or unexplained inactivity; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
+| Next review trigger | The hosted native and pinned compatibility results for `MCPD-007`; the immediate M2 pre-publication registry and revision rechecks; any dependency or testing-tool adoption, update, ownership change, advisory, or unexplained inactivity; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
 
 ## Document roles
 
@@ -267,9 +267,10 @@ defines the revision as a string without a date-pattern constraint.
 #### Finding and check semantics
 
 The code registry began with stable meanings and code-owned severities in
-`MCPD-004`. `MCPD-005` wires the transport findings and `MCPD-006` wires the
-catalog and schema findings below. Earliest-layer designation and complete
-human/agent report parity remain `MCPD-007` work.
+`MCPD-004`. `MCPD-005` wires the transport findings, `MCPD-006` wires the
+catalog and schema findings below, and `MCPD-007` designates the earliest
+actionable layer while preserving independent safety failures and reporter
+parity.
 
 | Code | Severity | Reserved meaning |
 | --- | --- | --- |
@@ -317,16 +318,17 @@ Human and JSON reporters derive from the same immutable result. Reports reject
 an empty check set, duplicate check IDs, and findings for a different revision;
 they sort checks and findings canonically. Every finding includes its code,
 code-owned severity, selected revision, trusted structural location, static
-message, safe expectation, corrective next step, versioned reference, and
-typed evidence. Arbitrary values, identifiers, paths, payloads, headers,
+message and impact, safe expectation, corrective next step, versioned
+reference, and typed evidence. Arbitrary values, identifiers, paths, payloads, headers,
 arguments, results, and logs cannot enter the ordinary result model;
 observations retain only a safe JSON type or `[REDACTED]` and a byte count.
 
-The internal JSON envelope is `mcp-doctor.report/v1alpha1` and includes the
-revision, exact limits, derived summary, performed/skipped checks, findings,
-outcome, and exit code. It is fixture-tested but not exposed by the CLI and is
-not yet a public compatibility promise; `MCPD-007` exposes it as experimental
-and `MCPD-012` owns the stable machine format.
+The CLI exposes `mcp-doctor.report/v1alpha1` through `inspect --format json`.
+The experimental envelope includes stability, revision, primary diagnosis,
+independent findings, exact limits, derived summary, performed/skipped checks,
+causal `blocked_by` evidence, findings, outcome, and exit code. It is
+fixture-tested but is not a stable compatibility promise; `MCPD-012` owns the
+stable machine format.
 
 #### M1 default limit profile
 
@@ -423,19 +425,52 @@ schema-depth, local-reference-depth, schema-work, validation-error, and
 report-finding boundaries. A disposable loopback listener proves
 external-reference diagnosis makes no connection. Static fixture values and
 cursors are absent from reports; repeated invalid runs are byte-for-byte
-deterministic. Native hosted confirmation remains part of the next pull request,
-and `MCPD-007` still owns real-server reach, primary-layer selection, causal
-skips, and public experimental JSON.
+deterministic. `MCPD-007` adds built-binary earliest-layer, causal-skip,
+independent-cleanup, report-only, and human/JSON parity journeys over the same
+bounded transport.
 
-Local acceptance on 2026-08-10 is 38 unit tests, six CLI tests, one dependency
-policy test, and 18 built-binary STDIO tests (63 total) through the disposable
-locked gate, plus a clean `cargo-deny` advisory, license, ban, and source
-review. The source package contains 46 files, verifies from its staged contents,
-and compresses to 100.3 KiB. The locked all-target graph checks for GNU/Linux x64
-and Windows x64; the local macOS ARM64 release binary is 7,602,960 bytes. These
-size measurements are review evidence, not a stable artifact promise. Native
-Linux and Windows execution and the complete hosted matrix are not claimed by
-this local run.
+Local acceptance on 2026-08-10 is 40 unit tests, seven CLI tests, one
+compatibility-policy test, one dependency-policy test, and 22 built-binary
+STDIO tests (71 total) through the disposable locked gate. The exact local
+format, Clippy, test, `cargo-deny`, ShellCheck, Bash syntax, Actionlint, JSON,
+package, and diff checks pass. The source package contains 53 files and verifies
+from its staged contents. Native GNU/Linux x64 and Windows x64 execution and
+the complete hosted matrix are not claimed by this local run.
+
+### MCPD-007 dated acceptance review
+
+The controlled [compatibility matrix](tests/compatibility/README.md) passed all
+four pinned MCP `2026-07-28` STDIO servers on 2026-08-10: official TypeScript
+and Go examples plus independent Dart and PHP implementations. Every case
+performed and passed the five required passive checks, left `runtime.tools`
+skipped as `not_authorized`, exited 0, and left no target container running.
+Under `DEC-024`, that evidence supports only the scoped phrase **broad
+current-revision compatibility**. It is not official conformance, every-server
+support, legacy support, HTTP support, or evidence that a tool was called.
+
+The official release recheck on 2026-08-10 still identified
+[MCP `2026-07-28`](https://github.com/modelcontextprotocol/modelcontextprotocol/releases/tag/2026-07-28)
+as the latest specification release, so the supported-revision decision did
+not change. A registry lookup performed outside this checkout found neither
+`mcp-doctor` nor `enjoyable-mcp-doctor` on crates.io. That is a dated
+availability observation, not a reservation: `MCPD-008` must recheck
+immediately before publication and apply the preferred/fallback rule in
+`DEC-008`.
+
+The conditional test-tool review resolved all three `MCPD-007` candidates
+without adding a dependency or numeric release gate:
+
+| Tool reviewed on 2026-08-10 | Decision | Measured reason |
+| --- | --- | --- |
+| [`cargo-nextest` `0.9.143`](https://github.com/nextest-rs/nextest/releases/tag/cargo-nextest-0.9.143) | Not adopted | The authoritative 71-test suite completes in about 12 seconds and is dominated by an intentional 10-second timeout case; there is no demonstrated partitioning, isolation, or flake-diagnosis need for another runner |
+| [`cargo-llvm-cov` `0.8.7`](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.8.7) | Diagnostic only; not adopted | A copied-tree run reported 54.22% lines, but the required cleared environment prevents coverage state from reaching built-binary subprocesses and therefore understates exercised transport and inspection code; weakening isolation or enforcing a misleading percentage would reduce assurance |
+| [`cargo-mutants` `27.1.0`](https://github.com/sourcefrog/cargo-mutants/releases/tag/v27.1.0) | Diagnostic only; not adopted | A time-bounded copied-tree subset challenged five primary-diagnosis mutations; the first run caught two, three misses produced narrow standard tests, and the rerun caught all five in about six seconds |
+
+All three upstreams were active, unarchived, permissively licensed projects at
+the dated review. Rejection remains the safer result because the measured need
+did not justify permanent developer or CI code execution. The exact diagnostic
+versions and outcomes above are reproducible evidence, not newly supported
+project tooling.
 
 ### Golden M1 journey
 
@@ -519,7 +554,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-03 | Local and hosted quality baseline | M0 | Done | POSIX and PowerShell gates, exact direct requirements with a regression test, dated dependency/testing-tool adoption policy, least-privilege three-OS workflow, Dependabot, and community/security surfaces pass locally; the [hosted run on merged `main` `f788e76`](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31337295110) proves the original dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 gates, while the policy refinement awaits its own hosted run |
 | D-04 | Versioned diagnostic result contract | M1 | Done | [Typed contract modules](src/contract), [synthetic contract fixtures](tests/fixtures/contracts), and focused revision, limit, finding, redaction, skip, outcome, exit, and reporter tests |
 | D-05 | Bounded STDIO process and message boundary | M1 | Done | [Managed STDIO transport](src/transport/stdio.rs), [synthetic fixture server](tests/fixtures/stdio_server.rs), and [nine built-binary journeys](tests/stdio.rs) prove literal arguments, constrained environment, passive discovery, simultaneous bounds, redaction, graceful and forced process-tree cleanup, and distinct transport failures; the full 48-test suite passes locally |
-| D-06 | Adoption-ready passive `inspect` journey | M1 | In progress | `MCPD-006` catalog/schema diagnosis and bounded fixture matrix pass locally and public identity is accepted; earliest-layer and report-only-correction fixtures, public experimental JSON, real-server compatibility evidence and resulting position, conditional testing-tool decisions, and complete native journeys remain `MCPD-007` |
+| D-06 | Adoption-ready passive `inspect` journey | M1 | In progress | [Built-binary journeys](tests/stdio.rs) prove earliest-layer selection, independent safety findings, causal skips, report-only correction, redaction, and equivalent human/experimental JSON; the [four-case compatibility matrix](tests/compatibility/README.md), scoped broad current-revision position, registry/revision rechecks, and conditional test-tool decisions pass locally; hosted native and compatibility confirmation remain |
 | D-07 | Immutable passive MVP release | M2 | Proposed | Release, registry, tap, provenance, installed native smoke evidence, and a dated adoption checkpoint |
 | D-08 | Evidence-led diagnostic expansion release | M3 | Proposed | Post-M2 product evidence, retained expansion journeys, stable CI reports, and independently verified release artifacts |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
@@ -534,7 +569,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-004 | Define supported MCP revision behavior, typed findings, limits, exit semantics, and redacted report contract | M1 | Done | `MCPD-003` | [Contract implementation](src/contract), [synthetic snapshots and cases](tests/fixtures/contracts), and 24 focused contract tests prove the accepted compatibility, severity, limit, redaction, performed/skipped, deterministic report, outcome, and exit decisions |
 | MCPD-005 | Implement the bounded STDIO process and message boundary with guaranteed cleanup | M1 | Done | `MCPD-004` | [Nine built-binary cases](tests/stdio.rs) cover empty-capability success without a follow-up request, literal arguments, constrained environment, malformed and redacted output, every I/O limit, timeout, early exit, missing process, and resistant-descendant cleanup; focused framing, protocol, budget, report, and cross-target compile checks also pass |
 | MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Done | `MCPD-005` | [Versioned catalog/schema adapter](src/contract/catalog.rs), [static catalog fixtures](tests/fixtures/catalogs), and [built-binary STDIO journeys](tests/stdio.rs) prove valid, invalid, complex, duplicate, paginated, redacted, no-retrieval, and exact bounded cases with safe expectations and remediation; the complete local locked gate and cross-target checks pass |
-| MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | Ready | `MCPD-006` | Built-binary human and experimental JSON journeys agree on the primary layer and findings, independent failures, causal skips, and corrective next step; report-only fixtures prove actionability; a controlled official/independent matrix spanning at least two languages supports the exact broad or readiness/migration position under `DEC-024`, with no credible independent pass blocking completion; registry availability is rechecked; and conditional runner/coverage/mutation-tool decisions follow `DEC-025` |
+| MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | In progress | `MCPD-006` | Local acceptance is complete: built-binary human and experimental JSON journeys agree on primary and independent findings, causal skips, limits, summary, outcome, and correction; report-only fixtures prove actionability; four pinned official/independent servers across four languages support scoped broad current-revision compatibility; registry and revision rechecks are dated; all conditional tools are resolved under `DEC-025`; the native hosted matrix and manual hosted compatibility run remain |
 | MCPD-008 | Publish and independently verify the first immutable passive-MVP release through GitHub, Cargo, and Homebrew | M2 | Proposed | `MCPD-007` | Every artifact and public channel installs the same version and passes the passive diagnostic smoke journey; the adoption checkpoint is opened with a dated baseline |
 | MCPD-009 | Add explicit, budgeted, seed-reproducible `check` scenarios and result-schema validation when M2 evidence justifies active testing | M3 | Proposed | `MCPD-008` and the M2 adoption checkpoint | Selected-tool consent, deterministic generation, crash, silent failure, and output mismatch journeys |
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy when M2 evidence justifies remote diagnosis | M3 | Proposed | `MCPD-009` | Local HTTP fixtures prove headers, redirects, auth redaction, TLS/error, timeout, and response limits |
@@ -612,9 +647,9 @@ complete dependency policy and be visible in the pull request.
 | `cargo-deny` | `MCPD-003` — Done | Adopted development/CI tool | Keep advisory, license, ban, and source checks locked; pin the CI action by full commit SHA and review tool-policy changes |
 | `assert_cmd` | 2026-08-10 review | Not adopted | The existing standard-library built-binary harness already controls arguments, environment, time, output, and process fixtures; reconsider only if duplicated orchestration becomes harder to review safely |
 | `insta` | 2026-08-10 review | Not adopted | Current human/JSON golden files and catalog fixtures remain small and explicit; reconsider only when direct snapshots become materially harder to review |
-| `cargo-nextest` | `MCPD-007` | Conditional | Evaluate only if suite duration, partitioning, isolation, or flake diagnosis demonstrates a need; it may accelerate but never replace authoritative `cargo test` semantics |
-| `cargo-llvm-cov` | `MCPD-007` | Conditional diagnostic | Use a pinned release if it can measure the spawned binary without weakening environment/redaction controls; convert meaningful gaps into tests and do not create a percentage-only release gate |
-| `cargo-mutants` | `MCPD-007` | Conditional diagnostic | Run a pinned, time-bounded subset in a copied tree when mutation analysis can challenge pure protocol, schema, causality, limit, and report logic without exercising uncontrolled targets |
+| `cargo-nextest` `0.9.143` | `MCPD-007` — evaluated 2026-08-10 | Not adopted | The 71-test baseline is already fast except for one intentional timeout and has no measured partitioning, isolation, or flake-diagnosis problem; authoritative `cargo test` remains clearer |
+| `cargo-llvm-cov` `0.8.7` | `MCPD-007` — evaluated 2026-08-10 | Diagnostic only; not adopted | Its copied-tree result cannot observe cleared-environment built-binary subprocesses accurately; preserve the isolation boundary, convert credible gaps into tests, and add no percentage gate |
+| `cargo-mutants` `27.1.0` | `MCPD-007` — evaluated 2026-08-10 | Diagnostic only; not adopted | A copied-tree five-mutant primary-diagnosis subset produced three useful test gaps and then passed 5/5; standard focused tests retain the value without permanent tool execution |
 | `proptest` or another property framework | `MCPD-009` / `MCPD-011` | Conditional | Adopt only if shrinking and generated invariant coverage materially improve deterministic authorized scenarios beyond bounded table-driven cases |
 | `cargo-fuzz` or another fuzz harness | `MCPD-010` / `MCPD-011` | Conditional diagnostic | Adopt only for an identified parser, framing, schema, or generator boundary with a finite corpus, timeout, artifact/redaction policy, and no external target |
 
@@ -764,24 +799,24 @@ later milestones.
 
 | ID | Risk | Impact | Mitigation and escalation trigger | State |
 | --- | --- | --- | --- | --- |
-| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Mitigated locally through `MCPD-006`; open until the complete native M1 journey passes |
-| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated locally through `MCPD-005`; open until the hosted native M1 matrix passes |
+| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Mitigated locally through `MCPD-007`; open until the hosted native and compatibility journeys pass |
+| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated locally through `MCPD-007`; open until the hosted native M1 matrix passes |
 | RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, and fixtures; any observed value blocks release | Open — all milestones |
 | RISK-04 | Protocol evolution makes diagnostics incorrect | High | Revision-specific rules and fixtures with explicit unsupported outcomes; a new release triggers contract review | Open |
-| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Output and passive schema paths are mitigated locally through `MCPD-006`; native hosted confirmation remains an M1 gate |
+| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Output and passive schema paths are mitigated locally through `MCPD-007`; native hosted confirmation remains an M1 gate |
 | RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | Explicit M3 network policy and local fixtures before HTTP implementation; unclear proxy/address behavior blocks `MCPD-010` | Deferred with M3 |
 | RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Stable seed, ordered generation, structural evidence, and target allowlist; mismatch blocks active testing | Deferred with M3 |
-| RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Open — M1 gate |
+| RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Mitigated locally by human/JSON causal-skip and authorization journeys; hosted confirmation remains |
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and the adoption checkpoint gates all active and remote M3 scope; any M3 feature becoming an MVP prerequisite escalates | Mitigated by plan |
-| RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Decision mitigated; registry availability remains an M2 gate |
+| RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Neither preferred nor fallback crate was found on 2026-08-10; availability remains an immediate M2 recheck, not a reservation |
 | RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | Exact package/formula equality, checksums, attestations, and native installed smokes; any mismatch requires a new version | Deferred with M2 |
 | RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `MCPD-013` requires an enforced public ruleset, drift verifier, rejected-path exercises, and a bounded emergency process; any unverified bypass or destructive path blocks M4 | Deferred with M4 |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Deferred with M4 |
 | RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-016` inventories full-SHA Actions, proves fork and permission isolation, rejects unsafe tracked artifacts, and authenticates every in-scope channel; any drift or credential exposure blocks M4 | Deferred with M4 |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `MCPD-018` binds every claim to exact version, scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Deferred with M4 |
-| RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, real-server trials, and the M2 checkpoint record unclear findings, false findings, time to value, and repeat use before expansion | Open — M1/M2 gate |
-| RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Positioning policy resolved; real-server evidence remains an M1 gate |
+| RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, real-server trials, and the M2 checkpoint record unclear findings, false findings, time to value, and repeat use before expansion | Report sufficiency is mitigated locally; hosted M1 confirmation and real M2 adoption evidence remain |
+| RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages pass locally; hosted compatibility confirmation and future review remain |
 | RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated locally by the MCPD-003 policy refinement; complete live update and supply-chain verification remains `MCPD-016` |
 
 ## Readiness and completion gates

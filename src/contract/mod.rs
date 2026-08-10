@@ -12,12 +12,13 @@ mod report;
 
 use crate::transport::stdio::ProbeResponse;
 use limits::{DiagnosticLimits, LimitKind, LimitViolation};
-use model::{CheckId, CheckResult, Finding, Location, LocationField, Requirement};
+use model::{CheckId, CheckResult, Finding, Location, LocationField, Requirement, SkipReason};
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
-use report::{DiagnosticReport, HumanReporter};
+use report::{DiagnosticReport, render_report};
 
 pub(crate) use catalog::PassiveCatalogConversation;
+pub(crate) use report::ReportFormat;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StdioLimitKind {
@@ -119,20 +120,50 @@ pub(crate) struct RenderedDiagnostic {
     pub(crate) exit: std::process::ExitCode,
 }
 
-pub(crate) fn render_stdio_diagnostic(diagnostic: StdioDiagnostic) -> RenderedDiagnostic {
+pub(crate) fn render_stdio_diagnostic(
+    diagnostic: StdioDiagnostic,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
     let findings = stdio_findings(diagnostic);
 
-    render_checks(vec![CheckResult::performed(
-        CheckId::TransportStdio,
-        Requirement::Required,
-        findings,
-    )])
+    render_checks(
+        vec![
+            CheckResult::performed(CheckId::TransportStdio, Requirement::Required, findings),
+            CheckResult::skipped(
+                CheckId::ProtocolEnvelope,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::ProtocolRevision,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::RuntimeTools,
+                Requirement::Optional,
+                SkipReason::NotAuthorized,
+            ),
+        ],
+        format,
+    )
 }
 
 pub(crate) fn render_catalog_diagnostic(
     diagnostic: StdioDiagnostic,
     conversation: &PassiveCatalogConversation,
     responses: &[ProbeResponse],
+    format: ReportFormat,
 ) -> RenderedDiagnostic {
     let transport_findings = stdio_findings(diagnostic);
     let reserved_findings = transport_findings.len();
@@ -146,7 +177,7 @@ pub(crate) fn render_catalog_diagnostic(
         responses,
         reserved_findings,
     ));
-    render_checks(checks)
+    render_checks(checks, format)
 }
 
 fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
@@ -195,7 +226,7 @@ fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
     findings
 }
 
-fn render_checks(checks: Vec<CheckResult>) -> RenderedDiagnostic {
+fn render_checks(checks: Vec<CheckResult>, format: ReportFormat) -> RenderedDiagnostic {
     let report = DiagnosticReport::new(
         SupportedRevision::CURRENT,
         DiagnosticLimits::M1_DEFAULTS,
@@ -204,7 +235,7 @@ fn render_checks(checks: Vec<CheckResult>) -> RenderedDiagnostic {
     .expect("the STDIO application must construct a valid diagnostic report");
 
     RenderedDiagnostic {
-        output: HumanReporter::render(&report),
+        output: render_report(&report, format),
         exit: report.exit_status().into(),
     }
 }
@@ -241,35 +272,47 @@ pub(super) fn success_exit() -> std::process::ExitCode {
 
 #[cfg(test)]
 mod stdio_contract_tests {
-    use super::{StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure, render_stdio_diagnostic};
+    use super::{
+        ReportFormat, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure, render_stdio_diagnostic,
+    };
 
     #[test]
     fn transport_and_cleanup_failures_remain_distinct_in_one_safe_report() {
-        let rendered = render_stdio_diagnostic(StdioDiagnostic {
-            primary: Some(StdioPrimaryFailure::InvalidMessage {
-                byte_count: 37,
-                index: 2,
-            }),
-            cleanup_failed: true,
-        });
+        let rendered = render_stdio_diagnostic(
+            StdioDiagnostic {
+                primary: Some(StdioPrimaryFailure::InvalidMessage {
+                    byte_count: 37,
+                    index: 2,
+                }),
+                cleanup_failed: true,
+            },
+            ReportFormat::Human,
+        );
 
         assert!(rendered.output.contains("MCP-TRANSPORT-003"));
         assert!(rendered.output.contains("process.stdout.message[2]"));
         assert!(rendered.output.contains("observed [REDACTED] (37 bytes)"));
         assert!(rendered.output.contains("MCP-SAFETY-001"));
+        assert!(rendered.output.contains("INDEPENDENT SAFETY FINDINGS · 1"));
+        assert!(rendered.output.contains(
+            "blocked by transport.stdio (MCP-TRANSPORT-003 at process.stdout.message[2])"
+        ));
         assert!(rendered.output.contains("outcome failed · exit 1"));
     }
 
     #[test]
     fn transport_limits_use_the_canonical_kind_and_structural_location() {
-        let rendered = render_stdio_diagnostic(StdioDiagnostic {
-            primary: Some(StdioPrimaryFailure::Limit {
-                kind: StdioLimitKind::StderrBytes,
-                observed: 1_048_577,
-                maximum: 1_048_576,
-            }),
-            cleanup_failed: false,
-        });
+        let rendered = render_stdio_diagnostic(
+            StdioDiagnostic {
+                primary: Some(StdioPrimaryFailure::Limit {
+                    kind: StdioLimitKind::StderrBytes,
+                    observed: 1_048_577,
+                    maximum: 1_048_576,
+                }),
+                cleanup_failed: false,
+            },
+            ReportFormat::Human,
+        );
 
         assert!(rendered.output.contains("MCP-LIMIT-001"));
         assert!(rendered.output.contains("process.stderr"));
