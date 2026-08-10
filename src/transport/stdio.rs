@@ -107,15 +107,17 @@ impl fmt::Display for TargetError {
 #[cfg(windows)]
 fn is_windows_batch_file(executable: &OsStr) -> bool {
     Path::new(executable)
-        .extension()
+        .file_name()
         .map(OsStr::to_string_lossy)
-        .is_some_and(|extension| {
-            let normalized = extension
+        .is_some_and(|file_name| {
+            let normalized = file_name
                 .split(':')
                 .next()
                 .unwrap_or_default()
                 .trim_end_matches([' ', '.']);
-            normalized.eq_ignore_ascii_case("bat") || normalized.eq_ignore_ascii_case("cmd")
+            normalized.rsplit_once('.').is_some_and(|(_, extension)| {
+                extension.eq_ignore_ascii_case("bat") || extension.eq_ignore_ascii_case("cmd")
+            })
         })
 }
 
@@ -1165,10 +1167,12 @@ mod tests {
             "server.cmd ",
             "server.BAT...",
             "server.cmd:stream",
+            ".cmd",
         ] {
             assert_eq!(
                 StdioTarget::new(OsString::from(target), Vec::new()),
-                Err(TargetError::WindowsBatchFile)
+                Err(TargetError::WindowsBatchFile),
+                "expected the synthetic Windows batch target {target:?} to be rejected"
             );
         }
     }
