@@ -11,7 +11,13 @@ allow = [
   "Unicode-3.0",
 ]
 confidence-threshold = 0.93
-exceptions = []
+# MCPD-006 reviewed these exact permissive transitive licenses. Keeping them
+# crate-scoped prevents an unrelated MIT-0 or Zlib dependency from entering
+# without a new review.
+exceptions = [
+  { allow = ["MIT-0"], crate = "borrow-or-share@0.2.4" },
+  { allow = ["Zlib"], crate = "foldhash@0.2.0" },
+]
 
 [bans]
 multiple-versions = "deny"

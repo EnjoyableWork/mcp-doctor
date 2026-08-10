@@ -1,0 +1,11 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "prompts": [
+    {
+      "name": "synthetic-private-prompt-never-report-7f2c",
+      "arguments": "synthetic-secret-payload-never-report-7f2c"
+    }
+  ]
+}

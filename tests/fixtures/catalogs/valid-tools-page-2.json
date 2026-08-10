@@ -1,0 +1,14 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "tools": [
+    {
+      "name": "synthetic.empty",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

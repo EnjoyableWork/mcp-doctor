@@ -1,0 +1,11 @@
+{
+  "resultType": "complete",
+  "ttlMs": 1000,
+  "cacheScope": "private",
+  "resources": [
+    {
+      "name": "Synthetic guide",
+      "uri": "synthetic://guide"
+    }
+  ]
+}

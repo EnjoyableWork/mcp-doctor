@@ -5,6 +5,9 @@ FAIL  schema.contracts       required
       MCP-LIMIT-001  error    tools[3].inputSchema
       A configured diagnostic safety limit was exceeded.
       message_bytes observed 1048577 bytes; maximum 1048576 bytes
+      Expected: Passive inspection must remain within every configured safety limit.
+      Fix: Reduce the advertised data or work below the reported maximum, then rerun inspect.
+      Reference: mcp-doctor M1 passive STDIO safety contract
 SKIP  runtime.tools          optional · active behavior was not authorized
 
 1 failed · 0 warned · 1 passed · 1 skipped · outcome failed · exit 1

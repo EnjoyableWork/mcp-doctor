@@ -3,17 +3,21 @@
     reason = "the M1 contract includes checks consumed by later ordered tickets"
 )]
 
+mod catalog;
 mod limits;
 mod model;
 mod protocol;
 mod redaction;
 mod report;
 
+use crate::transport::stdio::ProbeResponse;
 use limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use model::{CheckId, CheckResult, Finding, Location, LocationField, Requirement};
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
 use report::{DiagnosticReport, HumanReporter};
+
+pub(crate) use catalog::PassiveCatalogConversation;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StdioLimitKind {
@@ -116,6 +120,36 @@ pub(crate) struct RenderedDiagnostic {
 }
 
 pub(crate) fn render_stdio_diagnostic(diagnostic: StdioDiagnostic) -> RenderedDiagnostic {
+    let findings = stdio_findings(diagnostic);
+
+    render_checks(vec![CheckResult::performed(
+        CheckId::TransportStdio,
+        Requirement::Required,
+        findings,
+    )])
+}
+
+pub(crate) fn render_catalog_diagnostic(
+    diagnostic: StdioDiagnostic,
+    conversation: &PassiveCatalogConversation,
+    responses: &[ProbeResponse],
+) -> RenderedDiagnostic {
+    let transport_findings = stdio_findings(diagnostic);
+    let reserved_findings = transport_findings.len();
+    let mut checks = vec![CheckResult::performed(
+        CheckId::TransportStdio,
+        Requirement::Required,
+        transport_findings,
+    )];
+    checks.extend(catalog::diagnose(
+        conversation,
+        responses,
+        reserved_findings,
+    ));
+    render_checks(checks)
+}
+
+fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
     let revision = SupportedRevision::CURRENT;
     let mut findings = Vec::new();
 
@@ -158,14 +192,14 @@ pub(crate) fn render_stdio_diagnostic(diagnostic: StdioDiagnostic) -> RenderedDi
         ));
     }
 
+    findings
+}
+
+fn render_checks(checks: Vec<CheckResult>) -> RenderedDiagnostic {
     let report = DiagnosticReport::new(
-        revision,
+        SupportedRevision::CURRENT,
         DiagnosticLimits::M1_DEFAULTS,
-        vec![CheckResult::performed(
-            CheckId::TransportStdio,
-            Requirement::Required,
-            findings,
-        )],
+        checks,
     )
     .expect("the STDIO application must construct a valid diagnostic report");
 

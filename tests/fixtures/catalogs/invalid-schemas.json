@@ -1,0 +1,34 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "tools": [
+    {
+      "name": "synthetic.invalid",
+      "inputSchema": {
+        "type": "object",
+        "required": "synthetic-secret-required-never-report-7f2c"
+      }
+    },
+    {
+      "name": "synthetic.unsupported",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2077/schema",
+        "type": "object"
+      }
+    },
+    {
+      "name": "synthetic.root",
+      "inputSchema": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "synthetic.unresolved",
+      "inputSchema": {
+        "type": "object",
+        "$ref": "#/$defs/synthetic-private-missing-never-report-7f2c"
+      }
+    }
+  ]
+}

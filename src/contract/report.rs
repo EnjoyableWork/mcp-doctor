@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use super::limits::{DiagnosticLimits, LimitValues};
 use super::model::{
-    CheckId, CheckOutcome, CheckResult, Finding, FindingEvidence, Requirement, Severity,
+    CheckId, CheckOutcome, CheckResult, Finding, FindingEvidence, Requirement, RuleViolation,
+    Severity,
 };
 use super::protocol::SupportedRevision;
 use super::redaction::REDACTION_MARKER;
@@ -293,6 +294,12 @@ impl HumanReporter {
                     writeln!(output, "      {}", finding.code().title())
                         .expect("writing to a String cannot fail");
                     write_human_evidence(&mut output, finding);
+                    writeln!(output, "      Expected: {}", finding.expectation())
+                        .expect("writing to a String cannot fail");
+                    writeln!(output, "      Fix: {}", finding.remediation())
+                        .expect("writing to a String cannot fail");
+                    writeln!(output, "      Reference: {}", finding.reference())
+                        .expect("writing to a String cannot fail");
                 }
             } else {
                 let reason = check.skip_reason().expect("skipped check has a reason");
@@ -355,7 +362,27 @@ fn write_human_evidence(output: &mut String, finding: &Finding) {
             )
             .expect("writing to a String cannot fail");
         }
+        FindingEvidence::RuleViolation(violation) => {
+            write_human_rule(output, *violation);
+        }
     }
+}
+
+fn write_human_rule(output: &mut String, violation: RuleViolation) {
+    write!(output, "      rule {}", violation.as_str()).expect("writing to a String cannot fail");
+    if let Some(expected) = violation.expected_shape() {
+        write!(output, " · expected {}", expected.as_str())
+            .expect("writing to a String cannot fail");
+    }
+    if let Some(observed) = violation.observed() {
+        write!(output, " · observed {}", observed.as_str())
+            .expect("writing to a String cannot fail");
+    }
+    if let Some(error_count) = violation.error_count() {
+        write!(output, " · {error_count} validation error(s)")
+            .expect("writing to a String cannot fail");
+    }
+    output.push('\n');
 }
 
 pub(super) struct JsonReporter;
@@ -497,6 +524,9 @@ struct JsonFinding {
     protocol_revision: &'static str,
     location: String,
     message: &'static str,
+    expectation: &'static str,
+    remediation: &'static str,
+    reference: &'static str,
     evidence: JsonEvidence,
 }
 
@@ -508,6 +538,9 @@ impl From<&Finding> for JsonFinding {
             protocol_revision: finding.revision().as_str(),
             location: finding.location().to_string(),
             message: finding.code().title(),
+            expectation: finding.expectation(),
+            remediation: finding.remediation(),
+            reference: finding.reference(),
             evidence: JsonEvidence::from_parts(finding.evidence(), finding.revision()),
         }
     }
@@ -534,6 +567,15 @@ enum JsonEvidence {
         observed: u64,
         maximum: u64,
     },
+    RuleViolation {
+        rule: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expected: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        observed: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_count: Option<u64>,
+    },
 }
 
 impl JsonEvidence {
@@ -557,6 +599,12 @@ impl JsonEvidence {
                 observed: violation.observed(),
                 maximum: violation.maximum(),
             },
+            FindingEvidence::RuleViolation(violation) => Self::RuleViolation {
+                rule: violation.as_str(),
+                expected: violation.expected_shape().map(|shape| shape.as_str()),
+                observed: violation.observed().map(|kind| kind.as_str()),
+                error_count: violation.error_count(),
+            },
         }
     }
 }
@@ -569,7 +617,8 @@ mod tests {
     };
     use crate::contract::limits::{DiagnosticLimits, LimitKind, LimitValues, LimitViolation};
     use crate::contract::model::{
-        CheckId, CheckResult, Finding, Location, LocationField, Requirement, SkipReason,
+        CheckId, CheckResult, ExpectedShape, Finding, JsonKind, Location, LocationField,
+        Requirement, RuleViolation, SkipReason,
     };
     use crate::contract::protocol::SupportedRevision;
     use crate::contract::redaction::Sensitive;
@@ -669,6 +718,42 @@ mod tests {
     }
 
     #[test]
+    fn rule_findings_give_humans_and_agents_the_same_safe_correction() {
+        let finding = Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Prompts)
+                .index(0)
+                .field(LocationField::Arguments),
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::Array,
+                observed: JsonKind::String,
+            },
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            vec![CheckResult::performed(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                vec![finding],
+            )],
+        )
+        .expect("synthetic catalog report should satisfy the contract");
+        let human = HumanReporter::render(&report);
+        let json = JsonReporter::render(&report).expect("typed report should serialize");
+
+        for rendered in [&human, &json] {
+            assert!(rendered.contains("MCP-CATALOG-001"));
+            assert!(rendered.contains("prompts[0].arguments"));
+            assert!(rendered.contains("expected_shape"));
+            assert!(rendered.contains("array"));
+            assert!(rendered.contains("string"));
+            assert!(rendered.contains("Correct the value"));
+            assert!(rendered.contains("MCP 2026-07-28 catalog contracts"));
+        }
+    }
+
+    #[test]
     fn required_skips_are_incomplete_while_optional_skips_can_pass() {
         let required_skip = DiagnosticReport::new(
             SupportedRevision::CURRENT,
@@ -710,6 +795,7 @@ mod tests {
             Location::root(LocationField::Tools)
                 .index(0)
                 .field(LocationField::InputSchema),
+            RuleViolation::InvalidDraft202012 { error_count: 1 },
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
@@ -881,6 +967,7 @@ mod tests {
                 Finding::schema_contract_invalid(
                     SupportedRevision::CURRENT,
                     Location::root(LocationField::Tools).index(index),
+                    RuleViolation::InvalidDraft202012 { error_count: 1 },
                 )
             })
             .collect();

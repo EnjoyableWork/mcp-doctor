@@ -1,8 +1,9 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    RenderedDiagnostic, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure,
-    StdioStream as ContractStream, m1_stdio_limit_profile, render_stdio_diagnostic,
+    PassiveCatalogConversation, RenderedDiagnostic, StdioDiagnostic, StdioLimitKind,
+    StdioPrimaryFailure, StdioStream as ContractStream, m1_stdio_limit_profile,
+    render_catalog_diagnostic, render_stdio_diagnostic,
 };
 use crate::transport::stdio::{
     StdioFailure, StdioLimit, StdioLimits, StdioStream, StdioTarget, StdioTransport, TargetError,
@@ -27,13 +28,23 @@ pub(crate) async fn run(target: Vec<OsString>) -> Result<RenderedDiagnostic, Tar
         aggregate_output_bytes: profile.aggregate_output_bytes,
         message_count: profile.message_count,
     });
-    let result = transport.probe(&target).await;
+    let mut conversation = PassiveCatalogConversation::new();
+    let result = transport.probe(&target, &mut conversation).await;
 
     debug_assert!(result.failure().is_some() || result.response().is_some());
-    Ok(render_stdio_diagnostic(StdioDiagnostic {
+    let diagnostic = StdioDiagnostic {
         primary: result.failure().map(map_failure),
         cleanup_failed: result.cleanup_failed(),
-    }))
+    };
+    if result.failure().is_some() {
+        Ok(render_stdio_diagnostic(diagnostic))
+    } else {
+        Ok(render_catalog_diagnostic(
+            diagnostic,
+            &conversation,
+            result.responses(),
+        ))
+    }
 }
 
 fn map_failure(failure: StdioFailure) -> StdioPrimaryFailure {

@@ -6,13 +6,13 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Bounded local STDIO inspection boundary complete; catalog/schema diagnosis and network transport are not implemented yet |
+| Product state | Bounded local STDIO discovery, catalog, and JSON Schema 2020-12 diagnosis complete; full earliest-layer/report parity, real-server compatibility, and network transport remain unimplemented |
 | Current milestone | M1 — passive local MVP in progress |
-| Overall status | M0 plus `MCPD-004` and `MCPD-005` pass locally; the next hosted PR must confirm the transport matrix on every native CI host |
-| Current focus | `MCPD-006` — ready for the next goal |
+| Overall status | M0 plus `MCPD-004` through `MCPD-006` pass locally; the next hosted PR must confirm the expanded passive matrix on every native CI host |
+| Current focus | `MCPD-007` — ready for the next goal |
 | Public release | None |
-| Last reviewed | 2026-08-09 |
-| Next review trigger | `MCPD-006` catalog/schema acceptance; the next hosted native transport matrix; the `MCPD-007` identity, compatibility, and real-server review; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
+| Last reviewed | 2026-08-10 |
+| Next review trigger | The next hosted native transport matrix; the `MCPD-007` identity, compatibility, real-server, earliest-layer, and reporter review; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
 
 ## Document roles
 
@@ -261,8 +261,9 @@ defines the revision as a string without a date-pattern constraint.
 #### Finding and check semantics
 
 The code registry began with stable meanings and code-owned severities in
-`MCPD-004`. `MCPD-005` adds and wires the transport findings below; catalog,
-schema, and full protocol diagnosis remain later M1 work.
+`MCPD-004`. `MCPD-005` wires the transport findings and `MCPD-006` wires the
+catalog and schema findings below. Earliest-layer designation and complete
+human/agent report parity remain `MCPD-007` work.
 
 | Code | Severity | Reserved meaning |
 | --- | --- | --- |
@@ -276,7 +277,12 @@ schema, and full protocol diagnosis remain later M1 work.
 | `MCP-PROTOCOL-004` | Warning | A feature is deprecated by the selected revision |
 | `MCP-LIMIT-001` | Error | A configured diagnostic safety limit is exceeded |
 | `MCP-SAFETY-001` | Critical | A managed target cannot be fully cleaned up |
+| `MCP-CATALOG-001` | Error | An advertised catalog response or item violates the `2026-07-28` structural contract |
+| `MCP-CATALOG-002` | Error | An advertised identifier is duplicated within its catalog scope |
+| `MCP-CATALOG-003` | Error | A pagination cursor repeats instead of advancing or ending the catalog |
 | `MCP-SCHEMA-001` | Error | An advertised JSON Schema contract is invalid |
+| `MCP-SCHEMA-002` | Error | An advertised schema declares a dialect outside the M1 Draft 2020-12 contract |
+| `MCP-SCHEMA-003` | Error | An advertised schema would require prohibited external reference retrieval |
 
 Each check has a stable ID, is `required` or `optional`, and is exactly one of:
 
@@ -305,9 +311,10 @@ Human and JSON reporters derive from the same immutable result. Reports reject
 an empty check set, duplicate check IDs, and findings for a different revision;
 they sort checks and findings canonically. Every finding includes its code,
 code-owned severity, selected revision, trusted structural location, static
-message, and typed evidence. Arbitrary values, identifiers, paths, payloads,
-headers, arguments, results, and logs cannot enter the ordinary result model;
-observations retain only `[REDACTED]` and a byte count.
+message, safe expectation, corrective next step, versioned reference, and
+typed evidence. Arbitrary values, identifiers, paths, payloads, headers,
+arguments, results, and logs cannot enter the ordinary result model;
+observations retain only a safe JSON type or `[REDACTED]` and a byte count.
 
 The internal JSON envelope is `mcp-doctor.report/v1alpha1` and includes the
 revision, exact limits, derived summary, performed/skipped checks, findings,
@@ -347,12 +354,14 @@ target directly, with no shell or argument expansion. The target inherits only
 Windows batch files are rejected because their platform launch path would
 require a command interpreter.
 
-The boundary sends one newline-delimited `server/discover` request with exact
-`2026-07-28` per-request metadata. It never sends `initialize`, `tools/call`, or
-any other implicit follow-up. Fixed-size reads enforce the simultaneous M1
-message, message-count, stdout, stderr, combined-output, startup, discovery,
-request, response, shutdown-grace, and total-run bounds without retaining
-stderr or exposing raw target, payload, or I/O-error values.
+The boundary begins with one newline-delimited `server/discover` request with
+exact `2026-07-28` per-request metadata. `MCPD-006` may continue on the same
+managed process with only the capability-gated passive list requests recorded
+below. It never sends `initialize` or an implicit active request. Fixed-size
+reads enforce the simultaneous M1 message, message-count, stdout, stderr,
+combined-output, startup, discovery, request, response, shutdown-grace, and
+total-run bounds without retaining stderr or exposing raw target, payload, or
+I/O-error values.
 
 Shutdown closes stdin first, allows the declared grace period, then terminates
 the entire Unix process group or Windows Job Object and waits for managed
@@ -366,6 +375,60 @@ built-binary STDIO tests under the locked dependency graph. macOS ARM64 runs
 the complete matrix; Windows x64 and GNU/Linux x64 all-target code paths also
 cross-compile locally. Native execution on those two hosts remains evidence
 for the next hosted pull request and is not claimed by this local run.
+
+### MCPD-006 passive catalog and schema diagnosis
+
+After a valid `server/discover` result selects MCP `2026-07-28`, `inspect`
+issues only the list methods backed by advertised capabilities, in deterministic
+order: `tools/list`, `prompts/list`, `resources/list`, and
+`resources/templates/list`. Each page uses required per-request metadata and an
+opaque cursor only when the prior page returned a new one. A repeated cursor,
+global catalog-item excess, malformed page, or exhausted transport bound stops
+the affected work. The conversation never constructs `tools/call`,
+`prompts/get`, `resources/read`, or `initialize`; fixture servers assert the
+exact method sequence and EOF after the last passive response.
+
+The adapter checks complete/cacheable list envelopes, known capability setting
+types, core tool, prompt, resource, and resource-template shapes, identifiers
+across pages, prompt argument identifiers, and resource URI identity without
+placing any identifier, cursor, URI, schema value, or payload into a report.
+Locations contain only trusted MCP/schema fields, numeric array indexes, and
+`[*]` for server-defined property names. Invalid values are represented by a
+safe JSON type; every failure includes a static expectation, correction, and
+versioned contract reference.
+
+Tool `inputSchema` must be an object with root `type: "object"`; optional
+`outputSchema` must also be an object. M1 accepts an omitted `$schema` as the
+MCP Draft 2020-12 default or the exact Draft 2020-12 URI. Other explicitly
+declared dialects, including Draft 7, receive `MCP-SCHEMA-002` rather than being
+silently reinterpreted. Fragment-only local `$ref` and `$dynamicRef` values are
+resolved under node, depth, reference-depth, and work budgets. Relative,
+HTTP(S), file, and other external references receive `MCP-SCHEMA-003` before
+compilation. The maintained `jsonschema` validator runs with default features
+disabled and a rejecting retriever; the locked normal dependency graph contains
+no HTTP or TLS client. Draft 2020-12 meta-schema errors and compilation errors
+produce sanitized structural locations and never render validator error text.
+
+The synthetic fixture matrix covers valid empty and paginated catalogs,
+composition and local-reference schemas, malformed prompt/resource/template
+shapes, invalid and unsupported schemas, unresolved and external references,
+duplicate names, repeated cursors, and exact catalog-item, schema-node,
+schema-depth, local-reference-depth, schema-work, validation-error, and
+report-finding boundaries. A disposable loopback listener proves
+external-reference diagnosis makes no connection. Static fixture values and
+cursors are absent from reports; repeated invalid runs are byte-for-byte
+deterministic. Native hosted confirmation remains part of the next pull request,
+and `MCPD-007` still owns real-server reach, primary-layer selection, causal
+skips, and public experimental JSON.
+
+Local acceptance on 2026-08-10 is 38 unit tests, six CLI tests, and 18
+built-binary STDIO tests (62 total) through the disposable locked gate, plus a
+clean `cargo-deny` advisory, license, ban, and source review. The source package
+contains 45 files, verifies from its staged contents, and compresses to 94.7
+KiB. The locked all-target graph checks for GNU/Linux x64 and Windows x64; the
+local macOS ARM64 release binary is 7,602,960 bytes. These size measurements are
+review evidence, not a stable artifact promise. Native Linux and Windows
+execution and the complete hosted matrix are not claimed by this local run.
 
 ### Golden M1 journey
 
@@ -449,7 +512,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-03 | Local and hosted quality baseline | M0 | Done | POSIX and PowerShell gates, dependency policy, least-privilege three-OS workflow, Dependabot, and community/security surfaces pass locally; the [hosted run on merged `main` `f788e76`](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31337295110) passes dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 gates |
 | D-04 | Versioned diagnostic result contract | M1 | Done | [Typed contract modules](src/contract), [synthetic contract fixtures](tests/fixtures/contracts), and focused revision, limit, finding, redaction, skip, outcome, exit, and reporter tests |
 | D-05 | Bounded STDIO process and message boundary | M1 | Done | [Managed STDIO transport](src/transport/stdio.rs), [synthetic fixture server](tests/fixtures/stdio_server.rs), and [nine built-binary journeys](tests/stdio.rs) prove literal arguments, constrained environment, passive discovery, simultaneous bounds, redaction, graceful and forced process-tree cleanup, and distinct transport failures; the full 48-test suite passes locally |
-| D-06 | Adoption-ready passive `inspect` journey | M1 | Ready | Earliest-layer and report-only-correction fixtures, equivalent actionable human and experimental JSON reports, catalog/schema fixtures, real-server compatibility evidence, and built-binary native journeys |
+| D-06 | Adoption-ready passive `inspect` journey | M1 | In progress | `MCPD-006` catalog/schema diagnosis and bounded fixture matrix pass locally; earliest-layer and report-only-correction fixtures, public experimental JSON, real-server compatibility evidence, identity review, and complete native journeys remain `MCPD-007` |
 | D-07 | Immutable passive MVP release | M2 | Proposed | Release, registry, tap, provenance, installed native smoke evidence, and a dated adoption checkpoint |
 | D-08 | Evidence-led diagnostic expansion release | M3 | Proposed | Post-M2 product evidence, retained expansion journeys, stable CI reports, and independently verified release artifacts |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
@@ -462,9 +525,9 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-002 | Bootstrap one Rust 2024 binary with truthful help/version output and isolated built-binary tests | M0 | Done | `MCPD-001` | Locked build, format, Clippy, five tests, help, version, metadata, self-contained package, and installed package smoke pass |
 | MCPD-003 | Add disposable local gates, dependency policy, least-privilege cross-platform CI, maintenance automation, and community/security entry points | M0 | Done | `MCPD-002` | POSIX and PowerShell gates, `cargo-deny`, Actionlint, ShellCheck, YAML parsing, links, packaging, and identity checks pass locally; the [first hosted matrix on merged `main` `f788e76`](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31337295110) passes |
 | MCPD-004 | Define supported MCP revision behavior, typed findings, limits, exit semantics, and redacted report contract | M1 | Done | `MCPD-003` | [Contract implementation](src/contract), [synthetic snapshots and cases](tests/fixtures/contracts), and 24 focused contract tests prove the accepted compatibility, severity, limit, redaction, performed/skipped, deterministic report, outcome, and exit decisions |
-| MCPD-005 | Implement the bounded STDIO process and message boundary with guaranteed cleanup | M1 | Done | `MCPD-004` | [Nine built-binary cases](tests/stdio.rs) cover success without a follow-up call, literal arguments, constrained environment, malformed and redacted output, every I/O limit, timeout, early exit, missing process, and resistant-descendant cleanup; focused framing, protocol, budget, report, and cross-target compile checks also pass |
-| MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Ready | `MCPD-005` | Catalog/schema fixtures prove valid, invalid, complex, duplicate, and bounded cases with safe expectations and remediation |
-| MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | Proposed | `MCPD-006` | Built-binary human and experimental JSON journeys agree on the primary layer and findings, independent failures, causal skips, and corrective next step; report-only fixtures prove actionability; pinned official examples and independent servers across at least two languages prove claimed compatibility; identity and revision-release reviews are recorded |
+| MCPD-005 | Implement the bounded STDIO process and message boundary with guaranteed cleanup | M1 | Done | `MCPD-004` | [Nine built-binary cases](tests/stdio.rs) cover empty-capability success without a follow-up request, literal arguments, constrained environment, malformed and redacted output, every I/O limit, timeout, early exit, missing process, and resistant-descendant cleanup; focused framing, protocol, budget, report, and cross-target compile checks also pass |
+| MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Done | `MCPD-005` | [Versioned catalog/schema adapter](src/contract/catalog.rs), [static catalog fixtures](tests/fixtures/catalogs), and [built-binary STDIO journeys](tests/stdio.rs) prove valid, invalid, complex, duplicate, paginated, redacted, no-retrieval, and exact bounded cases with safe expectations and remediation; the complete local locked gate and cross-target checks pass |
+| MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | Ready | `MCPD-006` | Built-binary human and experimental JSON journeys agree on the primary layer and findings, independent failures, causal skips, and corrective next step; report-only fixtures prove actionability; pinned official examples and independent servers across at least two languages prove claimed compatibility; identity and revision-release reviews are recorded |
 | MCPD-008 | Publish and independently verify the first immutable passive-MVP release through GitHub, Cargo, and Homebrew | M2 | Proposed | `MCPD-007` | Every artifact and public channel installs the same version and passes the passive diagnostic smoke journey; the adoption checkpoint is opened with a dated baseline |
 | MCPD-009 | Add explicit, budgeted, seed-reproducible `check` scenarios and result-schema validation when M2 evidence justifies active testing | M3 | Proposed | `MCPD-008` and the M2 adoption checkpoint | Selected-tool consent, deterministic generation, crash, silent failure, and output mismatch journeys |
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy when M2 evidence justifies remote diagnosis | M3 | Proposed | `MCPD-009` | Local HTTP fixtures prove headers, redirects, auth redaction, TLS/error, timeout, and response limits |
@@ -591,6 +654,7 @@ evidence, and official proof.
 | DEC-019 | Gate M3 expansion on dated adoption evidence | Accepted | 2026-08-09 | M3 stays Proposed until the M2 checkpoint records real attempts, time to value, useful and false findings, repeat use, compatibility, and the next demonstrated user blocker |
 | DEC-020 | Make earliest-actionable-layer diagnosis and report-only correction the project-wide north star | Accepted | 2026-08-09 | Every journey prioritizes causal diagnosis over check count, preserves independent safety failures, marks dependent skips, and gives humans and agents the same sufficient evidence; breadth without this behavior cannot satisfy a milestone |
 | DEC-021 | Run each local target as a directly launched, minimally provisioned managed process tree | Accepted | 2026-08-09 | Arguments are literal; only platform launch variables are inherited; batch targets that require a shell are rejected; bounded pipes, Unix process groups, Windows Job Objects, forced termination, and wait completion form one transport boundary |
+| DEC-022 | Validate M1 tool schemas as local JSON Schema Draft 2020-12 with a maintained validator and no retrieval features | Accepted | 2026-08-10 | `jsonschema` is locked with default features disabled and a rejecting retriever; exact MIT-0 and Zlib transitive licenses are reviewed with crate-scoped exceptions; unsupported dialects and external references receive typed findings instead of fallback or I/O |
 
 ## Open decisions
 
@@ -610,11 +674,11 @@ evidence, and official proof.
 
 | ID | Risk | Impact | Mitigation and escalation trigger | State |
 | --- | --- | --- | --- | --- |
-| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Mitigated through `MCPD-005`; open until the complete M1 journey passes |
+| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Mitigated locally through `MCPD-006`; open until the complete native M1 journey passes |
 | RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated locally through `MCPD-005`; open until the hosted native M1 matrix passes |
 | RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, and fixtures; any observed value blocks release | Open — all milestones |
 | RISK-04 | Protocol evolution makes diagnostics incorrect | High | Revision-specific rules and fixtures with explicit unsupported outcomes; a new release triggers contract review | Open |
-| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Output path mitigated through `MCPD-005`; schema path remains an M1 gate |
+| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Output and passive schema paths are mitigated locally through `MCPD-006`; native hosted confirmation remains an M1 gate |
 | RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | Explicit M3 network policy and local fixtures before HTTP implementation; unclear proxy/address behavior blocks `MCPD-010` | Deferred with M3 |
 | RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Stable seed, ordered generation, structural evidence, and target allowlist; mismatch blocks active testing | Deferred with M3 |
 | RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Open — M1 gate |
