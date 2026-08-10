@@ -20,6 +20,14 @@ Do not describe a protocol revision, transport, diagnostic, platform, output
 format, or installation channel as implemented unless its acceptance evidence
 exists.
 
+The project-wide north star is a safe, noninteractive server-author preflight
+that identifies the earliest actionable failing layer, explains it precisely,
+suggests a corrective action, and emits evidence both a human and an AI agent
+can trust. Prefer causal clarity and report sufficiency over check count. When a
+failure blocks dependent work, designate its layer and primary finding or
+findings consistently in human and machine output, mark downstream checks as
+causally skipped, and keep independent safety failures prominent.
+
 Public assurance language is never aspirational. A security or trust statement,
 badge, conformance level, or framework alignment may describe only achieved,
 dated, scoped, and currently verified evidence. Follow the M4 public-proof and
@@ -34,8 +42,10 @@ In descending order:
 2. Bound and clean up every process, network, parsing, and generation path.
 3. Produce correct, deterministic, reproducible diagnostics.
 4. Keep secrets and untrusted values out of reports, logs, and test failures.
-5. Make support claims explicit by protocol revision, transport, and platform.
-6. Deliver the smallest useful vertical slice before broadening the surface.
+5. Make the earliest actionable failure and corrective next step clear without
+   requiring raw traffic, stderr, source code, or a browser.
+6. Make support claims explicit by protocol revision, transport, and platform.
+7. Deliver the smallest useful vertical slice before broadening the surface.
 
 Speed never justifies implicit tool calls, unbounded reads, orphaned children,
 external schema retrieval, secret disclosure, or an unsupported compatibility
@@ -130,6 +140,11 @@ logs, and tool results as untrusted.
   threat model and is not an accidental verbosity flag.
 - A reported success must distinguish checks performed from checks skipped.
   Never imply active behavior was tested when it was not authorized.
+- When findings form a causal chain, identify the earliest actionable layer and
+  primary finding or findings, and make each dependent skip reference that
+  diagnosis. Do not repeat one cause as unrelated downstream failures. Preserve
+  independent findings, especially cleanup, redaction, authorization, and
+  resource-bound failures, even when another diagnosis occurs earlier.
 
 ## Protocol and schema policy
 
@@ -171,6 +186,12 @@ Tests should prove behavior at the narrowest useful layer:
 - transport tests with synthetic processes and local disposable HTTP servers;
 - built-binary journeys for complete CLI behavior and exit codes; and
 - native platform tests for every advertised process or release boundary.
+
+Golden failure fixtures must record the expected earliest actionable layer and
+corrective next step. Built-binary tests must prove that human and machine
+reports agree on the primary diagnosis, independent findings, and causal skips,
+and that an ordinary report alone contains enough safe evidence to recover the
+intended correction.
 
 Never call a real MCP server or production endpoint in the default suite.
 Tests must clear inherited environment where practical and keep files, sockets,

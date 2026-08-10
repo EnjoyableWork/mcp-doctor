@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  Protocol conformance, schema validation, runtime pressure, and reproducible
-  reports for local and remote MCP servers.
+  Find protocol, schema, and runtime problems in local or remote MCP servers,
+  with clear reports you can trust.
 </p>
 
 <p align="center">
@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="#the-promise">The promise</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#inspect-check-break">Inspect. Check. Break.</a> ·
@@ -38,24 +39,35 @@ $ mcp-doctor inspect -- node ./dist/weather-server.js
   1 failed · 18 passed · 8 skipped                         exit 1
 ```
 
+## The promise
+
+`mcp-doctor` checks your MCP server before users depend on it. It finds the
+problems it can safely reach, explains what went wrong, tells you what to fix,
+and gives people and AI agents the same trustworthy report.
+
+It does not stop after the first problem. It keeps checking anything that can
+still run safely. If one failure blocks later checks, it shows the first issue
+to fix and marks only those checks as skipped. Unrelated problems and serious
+safety failures stay visible.
+
 ## Why mcp-doctor?
 
-A green handshake only proves that a server answered once. It does not prove
-that its messages are valid, its advertised contracts are usable, its tools
-survive bad inputs, or its failures can be reproduced.
+A successful connection only proves that a server answered once. It does not
+prove that its messages follow MCP rules, its tools are usable, its tools
+handle bad input, or its failures can be repeated.
 
-`mcp-doctor` turns those invisible contracts into one deterministic diagnostic
-result. It shows exactly what ran, what failed, and what was skipped—without
-silently calling a tool.
+`mcp-doctor` puts those checks into one repeatable report. It shows what ran,
+what failed, what was skipped, and what to do next—without calling a tool
+unless you ask it to.
 
-| It examines | It surfaces |
+| What it checks | What it finds |
 | --- | --- |
-| **Protocol** | Invalid JSON-RPC envelopes, framing, negotiation, methods, and capability use |
-| **Catalogs** | Malformed tools, resources, prompts, duplicate names, and unstable discovery results |
-| **Schemas** | Invalid or pathological JSON Schema, unsafe references, and unusable input contracts |
-| **Results** | Tool output that disagrees with `outputSchema` or reports success without the promised structure |
-| **Runtime** | Timeouts, crashes, early exits, malformed output, oversized messages, and failed shutdown |
-| **Reproducibility** | Non-deterministic failures, with the seed and structural input needed to run them again |
+| **Protocol** | Broken JSON-RPC messages, framing, version handling, methods, and feature claims |
+| **Tools and features** | Bad tool, resource, or prompt definitions; duplicate names; and results that change between discovery runs |
+| **Schemas** | Invalid or unsafe JSON Schema and input rules that clients cannot use |
+| **Results** | Tool output that does not match `outputSchema` or claims success without the promised data |
+| **Runtime** | Timeouts, crashes, early exits, bad output, oversized messages, and failed shutdown |
+| **Repeatability** | Failures that change between runs, with the seed and input shape needed to run them again |
 
 ## Quick start
 
@@ -85,8 +97,8 @@ Inspect a Streamable HTTP endpoint by URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
-The report is human-readable by default. Add `--format json` for the same
-findings as a stable, redacted machine result.
+The default report is made for people. Add `--format json` to get the same
+findings as stable JSON with secrets removed.
 
 ## Inspect. Check. Break.
 
@@ -94,9 +106,9 @@ Choose how much activity the target allows:
 
 | Command | Activity | Use it to |
 | --- | --- | --- |
-| **`inspect`** | Passive | Negotiate the protocol, discover capabilities, and validate advertised catalogs and schemas |
-| **`check`** | Explicit scenario | Run known inputs against only the tools named by a user-authored scenario and validate their results |
-| **`break`** | Bounded adversarial | Generate reproducible boundary cases for one explicitly selected tool |
+| **`inspect`** | Does not call tools | Connect, list what the server offers, and check its definitions and schemas |
+| **`check`** | Calls selected tools | Run known inputs from a scenario you wrote and check the results |
+| **`break`** | Tries generated edge cases | Search one selected tool for failures you can repeat |
 
 ```bash
 # Passive: discover and validate without calling a tool
@@ -111,32 +123,44 @@ mcp-doctor break --tool search --cases 50 --seed 4242 -- node ./dist/server.js -
 
 > [!CAUTION]
 > `check` and `break` execute real tool calls. Use disposable data and a test
-> environment. `mcp-doctor` never treats a reachable tool as authorization to
-> invoke it.
+> environment. Finding a tool does not give `mcp-doctor` permission to call it.
 
 ## Findings you can act on
 
-Every finding includes a stable code, severity, protocol revision, safe
-location, and performed-or-skipped state. Active failures also retain the seed
-and structural input required to reproduce the case without printing secrets
-or raw production values.
+Every finding includes a stable code, severity, MCP version, safe field
+location, and whether the check ran or was skipped. Active failures also keep
+the seed and input shape needed to repeat the case without revealing secrets
+or raw production data.
+
+When problems are connected, the report points to the first one you can fix.
+It skips only the checks that depend on that problem and tells you why. It
+keeps running unrelated checks and reports their problems too.
 
 ```text
+PRIMARY DIAGNOSIS · schema
+
 MCP-SCHEMA-004  error  tools[3].inputSchema.required
 
-`required` must be an array of unique property names.
+Why:
+  `required` is a string, so clients cannot interpret the advertised input.
 
-Reproduce:
-  mcp-doctor break --tool weather_forecast --seed 4242 --case 17 -- <server>
+Expected:
+  an array of unique property names
+
+Fix:
+  change `required` to an array, then run `mcp-doctor` again
+
+Checks skipped because of this issue:
+  tool/runtime
 ```
 
-Human and machine output come from the same result model, so a CI report cannot
-quietly omit a failure or turn a skipped check into a pass.
+The human and JSON reports use the same findings. This prevents CI from hiding
+a failure, choosing a different main issue, or turning a skipped check into a
+pass.
 
 ## Bring it into CI
 
-Run the same diagnostic journey in a pull request and let its exit status gate
-the build:
+Run the same check in a pull request. Its exit code can block the build:
 
 ```yaml
 - name: Diagnose MCP server
@@ -147,22 +171,20 @@ the build:
     ./target/release/my-mcp-server --stdio
 ```
 
-A required check that fails returns a non-zero status. Reports stay
-deterministic and redacted, making them suitable for logs and retained build
-artifacts.
+A required check that fails returns a non-zero status. Reports are repeatable
+and hide secrets, so they work well in logs and saved build results.
 
 ## Safe by default
 
-- `inspect` performs discovery and structural validation only; it never calls
-  a tool.
-- Active runs name their scenario or tool, target, case budget, and seed
-  explicitly.
-- Time, bytes, messages, schema work, cases, redirects, retries, and concurrency
-  are bounded.
-- Headers, credentials, tool arguments, raw results, and server logs are
-  redacted from ordinary output.
-- Local commands are passed as literal arguments, never shell source, and every
-  child process is closed, terminated, and reaped before exit.
+- `inspect` lists and checks what the server offers; it never calls a tool.
+- Every active run names the scenario or tool, target, case limit, and seed.
+- Hard limits cover time, data size, messages, schema work, test cases,
+  redirects, retries, and parallel work.
+- Normal output hides headers, credentials, tool inputs, raw results, and server
+  logs.
+- Local server commands run directly, not through a shell. Before exiting,
+  `mcp-doctor` closes every child process, stops it if needed, and waits for it
+  to end.
 
 ## Contributing
 
