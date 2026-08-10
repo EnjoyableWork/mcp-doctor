@@ -34,8 +34,13 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ "$RELEASE_VERSION" != 0.1.0 ]]; then
-            echo "the first release verifier accepts only version 0.1.0" >&2
+          if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release verifier requires a canonical stable semantic version" >&2
+            exit 1
+          fi
+          IFS=. read -r release_major release_minor _ <<<"$RELEASE_VERSION"
+          if ((release_major == 0 && release_minor == 0)); then
+            echo "release verifier refuses versions before 0.1.0" >&2
             exit 1
           fi
           printf 'value=%s\n' "$RELEASE_VERSION" >>"$GITHUB_OUTPUT"

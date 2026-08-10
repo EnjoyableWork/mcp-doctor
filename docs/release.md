@@ -136,6 +136,108 @@ authorization and byte-mismatch cases, before any version after `v0.1.0` is
 tagged. The first later release confirms the retained path against public
 channels; it does not authorize weakening these gates.
 
+### GitHub-controlled sequence
+
+Every later release keeps three deliberately separate write boundaries:
+
+1. `.github/workflows/release.yml` accepts only a canonical stable version
+   newer than `0.1.0`, an annotated tag at exact current `main`, matching Cargo
+   metadata and notes, and successful CI and release preflight for that commit.
+   It rejects a version older than any stable crates.io release and serializes
+   every tag and rehearsal through one release concurrency group. It rechecks
+   `main` and the annotated tag immediately before publication, then builds,
+   attests, byte-checks, and makes the GitHub Release immutable.
+2. Only after those public bytes and attestations verify, the same workflow and
+   protected `release` environment exchange GitHub OIDC identity through the
+   full-SHA-pinned official `rust-lang/crates-io-auth-action` and run
+   `cargo publish --locked`. The temporary token is masked and revoked by the
+   Action. The same version may be observed only during recovery from a partial
+   run, where its public byte must already equal the immutable asset; a
+   different byte fails and is never republished.
+3. An operator dispatches the tap-owned `Publish verified mcp-doctor formula`
+   workflow in `EnjoyableWork/homebrew-tap` with the exact version and
+   `publish` mode. Its read-only job independently requires the annotated tag,
+   immutable release, release attestation, asset attestations, checksums,
+   package hash, and formula contents. Only then can its protected `release`
+   job receive that repository's short-lived `GITHUB_TOKEN` with
+   `contents: write`; it copies only `Formula/mcp-doctor.rb` and fails if tap
+   `main` moved.
+
+After both downstream bytes are public, dispatch
+`.github/workflows/release-channels.yml` with the exact stable version. It has
+no write or OIDC permission and no secret input. A later version is not
+complete until its registry and formula bytes match the immutable release and
+all represented installed smokes pass.
+
+The tap handoff is intentionally operator-dispatched instead of using a
+cross-repository personal token. If unattended cross-repository initiation is
+ever justified, replace that manual dispatch only with a narrowly installed
+GitHub App whose short-lived token can invoke the one tap workflow; do not add
+a PAT or give the source repository write access to the tap.
+
+### Trusted publisher and environment bindings
+
+The crates.io publisher must contain exactly this GitHub identity:
+
+| Field | Required value |
+| --- | --- |
+| Repository owner | `EnjoyableWork` |
+| Repository | `mcp-doctor` |
+| Workflow filename | `release.yml` |
+| Environment | `release` |
+
+The `mcp-doctor` `release` environment permits only `main` for the explicit
+nonpublishing rehearsal and stable `v*.*.*` tags for publication. The tap's
+separate `release` environment permits only tap `main`. Both environments
+have a required-reviewer gate and store no secret. The current one-maintainer
+organization allows its administrator to bypass that gate, so this is an
+intentional single-maintainer control, not independent two-person approval;
+normal releases should use the recorded approval path rather than bypass it.
+
+### Required nonpublishing rehearsal
+
+Before any later tag is allowed, run these workflows from their exact default
+branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
+
+1. Dispatch `Publish verified immutable release` with rehearsal version
+   `0.1.0`. It reuses the existing immutable release, compares the real Cargo
+   and Homebrew bytes, rejects synthetic provenance and mutated byte fixtures,
+   obtains and revokes one short-lived token through the authorized workflow
+   and environment, and proves the same workflow is rejected without the
+   environment. No publish command exists in the authorization job.
+2. Dispatch `Verify crates.io workflow authorization boundary`. Approve the
+   same environment and require crates.io to reject it because its workflow
+   filename is not `release.yml`.
+3. Dispatch the tap's `Publish verified mcp-doctor formula` workflow with
+   version `0.1.0` and `rehearse` mode. The write-capable job is structurally
+   skipped; immutable, provenance, checksum, formula, and negative mismatch
+   checks still run.
+4. Dispatch `Verify published release channels` for `0.1.0`. This confirms the
+   generalized verifier remains credential-free and all existing public
+   channel bytes and installed passive smokes still pass.
+
+Record all four successful run links, the exact environment-policy readback,
+and the trusted-publisher readback in `PROJECT.md`. A workflow file or local
+test alone is not completion evidence.
+
+### Credential inventory gate
+
+Before and after the rehearsal, inventory credential names and configuration
+without printing values. Acceptance requires:
+
+- no Cargo credential for crates.io in the operator's active Cargo home;
+- no repository, environment, or organization Actions secret used by either
+  release path;
+- no classic or fine-grained personal access token referenced by either
+  workflow;
+- only the ephemeral crates.io token returned to the exact `release.yml` job,
+  automatically revoked when that job ends; and
+- only the tap repository's per-run `GITHUB_TOKEN`, with `contents: write`
+  limited to the approved copy job.
+
+The operator's authenticated GitHub session is administration authority, not a
+release credential: workflows must not read, copy, or depend on it.
+
 ## Failure and correction
 
 Do not publish a draft when a package, checksum, SBOM, attestation, byte
