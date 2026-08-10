@@ -69,6 +69,13 @@ installs each represented channel on its native hosts and runs a passive
 diagnostic against a synthetic MCP server. The smoke requires a successful
 discovery and catalog report and proves that no tool call was authorized.
 
+The [`v0.1.0` channel-verification run](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31413131715)
+passed its immutable identity gate and all nine installed native smokes. The
+registry package has SHA-256
+`4ebd55311c86533d1d0bb34a223060f551ea8aaeb287de666b51b31b05ceb36d`,
+identical to the canonical GitHub asset. The one-time first-publication token
+was removed locally and confirmed revoked server-side after publication.
+
 ## Publication procedure
 
 1. Work from clean `main` with version `0.1.0`, release notes, and the Rust
@@ -98,6 +105,36 @@ discovery and catalog report and proves that no tool call was authorized.
 8. Run `.github/workflows/release-channels.yml` for `0.1.0`. It is read-only
    and credential-free. Record its native matrix and the immutable release in
    `PROJECT.md`, then open the dated [adoption checkpoint](adoption.md).
+
+## Releases after v0.1.0
+
+The manual crates.io and tap handoffs above are the bounded first-publication
+procedure, not the intended permanent release process. `MCPD-008A` owns the
+transition after the first crate exists. Until its acceptance evidence is
+recorded, do not assume that pushing another tag publishes either downstream
+channel, and do not create another public version.
+
+The retained subsequent-release contract is:
+
+1. A reviewed release change and intentionally created annotated stable tag
+   remain the release authority. Automation never chooses a version.
+2. The generalized GitHub workflow validates the version, source commit,
+   successful preflight, release notes, provenance, and exact immutable assets
+   before any downstream write.
+3. crates.io Trusted Publishing is bound to the exact repository, workflow,
+   and protected release environment. GitHub OIDC supplies a short-lived
+   publication credential; no crates.io token is stored.
+4. The separate Homebrew tap accepts only the exact verified formula through a
+   protected tap-owned workflow or narrowly installed GitHub App with a
+   short-lived token. A broad personal access token is prohibited.
+5. The credential-free release-channel workflow compares the public Cargo and
+   Homebrew bytes with the canonical GitHub assets, installs them on every
+   represented native host, and runs the passive smoke journey.
+
+`MCPD-008A` must pass a nonpublishing end-to-end rehearsal, including rejected
+authorization and byte-mismatch cases, before any version after `v0.1.0` is
+tagged. The first later release confirms the retained path against public
+channels; it does not authorize weakening these gates.
 
 ## Failure and correction
 

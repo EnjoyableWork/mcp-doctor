@@ -1,4 +1,4 @@
-<h1 align="center">mcp-doctor</h1>
+<h1 align="center">🩺 mcp-doctor</h1>
 
 <p align="center">
   <strong>Diagnose, test, and break your MCP servers before your users do.</strong>
