@@ -9,7 +9,7 @@ use clap::{Args, Parser, Subcommand};
 
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
 #[derive(Debug, Parser)]
-#[command(name = "mcp-doctor", version)]
+#[command(name = "mcp-doctor", bin_name = "mcp-doctor", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
