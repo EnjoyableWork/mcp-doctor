@@ -41,9 +41,11 @@ $ mcp-doctor inspect -- node ./dist/weather-server.js
 
 ## The promise
 
-`mcp-doctor` checks your MCP server before users depend on it. It finds the
-problems it can safely reach, explains what went wrong, tells you what to fix,
-and gives people and AI agents the same trustworthy report.
+`mcp-doctor` is the open-source Rust CLI from
+[EnjoyableWork](https://github.com/EnjoyableWork) that checks your MCP server
+before users depend on it. It finds the problems it can safely reach, explains
+what went wrong, tells you what to fix, and gives people and AI agents the same
+trustworthy report.
 
 It does not stop after the first problem. It keeps checking anything that can
 still run safely. If one failure blocks later checks, it shows the first issue

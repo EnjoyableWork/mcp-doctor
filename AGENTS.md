@@ -156,6 +156,11 @@ logs, and tool results as untrusted.
   official handshake-based revisions for precise diagnostics, but do not send
   `initialize`, fall back to them, or imply compatibility. Follow `DEC-013` and
   the MCPD-004 matrix in `PROJECT.md`.
+- Follow `DEC-024` when describing real-server reach. Broad current-revision
+  positioning requires every selected official and independent current-revision
+  case to pass across at least two languages. Narrower credible reach requires
+  explicit readiness or migration language and a separate compatibility ticket;
+  no credible independent pass blocks M1.
 - Follow the supported JSON Schema dialect exactly. Reject unsupported or
   ambiguous behavior with a typed diagnostic rather than guessing.
 - Do not use live network documentation as runtime behavior. Record the
@@ -164,17 +169,56 @@ logs, and tool results as untrusted.
 
 ## Dependencies
 
-- Prefer the standard library and small, maintained crates with narrow roles.
-- Before adding a crate, review maintenance, license compatibility, advisories,
-  transitive cost, minimum Rust version, platform support, and binary impact.
-- Commit `Cargo.lock`; this repository ships an application.
-- Keep direct requirements intentional and use stable releases unless a ticket
-  records why not.
+- Adding no dependency is the default. Prefer the standard library and the
+  existing graph; do not add a crate or tool for a trivial helper, convenience,
+  speculative future use, or functionality that the project already has.
+- Every runtime, build, development, and standalone testing dependency requires
+  an owning ticket and a concrete capability that the existing graph cannot
+  safely or reasonably provide. Test-only code still executes in contributor
+  and CI environments and receives the same supply-chain scrutiny as product
+  code.
+- Before adoption, record the selected release and review its upstream
+  stewardship, release and issue activity, security-response path, ownership or
+  provenance changes, license compatibility, advisories, unsafe code and build
+  scripts, default and selected features, transitive graph, duplicate versions,
+  minimum Rust version, supported platforms, and build, binary, startup, and
+  runtime cost. Popularity or a recent publish date alone is not evidence of
+  reliability; a mature stable crate may release infrequently, but it must
+  still have credible maintainership and a safe response path.
+- Use an exact `=x.y.z` requirement for every direct registry dependency,
+  including build and development dependencies. Commit `Cargo.lock` because
+  this repository ships an application, and use `--locked` in normal build,
+  test, package, install, and policy commands. The lockfile fixes the complete
+  resolved graph; exact direct requirements make intentional upgrades visible
+  in the manifest. Neither control proves that selected source is trustworthy.
+- Use stable releases only. A pre-release requires an accepted decision and
+  focused evidence. Git dependencies, alternate registries, unpublished forks,
+  and unpinned remote test data are prohibited unless an accepted decision
+  updates the source policy and records why crates.io cannot meet the need.
+- Disable default features when the required capability can be selected
+  narrowly. A feature expansion is a dependency change and receives the same
+  review as a new crate.
+- Dependency-update pull requests are proposals, never automatic approvals.
+  Review release notes, upstream ownership and activity, the manifest and
+  lockfile diff, new transitive crates and features, licenses, advisories,
+  platform and Rust-version changes, and relevant behavior tests before merge.
+  Prefer a focused update when a grouped change obscures causality.
+- Pin standalone CI and diagnostic tools to an exact release or immutable
+  revision at first use, record the version with its evidence, and run invasive
+  tools in disposable or copied trees. Select versions when the owning ticket
+  starts rather than freezing speculative choices in advance.
+- Conditional tools default to rejection. Under `DEC-025`, the owning ticket may
+  adopt one without separate owner approval only after recording a concrete
+  measured need, the complete review above, its focused use, and pull-request
+  evidence.
 - Do not implement JSON Schema validation, HTTP framing, process-tree control,
   cryptography, or fuzz-generation semantics casually when a maintained,
   reviewed implementation is safer.
-- Keep `deny.toml` current. A new license or duplicate dependency requires an
-  explicit review, not a broad exception.
+- Keep the dependency and testing-tool introduction plan in `PROJECT.md` and
+  `deny.toml` current. A new license, source, duplicate version, ignored
+  advisory, or broad exception requires an explicit review. Remove or replace a
+  dependency when its need disappears or its maintenance, security, or
+  reliability no longer satisfies this policy.
 
 ## Testing and verification
 

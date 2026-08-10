@@ -45,6 +45,11 @@ cargo deny --all-features --locked check
 - Keep one observable outcome per pull request.
 - Preserve passive-by-default behavior and every existing execution limit.
 - Add the narrowest useful regression test for changed behavior.
+- Add a dependency only when the governing ticket demonstrates a concrete need
+  that the standard library and existing graph cannot meet. Follow the
+  maintenance, provenance, exact-version, feature, transitive-graph, and update
+  review in [AGENTS.md](AGENTS.md) and record the decision in
+  [PROJECT.md](PROJECT.md).
 - Use synthetic fixtures. Default tests must not call a real MCP server or
   production endpoint.
 - Keep errors and assertions structural so failures cannot print untrusted
