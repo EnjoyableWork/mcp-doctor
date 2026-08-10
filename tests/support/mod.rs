@@ -4,6 +4,7 @@
 )]
 
 use std::collections::BTreeMap;
+use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -57,8 +58,17 @@ impl TestEnvironment {
         for (name, value) in self.environment() {
             command.env(name, value);
         }
+        for name in platform_launch_environment_names() {
+            if let Some(value) = env::var_os(name) {
+                command.env(name, value);
+            }
+        }
 
         command
+    }
+
+    pub fn artifact_path(&self, name: &str) -> PathBuf {
+        self.root_path.join(name)
     }
 
     pub fn assert_command_is_isolated(&self, command: &Command) {
@@ -111,6 +121,18 @@ impl TestEnvironment {
             path.starts_with(&self.root_path),
             "{name} should remain inside the disposable test root"
         );
+    }
+}
+
+fn platform_launch_environment_names() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &["PATH", "PATHEXT", "SystemRoot", "WINDIR"]
+    }
+
+    #[cfg(not(windows))]
+    {
+        &["PATH"]
     }
 }
 

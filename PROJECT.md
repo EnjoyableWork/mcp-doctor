@@ -6,13 +6,13 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | M1 diagnostic contract complete; no process or network transport yet |
+| Product state | Bounded local STDIO inspection boundary complete; catalog/schema diagnosis and network transport are not implemented yet |
 | Current milestone | M1 — passive local MVP in progress |
-| Overall status | M0 and the `MCPD-004` contract pass locally; `MCPD-005` has not started |
-| Current focus | `MCPD-005` — ready for a future goal |
+| Overall status | M0 plus `MCPD-004` and `MCPD-005` pass locally; the next hosted PR must confirm the transport matrix on every native CI host |
+| Current focus | `MCPD-006` — ready for the next goal |
 | Public release | None |
 | Last reviewed | 2026-08-09 |
-| Next review trigger | `MCPD-005` transport acceptance; the `MCPD-007` identity, compatibility, and real-server review; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
+| Next review trigger | `MCPD-006` catalog/schema acceptance; the next hosted native transport matrix; the `MCPD-007` identity, compatibility, and real-server review; the post-M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, release-pipeline, organization-access, or evidence drift |
 
 ## Document roles
 
@@ -260,12 +260,16 @@ defines the revision as a string without a date-pattern constraint.
 
 #### Finding and check semantics
 
-The initial code registry reserves stable meanings and code-owned severities.
-It does not claim that the later transport and schema checks are wired to the
-CLI yet.
+The code registry began with stable meanings and code-owned severities in
+`MCPD-004`. `MCPD-005` adds and wires the transport findings below; catalog,
+schema, and full protocol diagnosis remain later M1 work.
 
 | Code | Severity | Reserved meaning |
 | --- | --- | --- |
+| `MCP-TRANSPORT-001` | Error | The MCP server process could not be started |
+| `MCP-TRANSPORT-002` | Error | A managed STDIO channel failed before diagnosis completed |
+| `MCP-TRANSPORT-003` | Error | The server wrote an invalid bounded STDIO message |
+| `MCP-TRANSPORT-004` | Error | The server exited before returning the discovery response |
 | `MCP-PROTOCOL-001` | Info | The requested protocol revision is supported |
 | `MCP-PROTOCOL-002` | Error | The server does not advertise the required revision |
 | `MCP-PROTOCOL-003` | Error | The revision value is missing or has the wrong JSON type |
@@ -334,6 +338,34 @@ a stage longer than the total,
 a message larger than stdout, a stream larger than the combined-output cap, a
 schema or instance larger than a message, `$ref` depth above schema depth, or
 concurrency above the case budget. Redirect and retry counts alone may be zero.
+
+### MCPD-005 bounded STDIO boundary
+
+`mcp-doctor inspect -- <executable> [arguments...]` now launches one local
+target directly, with no shell or argument expansion. The target inherits only
+`PATH` on Unix and `PATH`, `PATHEXT`, `SystemRoot`, and `WINDIR` on Windows;
+Windows batch files are rejected because their platform launch path would
+require a command interpreter.
+
+The boundary sends one newline-delimited `server/discover` request with exact
+`2026-07-28` per-request metadata. It never sends `initialize`, `tools/call`, or
+any other implicit follow-up. Fixed-size reads enforce the simultaneous M1
+message, message-count, stdout, stderr, combined-output, startup, discovery,
+request, response, shutdown-grace, and total-run bounds without retaining
+stderr or exposing raw target, payload, or I/O-error values.
+
+Shutdown closes stdin first, allows the declared grace period, then terminates
+the entire Unix process group or Windows Job Object and waits for managed
+process and pipe completion. A drop guard preserves best-effort termination on
+an unexpected control path. The feature-gated synthetic fixture is not part of
+a normal installation; it covers conforming, malformed, timed-out, oversized,
+early-exit, and resistant-descendant behavior through the built CLI.
+
+Local acceptance on 2026-08-09 is 33 unit tests, six CLI tests, and nine
+built-binary STDIO tests under the locked dependency graph. macOS ARM64 runs
+the complete matrix; Windows x64 and GNU/Linux x64 all-target code paths also
+cross-compile locally. Native execution on those two hosts remains evidence
+for the next hosted pull request and is not claimed by this local run.
 
 ### Golden M1 journey
 
@@ -416,8 +448,8 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-02 | Rust CLI walking skeleton | M0 | Done | Manifest, lockfile, help/version source, five focused tests, package verification, and installed source-package smoke |
 | D-03 | Local and hosted quality baseline | M0 | Done | POSIX and PowerShell gates, dependency policy, least-privilege three-OS workflow, Dependabot, and community/security surfaces pass locally; the [hosted run on merged `main` `f788e76`](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31337295110) passes dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 gates |
 | D-04 | Versioned diagnostic result contract | M1 | Done | [Typed contract modules](src/contract), [synthetic contract fixtures](tests/fixtures/contracts), and focused revision, limit, finding, redaction, skip, outcome, exit, and reporter tests |
-| D-05 | Bounded STDIO process and message boundary | M1 | Ready | Transport/process tests and built-binary failure matrix |
-| D-06 | Adoption-ready passive `inspect` journey | M1 | Proposed | Earliest-layer and report-only-correction fixtures, equivalent actionable human and experimental JSON reports, catalog/schema fixtures, real-server compatibility evidence, and built-binary native journeys |
+| D-05 | Bounded STDIO process and message boundary | M1 | Done | [Managed STDIO transport](src/transport/stdio.rs), [synthetic fixture server](tests/fixtures/stdio_server.rs), and [nine built-binary journeys](tests/stdio.rs) prove literal arguments, constrained environment, passive discovery, simultaneous bounds, redaction, graceful and forced process-tree cleanup, and distinct transport failures; the full 48-test suite passes locally |
+| D-06 | Adoption-ready passive `inspect` journey | M1 | Ready | Earliest-layer and report-only-correction fixtures, equivalent actionable human and experimental JSON reports, catalog/schema fixtures, real-server compatibility evidence, and built-binary native journeys |
 | D-07 | Immutable passive MVP release | M2 | Proposed | Release, registry, tap, provenance, installed native smoke evidence, and a dated adoption checkpoint |
 | D-08 | Evidence-led diagnostic expansion release | M3 | Proposed | Post-M2 product evidence, retained expansion journeys, stable CI reports, and independently verified release artifacts |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
@@ -430,8 +462,8 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-002 | Bootstrap one Rust 2024 binary with truthful help/version output and isolated built-binary tests | M0 | Done | `MCPD-001` | Locked build, format, Clippy, five tests, help, version, metadata, self-contained package, and installed package smoke pass |
 | MCPD-003 | Add disposable local gates, dependency policy, least-privilege cross-platform CI, maintenance automation, and community/security entry points | M0 | Done | `MCPD-002` | POSIX and PowerShell gates, `cargo-deny`, Actionlint, ShellCheck, YAML parsing, links, packaging, and identity checks pass locally; the [first hosted matrix on merged `main` `f788e76`](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31337295110) passes |
 | MCPD-004 | Define supported MCP revision behavior, typed findings, limits, exit semantics, and redacted report contract | M1 | Done | `MCPD-003` | [Contract implementation](src/contract), [synthetic snapshots and cases](tests/fixtures/contracts), and 24 focused contract tests prove the accepted compatibility, severity, limit, redaction, performed/skipped, deterministic report, outcome, and exit decisions |
-| MCPD-005 | Implement the bounded STDIO process and message boundary with guaranteed cleanup | M1 | Ready | `MCPD-004` | Success, malformed, timeout, oversize, early-exit, resistant-child, and redaction tests |
-| MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Proposed | `MCPD-005` | Catalog/schema fixtures prove valid, invalid, complex, duplicate, and bounded cases with safe expectations and remediation |
+| MCPD-005 | Implement the bounded STDIO process and message boundary with guaranteed cleanup | M1 | Done | `MCPD-004` | [Nine built-binary cases](tests/stdio.rs) cover success without a follow-up call, literal arguments, constrained environment, malformed and redacted output, every I/O limit, timeout, early exit, missing process, and resistant-descendant cleanup; focused framing, protocol, budget, report, and cross-target compile checks also pass |
+| MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Ready | `MCPD-005` | Catalog/schema fixtures prove valid, invalid, complex, duplicate, and bounded cases with safe expectations and remediation |
 | MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | Proposed | `MCPD-006` | Built-binary human and experimental JSON journeys agree on the primary layer and findings, independent failures, causal skips, and corrective next step; report-only fixtures prove actionability; pinned official examples and independent servers across at least two languages prove claimed compatibility; identity and revision-release reviews are recorded |
 | MCPD-008 | Publish and independently verify the first immutable passive-MVP release through GitHub, Cargo, and Homebrew | M2 | Proposed | `MCPD-007` | Every artifact and public channel installs the same version and passes the passive diagnostic smoke journey; the adoption checkpoint is opened with a dated baseline |
 | MCPD-009 | Add explicit, budgeted, seed-reproducible `check` scenarios and result-schema validation when M2 evidence justifies active testing | M3 | Proposed | `MCPD-008` and the M2 adoption checkpoint | Selected-tool consent, deterministic generation, crash, silent failure, and output mismatch journeys |
@@ -558,6 +590,7 @@ evidence, and official proof.
 | DEC-018 | Publish the passive MVP before active or remote expansion | Accepted | 2026-08-09 | M2 distributes and independently verifies `inspect`; active scenarios, HTTP, and adversarial generation cannot become first-release prerequisites |
 | DEC-019 | Gate M3 expansion on dated adoption evidence | Accepted | 2026-08-09 | M3 stays Proposed until the M2 checkpoint records real attempts, time to value, useful and false findings, repeat use, compatibility, and the next demonstrated user blocker |
 | DEC-020 | Make earliest-actionable-layer diagnosis and report-only correction the project-wide north star | Accepted | 2026-08-09 | Every journey prioritizes causal diagnosis over check count, preserves independent safety failures, marks dependent skips, and gives humans and agents the same sufficient evidence; breadth without this behavior cannot satisfy a milestone |
+| DEC-021 | Run each local target as a directly launched, minimally provisioned managed process tree | Accepted | 2026-08-09 | Arguments are literal; only platform launch variables are inherited; batch targets that require a shell are rejected; bounded pipes, Unix process groups, Windows Job Objects, forced termination, and wait completion form one transport boundary |
 
 ## Open decisions
 
@@ -577,11 +610,11 @@ evidence, and official proof.
 
 | ID | Risk | Impact | Mitigation and escalation trigger | State |
 | --- | --- | --- | --- | --- |
-| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Open — M1 gate |
-| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Open — M1 gate |
+| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default, explicit selected-tool scenarios, and consent tests; any implicit call blocks the passive MVP and every later release | Mitigated through `MCPD-005`; open until the complete M1 journey passes |
+| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated locally through `MCPD-005`; open until the hosted native M1 matrix passes |
 | RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, and fixtures; any observed value blocks release | Open — all milestones |
 | RISK-04 | Protocol evolution makes diagnostics incorrect | High | Revision-specific rules and fixtures with explicit unsupported outcomes; a new release triggers contract review | Open |
-| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Open — M1 gate |
+| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Output path mitigated through `MCPD-005`; schema path remains an M1 gate |
 | RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | Explicit M3 network policy and local fixtures before HTTP implementation; unclear proxy/address behavior blocks `MCPD-010` | Deferred with M3 |
 | RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Stable seed, ordered generation, structural evidence, and target allowlist; mismatch blocks active testing | Deferred with M3 |
 | RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Open — M1 gate |
