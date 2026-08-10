@@ -38,12 +38,37 @@ fn version_uses_the_binary_name_and_package_version() {
 }
 
 #[test]
-fn empty_invocation_is_a_no_op_walking_skeleton() {
+fn empty_invocation_remains_a_no_op() {
     let output = run_cli(&[]);
 
     assert!(output.status.success());
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn inspect_help_documents_the_explicit_literal_target_boundary() {
+    let output = run_cli(&["inspect", "--help"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(stdout.contains("Passively inspect a local MCP server over STDIO"));
+    assert!(stdout.contains("Usage: mcp-doctor inspect -- <TARGET>..."));
+    assert!(stdout.contains("literal arguments"));
+}
+
+#[test]
+fn inspect_requires_a_target_after_the_separator() {
+    let output = run_cli(&["inspect"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+    assert!(stderr.contains("required arguments"));
+    assert!(stderr.contains("Usage: mcp-doctor inspect -- <TARGET>..."));
 }
 
 #[test]

@@ -19,7 +19,9 @@ wildcards = "deny"
 highlight = "all"
 allow = []
 deny = []
-skip = []
+skip = [
+  { crate = "syn@2.0.119", reason = "process-wrap 9.1.0 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
+]
 skip-tree = []
 
 [sources]

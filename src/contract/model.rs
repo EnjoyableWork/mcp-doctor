@@ -6,6 +6,7 @@ use super::redaction::RedactedValue;
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum CheckId {
+    TransportStdio,
     ProtocolRevision,
     ProtocolEnvelope,
     DiscoveryCatalogs,
@@ -16,6 +17,7 @@ pub(super) enum CheckId {
 impl CheckId {
     pub(super) const fn as_str(self) -> &'static str {
         match self {
+            Self::TransportStdio => "transport.stdio",
             Self::ProtocolRevision => "protocol.revision",
             Self::ProtocolEnvelope => "protocol.envelope",
             Self::DiscoveryCatalogs => "discovery.catalogs",
@@ -105,6 +107,10 @@ impl Severity {
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum FindingCode {
+    ProcessStartFailed,
+    StdioIoFailed,
+    InvalidStdioMessage,
+    ServerExitedEarly,
     ProtocolRevisionConfirmed,
     UnsupportedProtocolRevision,
     InvalidProtocolRevisionValue,
@@ -117,6 +123,10 @@ pub(super) enum FindingCode {
 impl FindingCode {
     pub(super) const fn as_str(self) -> &'static str {
         match self {
+            Self::ProcessStartFailed => "MCP-TRANSPORT-001",
+            Self::StdioIoFailed => "MCP-TRANSPORT-002",
+            Self::InvalidStdioMessage => "MCP-TRANSPORT-003",
+            Self::ServerExitedEarly => "MCP-TRANSPORT-004",
             Self::ProtocolRevisionConfirmed => "MCP-PROTOCOL-001",
             Self::UnsupportedProtocolRevision => "MCP-PROTOCOL-002",
             Self::InvalidProtocolRevisionValue => "MCP-PROTOCOL-003",
@@ -131,7 +141,11 @@ impl FindingCode {
         match self {
             Self::ProtocolRevisionConfirmed => Severity::Info,
             Self::DeprecatedProtocolFeature => Severity::Warning,
-            Self::UnsupportedProtocolRevision
+            Self::ProcessStartFailed
+            | Self::StdioIoFailed
+            | Self::InvalidStdioMessage
+            | Self::ServerExitedEarly
+            | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
             | Self::LimitExceeded
             | Self::SchemaContractInvalid => Severity::Error,
@@ -141,6 +155,10 @@ impl FindingCode {
 
     pub(super) const fn title(self) -> &'static str {
         match self {
+            Self::ProcessStartFailed => "The MCP server process could not be started.",
+            Self::StdioIoFailed => "The STDIO channel failed before diagnosis completed.",
+            Self::InvalidStdioMessage => "The server wrote an invalid STDIO message.",
+            Self::ServerExitedEarly => "The server process exited before returning a response.",
             Self::ProtocolRevisionConfirmed => "The requested protocol revision is supported.",
             Self::UnsupportedProtocolRevision => {
                 "The server does not advertise the required protocol revision."
@@ -169,6 +187,10 @@ pub(super) enum LocationField {
     InputSchema,
     Required,
     Process,
+    Stdin,
+    Stdout,
+    Stderr,
+    Message,
 }
 
 impl LocationField {
@@ -183,6 +205,10 @@ impl LocationField {
             Self::InputSchema => "inputSchema",
             Self::Required => "required",
             Self::Process => "process",
+            Self::Stdin => "stdin",
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+            Self::Message => "message",
         }
     }
 }
@@ -252,6 +278,46 @@ pub(super) struct Finding {
 }
 
 impl Finding {
+    pub(super) fn process_start_failed(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::ProcessStartFailed,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn stdio_io_failed(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::StdioIoFailed,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn invalid_stdio_message(
+        revision: SupportedRevision,
+        location: Location,
+        observation: RedactedValue,
+    ) -> Self {
+        Self::new(
+            FindingCode::InvalidStdioMessage,
+            revision,
+            location,
+            FindingEvidence::RedactedObservation(observation),
+        )
+    }
+
+    pub(super) fn server_exited_early(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::ServerExitedEarly,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
     pub(super) fn revision_confirmed(revision: SupportedRevision, location: Location) -> Self {
         Self::new(
             FindingCode::ProtocolRevisionConfirmed,
@@ -478,6 +544,26 @@ mod tests {
     fn finding_codes_own_their_stable_severity_policy() {
         let cases = [
             (
+                FindingCode::ProcessStartFailed,
+                "MCP-TRANSPORT-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::StdioIoFailed,
+                "MCP-TRANSPORT-002",
+                Severity::Error,
+            ),
+            (
+                FindingCode::InvalidStdioMessage,
+                "MCP-TRANSPORT-003",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ServerExitedEarly,
+                "MCP-TRANSPORT-004",
+                Severity::Error,
+            ),
+            (
                 FindingCode::ProtocolRevisionConfirmed,
                 "MCP-PROTOCOL-001",
                 Severity::Info,
@@ -520,6 +606,7 @@ mod tests {
     #[test]
     fn check_ids_and_skip_reasons_have_stable_report_values() {
         let check_ids = [
+            (CheckId::TransportStdio, "transport.stdio"),
             (CheckId::ProtocolRevision, "protocol.revision"),
             (CheckId::ProtocolEnvelope, "protocol.envelope"),
             (CheckId::DiscoveryCatalogs, "discovery.catalogs"),
