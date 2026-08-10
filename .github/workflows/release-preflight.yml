@@ -1,0 +1,363 @@
+name: Release preflight
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-preflight-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Deterministic Cargo package and Homebrew formula
+    if: github.repository == 'EnjoyableWork/mcp-doctor'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the stable package version
+        id: version
+        run: |
+          set -euo pipefail
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "mcp-doctor") | .version'
+          )"
+          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+      - name: Prove deterministic Cargo and formula generation
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo package --locked
+          package="target/package/mcp-doctor-$RELEASE_VERSION.crate"
+          first_hash="$(sha256sum "$package" | awk '{ print $1 }')"
+          cargo package --locked
+          second_hash="$(sha256sum "$package" | awk '{ print $1 }')"
+          test "$first_hash" = "$second_hash"
+
+          scripts/generate-release-channels.sh \
+            "$package" \
+            "$RELEASE_VERSION" \
+            generated-release-channels
+          scripts/generate-release-channels.sh \
+            "$package" \
+            "$RELEASE_VERSION" \
+            generated-release-channels-second
+          diff -ru generated-release-channels generated-release-channels-second
+
+          mkdir -p release-source-assets
+          install -m 0644 \
+            "generated-release-channels/cargo/mcp-doctor-$RELEASE_VERSION.crate" \
+            release-source-assets/
+          install -m 0644 \
+            generated-release-channels/homebrew/Formula/mcp-doctor.rb \
+            release-source-assets/
+
+      - name: Retain the source outputs briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preflight-source
+          path: release-source-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  unix:
+    name: ${{ matrix.name }} — source install and represented artifacts
+    needs: source
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+            publish_linux: false
+          - name: GNU/Linux ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            publish_linux: true
+          - name: GNU/Linux x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            publish_linux: true
+    env:
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the exact source outputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-preflight-source
+          path: release-source-assets
+
+      - name: Verify the native Rust host and package version
+        id: version
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "mcp-doctor") | .version'
+          )"
+          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+      - name: Build the passive release fixture
+        run: >-
+          cargo build --release --locked
+          --features internal-test-fixtures
+          --bin mcp-doctor-stdio-fixture
+
+      - name: Install the exact Cargo package and exercise passive diagnosis
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          package="$GITHUB_WORKSPACE/release-source-assets/mcp-doctor-$RELEASE_VERSION.crate"
+          package_root="$RUNNER_TEMP/mcp-doctor-cargo-package"
+          install_root="$RUNNER_TEMP/mcp-doctor-cargo-install"
+          mkdir -p "$package_root"
+          tar -xzf "$package" -C "$package_root"
+          cargo install \
+            --path "$package_root/mcp-doctor-$RELEASE_VERSION" \
+            --locked \
+            --root "$install_root"
+          scripts/smoke-installed.sh \
+            "$install_root/bin/mcp-doctor" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+
+      - name: Set up current stable Homebrew
+        uses: Homebrew/actions/setup-homebrew@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+
+      - name: Install the exact source formula and exercise passive diagnosis
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tap_name=EnjoyableWork/mcp-doctor-preflight
+          formula_name="$tap_name/mcp-doctor"
+          brew tap-new --no-git "$tap_name"
+          tap_root="$(brew --repository "$tap_name")"
+          mkdir -p "$tap_root/Formula"
+          install -m 0644 release-source-assets/mcp-doctor.rb "$tap_root/Formula/mcp-doctor.rb"
+
+          package="$GITHUB_WORKSPACE/release-source-assets/mcp-doctor-$RELEASE_VERSION.crate"
+          cache_path="$(brew --cache --build-from-source "$formula_name")"
+          mkdir -p "$(dirname "$cache_path")"
+          install -m 0644 "$package" "$cache_path"
+
+          brew style "$formula_name"
+          brew audit --strict "$formula_name"
+          brew install --build-from-source "$formula_name"
+          brew test "$formula_name"
+          formula_executable="$(brew --prefix "$formula_name")/bin/mcp-doctor"
+          scripts/smoke-installed.sh \
+            "$formula_executable" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+
+      - name: Build the represented native GNU/Linux executable
+        if: matrix.publish_linux
+        run: cargo build --release --locked --bin mcp-doctor
+
+      - name: Package twice and smoke-test the represented GNU/Linux archive
+        if: matrix.publish_linux
+        id: package
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          mkdir -p release-archive-first release-archive-second release-assets
+          first_archive="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-doctor \
+              release-archive-first
+          )"
+          second_archive="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-doctor \
+              release-archive-second
+          )"
+          cmp --silent "$first_archive" "$second_archive"
+          archive_name="$(basename "$first_archive")"
+          install -m 0644 "$first_archive" "release-assets/$archive_name"
+          scripts/smoke-archive.sh \
+            "release-assets/$archive_name" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+          printf 'archive=%s\n' "$archive_name" >>"$GITHUB_OUTPUT"
+
+      - name: Generate the represented target SPDX SBOM
+        if: matrix.publish_linux
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-doctor-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the represented target SPDX SBOM
+        if: matrix.publish_linux
+        env:
+          SBOM_PATH: release-assets/mcp-doctor-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          jq -e '
+            .spdxVersion == "SPDX-2.3" and
+            (.documentNamespace | type == "string") and
+            (.packages | type == "array" and length > 0)
+          ' "$SBOM_PATH" >/dev/null
+
+      - name: Retain the represented GNU/Linux payload briefly
+        if: matrix.publish_linux
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preflight-${{ matrix.rust_target }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  windows:
+    name: Windows x64 — Cargo source install and passive diagnosis
+    needs: source
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      RUST_TARGET: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the exact source outputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-preflight-source
+          path: release-source-assets
+
+      - name: Install the exact Cargo package and exercise passive diagnosis
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:RUST_TARGET) {
+              throw 'Cargo source smoke is not running on the expected native Windows host.'
+          }
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not read Cargo metadata.'
+          }
+          $releaseVersion = ($metadata.packages | Where-Object name -eq 'mcp-doctor').version
+          if ($releaseVersion -notmatch '^\d+\.\d+\.\d+$') {
+              throw 'Cargo package version is not stable.'
+          }
+
+          cargo build --release --locked `
+            --features internal-test-fixtures `
+            --bin mcp-doctor-stdio-fixture
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not build the passive fixture.'
+          }
+
+          $package = Join-Path $env:GITHUB_WORKSPACE "release-source-assets/mcp-doctor-$releaseVersion.crate"
+          $packageRoot = Join-Path $env:RUNNER_TEMP 'mcp-doctor-cargo-package'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'mcp-doctor-cargo-install'
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          tar -xzf $package -C $packageRoot
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not extract the exact Cargo package.'
+          }
+          cargo install `
+            --path (Join-Path $packageRoot "mcp-doctor-$releaseVersion") `
+            --locked `
+            --root $installRoot
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not install the exact Cargo source package.'
+          }
+          & scripts/smoke-installed.ps1 `
+            -Executable (Join-Path $installRoot 'bin/mcp-doctor.exe') `
+            -ExpectedVersion $releaseVersion `
+            -Fixture (Join-Path $env:GITHUB_WORKSPACE 'target/release/mcp-doctor-stdio-fixture.exe')
+
+  payload:
+    name: Verify the exact non-publishing release payload
+    needs:
+      - source
+      - unix
+      - windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out verification scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the stable package version
+        id: version
+        run: |
+          set -euo pipefail
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "mcp-doctor") | .version'
+          )"
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+      - name: Download every represented payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-preflight-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify prepublication and published payload contracts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          scripts/verify-release-assets.sh release-assets "$RELEASE_VERSION"
+          scripts/verify-published-release.sh release-assets "$RELEASE_VERSION"
+
+      - name: Retain the complete dry-run payload briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preflight-complete
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1

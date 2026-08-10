@@ -1,0 +1,336 @@
+name: Verify published release channels
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-channels-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Verify immutable release, registry, and formula identity
+    if: github.repository == 'EnjoyableWork/mcp-doctor'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      attestations: read
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Validate the release version input
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_VERSION" != 0.1.0 ]]; then
+            echo "the first release verifier accepts only version 0.1.0" >&2
+            exit 1
+          fi
+          printf 'value=%s\n' "$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
+
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: v${{ steps.version.outputs.value }}
+
+      - name: Verify release, attestations, registry bytes, and formula bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          release_tag="v$RELEASE_VERSION"
+          if [[ "$(git cat-file -t "$release_tag")" != tag ]]; then
+            echo "published release must use an annotated tag" >&2
+            exit 1
+          fi
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "mcp-doctor") | .version'
+          )"
+          test "$package_version" = "$RELEASE_VERSION"
+
+          release_json="$RUNNER_TEMP/mcp-doctor-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' >"$release_json"
+          jq -e \
+            --arg tag "$release_tag" \
+            '.tag_name == $tag and .draft == false and .prerelease == false and .immutable == true' \
+            "$release_json" >/dev/null
+
+          release_assets="$RUNNER_TEMP/mcp-doctor-release-assets"
+          mkdir -p "$release_assets"
+          gh release download "$release_tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir "$release_assets"
+          scripts/verify-published-release.sh "$release_assets" "$RELEASE_VERSION"
+          gh release verify "$release_tag" --repo "$GITHUB_REPOSITORY"
+
+          release_commit="$(git rev-parse "$release_tag^{commit}")"
+          for release_asset in "$release_assets"/*; do
+            gh attestation verify "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "refs/tags/$release_tag" \
+              --source-digest "$release_commit" \
+              --format json >/dev/null
+          done
+
+          registry_response="$RUNNER_TEMP/mcp-doctor-crates.json"
+          registry_status="$(
+            curl --silent --show-error --location --retry 5 \
+              --output "$registry_response" \
+              --write-out '%{http_code}' \
+              --header 'User-Agent: mcp-doctor-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+              'https://crates.io/api/v1/crates/mcp-doctor'
+          )"
+          test "$registry_status" = 200
+          jq -e \
+            --arg version "$RELEASE_VERSION" \
+            '.crate.repository == "https://github.com/EnjoyableWork/mcp-doctor" and
+             any(.versions[]; .num == $version and .yanked == false)' \
+            "$registry_response" >/dev/null
+
+          registry_package="$RUNNER_TEMP/mcp-doctor-$RELEASE_VERSION.crate"
+          curl --fail --silent --show-error --location --retry 5 \
+            --output "$registry_package" \
+            --header 'User-Agent: mcp-doctor-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+            "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download"
+          cmp --silent \
+            "$release_assets/mcp-doctor-$RELEASE_VERSION.crate" \
+            "$registry_package"
+
+          published_formula="$RUNNER_TEMP/mcp-doctor.rb"
+          curl --fail --silent --show-error --location --retry 5 \
+            --output "$published_formula" \
+            'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-doctor.rb'
+          cmp --silent "$release_assets/mcp-doctor.rb" "$published_formula"
+
+  github-linux:
+    name: GitHub GNU/Linux ${{ matrix.architecture }} — installed passive smoke
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      attestations: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - architecture: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: v${{ needs.validate.outputs.version }}
+
+      - name: Build the passive release fixture
+        run: >-
+          cargo build --release --locked
+          --features internal-test-fixtures
+          --bin mcp-doctor-stdio-fixture
+
+      - name: Download, verify, and smoke-test the represented archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+
+          release_tag="v$RELEASE_VERSION"
+          archive="mcp-doctor-$release_tag-$RUST_TARGET.tar.gz"
+          download_root="$RUNNER_TEMP/mcp-doctor-github-$RUST_TARGET"
+          mkdir -p "$download_root"
+          gh release download "$release_tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$archive" \
+            --pattern SHA256SUMS \
+            --dir "$download_root"
+
+          matching_lines="$(awk -v asset="$archive" '$2 == asset { print }' "$download_root/SHA256SUMS")"
+          test "$(printf '%s\n' "$matching_lines" | awk 'NF { count++ } END { print count + 0 }')" = 1
+          (
+            cd "$download_root"
+            printf '%s\n' "$matching_lines" | sha256sum --check -
+          )
+          gh attestation verify "$download_root/$archive" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref "refs/tags/$release_tag" \
+            --source-digest "$(git rev-parse HEAD)" \
+            --format json >/dev/null
+          scripts/smoke-archive.sh \
+            "$download_root/$archive" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+
+  cargo-unix:
+    name: Cargo ${{ matrix.name }} — installed passive smoke
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+          - name: GNU/Linux ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - name: GNU/Linux x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: v${{ needs.validate.outputs.version }}
+
+      - name: Install the exact Cargo version and exercise passive diagnosis
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+          cargo build --release --locked \
+            --features internal-test-fixtures \
+            --bin mcp-doctor-stdio-fixture
+          install_root="$RUNNER_TEMP/mcp-doctor-cargo-$RUST_TARGET"
+          cargo install mcp-doctor \
+            --version "=$RELEASE_VERSION" \
+            --locked \
+            --root "$install_root"
+          scripts/smoke-installed.sh \
+            "$install_root/bin/mcp-doctor" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+
+  cargo-windows:
+    name: Cargo Windows x64 — installed passive smoke
+    needs: validate
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: v${{ needs.validate.outputs.version }}
+
+      - name: Install the exact Cargo version and exercise passive diagnosis
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:RUST_TARGET) {
+              throw 'Cargo smoke is not running on the expected native Windows host.'
+          }
+          cargo build --release --locked `
+            --features internal-test-fixtures `
+            --bin mcp-doctor-stdio-fixture
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not build the passive fixture.'
+          }
+          $installRoot = Join-Path $env:RUNNER_TEMP 'mcp-doctor-cargo-x64'
+          cargo install mcp-doctor `
+            --version "=$env:RELEASE_VERSION" `
+            --locked `
+            --root $installRoot
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Cargo could not install the exact published source package.'
+          }
+          & scripts/smoke-installed.ps1 `
+            -Executable (Join-Path $installRoot 'bin/mcp-doctor.exe') `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -Fixture (Join-Path $env:GITHUB_WORKSPACE 'target/release/mcp-doctor-stdio-fixture.exe')
+
+  homebrew:
+    name: Homebrew ${{ matrix.name }} — source-built passive smoke
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+          - name: GNU/Linux ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - name: GNU/Linux x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: v${{ needs.validate.outputs.version }}
+
+      - name: Set up current stable Homebrew
+        uses: Homebrew/actions/setup-homebrew@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+
+      - name: Install the published formula and exercise passive diagnosis
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+          cargo build --release --locked \
+            --features internal-test-fixtures \
+            --bin mcp-doctor-stdio-fixture
+          brew install --build-from-source EnjoyableWork/tap/mcp-doctor
+          brew audit --strict --online EnjoyableWork/tap/mcp-doctor
+          brew test EnjoyableWork/tap/mcp-doctor
+          formula_executable="$(brew --prefix EnjoyableWork/tap/mcp-doctor)/bin/mcp-doctor"
+          scripts/smoke-installed.sh \
+            "$formula_executable" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture

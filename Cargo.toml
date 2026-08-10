@@ -11,10 +11,11 @@ keywords = ["mcp", "testing", "diagnostics", "cli", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
+    "/.github/workflows/*.yml",
     "/src/**",
     "/tests/**",
-    "/scripts/check.ps1",
-    "/scripts/check.sh",
+    "/scripts/**",
+    "/docs/**",
     "/AGENTS.md",
     "/CODE_OF_CONDUCT.md",
     "/CONTRIBUTING.md",

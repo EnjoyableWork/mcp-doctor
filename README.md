@@ -77,14 +77,18 @@ Install with Homebrew or Cargo:
 
 ```bash
 # macOS or Linux
-brew install EnjoyableWork/tap/mcp-doctor
+brew install --build-from-source EnjoyableWork/tap/mcp-doctor
 
 # Any supported Rust host
-cargo install mcp-doctor --locked
+cargo install mcp-doctor --version '=0.1.0' --locked
 ```
 
 Or download a native GNU/Linux archive from
 [GitHub Releases](https://github.com/EnjoyableWork/mcp-doctor/releases/latest).
+
+Release archives, the exact Cargo package, the Homebrew formula, checksums,
+SPDX SBOMs, and build attestations are published together. See the
+[release guide](docs/release.md) to verify what you install.
 
 Inspect a local STDIO server by placing its executable and arguments after
 `--`:

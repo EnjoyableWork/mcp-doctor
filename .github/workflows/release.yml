@@ -1,0 +1,434 @@
+name: Publish immutable passive MVP release
+
+on:
+  push:
+    tags:
+      - v0.1.0
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release authority and identity
+    if: github.repository == 'EnjoyableWork/mcp-doctor'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.contract.outputs.version }}
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag, source, revision, registry, and successful preflight
+        id: contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" != push ]] || [[ "$GITHUB_REF_NAME" != v0.1.0 ]]; then
+            echo "the release workflow accepts only the v0.1.0 tag push" >&2
+            exit 1
+          fi
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "release tag must be a stable v-prefixed semantic version" >&2
+            exit 1
+          fi
+          release_version=${BASH_REMATCH[1]}
+
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "mcp-doctor") | .version'
+          )"
+          test "$release_version" = "$package_version"
+          if [[ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]]; then
+            echo "immutable releases require an intentional annotated tag" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]]; then
+            echo "release tag must identify the exact current main commit" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" != "$GITHUB_SHA" ]]; then
+            echo "release tag does not resolve to the triggering commit" >&2
+            exit 1
+          fi
+
+          require_successful_run() {
+            local workflow_file=$1
+            local workflow_name=$2
+            local run_url
+            run_url="$(
+              gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$workflow_file" \
+                --branch main \
+                --commit "$GITHUB_SHA" \
+                --event push \
+                --status completed \
+                --limit 10 \
+                --json headSha,conclusion,url \
+                --jq "map(select(.headSha == \"$GITHUB_SHA\" and .conclusion == \"success\"))[0].url // empty"
+            )"
+            if [[ -z "$run_url" ]]; then
+              echo "$workflow_name has no successful main run for the release commit" >&2
+              exit 1
+            fi
+          }
+          require_successful_run ci.yml CI
+          require_successful_run release-preflight.yml 'Release preflight'
+
+          latest_protocol_release="$(
+            gh api repos/modelcontextprotocol/modelcontextprotocol/releases/latest \
+              --jq '.tag_name'
+          )"
+          if [[ "$latest_protocol_release" != 2026-07-28 ]]; then
+            echo "the latest official MCP release changed; review the supported revision before publishing" >&2
+            exit 1
+          fi
+
+          registry_response="$RUNNER_TEMP/mcp-doctor-crates.json"
+          registry_status="$(
+            curl --silent --show-error --location --retry 5 \
+              --output "$registry_response" \
+              --write-out '%{http_code}' \
+              --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+              'https://crates.io/api/v1/crates/mcp-doctor'
+          )"
+          case "$registry_status" in
+            404) ;;
+            200)
+              jq -e \
+                --arg version "$release_version" \
+                '.crate.repository == "https://github.com/EnjoyableWork/mcp-doctor" and
+                 any(.versions[]; .num == $version)' \
+                "$registry_response" >/dev/null
+              ;;
+            *)
+              echo "crates.io package identity could not be verified" >&2
+              exit 1
+              ;;
+          esac
+
+          existing_release="$RUNNER_TEMP/existing-release.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            >"$existing_release" 2>/dev/null; then
+            jq -e \
+              --arg tag "$GITHUB_REF_NAME" \
+              '.tag_name == $tag and (.draft == true or .immutable == true)' \
+              "$existing_release" >/dev/null
+          fi
+
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+  source:
+    name: Package and attest deterministic source channels
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Package and verify deterministic source channels
+        run: |
+          set -euo pipefail
+          cargo package --locked
+          package="target/package/mcp-doctor-$RELEASE_VERSION.crate"
+          first_hash="$(sha256sum "$package" | awk '{ print $1 }')"
+          cargo package --locked
+          second_hash="$(sha256sum "$package" | awk '{ print $1 }')"
+          test "$first_hash" = "$second_hash"
+
+          scripts/generate-release-channels.sh \
+            "$package" \
+            "$RELEASE_VERSION" \
+            generated-release-channels
+          scripts/generate-release-channels.sh \
+            "$package" \
+            "$RELEASE_VERSION" \
+            generated-release-channels-second
+          diff -ru generated-release-channels generated-release-channels-second
+
+          mkdir -p release-assets
+          install -m 0644 \
+            "generated-release-channels/cargo/mcp-doctor-$RELEASE_VERSION.crate" \
+            release-assets/
+          install -m 0644 \
+            generated-release-channels/homebrew/Formula/mcp-doctor.rb \
+            release-assets/
+
+      - name: Attest the Cargo source package
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-doctor-${{ env.RELEASE_VERSION }}.crate
+
+      - name: Attest the source-building Homebrew formula
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-doctor.rb
+
+      - name: Upload the source payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-source
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    name: GNU/Linux ${{ matrix.architecture }} — package and attest
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - architecture: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify native host and build release executable plus fixture
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+          cargo build --release --locked --bin mcp-doctor
+          cargo build --release --locked \
+            --features internal-test-fixtures \
+            --bin mcp-doctor-stdio-fixture
+
+      - name: Package twice and smoke-test the archive
+        id: package
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          mkdir -p release-archive-first release-archive-second release-assets
+          first_archive="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-doctor \
+              release-archive-first
+          )"
+          second_archive="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-doctor \
+              release-archive-second
+          )"
+          cmp --silent "$first_archive" "$second_archive"
+          archive_name="$(basename "$first_archive")"
+          install -m 0644 "$first_archive" "release-assets/$archive_name"
+          scripts/smoke-archive.sh \
+            "release-assets/$archive_name" \
+            "$RELEASE_VERSION" \
+            target/release/mcp-doctor-stdio-fixture
+          printf 'archive=%s\n' "$archive_name" >>"$GITHUB_OUTPUT"
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-doctor-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        env:
+          SBOM_PATH: release-assets/mcp-doctor-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          jq -e '
+            .spdxVersion == "SPDX-2.3" and
+            (.documentNamespace | type == "string") and
+            (.packages | type == "array" and length > 0)
+          ' "$SBOM_PATH" >/dev/null
+
+      - name: Attest the GNU/Linux archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/${{ steps.package.outputs.archive }}
+
+      - name: Attest the target SPDX SBOM
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-doctor-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+
+      - name: Upload the GNU/Linux payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.rust_target }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Verify the exact payload and publish immutably
+    needs:
+      - validate
+      - source
+      - linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: release
+      url: https://github.com/EnjoyableWork/mcp-doctor/releases/tag/${{ github.ref_name }}
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+
+    steps:
+      - name: Check out release verification sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the complete release payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Require the exact payload and create SHA256SUMS
+        run: scripts/verify-release-assets.sh release-assets "$RELEASE_VERSION"
+
+      - name: Attest the checksum manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/SHA256SUMS
+
+      - name: Verify every build-provenance attestation
+        run: |
+          set -euo pipefail
+          for release_asset in release-assets/*; do
+            gh attestation verify "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --format json >/dev/null
+          done
+
+      - name: Create or repair the draft release
+        id: draft
+        run: |
+          set -euo pipefail
+          release_state="$RUNNER_TEMP/release-state.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            >"$release_state" 2>/dev/null; then
+            if [[ "$(jq -r '.immutable' "$release_state")" == true ]]; then
+              printf 'already_immutable=true\n' >>"$GITHUB_OUTPUT"
+            elif [[ "$(jq -r '.draft' "$release_state")" == true ]]; then
+              gh release edit "$GITHUB_REF_NAME" \
+                --title "mcp-doctor v$RELEASE_VERSION" \
+                --notes-file "docs/releases/v$RELEASE_VERSION.md"
+              gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+              printf 'already_immutable=false\n' >>"$GITHUB_OUTPUT"
+            else
+              echo "an existing release is published without immutability" >&2
+              exit 1
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --draft \
+              --verify-tag \
+              --title "mcp-doctor v$RELEASE_VERSION" \
+              --notes-file "docs/releases/v$RELEASE_VERSION.md"
+            printf 'already_immutable=false\n' >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify the exact draft payload bytes
+        run: |
+          set -euo pipefail
+          mkdir -p draft-download
+          gh release download "$GITHUB_REF_NAME" --dir draft-download
+          scripts/verify-published-release.sh draft-download "$RELEASE_VERSION"
+          for release_asset in release-assets/*; do
+            cmp --silent "$release_asset" "draft-download/$(basename "$release_asset")"
+          done
+
+      - name: Publish the verified draft
+        if: steps.draft.outputs.already_immutable != 'true'
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+
+      - name: Require immutable release state and release attestation
+        run: |
+          set -euo pipefail
+          immutable=false
+          for _ in {1..60}; do
+            immutable="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+                -H 'X-GitHub-Api-Version: 2026-03-10' \
+                --jq '.immutable'
+            )"
+            if [[ "$immutable" == true ]] &&
+              gh release verify "$GITHUB_REF_NAME" --format json >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$immutable" != true ]]; then
+            echo "published release did not become immutable" >&2
+            exit 1
+          fi
+          gh release verify "$GITHUB_REF_NAME" --format json >/dev/null
+
+      - name: Re-download and verify the immutable release
+        run: |
+          set -euo pipefail
+          mkdir -p immutable-download
+          gh release download "$GITHUB_REF_NAME" --dir immutable-download
+          scripts/verify-published-release.sh immutable-download "$RELEASE_VERSION"
+          for release_asset in release-assets/*; do
+            cmp --silent "$release_asset" "immutable-download/$(basename "$release_asset")"
+          done
