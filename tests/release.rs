@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const RELEASE_VERSION: &str = "0.1.0";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
@@ -88,6 +89,8 @@ fn preflight_is_secretless_nonpublishing_and_covers_every_source_host() {
         "scripts/smoke-archive.sh",
         "scripts/verify-release-assets.sh",
         "scripts/verify-published-release.sh",
+        "scripts/rehearse-release-handoffs.sh",
+        "synthetic-rehearsal",
         "brew install --build-from-source",
         "syft-version: v1.50.0",
         "retention-days: 1",
@@ -105,7 +108,7 @@ fn preflight_is_secretless_nonpublishing_and_covers_every_source_host() {
 }
 
 #[test]
-fn tag_workflow_publishes_only_attested_source_and_linux_outputs() {
+fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     let workflow = repository_file(".github/workflows/release.yml");
 
     for target in LINUX_TARGETS {
@@ -123,11 +126,21 @@ fn tag_workflow_publishes_only_attested_source_and_linux_outputs() {
         );
     }
     for contract in [
-        "tags:\n      - v0.1.0",
+        "tags:\n      - \"v*.*.*\"",
+        "workflow_dispatch:",
+        "group: mcp-doctor-release",
+        "scripts/validate-release-version.sh",
+        "published_stable_versions",
+        "all(.versions[];",
         "cargo package --locked",
+        "cargo publish --locked --package mcp-doctor",
         "scripts/generate-release-channels.sh",
+        "scripts/create-release-handoff.sh",
+        "scripts/verify-release-handoff.sh",
+        "scripts/rehearse-release-handoffs.sh",
         "scripts/verify-release-assets.sh",
         "scripts/verify-published-release.sh",
+        "rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18",
         "actions/attest-build-provenance@",
         "gh attestation verify",
         "gh release create",
@@ -137,16 +150,47 @@ fn tag_workflow_publishes_only_attested_source_and_linux_outputs() {
         "contents: write",
         "id-token: write",
         "attestations: write",
+        "name: release",
+        "Reject crates.io OIDC without the protected environment",
+        "Revalidate current main and annotated tag authority",
     ] {
         assert!(
             workflow.contains(contract),
             "release should enforce {contract}"
         );
     }
-    for forbidden in ["secrets.", "cargo publish", "brew install", "winget"] {
+    for forbidden in ["secrets.", "brew install", "winget"] {
         assert!(
             !workflow.contains(forbidden),
             "release must not contain {forbidden}"
+        );
+    }
+    assert!(workflow.contains("no publish command exists in this job"));
+    assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn crates_oidc_wrong_workflow_case_is_nonpublishing_and_must_be_rejected() {
+    let workflow = repository_file(".github/workflows/release-authorization-negative.yml");
+
+    for contract in [
+        "workflow_dispatch:",
+        "name: release",
+        "id-token: write",
+        "continue-on-error: true",
+        "rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18",
+        "AUTH_OUTCOME",
+        "accepted OIDC from an unauthorized workflow",
+    ] {
+        assert!(
+            workflow.contains(contract),
+            "negative OIDC workflow should enforce {contract}"
+        );
+    }
+    for forbidden in ["cargo publish", "contents: write", "secrets."] {
+        assert!(
+            !workflow.contains(forbidden),
+            "negative OIDC workflow must not contain {forbidden}"
         );
     }
     assert_actions_are_commit_pinned(&workflow);
@@ -194,6 +238,8 @@ fn published_channel_verifier_is_read_only_and_runs_passive_installed_smokes() {
     assert!(workflow.contains(
         "User-Agent: mcp-doctor-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)"
     ));
+    assert!(workflow.contains("canonical stable semantic version"));
+    assert!(!workflow.contains("accepts only version 0.1.0"));
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -203,6 +249,10 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
     let asset_verifier = repository_file("scripts/verify-release-assets.sh");
     let published_verifier = repository_file("scripts/verify-published-release.sh");
     let archive_packager = repository_file("scripts/package-release.sh");
+    let handoff_creator = repository_file("scripts/create-release-handoff.sh");
+    let handoff_verifier = repository_file("scripts/verify-release-handoff.sh");
+    let handoff_rehearsal = repository_file("scripts/rehearse-release-handoffs.sh");
+    let control_verifier = repository_file("scripts/verify-repeat-release-controls.sh");
 
     for contract in [
         "mcp-doctor-${release_version}.crate",
@@ -236,6 +286,113 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
     }
     assert!(archive_packager.contains("--sort=name"));
     assert!(archive_packager.contains("gzip -n -9"));
+
+    for contract in [
+        "mcp-doctor.release-handoff/v1",
+        "EnjoyableWork/mcp-doctor",
+        ".github/workflows/release.yml",
+        "release_handoff_environment=release",
+        "release_handoff_environment=synthetic-rehearsal",
+        "release_handoff_immutable=true",
+        "release_handoff_provenance=true",
+    ] {
+        assert!(
+            handoff_creator.contains(contract),
+            "handoff creator should enforce {contract}"
+        );
+    }
+    for contract in [
+        ".immutable == true",
+        ".provenance_verified == true",
+        "Cargo handoff bytes do not match",
+        "Homebrew handoff bytes do not match",
+    ] {
+        assert!(
+            handoff_verifier.contains(contract),
+            "handoff verifier should enforce {contract}"
+        );
+    }
+    for contract in [
+        "out-of-order handoff without verified provenance",
+        "synthetic evidence at the verified-publication boundary",
+        "mismatched Cargo bytes",
+        "mismatched Homebrew bytes",
+    ] {
+        assert!(
+            handoff_rehearsal.contains(contract),
+            "handoff rehearsal should reject {contract}"
+        );
+    }
+    for contract in [
+        "environments/release/deployment-branch-policies",
+        "environments/release/secrets",
+        "orgs/${repeat_release_organization}/actions/secrets",
+        "actions/permissions/workflow",
+        "default_workflow_permissions == \"read\"",
+        "CARGO_REGISTRY_TOKEN",
+        "CARGO_REGISTRIES_CRATES_IO_TOKEN",
+        "rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18",
+        "contents: write",
+    ] {
+        assert!(
+            control_verifier.contains(contract),
+            "repeat-release control verifier should enforce {contract}"
+        );
+    }
+}
+
+#[test]
+fn release_version_guard_accepts_only_canonical_intentional_versions() {
+    let accepted: &[&[&str]] = &[
+        &["future", "v0.1.1", "0.1.1", "0.1.0"],
+        &["future", "v0.1.1", "0.1.1", "0.1.0", "0.1.1"],
+        &["future", "v0.2.0", "0.2.0", "0.1.0", "0.1.9"],
+        &["future", "v1.0.0", "1.0.0", "0.1.0", "0.99.99"],
+        &[
+            "future",
+            "v18446744073709551616.0.0",
+            "18446744073709551616.0.0",
+            "18446744073709551615.99.99",
+        ],
+        &["published", "v0.1.0", "0.1.0"],
+        &["published", "v12.34.56", "12.34.56"],
+        &["rehearsal", "v0.1.0", "0.1.0"],
+    ];
+    for arguments in accepted {
+        assert_release_version_case(arguments, true);
+    }
+
+    let rejected: &[&[&str]] = &[
+        &["future", "v0.1.1", "0.1.1"],
+        &["future", "v0.1.0", "0.1.0", "0.1.0"],
+        &["future", "v0.0.9", "0.0.9", "0.1.0"],
+        &["future", "v0.1.1", "0.1.2", "0.1.0"],
+        &["future", "v0.1.1", "0.1.1", "0.2.0"],
+        &["future", "0.1.1", "0.1.1", "0.1.0"],
+        &["future", "v01.2.3", "01.2.3", "0.1.0"],
+        &["future", "v1.2.3-rc.1", "1.2.3-rc.1", "0.1.0"],
+        &["future", "v1.2.3", "1.2.3", "not-stable"],
+        &["published", "v0.0.99", "0.0.99"],
+        &["rehearsal", "v0.1.1", "0.1.1"],
+        &["unknown", "v1.0.0", "1.0.0"],
+    ];
+    for arguments in rejected {
+        assert_release_version_case(arguments, false);
+    }
+}
+
+fn assert_release_version_case(arguments: &[&str], expected_success: bool) {
+    let output = Command::new("bash")
+        .arg(repository_root().join("scripts/validate-release-version.sh"))
+        .args(arguments)
+        .output()
+        .expect("release version guard should execute");
+    assert_eq!(
+        output.status.success(),
+        expected_success,
+        "unexpected release version result for {arguments:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -248,6 +405,11 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("never replace an"));
     assert!(release.contains("asset, move the tag, or overwrite downstream bytes"));
     assert!(release.contains("does not issue macOS or Windows binaries"));
+    assert!(release.contains("Workflow filename | `release.yml`"));
+    assert!(release.contains("Environment | `release`"));
+    assert!(release.contains("No publish command exists in the authorization job"));
+    assert!(release.contains("cross-repository personal token"));
+    assert!(release.contains("test alone is not completion evidence"));
     assert!(notes.contains("does not call tools"));
     assert!(notes.contains("does not call tools, connect to remote HTTP endpoints"));
     assert!(adoption.contains("Opened: 2026-08-10"));
