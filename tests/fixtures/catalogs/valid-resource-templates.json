@@ -1,0 +1,11 @@
+{
+  "resultType": "complete",
+  "ttlMs": 1000,
+  "cacheScope": "private",
+  "resourceTemplates": [
+    {
+      "name": "Synthetic item",
+      "uriTemplate": "synthetic://items/{id}"
+    }
+  ]
+}

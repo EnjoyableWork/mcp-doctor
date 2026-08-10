@@ -67,6 +67,9 @@
           "protocol_revision": "2026-07-28",
           "location": "tools[3].inputSchema",
           "message": "A configured diagnostic safety limit was exceeded.",
+          "expectation": "Passive inspection must remain within every configured safety limit.",
+          "remediation": "Reduce the advertised data or work below the reported maximum, then rerun inspect.",
+          "reference": "mcp-doctor M1 passive STDIO safety contract",
           "evidence": {
             "kind": "limit_violation",
             "limit": "message_bytes",

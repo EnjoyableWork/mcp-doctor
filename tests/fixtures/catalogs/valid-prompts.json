@@ -1,0 +1,20 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "public",
+  "prompts": [
+    {
+      "name": "synthetic.review",
+      "arguments": [
+        {
+          "name": "subject",
+          "required": true
+        },
+        {
+          "name": "tone",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

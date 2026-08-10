@@ -1,0 +1,13 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "resources": [
+    {
+      "name": "synthetic-private-resource-never-report-7f2c",
+      "uri": {
+        "secret": "synthetic-secret-resource-never-report-7f2c"
+      }
+    }
+  ]
+}

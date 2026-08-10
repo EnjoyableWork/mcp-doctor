@@ -1,0 +1,96 @@
+{
+  "resultType": "complete",
+  "ttlMs": 30000,
+  "cacheScope": "private",
+  "tools": [
+    {
+      "name": "synthetic.complex",
+      "description": "A synthetic complex schema fixture.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "$defs": {
+          "coordinate": {
+            "type": "number"
+          },
+          "point": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "$ref": "#/$defs/coordinate"
+              },
+              "y": {
+                "$ref": "#/$defs/coordinate"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "properties": {
+          "mode": {
+            "enum": [
+              "safe",
+              "dry-run"
+            ]
+          },
+          "point": {
+            "$ref": "#/$defs/point"
+          },
+          "choice": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "safe"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "point"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "point"
+                ]
+              }
+            }
+          }
+        ],
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      }
+    }
+  ],
+  "nextCursor": "synthetic-private-cursor-never-report-7f2c"
+}

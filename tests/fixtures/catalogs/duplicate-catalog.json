@@ -1,0 +1,13 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "prompts": [
+    {
+      "name": "synthetic-private-duplicate-never-report-7f2c"
+    },
+    {
+      "name": "synthetic-private-duplicate-never-report-7f2c"
+    }
+  ]
+}

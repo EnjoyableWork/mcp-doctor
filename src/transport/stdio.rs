@@ -12,13 +12,12 @@ use process_wrap::tokio::JobObject;
 #[cfg(unix)]
 use process_wrap::tokio::ProcessGroup;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Instant;
 
 const READ_BUFFER_BYTES: usize = 8 * 1024;
-const REQUEST_ID: i64 = 1;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct StdioLimits {
@@ -180,11 +179,59 @@ impl StdioFailure {
     }
 }
 
+pub(crate) struct ProbeRequest {
+    id: i64,
+    bytes: Vec<u8>,
+}
+
+impl ProbeRequest {
+    pub(crate) fn new(id: i64, mut bytes: Vec<u8>) -> Self {
+        assert!(
+            id >= 0,
+            "a locally generated JSON-RPC request id must be non-negative"
+        );
+        assert!(
+            !bytes.contains(&b'\n'),
+            "a locally generated request must contain exactly one terminal frame delimiter"
+        );
+        bytes.push(b'\n');
+        Self { id, bytes }
+    }
+
+    const fn id(&self) -> i64 {
+        self.id
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl fmt::Debug for ProbeRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProbeRequest")
+            .field("id", &self.id)
+            .field("value", &"[REDACTED]")
+            .field("byte_count", &self.bytes.len().saturating_sub(1))
+            .finish()
+    }
+}
+
+pub(crate) trait StdioConversation {
+    fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest>;
+}
+
 pub(crate) struct ProbeResponse {
+    request_id: i64,
     bytes: Vec<u8>,
 }
 
 impl ProbeResponse {
+    pub(crate) const fn request_id(&self) -> i64 {
+        self.request_id
+    }
+
     #[cfg(test)]
     pub(crate) fn byte_count(&self) -> usize {
         self.bytes.len()
@@ -200,6 +247,7 @@ impl fmt::Debug for ProbeResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ProbeResponse")
+            .field("request_id", &self.request_id)
             .field("value", &"[REDACTED]")
             .field("byte_count", &self.bytes.len())
             .finish()
@@ -208,14 +256,18 @@ impl fmt::Debug for ProbeResponse {
 
 #[derive(Debug)]
 pub(crate) struct StdioRun {
-    response: Option<ProbeResponse>,
+    responses: Vec<ProbeResponse>,
     failure: Option<StdioFailure>,
     cleanup_failed: bool,
 }
 
 impl StdioRun {
     pub(crate) fn response(&self) -> Option<&ProbeResponse> {
-        self.response.as_ref()
+        self.responses.first()
+    }
+
+    pub(crate) fn responses(&self) -> &[ProbeResponse] {
+        &self.responses
     }
 
     pub(crate) const fn failure(&self) -> Option<StdioFailure> {
@@ -237,7 +289,10 @@ impl StdioTransport {
         Self { limits }
     }
 
-    pub(crate) async fn probe(self, target: &StdioTarget) -> StdioRun {
+    pub(crate) async fn probe<C>(self, target: &StdioTarget, conversation: &mut C) -> StdioRun
+    where
+        C: StdioConversation,
+    {
         let run_started = Instant::now();
         let total_deadline =
             StageDeadline::after(run_started, self.limits.total_ms, StdioLimit::TotalTime);
@@ -251,30 +306,41 @@ impl StdioTransport {
             Ok(process) => process,
             Err(failure) => {
                 return StdioRun {
-                    response: None,
+                    responses: Vec::new(),
                     failure: Some(failure),
                     cleanup_failed: false,
                 };
             }
         };
 
-        let operation = if Instant::now() > startup_deadline.at {
-            Err(StdioFailure::timeout(startup_deadline))
-        } else {
-            process.exchange(total_deadline).await
-        };
+        let operation = async {
+            if Instant::now() > startup_deadline.at {
+                return Err(StdioFailure::timeout(startup_deadline));
+            }
+
+            let mut responses = Vec::new();
+            while let Some(request) = conversation.next_request(responses.last()) {
+                let discovery = responses.is_empty();
+                let response = process
+                    .exchange(&request, total_deadline, discovery)
+                    .await?;
+                responses.push(response);
+            }
+            Ok(responses)
+        }
+        .await;
 
         let shutdown = process.shutdown(total_deadline).await;
-        let (response, mut failure) = match operation {
-            Ok(response) => (Some(response), None),
-            Err(failure) => (None, Some(failure)),
+        let (responses, mut failure) = match operation {
+            Ok(responses) => (responses, None),
+            Err(failure) => (Vec::new(), Some(failure)),
         };
         if failure.is_none() {
             failure = shutdown.background_failure;
         }
 
         StdioRun {
-            response,
+            responses,
             failure,
             cleanup_failed: shutdown.cleanup_failed,
         }
@@ -330,7 +396,9 @@ impl ManagedProcess {
 
     async fn exchange(
         &mut self,
+        request: &ProbeRequest,
         total_deadline: StageDeadline,
+        discovery: bool,
     ) -> Result<ProbeResponse, StdioFailure> {
         if self.stdin.is_none() {
             return Err(StdioFailure::Io {
@@ -348,17 +416,20 @@ impl ManagedProcess {
             });
         }
 
-        let discovery_started = Instant::now();
-        let discovery_deadline = StageDeadline::earliest([
-            total_deadline,
-            StageDeadline::after(
-                discovery_started,
-                self.limits.discovery_ms,
-                StdioLimit::DiscoveryTime,
-            ),
-        ]);
-        let request = discover_request();
-        let request_size = u64::try_from(request.len().saturating_sub(1)).unwrap_or(u64::MAX);
+        let stage_deadline = if discovery {
+            StageDeadline::earliest([
+                total_deadline,
+                StageDeadline::after(
+                    Instant::now(),
+                    self.limits.discovery_ms,
+                    StdioLimit::DiscoveryTime,
+                ),
+            ])
+        } else {
+            total_deadline
+        };
+        let request_size =
+            u64::try_from(request.as_bytes().len().saturating_sub(1)).unwrap_or(u64::MAX);
         if request_size > self.limits.message_bytes {
             return Err(StdioFailure::limit(
                 StdioLimit::MessageBytes,
@@ -368,16 +439,17 @@ impl ManagedProcess {
         }
 
         let request_deadline = StageDeadline::earliest([
-            discovery_deadline,
+            stage_deadline,
             StageDeadline::after(
                 Instant::now(),
                 self.limits.request_ms,
                 StdioLimit::RequestTime,
             ),
         ]);
+        self.protocol.begin(request.id());
         let stdin = self.stdin.as_mut().expect("the stdin pipe was checked");
         match tokio::time::timeout_at(request_deadline.at, async {
-            stdin.write_all(&request).await?;
+            stdin.write_all(request.as_bytes()).await?;
             stdin.flush().await
         })
         .await
@@ -392,7 +464,7 @@ impl ManagedProcess {
         }
 
         let response_deadline = StageDeadline::earliest([
-            discovery_deadline,
+            stage_deadline,
             StageDeadline::after(
                 Instant::now(),
                 self.limits.response_ms,
@@ -812,10 +884,23 @@ impl FrameDecoder {
 
 #[derive(Default)]
 struct ProtocolTracker {
-    response_seen: bool,
+    active_request: Option<i64>,
+    completed_requests: Vec<i64>,
 }
 
 impl ProtocolTracker {
+    fn begin(&mut self, request_id: i64) {
+        assert!(
+            self.active_request.is_none(),
+            "a new request cannot begin while another response is pending"
+        );
+        assert!(
+            !self.completed_requests.contains(&request_id),
+            "a locally generated request id cannot be reused"
+        );
+        self.active_request = Some(request_id);
+    }
+
     fn observe(&mut self, frame: Frame) -> Result<Option<ProbeResponse>, StdioFailure> {
         let invalid = || StdioFailure::InvalidMessage {
             byte_count: frame.bytes.len(),
@@ -838,14 +923,20 @@ impl ProtocolTracker {
             return Ok(None);
         }
 
-        let correct_id = object.get("id").and_then(Value::as_i64) == Some(REQUEST_ID);
+        let response_id = object.get("id").and_then(Value::as_i64);
+        let correct_id = response_id == self.active_request;
         let result_shape = object.contains_key("result") ^ object.contains_key("error");
-        if !correct_id || !result_shape || self.response_seen {
+        if !correct_id || !result_shape {
             return Err(invalid());
         }
 
-        self.response_seen = true;
-        Ok(Some(ProbeResponse { bytes: frame.bytes }))
+        let request_id = response_id.expect("a matching active response id was checked");
+        self.active_request = None;
+        self.completed_requests.push(request_id);
+        Ok(Some(ProbeResponse {
+            request_id,
+            bytes: frame.bytes,
+        }))
     }
 }
 
@@ -946,27 +1037,6 @@ fn first_output_failure(
     }
 }
 
-fn discover_request() -> Vec<u8> {
-    let mut request = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": REQUEST_ID,
-        "method": "server/discover",
-        "params": {
-            "_meta": {
-                "io.modelcontextprotocol/clientCapabilities": {},
-                "io.modelcontextprotocol/clientInfo": {
-                    "name": "mcp-doctor",
-                    "version": env!("CARGO_PKG_VERSION"),
-                },
-                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            }
-        }
-    }))
-    .expect("the static discovery request must serialize");
-    request.push(b'\n');
-    request
-}
-
 fn constrained_environment<I>(environment: I) -> Vec<(OsString, OsString)>
 where
     I: IntoIterator<Item = (OsString, OsString)>,
@@ -997,8 +1067,8 @@ mod tests {
     use std::ffi::{OsStr, OsString};
 
     use super::{
-        FrameDecoder, OutputBudget, ProtocolTracker, StdioFailure, StdioLimit, StdioLimits,
-        StdioTarget, constrained_environment, discover_request,
+        FrameDecoder, OutputBudget, ProbeRequest, ProtocolTracker, StdioFailure, StdioLimit,
+        StdioLimits, StdioTarget, constrained_environment,
     };
 
     fn small_limits() -> StdioLimits {
@@ -1050,25 +1120,21 @@ mod tests {
     }
 
     #[test]
-    fn discovery_probe_is_one_modern_request_and_never_a_tool_call() {
-        let request = discover_request();
-        assert_eq!(request.last(), Some(&b'\n'));
-        assert_eq!(request.iter().filter(|byte| **byte == b'\n').count(), 1);
+    fn locally_generated_request_framing_is_single_message_and_redacted() {
+        let request = ProbeRequest::new(7, br#"{"jsonrpc":"2.0","id":7}"#.to_vec());
 
-        let value: serde_json::Value = serde_json::from_slice(&request[..request.len() - 1])
-            .expect("the discovery probe should be JSON");
-        assert_eq!(value["jsonrpc"], "2.0");
-        assert_eq!(value["method"], "server/discover");
+        assert_eq!(request.as_bytes().last(), Some(&b'\n'));
         assert_eq!(
-            value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
-            "2026-07-28"
+            request
+                .as_bytes()
+                .iter()
+                .filter(|byte| **byte == b'\n')
+                .count(),
+            1
         );
-        assert_eq!(
-            value["params"]["_meta"]["io.modelcontextprotocol/clientCapabilities"],
-            serde_json::json!({})
-        );
-        assert!(!String::from_utf8_lossy(&request).contains("tools/call"));
-        assert!(!String::from_utf8_lossy(&request).contains("initialize"));
+        let rendered = format!("{request:?}");
+        assert!(rendered.contains("[REDACTED]"));
+        assert!(!rendered.contains("jsonrpc"));
     }
 
     #[test]
@@ -1128,6 +1194,7 @@ mod tests {
     fn response_parser_rejects_server_requests_and_duplicate_responses() {
         let mut decoder = FrameDecoder::new(256, 8);
         let mut tracker = ProtocolTracker::default();
+        tracker.begin(1);
         let mut frames = decoder
             .push(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n")
             .expect("a bounded response frame should decode");
@@ -1147,6 +1214,7 @@ mod tests {
 
         let mut request_decoder = FrameDecoder::new(256, 8);
         let mut request_tracker = ProtocolTracker::default();
+        request_tracker.begin(1);
         let mut request = request_decoder
             .push(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"roots/list\"}\n")
             .expect("a bounded server request frame should decode");

@@ -117,7 +117,12 @@ pub(super) enum FindingCode {
     DeprecatedProtocolFeature,
     LimitExceeded,
     CleanupFailed,
+    CatalogContractInvalid,
+    DuplicateCatalogIdentifier,
+    PaginationCursorRepeated,
     SchemaContractInvalid,
+    UnsupportedSchemaDialect,
+    ExternalSchemaReferenceBlocked,
 }
 
 impl FindingCode {
@@ -133,7 +138,12 @@ impl FindingCode {
             Self::DeprecatedProtocolFeature => "MCP-PROTOCOL-004",
             Self::LimitExceeded => "MCP-LIMIT-001",
             Self::CleanupFailed => "MCP-SAFETY-001",
+            Self::CatalogContractInvalid => "MCP-CATALOG-001",
+            Self::DuplicateCatalogIdentifier => "MCP-CATALOG-002",
+            Self::PaginationCursorRepeated => "MCP-CATALOG-003",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
+            Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
+            Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
         }
     }
 
@@ -148,7 +158,12 @@ impl FindingCode {
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
             | Self::LimitExceeded
-            | Self::SchemaContractInvalid => Severity::Error,
+            | Self::CatalogContractInvalid
+            | Self::DuplicateCatalogIdentifier
+            | Self::PaginationCursorRepeated
+            | Self::SchemaContractInvalid
+            | Self::UnsupportedSchemaDialect
+            | Self::ExternalSchemaReferenceBlocked => Severity::Error,
             Self::CleanupFailed => Severity::Critical,
         }
     }
@@ -171,7 +186,141 @@ impl FindingCode {
             }
             Self::LimitExceeded => "A configured diagnostic safety limit was exceeded.",
             Self::CleanupFailed => "The managed target could not be fully cleaned up.",
+            Self::CatalogContractInvalid => {
+                "An advertised MCP catalog does not match its protocol contract."
+            }
+            Self::DuplicateCatalogIdentifier => {
+                "An advertised catalog contains a duplicate identifier."
+            }
+            Self::PaginationCursorRepeated => {
+                "A catalog repeated a pagination cursor and inspection stopped."
+            }
             Self::SchemaContractInvalid => "An advertised JSON Schema contract is invalid.",
+            Self::UnsupportedSchemaDialect => {
+                "An advertised schema uses an unsupported JSON Schema dialect."
+            }
+            Self::ExternalSchemaReferenceBlocked => {
+                "An advertised schema requires external reference retrieval."
+            }
+        }
+    }
+
+    pub(super) const fn expectation(self) -> &'static str {
+        match self {
+            Self::ProcessStartFailed => "The target must be a directly executable local program.",
+            Self::StdioIoFailed => {
+                "The target must keep its STDIO pipes available through the passive inspection."
+            }
+            Self::InvalidStdioMessage => {
+                "Each STDOUT frame must be one valid JSON-RPC 2.0 message terminated by a newline."
+            }
+            Self::ServerExitedEarly => {
+                "The server must remain alive until it returns the pending passive response."
+            }
+            Self::ProtocolRevisionConfirmed => {
+                "The server advertises MCP protocol revision 2026-07-28."
+            }
+            Self::UnsupportedProtocolRevision => {
+                "server/discover must advertise MCP protocol revision 2026-07-28."
+            }
+            Self::InvalidProtocolRevisionValue => {
+                "supportedVersions must be an array of protocol revision strings."
+            }
+            Self::DeprecatedProtocolFeature => {
+                "Servers should avoid features deprecated by MCP 2026-07-28."
+            }
+            Self::LimitExceeded => {
+                "Passive inspection must remain within every configured safety limit."
+            }
+            Self::CleanupFailed => {
+                "The managed process tree must terminate and be reaped before inspection returns."
+            }
+            Self::CatalogContractInvalid => {
+                "Each advertised catalog response and item must match MCP 2026-07-28."
+            }
+            Self::DuplicateCatalogIdentifier => {
+                "Identifiers must be unique within their advertised catalog scope."
+            }
+            Self::PaginationCursorRepeated => {
+                "Each nextCursor must advance the catalog or end pagination."
+            }
+            Self::SchemaContractInvalid => {
+                "Tool schemas must be valid local JSON Schema Draft 2020-12 objects."
+            }
+            Self::UnsupportedSchemaDialect => {
+                "Tool schemas must omit $schema or declare JSON Schema Draft 2020-12."
+            }
+            Self::ExternalSchemaReferenceBlocked => {
+                "Passive inspection accepts only references contained in the advertised schema."
+            }
+        }
+    }
+
+    pub(super) const fn remediation(self) -> &'static str {
+        match self {
+            Self::ProcessStartFailed => {
+                "Check the executable path and permissions, then rerun inspect."
+            }
+            Self::StdioIoFailed => "Fix the server's STDIO lifecycle and rerun inspect.",
+            Self::InvalidStdioMessage => {
+                "Write only newline-delimited JSON-RPC messages to STDOUT; send logs to STDERR."
+            }
+            Self::ServerExitedEarly => "Keep the server alive long enough to answer the request.",
+            Self::ProtocolRevisionConfirmed => "No correction is needed.",
+            Self::UnsupportedProtocolRevision => {
+                "Add MCP 2026-07-28 support and advertise it from server/discover."
+            }
+            Self::InvalidProtocolRevisionValue => {
+                "Return supportedVersions as an array containing string revision identifiers."
+            }
+            Self::DeprecatedProtocolFeature => "Remove or replace the deprecated capability.",
+            Self::LimitExceeded => {
+                "Reduce the advertised data or work below the reported maximum, then rerun inspect."
+            }
+            Self::CleanupFailed => {
+                "Make the server and descendants exit when STDIN closes or termination is requested."
+            }
+            Self::CatalogContractInvalid => {
+                "Correct the value at the reported structural location, then rerun inspect."
+            }
+            Self::DuplicateCatalogIdentifier => {
+                "Rename or remove the later duplicate so each identifier is unique."
+            }
+            Self::PaginationCursorRepeated => {
+                "Return a new cursor for the next page or omit nextCursor on the final page."
+            }
+            Self::SchemaContractInvalid => {
+                "Correct the schema at the reported structural location and validate it as Draft 2020-12."
+            }
+            Self::UnsupportedSchemaDialect => {
+                "Remove $schema to use the MCP default or declare the Draft 2020-12 schema URI."
+            }
+            Self::ExternalSchemaReferenceBlocked => {
+                "Inline the referenced schema or move it into local $defs and use a fragment reference."
+            }
+        }
+    }
+
+    pub(super) const fn reference(self) -> &'static str {
+        match self {
+            Self::ProcessStartFailed
+            | Self::StdioIoFailed
+            | Self::InvalidStdioMessage
+            | Self::ServerExitedEarly
+            | Self::LimitExceeded
+            | Self::CleanupFailed => "mcp-doctor M1 passive STDIO safety contract",
+            Self::ProtocolRevisionConfirmed
+            | Self::UnsupportedProtocolRevision
+            | Self::InvalidProtocolRevisionValue
+            | Self::DeprecatedProtocolFeature => "MCP 2026-07-28 server/discover contract",
+            Self::CatalogContractInvalid
+            | Self::DuplicateCatalogIdentifier
+            | Self::PaginationCursorRepeated => "MCP 2026-07-28 catalog contracts",
+            Self::SchemaContractInvalid
+            | Self::UnsupportedSchemaDialect
+            | Self::ExternalSchemaReferenceBlocked => {
+                "MCP 2026-07-28 Tool contract and JSON Schema Draft 2020-12"
+            }
         }
     }
 }
@@ -184,7 +333,38 @@ pub(super) enum LocationField {
     Server,
     SupportedVersions,
     Tools,
+    Prompts,
+    Resources,
+    ResourceTemplates,
+    Capabilities,
+    Result,
+    ResultType,
+    TtlMs,
+    CacheScope,
+    NextCursor,
+    Name,
+    Arguments,
+    ListChanged,
+    Subscribe,
+    Uri,
+    UriTemplate,
     InputSchema,
+    OutputSchema,
+    Schema,
+    Type,
+    Properties,
+    Defs,
+    Ref,
+    DynamicRef,
+    Items,
+    PrefixItems,
+    AllOf,
+    AnyOf,
+    OneOf,
+    Not,
+    If,
+    Then,
+    Else,
     Required,
     Process,
     Stdin,
@@ -202,7 +382,38 @@ impl LocationField {
             Self::Server => "server",
             Self::SupportedVersions => "supportedVersions",
             Self::Tools => "tools",
+            Self::Prompts => "prompts",
+            Self::Resources => "resources",
+            Self::ResourceTemplates => "resourceTemplates",
+            Self::Capabilities => "capabilities",
+            Self::Result => "result",
+            Self::ResultType => "resultType",
+            Self::TtlMs => "ttlMs",
+            Self::CacheScope => "cacheScope",
+            Self::NextCursor => "nextCursor",
+            Self::Name => "name",
+            Self::Arguments => "arguments",
+            Self::ListChanged => "listChanged",
+            Self::Subscribe => "subscribe",
+            Self::Uri => "uri",
+            Self::UriTemplate => "uriTemplate",
             Self::InputSchema => "inputSchema",
+            Self::OutputSchema => "outputSchema",
+            Self::Schema => "$schema",
+            Self::Type => "type",
+            Self::Properties => "properties",
+            Self::Defs => "$defs",
+            Self::Ref => "$ref",
+            Self::DynamicRef => "$dynamicRef",
+            Self::Items => "items",
+            Self::PrefixItems => "prefixItems",
+            Self::AllOf => "allOf",
+            Self::AnyOf => "anyOf",
+            Self::OneOf => "oneOf",
+            Self::Not => "not",
+            Self::If => "if",
+            Self::Then => "then",
+            Self::Else => "else",
             Self::Required => "required",
             Self::Process => "process",
             Self::Stdin => "stdin",
@@ -217,6 +428,7 @@ impl LocationField {
 enum LocationSegment {
     Field(LocationField),
     Index(usize),
+    Wildcard,
 }
 
 /// A location made only from trusted field identifiers and numeric indices.
@@ -242,6 +454,11 @@ impl Location {
         self.segments.push(LocationSegment::Index(index));
         self
     }
+
+    pub(super) fn wildcard(mut self) -> Self {
+        self.segments.push(LocationSegment::Wildcard);
+        self
+    }
 }
 
 impl fmt::Display for Location {
@@ -255,9 +472,135 @@ impl fmt::Display for Location {
                     formatter.write_str(field.as_str())?;
                 }
                 LocationSegment::Index(value) => write!(formatter, "[{value}]")?,
+                LocationSegment::Wildcard => formatter.write_str("[*]")?,
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum JsonKind {
+    Missing,
+    Null,
+    Boolean,
+    Number,
+    String,
+    Array,
+    Object,
+}
+
+impl JsonKind {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Null => "null",
+            Self::Boolean => "boolean",
+            Self::Number => "number",
+            Self::String => "string",
+            Self::Array => "array",
+            Self::Object => "object",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum ExpectedShape {
+    Object,
+    Array,
+    String,
+    Boolean,
+    NonNegativeNumber,
+}
+
+impl ExpectedShape {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Object => "object",
+            Self::Array => "array",
+            Self::String => "string",
+            Self::Boolean => "boolean",
+            Self::NonNegativeNumber => "non-negative number",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum RuleViolation {
+    ExpectedShape {
+        expected: ExpectedShape,
+        observed: JsonKind,
+    },
+    ExpectedCompleteResult {
+        observed: JsonKind,
+    },
+    ExpectedCacheScope {
+        observed: JsonKind,
+    },
+    ExpectedCurrentRevision,
+    ExpectedInputSchemaRootObject {
+        observed: JsonKind,
+    },
+    ServerErrorResponse,
+    DuplicateIdentifier,
+    RepeatedCursor,
+    UnsupportedSchemaDialect {
+        observed: JsonKind,
+    },
+    ExternalSchemaReference,
+    UnresolvedLocalReference,
+    InvalidDraft202012 {
+        error_count: u64,
+    },
+}
+
+impl RuleViolation {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExpectedShape { .. } => "expected_shape",
+            Self::ExpectedCompleteResult { .. } => "expected_complete_result",
+            Self::ExpectedCacheScope { .. } => "expected_cache_scope",
+            Self::ExpectedCurrentRevision => "expected_current_revision",
+            Self::ExpectedInputSchemaRootObject { .. } => "expected_input_schema_root_object",
+            Self::ServerErrorResponse => "server_error_response",
+            Self::DuplicateIdentifier => "duplicate_identifier",
+            Self::RepeatedCursor => "repeated_cursor",
+            Self::UnsupportedSchemaDialect { .. } => "unsupported_schema_dialect",
+            Self::ExternalSchemaReference => "external_schema_reference",
+            Self::UnresolvedLocalReference => "unresolved_local_reference",
+            Self::InvalidDraft202012 { .. } => "invalid_draft_2020_12",
+        }
+    }
+
+    pub(super) const fn observed(self) -> Option<JsonKind> {
+        match self {
+            Self::ExpectedShape { observed, .. }
+            | Self::ExpectedCompleteResult { observed }
+            | Self::ExpectedCacheScope { observed }
+            | Self::ExpectedInputSchemaRootObject { observed }
+            | Self::UnsupportedSchemaDialect { observed } => Some(observed),
+            Self::ExpectedCurrentRevision
+            | Self::ServerErrorResponse
+            | Self::DuplicateIdentifier
+            | Self::RepeatedCursor
+            | Self::ExternalSchemaReference
+            | Self::UnresolvedLocalReference
+            | Self::InvalidDraft202012 { .. } => None,
+        }
+    }
+
+    pub(super) const fn expected_shape(self) -> Option<ExpectedShape> {
+        match self {
+            Self::ExpectedShape { expected, .. } => Some(expected),
+            _ => None,
+        }
+    }
+
+    pub(super) const fn error_count(self) -> Option<u64> {
+        match self {
+            Self::InvalidDraft202012 { error_count } => Some(error_count),
+            _ => None,
+        }
     }
 }
 
@@ -267,6 +610,7 @@ pub(super) enum FindingEvidence {
     RevisionAdvertisement(RevisionAdvertisementSummary),
     RedactedObservation(RedactedValue),
     LimitViolation(LimitViolation),
+    RuleViolation(RuleViolation),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -387,12 +731,78 @@ impl Finding {
         )
     }
 
-    pub(super) fn schema_contract_invalid(revision: SupportedRevision, location: Location) -> Self {
+    pub(super) fn catalog_contract_invalid(
+        revision: SupportedRevision,
+        location: Location,
+        violation: RuleViolation,
+    ) -> Self {
+        Self::new(
+            FindingCode::CatalogContractInvalid,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn duplicate_catalog_identifier(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::DuplicateCatalogIdentifier,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::DuplicateIdentifier),
+        )
+    }
+
+    pub(super) fn pagination_cursor_repeated(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::PaginationCursorRepeated,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::RepeatedCursor),
+        )
+    }
+
+    pub(super) fn schema_contract_invalid(
+        revision: SupportedRevision,
+        location: Location,
+        violation: RuleViolation,
+    ) -> Self {
         Self::new(
             FindingCode::SchemaContractInvalid,
             revision,
             location,
-            FindingEvidence::None,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn unsupported_schema_dialect(
+        revision: SupportedRevision,
+        location: Location,
+        observed: JsonKind,
+    ) -> Self {
+        Self::new(
+            FindingCode::UnsupportedSchemaDialect,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::UnsupportedSchemaDialect { observed }),
+        )
+    }
+
+    pub(super) fn external_schema_reference_blocked(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::ExternalSchemaReferenceBlocked,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ExternalSchemaReference),
         )
     }
 
@@ -428,6 +838,18 @@ impl Finding {
 
     pub(super) fn evidence(&self) -> &FindingEvidence {
         &self.evidence
+    }
+
+    pub(super) const fn expectation(&self) -> &'static str {
+        self.code.expectation()
+    }
+
+    pub(super) const fn remediation(&self) -> &'static str {
+        self.code.remediation()
+    }
+
+    pub(super) const fn reference(&self) -> &'static str {
+        self.code.reference()
     }
 }
 
@@ -590,8 +1012,33 @@ mod tests {
                 Severity::Critical,
             ),
             (
+                FindingCode::CatalogContractInvalid,
+                "MCP-CATALOG-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::DuplicateCatalogIdentifier,
+                "MCP-CATALOG-002",
+                Severity::Error,
+            ),
+            (
+                FindingCode::PaginationCursorRepeated,
+                "MCP-CATALOG-003",
+                Severity::Error,
+            ),
+            (
                 FindingCode::SchemaContractInvalid,
                 "MCP-SCHEMA-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::UnsupportedSchemaDialect,
+                "MCP-SCHEMA-002",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ExternalSchemaReferenceBlocked,
+                "MCP-SCHEMA-003",
                 Severity::Error,
             ),
         ];
@@ -600,6 +1047,9 @@ mod tests {
             assert_eq!(code.as_str(), stable_code);
             assert_eq!(code.severity(), severity);
             assert!(!code.title().is_empty());
+            assert!(!code.expectation().is_empty());
+            assert!(!code.remediation().is_empty());
+            assert!(!code.reference().is_empty());
         }
     }
 

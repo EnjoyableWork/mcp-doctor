@@ -8,6 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::Value;
+use serde_json::json;
 
 const MIB: usize = 1024 * 1024;
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -32,6 +33,21 @@ fn main() -> ExitCode {
         Some("timeout") => timeout(),
         Some("early-exit") => early_exit(),
         Some("resistant-child") => resistant_child(&remaining),
+        Some("catalog-valid") => catalog_valid(),
+        Some("catalog-invalid") => catalog_invalid(),
+        Some("catalog-invalid-resources") => catalog_invalid_resources(),
+        Some("catalog-duplicate") => catalog_duplicate(),
+        Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
+        Some("schema-invalid") => schema_invalid(),
+        Some("schema-external") => schema_external(&remaining),
+        Some("schema-depth-limit") => schema_depth_limit(),
+        Some("schema-node-limit") => schema_node_limit(),
+        Some("schema-ref-depth-limit") => schema_ref_depth_limit(),
+        Some("schema-evaluation-limit") => schema_evaluation_limit(),
+        Some("schema-error-limit") => schema_error_limit(),
+        Some("catalog-item-limit") => catalog_item_limit(),
+        Some("report-finding-limit") => report_finding_limit(),
+        Some("report-finding-exact") => report_finding_exact(),
         Some("descendant") => descendant(&remaining),
         _ => ExitCode::from(2),
     }
@@ -195,6 +211,260 @@ fn descendant(arguments: &[OsString]) -> ExitCode {
     wait_forever()
 }
 
+fn catalog_valid() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({
+        "tools": {},
+        "prompts": {},
+        "resources": {}
+    }));
+
+    read_request(&mut input, 2, "tools/list", None);
+    write_fixture_result(2, include_str!("catalogs/valid-tools-page-1.json"));
+    read_request(
+        &mut input,
+        3,
+        "tools/list",
+        Some("synthetic-private-cursor-never-report-7f2c"),
+    );
+    write_fixture_result(3, include_str!("catalogs/valid-tools-page-2.json"));
+    read_request(&mut input, 4, "prompts/list", None);
+    write_fixture_result(4, include_str!("catalogs/valid-prompts.json"));
+    read_request(&mut input, 5, "resources/list", None);
+    write_fixture_result(5, include_str!("catalogs/valid-resources.json"));
+    read_request(&mut input, 6, "resources/templates/list", None);
+    write_fixture_result(6, include_str!("catalogs/valid-resource-templates.json"));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn catalog_invalid() -> ExitCode {
+    serve_single_catalog(
+        "prompts",
+        "prompts/list",
+        include_str!("catalogs/invalid-catalog.json"),
+    )
+}
+
+fn catalog_invalid_resources() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"resources": {}}));
+    read_request(&mut input, 2, "resources/list", None);
+    write_fixture_result(2, include_str!("catalogs/invalid-resources.json"));
+    read_request(&mut input, 3, "resources/templates/list", None);
+    write_fixture_result(3, include_str!("catalogs/invalid-resource-templates.json"));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn catalog_duplicate() -> ExitCode {
+    serve_single_catalog(
+        "prompts",
+        "prompts/list",
+        include_str!("catalogs/duplicate-catalog.json"),
+    )
+}
+
+fn catalog_repeated_cursor() -> ExitCode {
+    let cursor = "synthetic-private-repeated-cursor-never-report-7f2c";
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"prompts": {}}));
+    read_request(&mut input, 2, "prompts/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "prompts": [],
+            "nextCursor": cursor
+        }),
+    );
+    read_request(&mut input, 3, "prompts/list", Some(cursor));
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "prompts": [],
+            "nextCursor": cursor
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn schema_invalid() -> ExitCode {
+    serve_single_catalog(
+        "tools",
+        "tools/list",
+        include_str!("catalogs/invalid-schemas.json"),
+    )
+}
+
+fn schema_external(arguments: &[OsString]) -> ExitCode {
+    let Some(reference) = arguments.first().and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+    let result = json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "tools": [{
+            "name": "synthetic.external",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "synthetic-private-property-never-report-7f2c": {
+                        "$ref": reference
+                    }
+                }
+            }
+        }]
+    });
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_depth_limit() -> ExitCode {
+    let mut nested = json!({"type": "string"});
+    for _ in 0..35 {
+        nested = json!({"allOf": [nested]});
+    }
+    let result = json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "tools": [{
+            "name": "synthetic.deep",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "synthetic-private-property-never-report-7f2c": nested
+                }
+            }
+        }]
+    });
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_node_limit() -> ExitCode {
+    let values = vec![Value::Null; 100_001];
+    let result = single_tool_result(json!({
+        "type": "object",
+        "enum": values
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_ref_depth_limit() -> ExitCode {
+    let mut definitions = serde_json::Map::new();
+    for index in 0..34 {
+        let value = if index == 33 {
+            json!({"type": "string"})
+        } else {
+            json!({"$ref": format!("#/$defs/node{}", index + 1)})
+        };
+        definitions.insert(format!("node{index}"), value);
+    }
+    let result = single_tool_result(json!({
+        "type": "object",
+        "$defs": definitions,
+        "properties": {
+            "synthetic-private-property-never-report-7f2c": {
+                "$ref": "#/$defs/node0"
+            }
+        }
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_evaluation_limit() -> ExitCode {
+    let mut properties = serde_json::Map::new();
+    for index in 0..25_000 {
+        properties.insert(format!("synthetic{index}"), json!({"$ref": "#"}));
+    }
+    let result = single_tool_result(json!({
+        "type": "object",
+        "properties": properties
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_error_limit() -> ExitCode {
+    let invalid = (0..101)
+        .map(|_| json!({"type": "synthetic-secret-type-never-report-7f2c"}))
+        .collect::<Vec<_>>();
+    let result = single_tool_result(json!({
+        "type": "object",
+        "allOf": invalid
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn single_tool_result(input_schema: Value) -> Value {
+    json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "tools": [{
+            "name": "synthetic.bounded",
+            "inputSchema": input_schema
+        }]
+    })
+}
+
+fn catalog_item_limit() -> ExitCode {
+    let prompts = (0..10_001)
+        .map(|index| json!({"name": format!("synthetic-{index}")}))
+        .collect::<Vec<_>>();
+    let result = json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "prompts": prompts
+    });
+    serve_single_catalog_value("prompts", "prompts/list", result)
+}
+
+fn report_finding_limit() -> ExitCode {
+    report_finding_count(300)
+}
+
+fn report_finding_exact() -> ExitCode {
+    // One revision-confirmed finding plus 255 catalog findings reaches the
+    // report maximum exactly without exceeding it.
+    report_finding_count(255)
+}
+
+fn report_finding_count(count: usize) -> ExitCode {
+    let result = json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "prompts": vec![Value::Null; count]
+    });
+    serve_single_catalog_value("prompts", "prompts/list", result)
+}
+
+fn serve_single_catalog(capability: &str, method: &str, result: &str) -> ExitCode {
+    let result: Value = serde_json::from_str(result).expect("catalog fixture should be valid JSON");
+    serve_single_catalog_value(capability, method, result)
+}
+
+fn serve_single_catalog_value(capability: &str, method: &str, result: Value) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({capability: {}}));
+    read_request(&mut input, 2, method, None);
+    write_result(2, result);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
 fn respond_then_wait_for_eof() {
     let mut input = io::BufReader::new(io::stdin().lock());
     read_discover_request(&mut input);
@@ -213,6 +483,15 @@ fn read_one_discover_request() {
 }
 
 fn read_discover_request(input: &mut impl BufRead) {
+    read_request(input, 1, "server/discover", None);
+}
+
+fn read_request(
+    input: &mut impl BufRead,
+    expected_id: i64,
+    expected_method: &str,
+    expected_cursor: Option<&str>,
+) {
     let mut request = String::new();
     let read = input
         .read_line(&mut request)
@@ -222,25 +501,65 @@ fn read_discover_request(input: &mut impl BufRead) {
 
     let value: Value = serde_json::from_str(&request).expect("the request should be JSON");
     assert_eq!(value["jsonrpc"], "2.0");
-    assert_eq!(value["id"], 1);
-    assert_eq!(value["method"], "server/discover");
+    assert_eq!(value["id"], expected_id);
+    assert_eq!(value["method"], expected_method);
     assert_eq!(
         value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
         "2026-07-28"
     );
     assert!(value["params"]["_meta"]["io.modelcontextprotocol/clientCapabilities"].is_object());
+    assert_eq!(
+        value["params"].get("cursor").and_then(Value::as_str),
+        expected_cursor
+    );
     assert!(!request.contains("tools/call"));
     assert!(!request.contains("initialize"));
 }
 
 fn write_success_response() {
+    write_discovery_response(json!({}));
+}
+
+fn write_discovery_response(capabilities: Value) {
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": capabilities,
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+}
+
+fn write_fixture_result(id: i64, fixture: &str) {
+    let result: Value =
+        serde_json::from_str(fixture).expect("catalog fixture should be valid JSON");
+    write_result(id, result);
+}
+
+fn write_result(id: i64, result: Value) {
     let mut stdout = io::stdout().lock();
-    writeln!(
-        stdout,
-        "{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":\"2026-07-28\",\"capabilities\":{{}}}}}}"
+    serde_json::to_writer(
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        }),
     )
-    .expect("the discovery response should be writable");
+    .expect("the response should be writable");
+    stdout.write_all(b"\n").expect("the frame should terminate");
     stdout.flush().expect("STDOUT should flush");
+}
+
+fn assert_eof(input: &mut impl Read) {
+    let mut remaining = Vec::new();
+    input
+        .read_to_end(&mut remaining)
+        .expect("STDIN should reach EOF");
+    assert!(remaining.is_empty(), "no active request is permitted");
 }
 
 fn write_notification(output: &mut impl Write, total_bytes: usize) {

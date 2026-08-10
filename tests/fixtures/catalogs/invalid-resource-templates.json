@@ -1,0 +1,11 @@
+{
+  "resultType": "complete",
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "resourceTemplates": [
+    {
+      "name": "synthetic-private-template-never-report-7f2c",
+      "uriTemplate": false
+    }
+  ]
+}
