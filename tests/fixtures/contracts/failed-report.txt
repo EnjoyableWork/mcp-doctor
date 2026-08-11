@@ -17,9 +17,9 @@ FAIL  schema.contracts       required
       What: A configured diagnostic safety limit was exceeded.
       Why: Continuing past this bound could make inspection unsafe or unbounded.
       message_bytes observed 1048577 bytes; maximum 1048576 bytes
-      Expected: Passive inspection must remain within every configured safety limit.
-      Fix: Reduce the advertised data or work below the reported maximum, then rerun inspect.
-      Reference: mcp-doctor M1 passive STDIO safety contract
+      Expected: Every diagnostic path must remain within its reported safety limit.
+      Fix: Reduce the reported data or work below the maximum, then rerun the same command.
+      Reference: mcp-doctor bounded local STDIO safety contract
 SKIP  runtime.tools          optional · active behavior was not authorized
 
 1 failed · 0 warned · 1 passed · 1 skipped · outcome failed · exit 1

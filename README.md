@@ -121,7 +121,10 @@ Choose how much activity the target allows:
 mcp-doctor inspect -- node ./dist/server.js --stdio
 
 # Active: replay one reviewed scenario
-mcp-doctor check --scenario path/to/scenario -- node ./dist/server.js --stdio
+mcp-doctor check \
+  --scenario path/to/scenario.json \
+  --allow-tool search \
+  -- node ./dist/server.js --stdio
 
 # Active: run 50 deterministic edge cases against one selected tool
 mcp-doctor break --tool search --cases 50 --seed 4242 -- node ./dist/server.js --stdio
@@ -131,12 +134,65 @@ mcp-doctor break --tool search --cases 50 --seed 4242 -- node ./dist/server.js -
 > `check` and `break` execute real tool calls. Use disposable data and a test
 > environment. Finding a tool does not give `mcp-doctor` permission to call it.
 
+### Reviewed `check` scenarios
+
+`check` accepts only a regular file containing strict
+`mcp-doctor.scenario/v1alpha1` JSON. One scenario names one exact tool, declares
+its effect classification, and contains 1–100 cases that run sequentially in
+array order:
+
+```json
+{
+  "schema_version": "mcp-doctor.scenario/v1alpha1",
+  "tool": "search",
+  "safety": { "effects": "read_only" },
+  "target_env": ["UPSTREAM_TOKEN"],
+  "cases": [
+    {
+      "id": "basic",
+      "arguments": { "query": "MCP", "token": null },
+      "secret_refs": { "/token": "TOOL_TOKEN" },
+      "expect": {
+        "result": "success",
+        "structured_output_schema": {
+          "type": "object",
+          "required": ["items"]
+        }
+      }
+    }
+  ]
+}
+```
+
+The case ID is for reviewing the file; reports use only its numeric index.
+`target_env` copies only those same-named invoking-process variables into the
+otherwise constrained target environment. Each `secret_refs` key is an RFC
+6901 pointer to an existing `null` argument placeholder, and its value names an
+invoking-process environment variable. Missing values, invalid pointers,
+non-null destinations, duplicate members, unknown fields, and unsupported
+schemas fail before the target starts. There is no interpolation, `.env` or
+file loading, command execution, prompt, keychain, or secret-store lookup.
+Environment reference names use the portable ASCII form
+`[A-Za-z_][A-Za-z0-9_]*`; argument-secret values must be valid UTF-8 because
+they become JSON strings.
+
+Every run repeats the exact scenario tool with `--allow-tool`; a
+`side_effecting` scenario also requires `--allow-side-effects`. Advertised tool
+annotations never grant permission. Arguments must match the advertised input
+schema before a call. Completed results are checked against the expected
+`success` or `tool_error`, the advertised output schema, and the optional
+scenario output schema. Ordinary mismatches and tool rejections do not hide
+later cases. Transport, protocol, cleanup, authorization, and exhausted-limit
+failures stop later calls. `input_required` makes that case and an otherwise
+successful report incomplete; `mcp-doctor` neither supplies input nor retries
+that call.
+
 ## Findings you can act on
 
 Every finding includes a stable code, severity, MCP version, safe field
-location, and whether the check ran or was skipped. Active failures also keep
-the seed and input shape needed to repeat the case without revealing secrets
-or raw production data.
+location, and whether the check ran or was skipped. Active reports keep the
+declared case index or generated seed and the structural input shape needed to
+repeat a failure without revealing secrets or raw production data.
 
 When problems are connected, the report points to the first one you can fix.
 It skips only the checks that depend on that problem and tells you why. It
@@ -188,7 +244,9 @@ and hide secrets, so they work well in logs and saved build results.
 ## Safe by default
 
 - `inspect` lists and checks what the server offers; it never calls a tool.
-- Every active run names the scenario or tool, target, case limit, and seed.
+- Every active run names the exact tool and target. Reviewed scenarios declare
+  their effect and case limit; generated cases also declare their seed.
+- Side-effecting scenarios require a separate `--allow-side-effects` gate.
 - Hard limits cover time, data size, messages, schema work, test cases,
   redirects, retries, and parallel work.
 - Normal output hides headers, credentials, tool inputs, raw results, and server

@@ -108,6 +108,7 @@ pub(super) struct DiagnosticReport {
     independent_findings: Vec<FindingReference>,
     summary: ReportSummary,
     outcome: OverallOutcome,
+    exit_status: ExitStatus,
 }
 
 impl DiagnosticReport {
@@ -183,6 +184,7 @@ impl DiagnosticReport {
             }
         }
 
+        let exit_status = outcome.exit_status();
         Ok(Self {
             revision,
             limits,
@@ -191,7 +193,13 @@ impl DiagnosticReport {
             independent_findings,
             summary,
             outcome,
+            exit_status,
         })
+    }
+
+    pub(super) fn with_exit_status(mut self, exit_status: ExitStatus) -> Self {
+        self.exit_status = exit_status;
+        self
     }
 
     pub(super) const fn revision(&self) -> SupportedRevision {
@@ -223,7 +231,7 @@ impl DiagnosticReport {
     }
 
     pub(super) const fn exit_status(&self) -> ExitStatus {
-        self.outcome.exit_status()
+        self.exit_status
     }
 }
 
@@ -708,7 +716,7 @@ impl From<&DiagnosticReport> for JsonReport {
 
 #[derive(Serialize)]
 struct JsonDiagnosis {
-    check_id: &'static str,
+    check_id: String,
     findings: Vec<JsonDiagnosisFinding>,
 }
 
@@ -742,7 +750,7 @@ impl From<&FindingReference> for JsonDiagnosisFinding {
 
 #[derive(Serialize)]
 struct JsonIndependentFinding {
-    check_id: &'static str,
+    check_id: String,
     code: &'static str,
     location: String,
 }
@@ -820,7 +828,7 @@ impl From<LimitValues> for JsonLimits {
 
 #[derive(Serialize)]
 struct JsonCheck {
-    id: &'static str,
+    id: String,
     requirement: &'static str,
     state: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]

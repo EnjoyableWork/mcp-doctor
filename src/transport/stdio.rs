@@ -38,10 +38,19 @@ pub(crate) struct StdioLimits {
 pub(crate) struct StdioTarget {
     executable: OsString,
     arguments: Vec<OsString>,
+    environment: Vec<(OsString, OsString)>,
 }
 
 impl StdioTarget {
     pub(crate) fn new(executable: OsString, arguments: Vec<OsString>) -> Result<Self, TargetError> {
+        Self::with_environment(executable, arguments, Vec::new())
+    }
+
+    pub(crate) fn with_environment(
+        executable: OsString,
+        arguments: Vec<OsString>,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Result<Self, TargetError> {
         if executable.is_empty() {
             return Err(TargetError::EmptyExecutable);
         }
@@ -54,6 +63,7 @@ impl StdioTarget {
         Ok(Self {
             executable,
             arguments,
+            environment,
         })
     }
 
@@ -80,6 +90,7 @@ impl fmt::Debug for StdioTarget {
             .debug_struct("StdioTarget")
             .field("executable", &"[REDACTED]")
             .field("argument_count", &self.arguments.len())
+            .field("environment_count", &self.environment.len())
             .finish()
     }
 }
@@ -319,7 +330,17 @@ impl StdioTransport {
             }
 
             let mut responses = Vec::new();
-            while let Some(request) = conversation.next_request(responses.last()) {
+            loop {
+                if Instant::now() > total_deadline.at {
+                    return Err(StdioFailure::timeout(total_deadline));
+                }
+                let request = conversation.next_request(responses.last());
+                if Instant::now() > total_deadline.at {
+                    return Err(StdioFailure::timeout(total_deadline));
+                }
+                let Some(request) = request else {
+                    break;
+                };
                 let discovery = responses.is_empty();
                 let response = process
                     .exchange(&request, total_deadline, discovery)
@@ -365,6 +386,7 @@ impl ManagedProcess {
         command
             .env_clear()
             .envs(constrained_environment(std::env::vars_os()))
+            .envs(target.environment.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

@@ -12,6 +12,9 @@ pub(super) enum LimitKind {
     StdoutBytes,
     StderrBytes,
     AggregateOutputBytes,
+    ScenarioBytes,
+    ActiveInputBytes,
+    EnvironmentBytes,
     MessageCount,
     ProtocolRevisions,
     CatalogItems,
@@ -42,6 +45,9 @@ impl LimitKind {
             Self::StdoutBytes => "stdout_bytes",
             Self::StderrBytes => "stderr_bytes",
             Self::AggregateOutputBytes => "aggregate_output_bytes",
+            Self::ScenarioBytes => "scenario_bytes",
+            Self::ActiveInputBytes => "active_input_bytes",
+            Self::EnvironmentBytes => "environment_bytes",
             Self::MessageCount => "message_count",
             Self::ProtocolRevisions => "protocol_revisions",
             Self::CatalogItems => "catalog_items",
@@ -72,6 +78,9 @@ impl LimitKind {
             | Self::StdoutBytes
             | Self::StderrBytes
             | Self::AggregateOutputBytes
+            | Self::ScenarioBytes
+            | Self::ActiveInputBytes
+            | Self::EnvironmentBytes
             | Self::SchemaBytes
             | Self::InstanceBytes => LimitUnit::Bytes,
             Self::MessageCount

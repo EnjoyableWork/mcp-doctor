@@ -3,6 +3,7 @@
     reason = "the M1 contract includes checks consumed by later ordered tickets"
 )]
 
+mod active;
 mod catalog;
 mod limits;
 mod model;
@@ -10,13 +11,20 @@ mod protocol;
 mod redaction;
 mod report;
 
-use crate::transport::stdio::ProbeResponse;
+use crate::transport::stdio::{
+    ProbeResponse, StdioFailure, StdioLimit, StdioStream as TransportStream,
+};
 use limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use model::{CheckId, CheckResult, Finding, Location, LocationField, Requirement, SkipReason};
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
 use report::{DiagnosticReport, render_report};
 
+pub(crate) use active::{
+    ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, ScenarioFailure,
+    render_authorization_failure, render_resolved_scenario_failure, render_scenario_failure,
+    resolve_target_environment,
+};
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use report::ReportFormat;
 
@@ -113,6 +121,54 @@ pub(crate) enum StdioPrimaryFailure {
 pub(crate) struct StdioDiagnostic {
     pub(crate) primary: Option<StdioPrimaryFailure>,
     pub(crate) cleanup_failed: bool,
+}
+
+pub(crate) fn stdio_diagnostic(
+    failure: Option<StdioFailure>,
+    cleanup_failed: bool,
+) -> StdioDiagnostic {
+    StdioDiagnostic {
+        primary: failure.map(map_stdio_failure),
+        cleanup_failed,
+    }
+}
+
+fn map_stdio_failure(failure: StdioFailure) -> StdioPrimaryFailure {
+    match failure {
+        StdioFailure::ProcessStart => StdioPrimaryFailure::ProcessStart,
+        StdioFailure::Io { stream } => StdioPrimaryFailure::Io {
+            stream: match stream {
+                TransportStream::Process => StdioStream::Process,
+                TransportStream::Stdin => StdioStream::Stdin,
+                TransportStream::Stdout => StdioStream::Stdout,
+                TransportStream::Stderr => StdioStream::Stderr,
+            },
+        },
+        StdioFailure::InvalidMessage { byte_count, index } => {
+            StdioPrimaryFailure::InvalidMessage { byte_count, index }
+        }
+        StdioFailure::EarlyExit => StdioPrimaryFailure::EarlyExit,
+        StdioFailure::Limit {
+            kind,
+            observed,
+            maximum,
+        } => StdioPrimaryFailure::Limit {
+            kind: match kind {
+                StdioLimit::StartupTime => StdioLimitKind::StartupTime,
+                StdioLimit::DiscoveryTime => StdioLimitKind::DiscoveryTime,
+                StdioLimit::RequestTime => StdioLimitKind::RequestTime,
+                StdioLimit::ResponseTime => StdioLimitKind::ResponseTime,
+                StdioLimit::TotalTime => StdioLimitKind::TotalTime,
+                StdioLimit::MessageBytes => StdioLimitKind::MessageBytes,
+                StdioLimit::StdoutBytes => StdioLimitKind::StdoutBytes,
+                StdioLimit::StderrBytes => StdioLimitKind::StderrBytes,
+                StdioLimit::AggregateOutputBytes => StdioLimitKind::AggregateOutputBytes,
+                StdioLimit::MessageCount => StdioLimitKind::MessageCount,
+            },
+            observed,
+            maximum,
+        },
+    }
 }
 
 pub(crate) struct RenderedDiagnostic {

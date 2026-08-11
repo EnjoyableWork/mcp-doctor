@@ -1,16 +1,23 @@
-# M2 adoption checkpoint
+# M2 adoption checkpoint conclusion
 
 - Opened: 2026-08-10
+- Closed: 2026-08-10
 - Release under review: `mcp-doctor` `v0.1.0`
 - Initial baseline: zero independent adoption reports at opening
+- Closing baseline: zero independent adoption reports
 - Public collection record: [M2 adoption checkpoint issue 5](https://github.com/EnjoyableWork/mcp-doctor/issues/5)
 
-This checkpoint asks whether the passive preflight earns repeat use before the
-project adds active tool calls, remote targets, adversarial generation, or a
-stable CI report. Publication proves that the tool can be installed and that
-its artifacts are traceable; it does not prove adoption.
+This checkpoint asked whether the passive preflight earned repeat use before
+the project added active tool calls, remote targets, adversarial generation, or
+a stable CI report. It closed without independent reports. Publication proves
+that the tool can be installed and that its artifacts are traceable; neither
+publication nor this checkpoint proves adoption. This record makes no adoption or repeat-use claim.
 
-## What useful evidence looks like
+The owner closed the checkpoint because independently timed evidence can take
+days, weeks, or months to arrive and is not a suitable hard gate on planned
+feature work. Independent evidence remains useful, but it does not block M3.
+
+## What future useful evidence looks like
 
 Reports should cover an independently authored MCP server or implementation.
 Only consented, aggregate, non-sensitive observations are recorded:
@@ -31,19 +38,19 @@ names, complete stderr, or unreviewed report output. A public response should
 be a safe summary. Suspected vulnerabilities belong in the private process in
 [`SECURITY.md`](../SECURITY.md).
 
-## Decision rule
+## Closing decision
 
-The review aims for at least five independently authored servers or
-implementations, with representation beyond the repository's own fixtures. The
-number is a collection target, not proof by itself. The evidence must show
-whether people found the report correct and actionable and whether they chose
-to use it again.
+The original review aimed for at least five independently authored servers or
+implementations, with representation beyond the repository's own fixtures.
+That remains a useful evidence target, not a prerequisite or proof by itself.
+Future evidence should show whether people found the report correct and
+actionable and whether they chose to use it again.
 
-M3 does not start automatically. Each proposed active, remote, adversarial, or
-CI capability must solve a repeated observed problem. Weak or contradictory
-evidence means narrow, defer, or cancel that capability rather than expanding
-the MVP by default.
+M3 may proceed in order after each ticket's predecessor, design decisions,
+safety boundary, and acceptance evidence are ready. Future evidence may
+reprioritize, narrow, defer, or cancel a capability. Its absence does not block
+otherwise ready scoped work, and it must never be presented as validation.
 
-The public GitHub checkpoint issue is the collection record. Its link and the
-dated baseline are added to `PROJECT.md` after the immutable release and issue
-exist.
+The closed public GitHub checkpoint issue is the dated record of the zero-report
+baseline and the nonblocking decision. Future feedback may be recorded in a new
+issue that references it without rewriting this conclusion.

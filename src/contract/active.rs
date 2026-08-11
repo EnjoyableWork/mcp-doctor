@@ -1,0 +1,1869 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
+
+use serde::de::{self, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
+use serde_json::{Map, Number, Value, json};
+
+use super::catalog::{
+    InstanceValidationIssue, LocalValidator, request_meta, validate_cacheable_result,
+    validate_discovery_capabilities, validate_local_schema,
+};
+use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
+use super::model::{
+    CheckId, CheckResult, ExpectedShape, Finding, FindingCode, FindingEvidence, JsonKind, Location,
+    LocationField, Requirement, RuleViolation, SkipReason,
+};
+use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
+use super::redaction::RedactedValue;
+use super::report::{DiagnosticReport, ExitStatus, ReportFormat, render_report};
+use super::{RenderedDiagnostic, StdioDiagnostic, stdio_findings};
+use crate::transport::stdio::{ProbeRequest, ProbeResponse, StdioConversation};
+
+const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
+const PROTOCOL_REVISION: &str = "2026-07-28";
+pub(crate) const MAX_SCENARIO_BYTES: u64 = 1_048_576;
+
+pub(crate) struct ScenarioFailure {
+    findings: Vec<Finding>,
+}
+
+impl ScenarioFailure {
+    fn one(finding: Finding) -> Self {
+        Self {
+            findings: vec![finding],
+        }
+    }
+
+    pub(crate) fn file_limit(observed: u64) -> Self {
+        let violation = LimitViolation::new(LimitKind::ScenarioBytes, observed, MAX_SCENARIO_BYTES)
+            .expect("an oversized scenario exceeds its checked maximum");
+        Self::one(Finding::limit_exceeded(
+            SupportedRevision::CURRENT,
+            scenario_location(),
+            violation,
+        ))
+    }
+
+    pub(crate) fn unreadable() -> Self {
+        Self::one(Finding::scenario_invalid(
+            scenario_location(),
+            RuleViolation::InvalidScenarioShape,
+        ))
+    }
+}
+
+pub(crate) struct ActiveScenario {
+    tool: String,
+    effects: ScenarioEffects,
+    target_env: Vec<String>,
+    cases: Vec<ScenarioCase>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ScenarioEffects {
+    ReadOnly,
+    SideEffecting,
+}
+
+struct ScenarioCase {
+    arguments: Value,
+    secret_refs: BTreeMap<String, String>,
+    expected: ExpectedResult,
+    output_validator: Option<LocalValidator>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ExpectedResult {
+    Success,
+    ToolError,
+}
+
+impl ActiveScenario {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Self, ScenarioFailure> {
+        let UniqueValue(value) = serde_json::from_slice::<UniqueValue>(bytes).map_err(|_| {
+            ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location(),
+                RuleViolation::InvalidScenarioShape,
+            ))
+        })?;
+        let root = value.as_object().ok_or_else(|| {
+            shape_failure(
+                scenario_location(),
+                ExpectedShape::Object,
+                json_kind(Some(&value)),
+            )
+        })?;
+        ensure_fields(
+            root,
+            &["schema_version", "tool", "safety", "target_env", "cases"],
+            &["schema_version", "tool", "safety", "cases"],
+            scenario_location(),
+        )?;
+
+        if root.get("schema_version").and_then(Value::as_str) != Some(SCENARIO_SCHEMA_VERSION) {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::SchemaVersion),
+                RuleViolation::UnsupportedScenarioVersion,
+            )));
+        }
+
+        let tool = required_nonempty_string(
+            root.get("tool"),
+            scenario_location().field(LocationField::Tools),
+        )?
+        .to_owned();
+
+        let safety_location = scenario_location().field(LocationField::Safety);
+        let safety = required_object(root.get("safety"), safety_location.clone())?;
+        ensure_fields(safety, &["effects"], &["effects"], safety_location.clone())?;
+        let effects = match safety.get("effects").and_then(Value::as_str) {
+            Some("read_only") => ScenarioEffects::ReadOnly,
+            Some("side_effecting") => ScenarioEffects::SideEffecting,
+            _ => {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    safety_location.field(LocationField::Effects),
+                    RuleViolation::InvalidScenarioShape,
+                )));
+            }
+        };
+
+        let mut target_env = Vec::new();
+        let mut target_names = BTreeSet::new();
+        if let Some(value) = root.get("target_env") {
+            let values = value.as_array().ok_or_else(|| {
+                shape_failure(
+                    scenario_location().field(LocationField::TargetEnv),
+                    ExpectedShape::Array,
+                    json_kind(Some(value)),
+                )
+            })?;
+            for (index, value) in values.iter().enumerate() {
+                let location = scenario_location()
+                    .field(LocationField::TargetEnv)
+                    .index(index);
+                let Some(name) = value.as_str() else {
+                    return Err(shape_failure(
+                        location,
+                        ExpectedShape::String,
+                        json_kind(Some(value)),
+                    ));
+                };
+                let identity = environment_identity(name);
+                if !valid_environment_name(name) || !target_names.insert(identity) {
+                    return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                        location,
+                        RuleViolation::InvalidEnvironmentReference,
+                    )));
+                }
+                target_env.push(name.to_owned());
+            }
+        }
+
+        let cases_value = root.get("cases").expect("required fields were checked");
+        let cases_array = cases_value.as_array().ok_or_else(|| {
+            shape_failure(
+                scenario_location().field(LocationField::Cases),
+                ExpectedShape::Array,
+                json_kind(Some(cases_value)),
+            )
+        })?;
+        let maximum_cases = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        if cases_array.is_empty() {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::Cases),
+                RuleViolation::InvalidScenarioShape,
+            )));
+        }
+        let observed_cases = u64::try_from(cases_array.len()).unwrap_or(u64::MAX);
+        if observed_cases > maximum_cases {
+            return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                scenario_location().field(LocationField::Cases),
+                LimitViolation::new(LimitKind::ActiveCases, observed_cases, maximum_cases)
+                    .expect("the scenario case count exceeds its checked maximum"),
+            )));
+        }
+
+        let mut case_ids = BTreeSet::new();
+        let mut cases = Vec::with_capacity(cases_array.len());
+        for (index, value) in cases_array.iter().enumerate() {
+            let base = case_location(index);
+            let object = required_object(Some(value), base.clone())?;
+            ensure_fields(
+                object,
+                &["id", "arguments", "secret_refs", "expect"],
+                &["id", "arguments", "expect"],
+                base.clone(),
+            )?;
+            let id =
+                required_nonempty_string(object.get("id"), base.clone().field(LocationField::Id))?
+                    .to_owned();
+            if !case_ids.insert(id.clone()) {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    base.clone().field(LocationField::Id),
+                    RuleViolation::DuplicateCaseId,
+                )));
+            }
+
+            let arguments = object
+                .get("arguments")
+                .expect("required fields were checked");
+            if !arguments.is_object() {
+                return Err(shape_failure(
+                    base.clone().field(LocationField::Arguments),
+                    ExpectedShape::Object,
+                    json_kind(Some(arguments)),
+                ));
+            }
+            check_instance_bytes(arguments, base.clone().field(LocationField::Arguments))?;
+
+            let mut secret_refs = BTreeMap::new();
+            if let Some(value) = object.get("secret_refs") {
+                let references = value.as_object().ok_or_else(|| {
+                    shape_failure(
+                        base.clone().field(LocationField::SecretRefs),
+                        ExpectedShape::Object,
+                        json_kind(Some(value)),
+                    )
+                })?;
+                for (pointer, source) in references {
+                    let location = base.clone().field(LocationField::SecretRefs).wildcard();
+                    let Some(source) = source.as_str() else {
+                        return Err(shape_failure(
+                            location,
+                            ExpectedShape::String,
+                            json_kind(Some(source)),
+                        ));
+                    };
+                    if !valid_json_pointer(pointer)
+                        || !valid_environment_name(source)
+                        || arguments.pointer(pointer) != Some(&Value::Null)
+                    {
+                        return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                            location,
+                            RuleViolation::InvalidEnvironmentReference,
+                        )));
+                    }
+                    secret_refs.insert(pointer.clone(), source.to_owned());
+                }
+            }
+
+            let expect_location = base.clone().field(LocationField::Expect);
+            let expect = required_object(object.get("expect"), expect_location.clone())?;
+            ensure_fields(
+                expect,
+                &["result", "structured_output_schema"],
+                &["result"],
+                expect_location.clone(),
+            )?;
+            let expected = match expect.get("result").and_then(Value::as_str) {
+                Some("success") => ExpectedResult::Success,
+                Some("tool_error") => ExpectedResult::ToolError,
+                _ => {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        expect_location.clone().field(LocationField::Result),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+            };
+            let output_validator = if let Some(schema) = expect.get("structured_output_schema") {
+                let location = expect_location.field(LocationField::StructuredOutputSchema);
+                if !schema.is_object() {
+                    return Err(shape_failure(
+                        location,
+                        ExpectedShape::Object,
+                        json_kind(Some(schema)),
+                    ));
+                }
+                let findings = scenario_schema_findings(validate_local_schema(schema, location));
+                if !findings.is_empty() {
+                    return Err(ScenarioFailure { findings });
+                }
+                Some(
+                    LocalValidator::compile(schema)
+                        .expect("a validated scenario schema compiles without retrieval"),
+                )
+            } else {
+                None
+            };
+
+            cases.push(ScenarioCase {
+                arguments: arguments.clone(),
+                secret_refs,
+                expected,
+                output_validator,
+            });
+        }
+
+        Ok(Self {
+            tool,
+            effects,
+            target_env,
+            cases,
+        })
+    }
+
+    pub(crate) fn authorize(
+        &self,
+        allowed_tool: &str,
+        allow_side_effects: bool,
+    ) -> Result<(), ScenarioFailure> {
+        if allowed_tool != self.tool {
+            return Err(ScenarioFailure::one(Finding::tool_authorization_missing(
+                Location::root(LocationField::Authorization).field(LocationField::Tools),
+            )));
+        }
+        if self.effects == ScenarioEffects::SideEffecting && !allow_side_effects {
+            return Err(ScenarioFailure::one(Finding::side_effects_not_authorized(
+                Location::root(LocationField::Authorization)
+                    .field(LocationField::Safety)
+                    .field(LocationField::Effects),
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn target_environment_names(&self) -> impl Iterator<Item = &str> {
+        self.target_env.iter().map(String::as_str)
+    }
+
+    pub(crate) fn resolve_argument_secrets<F>(
+        &mut self,
+        mut lookup: F,
+    ) -> Result<(), ScenarioFailure>
+    where
+        F: FnMut(&str) -> Option<String>,
+    {
+        let mut aggregate_bytes = 0_u64;
+        let maximum_aggregate = DiagnosticLimits::M1_DEFAULTS
+            .values()
+            .aggregate_output_bytes;
+        for (case_index, case) in self.cases.iter_mut().enumerate() {
+            let mut replacements = Vec::with_capacity(case.secret_refs.len());
+            for (pointer, source) in &case.secret_refs {
+                let Some(value) = lookup(source) else {
+                    return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                        case_location(case_index)
+                            .field(LocationField::SecretRefs)
+                            .wildcard(),
+                        RuleViolation::MissingEnvironmentValue,
+                    )));
+                };
+                replacements.push((pointer.clone(), value));
+            }
+            for (pointer, value) in replacements {
+                let destination = case
+                    .arguments
+                    .pointer_mut(&pointer)
+                    .expect("validated secret pointers remain present before replacement");
+                debug_assert!(destination.is_null());
+                *destination = Value::String(value);
+            }
+            case.secret_refs.clear();
+            check_instance_bytes(
+                &case.arguments,
+                case_location(case_index).field(LocationField::Arguments),
+            )?;
+            aggregate_bytes = aggregate_bytes
+                .saturating_add(u64::try_from(serialized_len(&case.arguments)).unwrap_or(u64::MAX));
+            if aggregate_bytes > maximum_aggregate {
+                return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                    SupportedRevision::CURRENT,
+                    scenario_location().field(LocationField::Cases),
+                    LimitViolation::new(
+                        LimitKind::ActiveInputBytes,
+                        aggregate_bytes,
+                        maximum_aggregate,
+                    )
+                    .expect("resolved active inputs exceed their aggregate maximum"),
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn discard_target_environment_names(&mut self) {
+        self.target_env.clear();
+    }
+
+    pub(crate) fn case_count(&self) -> usize {
+        self.cases.len()
+    }
+}
+
+pub(crate) fn render_scenario_failure(
+    failure: ScenarioFailure,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    render_prestart_failure(failure, None, false, format)
+}
+
+pub(crate) fn render_resolved_scenario_failure(
+    scenario: &ActiveScenario,
+    failure: ScenarioFailure,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    render_prestart_failure(failure, Some(scenario.case_count()), true, format)
+}
+
+fn render_prestart_failure(
+    failure: ScenarioFailure,
+    case_count: Option<usize>,
+    authorization_passed: bool,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let mut checks = vec![CheckResult::performed(
+        CheckId::ScenarioConfiguration,
+        Requirement::Required,
+        failure.findings,
+    )];
+    checks.push(if authorization_passed {
+        CheckResult::performed(
+            CheckId::ActiveAuthorization,
+            Requirement::Required,
+            Vec::new(),
+        )
+    } else {
+        CheckResult::skipped(
+            CheckId::ActiveAuthorization,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        )
+    });
+    checks.extend([
+        CheckResult::skipped(
+            CheckId::TransportStdio,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::ProtocolEnvelope,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::ProtocolRevision,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::DiscoveryCatalogs,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ),
+    ]);
+    if let Some(case_count) = case_count {
+        checks.extend((0..case_count).map(|index| {
+            CheckResult::skipped(
+                CheckId::RuntimeToolCase(index),
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            )
+        }));
+    } else {
+        checks.push(CheckResult::skipped(
+            CheckId::RuntimeTools,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ));
+    }
+    let report = DiagnosticReport::new(
+        SupportedRevision::CURRENT,
+        DiagnosticLimits::M1_DEFAULTS,
+        checks,
+    )
+    .expect("a scenario configuration failure is a valid report")
+    .with_exit_status(ExitStatus::InvocationError);
+    RenderedDiagnostic {
+        output: render_report(&report, format),
+        exit: report.exit_status().into(),
+    }
+}
+
+pub(crate) fn render_authorization_failure(
+    scenario: &ActiveScenario,
+    failure: ScenarioFailure,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let mut checks = vec![
+        CheckResult::performed(
+            CheckId::ScenarioConfiguration,
+            Requirement::Required,
+            Vec::new(),
+        ),
+        CheckResult::performed(
+            CheckId::ActiveAuthorization,
+            Requirement::Required,
+            failure.findings,
+        ),
+        CheckResult::skipped(
+            CheckId::TransportStdio,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::ProtocolEnvelope,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::ProtocolRevision,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::DiscoveryCatalogs,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ),
+        CheckResult::skipped(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ),
+    ];
+    checks.extend((0..scenario.case_count()).map(|index| {
+        CheckResult::skipped(
+            CheckId::RuntimeToolCase(index),
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        )
+    }));
+    let report = DiagnosticReport::new(
+        SupportedRevision::CURRENT,
+        DiagnosticLimits::M1_DEFAULTS,
+        checks,
+    )
+    .expect("an active authorization failure is a valid report")
+    .with_exit_status(ExitStatus::InvocationError);
+    RenderedDiagnostic {
+        output: render_report(&report, format),
+        exit: report.exit_status().into(),
+    }
+}
+
+pub(crate) struct ActiveConversation {
+    scenario: ActiveScenario,
+    stage: Stage,
+    pending: Option<PendingRequest>,
+    next_id: i64,
+    envelope: PhaseState,
+    revision: PhaseState,
+    discovery: PhaseState,
+    schemas: PhaseState,
+    case_states: Vec<CaseState>,
+    seen_names: BTreeSet<String>,
+    seen_cursors: BTreeSet<String>,
+    observed_items: u64,
+    selected_tool: Option<ToolContract>,
+    tool_validators: Option<ToolValidators>,
+    selected_schema_findings: Vec<Finding>,
+    selected_count: usize,
+    next_case: usize,
+}
+
+enum Stage {
+    Discover,
+    Tools(Option<String>),
+    Cases,
+    Done,
+}
+
+#[derive(Clone, Copy)]
+enum PendingRequest {
+    Discover,
+    Tools,
+    Call(usize),
+}
+
+enum PhaseState {
+    Pending,
+    Performed(Vec<Finding>),
+    Skipped(SkipReason),
+}
+
+enum CaseState {
+    Pending,
+    Performed(Vec<Finding>),
+    Incomplete,
+    Skipped(SkipReason),
+}
+
+struct ActiveFindingCollector {
+    findings: BTreeSet<Finding>,
+    overflow: bool,
+}
+
+impl ActiveFindingCollector {
+    fn new() -> Self {
+        Self {
+            findings: BTreeSet::new(),
+            overflow: false,
+        }
+    }
+
+    fn push(&mut self, finding: Finding) {
+        if self.findings.contains(&finding) {
+            return;
+        }
+        if self.findings.len() >= report_finding_capacity() {
+            self.overflow = true;
+            return;
+        }
+        self.findings.insert(finding);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.findings.is_empty()
+    }
+
+    fn finish(self, location: Location) -> Vec<Finding> {
+        cap_active_phase_findings(self.findings.into_iter().collect(), self.overflow, location)
+    }
+}
+
+struct ToolContract {
+    input_schema: Value,
+    output_schema: Option<Value>,
+}
+
+struct ToolValidators {
+    input: LocalValidator,
+    output: Option<LocalValidator>,
+}
+
+impl ActiveConversation {
+    pub(crate) fn new(scenario: ActiveScenario) -> Self {
+        let case_states = (0..scenario.case_count())
+            .map(|_| CaseState::Pending)
+            .collect();
+        Self {
+            scenario,
+            stage: Stage::Discover,
+            pending: None,
+            next_id: 1,
+            envelope: PhaseState::Pending,
+            revision: PhaseState::Pending,
+            discovery: PhaseState::Pending,
+            schemas: PhaseState::Pending,
+            case_states,
+            seen_names: BTreeSet::new(),
+            seen_cursors: BTreeSet::new(),
+            observed_items: 0,
+            selected_tool: None,
+            tool_validators: None,
+            selected_schema_findings: Vec::new(),
+            selected_count: 0,
+            next_case: 0,
+        }
+    }
+
+    fn request(&mut self, pending: PendingRequest, method: &str, params: Value) -> ProbeRequest {
+        let id = self.next_id;
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("bounded requests keep active request ids representable");
+        self.pending = Some(pending);
+        let bytes = serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        }))
+        .expect("typed active requests must serialize");
+        ProbeRequest::new(id, bytes)
+    }
+
+    fn next_outbound(&mut self) -> Option<ProbeRequest> {
+        loop {
+            match &self.stage {
+                Stage::Discover => {
+                    return Some(self.request(
+                        PendingRequest::Discover,
+                        "server/discover",
+                        json!({"_meta": request_meta()}),
+                    ));
+                }
+                Stage::Tools(cursor) => {
+                    let mut params = Map::new();
+                    params.insert("_meta".to_owned(), request_meta());
+                    if let Some(cursor) = cursor {
+                        params.insert("cursor".to_owned(), Value::String(cursor.clone()));
+                    }
+                    return Some(self.request(
+                        PendingRequest::Tools,
+                        "tools/list",
+                        Value::Object(params),
+                    ));
+                }
+                Stage::Cases => {
+                    if self.next_case >= self.scenario.cases.len() {
+                        self.stage = Stage::Done;
+                        continue;
+                    }
+                    let index = self.next_case;
+                    let validation = {
+                        let validators = self.tool_validators.as_ref().expect(
+                            "case replay starts only after selecting a valid tool contract",
+                        );
+                        validators
+                            .input
+                            .validate(&self.scenario.cases[index].arguments)
+                    };
+                    match validation {
+                        Ok(()) => {}
+                        Err(InstanceValidationIssue::Mismatch { error_count }) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] =
+                                CaseState::Performed(vec![Finding::tool_arguments_mismatch(
+                                    case_location(index).field(LocationField::Arguments),
+                                    error_count,
+                                )]);
+                            self.next_case += 1;
+                            continue;
+                        }
+                        Err(InstanceValidationIssue::Limit(violation)) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] =
+                                CaseState::Performed(vec![Finding::limit_exceeded(
+                                    SupportedRevision::CURRENT,
+                                    case_location(index).field(LocationField::Arguments),
+                                    violation,
+                                )]);
+                            self.next_case += 1;
+                            self.stop_cases(SkipReason::LimitReached);
+                            continue;
+                        }
+                        Err(InstanceValidationIssue::InvalidSchema) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] =
+                                CaseState::Performed(vec![Finding::tool_result_invalid(
+                                    case_location(index).field(LocationField::InputSchema),
+                                )]);
+                            self.next_case += 1;
+                            self.stop_cases(SkipReason::PrerequisiteFailed);
+                            continue;
+                        }
+                    }
+                    let arguments = std::mem::take(&mut self.scenario.cases[index].arguments);
+                    let tool = self.scenario.tool.clone();
+                    return Some(self.request(
+                        PendingRequest::Call(index),
+                        "tools/call",
+                        json!({
+                            "name": tool,
+                            "arguments": arguments,
+                            "_meta": request_meta(),
+                        }),
+                    ));
+                }
+                Stage::Done => return None,
+            }
+        }
+    }
+
+    fn process_response(&mut self, response: &ProbeResponse) {
+        let pending = self
+            .pending
+            .take()
+            .expect("every accepted response matches one active request");
+        match pending {
+            PendingRequest::Discover => self.process_discovery(response),
+            PendingRequest::Tools => self.process_tools(response),
+            PendingRequest::Call(index) => self.process_call(index, response),
+        }
+    }
+
+    fn process_discovery(&mut self, response: &ProbeResponse) {
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted only JSON-RPC objects");
+        if object.contains_key("error") {
+            self.envelope = PhaseState::Performed(vec![Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Server),
+                RuleViolation::ServerErrorResponse,
+            )]);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            self.envelope = PhaseState::Performed(vec![Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Server).field(LocationField::Result),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(object.get("result")),
+                },
+            )]);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        };
+        let server_location = Location::root(LocationField::Server);
+        let common_findings = validate_cacheable_result(result, server_location.clone());
+        if !common_findings.is_empty() {
+            self.envelope = PhaseState::Performed(common_findings);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        self.envelope = PhaseState::Performed(Vec::new());
+
+        let Some(versions) = result.get("supportedVersions").and_then(Value::as_array) else {
+            self.revision = PhaseState::Performed(vec![Finding::invalid_revision_value(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                RedactedValue::new(
+                    result
+                        .get("supportedVersions")
+                        .map(serialized_len)
+                        .unwrap_or_default(),
+                ),
+            )]);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        };
+        let maximum_revisions = DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions;
+        let observed_revisions = u64::try_from(versions.len()).unwrap_or(u64::MAX);
+        if observed_revisions > maximum_revisions {
+            self.revision = PhaseState::Performed(vec![Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                LimitViolation::new(
+                    LimitKind::ProtocolRevisions,
+                    observed_revisions,
+                    maximum_revisions,
+                )
+                .expect("the revision advertisement exceeds its checked maximum"),
+            )]);
+            self.stop_before_cases(SkipReason::LimitReached);
+            return;
+        }
+        let mut revision_findings = ActiveFindingCollector::new();
+        let mut revision_values = Vec::with_capacity(versions.len());
+        for (index, version) in versions.iter().enumerate() {
+            if let Some(version) = version.as_str() {
+                revision_values.push(version);
+            } else {
+                revision_findings.push(Finding::invalid_revision_value(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Server)
+                        .field(LocationField::SupportedVersions)
+                        .index(index),
+                    RedactedValue::new(serialized_len(version)),
+                ));
+            }
+        }
+        if !revision_findings.is_empty() {
+            self.revision = PhaseState::Performed(revision_findings.finish(
+                Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+            ));
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        match select_server_revision(revision_values, maximum_revisions) {
+            RevisionSelection::Selected(revision) => {
+                self.revision = PhaseState::Performed(vec![Finding::revision_confirmed(
+                    revision,
+                    Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                )]);
+            }
+            RevisionSelection::Unsupported(summary) => {
+                self.revision = PhaseState::Performed(vec![Finding::unsupported_revision(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                    summary,
+                )]);
+                self.discovery = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+                self.schemas = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+                self.stop_cases(SkipReason::UnsupportedRevision);
+                return;
+            }
+            RevisionSelection::LimitExceeded(violation) => {
+                self.revision = PhaseState::Performed(vec![Finding::limit_exceeded(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                    violation,
+                )]);
+                self.stop_before_cases(SkipReason::LimitReached);
+                return;
+            }
+        }
+
+        let (capability_findings, tools_advertised) =
+            validate_discovery_capabilities(result, server_location);
+        if !capability_findings.is_empty() {
+            self.envelope = PhaseState::Performed(capability_findings);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        if !tools_advertised {
+            self.discovery = PhaseState::Performed(vec![Finding::tool_not_found(Location::root(
+                LocationField::Tools,
+            ))]);
+            self.schemas = PhaseState::Skipped(SkipReason::PrerequisiteFailed);
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        self.stage = Stage::Tools(None);
+    }
+
+    fn process_tools(&mut self, response: &ProbeResponse) {
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted only JSON-RPC objects");
+        let mut findings = ActiveFindingCollector::new();
+        if object.contains_key("error") {
+            findings.push(Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Tools),
+                RuleViolation::ServerErrorResponse,
+            ));
+            self.fail_discovery(
+                findings.finish(Location::root(LocationField::Tools)),
+                SkipReason::PrerequisiteFailed,
+            );
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            findings.push(Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Tools).field(LocationField::Result),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(object.get("result")),
+                },
+            ));
+            self.fail_discovery(
+                findings.finish(Location::root(LocationField::Tools)),
+                SkipReason::PrerequisiteFailed,
+            );
+            return;
+        };
+        let common_findings =
+            validate_cacheable_result(result, Location::root(LocationField::Tools));
+        if !common_findings.is_empty() {
+            self.fail_discovery(common_findings, SkipReason::PrerequisiteFailed);
+            return;
+        }
+        let Some(tools) = result.get("tools").and_then(Value::as_array) else {
+            findings.push(Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Tools),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Array,
+                    observed: json_kind(result.get("tools")),
+                },
+            ));
+            self.fail_discovery(
+                findings.finish(Location::root(LocationField::Tools)),
+                SkipReason::PrerequisiteFailed,
+            );
+            return;
+        };
+        let previously_observed = self.observed_items;
+        let page_offset = usize::try_from(previously_observed).unwrap_or(usize::MAX);
+        self.observed_items = self
+            .observed_items
+            .saturating_add(u64::try_from(tools.len()).unwrap_or(u64::MAX));
+        let maximum_items = DiagnosticLimits::M1_DEFAULTS.values().catalog_items;
+        if self.observed_items > maximum_items {
+            findings.push(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Tools),
+                LimitViolation::new(LimitKind::CatalogItems, self.observed_items, maximum_items)
+                    .expect("the active catalog exceeds its checked maximum"),
+            ));
+        }
+        let remaining = usize::try_from(maximum_items.saturating_sub(previously_observed))
+            .unwrap_or(usize::MAX);
+
+        for (page_index, tool) in tools.iter().take(remaining).enumerate() {
+            let index = page_offset.saturating_add(page_index);
+            let location = Location::root(LocationField::Tools).index(index);
+            let Some(tool) = tool.as_object() else {
+                findings.push(Finding::catalog_contract_invalid(
+                    SupportedRevision::CURRENT,
+                    location,
+                    RuleViolation::ExpectedShape {
+                        expected: ExpectedShape::Object,
+                        observed: json_kind(Some(tool)),
+                    },
+                ));
+                continue;
+            };
+            let Some(name) = tool.get("name").and_then(Value::as_str) else {
+                findings.push(Finding::catalog_contract_invalid(
+                    SupportedRevision::CURRENT,
+                    location.clone().field(LocationField::Name),
+                    RuleViolation::ExpectedShape {
+                        expected: ExpectedShape::String,
+                        observed: json_kind(tool.get("name")),
+                    },
+                ));
+                continue;
+            };
+            if !self.seen_names.insert(name.to_owned()) {
+                findings.push(Finding::duplicate_catalog_identifier(
+                    SupportedRevision::CURRENT,
+                    location.clone().field(LocationField::Name),
+                ));
+                continue;
+            }
+            if name != self.scenario.tool {
+                continue;
+            }
+            self.selected_count += 1;
+            let Some(input_schema) = tool.get("inputSchema") else {
+                self.selected_schema_findings
+                    .push(Finding::schema_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        location.clone().field(LocationField::InputSchema),
+                        RuleViolation::ExpectedShape {
+                            expected: ExpectedShape::Object,
+                            observed: JsonKind::Missing,
+                        },
+                    ));
+                continue;
+            };
+            if !input_schema.is_object() {
+                self.selected_schema_findings
+                    .push(Finding::schema_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        location.clone().field(LocationField::InputSchema),
+                        RuleViolation::ExpectedShape {
+                            expected: ExpectedShape::Object,
+                            observed: json_kind(Some(input_schema)),
+                        },
+                    ));
+                continue;
+            }
+            let output_schema = tool.get("outputSchema").cloned();
+            if output_schema
+                .as_ref()
+                .is_some_and(|schema| !schema.is_object())
+            {
+                self.selected_schema_findings
+                    .push(Finding::schema_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        location.field(LocationField::OutputSchema),
+                        RuleViolation::ExpectedShape {
+                            expected: ExpectedShape::Object,
+                            observed: json_kind(output_schema.as_ref()),
+                        },
+                    ));
+                continue;
+            }
+            self.selected_tool = Some(ToolContract {
+                input_schema: input_schema.clone(),
+                output_schema,
+            });
+        }
+        if !findings.is_empty() {
+            self.fail_discovery(
+                findings.finish(Location::root(LocationField::Tools)),
+                SkipReason::PrerequisiteFailed,
+            );
+            return;
+        }
+
+        let next_cursor = match result.get("nextCursor") {
+            None => None,
+            Some(Value::String(cursor)) => Some(cursor.clone()),
+            Some(value) => {
+                self.fail_discovery(
+                    vec![Finding::catalog_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::Tools).field(LocationField::NextCursor),
+                        RuleViolation::ExpectedShape {
+                            expected: ExpectedShape::String,
+                            observed: json_kind(Some(value)),
+                        },
+                    )],
+                    SkipReason::PrerequisiteFailed,
+                );
+                return;
+            }
+        };
+        if let Some(cursor) = next_cursor {
+            if !self.seen_cursors.insert(cursor.clone()) {
+                self.fail_discovery(
+                    vec![Finding::pagination_cursor_repeated(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::Tools).field(LocationField::NextCursor),
+                    )],
+                    SkipReason::PrerequisiteFailed,
+                );
+                return;
+            }
+            self.stage = Stage::Tools(Some(cursor));
+            return;
+        }
+
+        if self.selected_count != 1 {
+            self.fail_discovery(
+                vec![Finding::tool_not_found(Location::root(
+                    LocationField::Tools,
+                ))],
+                SkipReason::PrerequisiteFailed,
+            );
+            return;
+        }
+        self.discovery = PhaseState::Performed(Vec::new());
+        let mut schema_findings = std::mem::take(&mut self.selected_schema_findings);
+        let Some(contract) = self.selected_tool.as_ref() else {
+            debug_assert!(!schema_findings.is_empty());
+            self.schemas = PhaseState::Performed(cap_active_phase_findings(
+                schema_findings,
+                false,
+                Location::root(LocationField::Tools),
+            ));
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+            return;
+        };
+        let input_location = Location::root(LocationField::Tools)
+            .wildcard()
+            .field(LocationField::InputSchema);
+        if contract.input_schema.get("type").and_then(Value::as_str) != Some("object") {
+            schema_findings.push(Finding::schema_contract_invalid(
+                SupportedRevision::CURRENT,
+                input_location.clone().field(LocationField::Type),
+                RuleViolation::ExpectedInputSchemaRootObject {
+                    observed: json_kind(contract.input_schema.get("type")),
+                },
+            ));
+        }
+        schema_findings.extend(validate_local_schema(
+            &contract.input_schema,
+            input_location,
+        ));
+        if let Some(output_schema) = &contract.output_schema {
+            schema_findings.extend(validate_local_schema(
+                output_schema,
+                Location::root(LocationField::Tools)
+                    .wildcard()
+                    .field(LocationField::OutputSchema),
+            ));
+        }
+        if schema_findings.is_empty() {
+            let validators = ToolValidators {
+                input: LocalValidator::compile(&contract.input_schema)
+                    .expect("a validated advertised input schema compiles without retrieval"),
+                output: contract.output_schema.as_ref().map(|schema| {
+                    LocalValidator::compile(schema)
+                        .expect("a validated advertised output schema compiles without retrieval")
+                }),
+            };
+            self.tool_validators = Some(validators);
+            self.selected_tool = None;
+            self.schemas = PhaseState::Performed(Vec::new());
+            self.stage = Stage::Cases;
+        } else {
+            self.schemas = PhaseState::Performed(cap_active_phase_findings(
+                schema_findings,
+                false,
+                Location::root(LocationField::Tools),
+            ));
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+        }
+    }
+
+    fn process_call(&mut self, index: usize, response: &ProbeResponse) {
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted only JSON-RPC objects");
+        if object.contains_key("error") {
+            self.case_states[index] = CaseState::Performed(vec![Finding::tool_call_rejected(
+                case_location(index).field(LocationField::Result),
+            )]);
+            self.next_case = index.saturating_add(1);
+            self.stage = Stage::Cases;
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            self.invalid_tool_result(index, LocationField::Result);
+            return;
+        };
+        match result.get("resultType").and_then(Value::as_str) {
+            Some("input_required") => {
+                self.case_states[index] = CaseState::Incomplete;
+                self.next_case = index.saturating_add(1);
+                self.stage = Stage::Cases;
+                return;
+            }
+            Some("complete") => {}
+            _ => {
+                self.invalid_tool_result(index, LocationField::ResultType);
+                return;
+            }
+        }
+        if !result.get("content").is_some_and(Value::is_array) {
+            self.invalid_tool_result(index, LocationField::Content);
+            return;
+        }
+        let is_error = match result.get("isError") {
+            None => false,
+            Some(Value::Bool(value)) => *value,
+            Some(_) => {
+                self.invalid_tool_result(index, LocationField::IsError);
+                return;
+            }
+        };
+        let structured = match result.get("structuredContent") {
+            None => None,
+            Some(value) if value.is_object() => Some(value),
+            Some(_) => {
+                self.invalid_tool_result(index, LocationField::StructuredContent);
+                return;
+            }
+        };
+
+        let mut findings = Vec::new();
+        let case = &self.scenario.cases[index];
+        let classification_matches = matches!(
+            (case.expected, is_error),
+            (ExpectedResult::Success, false) | (ExpectedResult::ToolError, true)
+        );
+        if !classification_matches {
+            findings.push(Finding::tool_result_mismatch(
+                case_location(index).field(LocationField::IsError),
+                if case.expected == ExpectedResult::Success {
+                    RuleViolation::ExpectedSuccess
+                } else {
+                    RuleViolation::ExpectedToolError
+                },
+            ));
+        }
+
+        let advertised = self
+            .tool_validators
+            .as_ref()
+            .and_then(|validators| validators.output.as_ref());
+        let scenario_validator = case.output_validator.as_ref();
+        let mut advertised_mismatch = None;
+        let mut scenario_mismatch = None;
+        if let Some(validator) = advertised {
+            advertised_mismatch = validate_optional_output(validator, structured);
+        }
+        if let Some(validator) = scenario_validator {
+            scenario_mismatch = validate_optional_output(validator, structured);
+        }
+        let limit = advertised_mismatch
+            .as_ref()
+            .and_then(validation_limit)
+            .or_else(|| scenario_mismatch.as_ref().and_then(validation_limit));
+        if let Some(violation) = limit {
+            findings.push(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                case_location(index).field(LocationField::StructuredContent),
+                violation,
+            ));
+            self.case_states[index] = CaseState::Performed(findings);
+            self.next_case = index.saturating_add(1);
+            self.stop_cases(SkipReason::LimitReached);
+            return;
+        }
+        if advertised_mismatch
+            .as_ref()
+            .is_some_and(validation_invalid_schema)
+            || scenario_mismatch
+                .as_ref()
+                .is_some_and(validation_invalid_schema)
+        {
+            findings.push(Finding::tool_result_invalid(
+                case_location(index).field(LocationField::StructuredContent),
+            ));
+            self.case_states[index] = CaseState::Performed(findings);
+            self.next_case = index.saturating_add(1);
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+
+        let advertised_errors = mismatch_count(advertised_mismatch.as_ref());
+        let scenario_errors = mismatch_count(scenario_mismatch.as_ref());
+        if advertised_errors > 0 || scenario_errors > 0 {
+            let violation = match (advertised_errors > 0, scenario_errors > 0) {
+                (true, true) => RuleViolation::AdvertisedAndScenarioOutputMismatch {
+                    error_count: advertised_errors.saturating_add(scenario_errors),
+                },
+                (true, false) => RuleViolation::AdvertisedOutputMismatch {
+                    error_count: advertised_errors,
+                },
+                (false, true) => RuleViolation::ScenarioOutputMismatch {
+                    error_count: scenario_errors,
+                },
+                (false, false) => unreachable!(),
+            };
+            findings.push(Finding::tool_output_mismatch(
+                case_location(index).field(LocationField::StructuredContent),
+                violation,
+            ));
+        }
+
+        self.case_states[index] = CaseState::Performed(findings);
+        self.next_case = index.saturating_add(1);
+        self.stage = Stage::Cases;
+    }
+
+    fn invalid_tool_result(&mut self, index: usize, field: LocationField) {
+        self.case_states[index] = CaseState::Performed(vec![Finding::tool_result_invalid(
+            case_location(index).field(field),
+        )]);
+        self.next_case = index.saturating_add(1);
+        self.stop_cases(SkipReason::PrerequisiteFailed);
+    }
+
+    fn fail_discovery(&mut self, findings: Vec<Finding>, reason: SkipReason) {
+        self.discovery = PhaseState::Performed(findings);
+        self.schemas = PhaseState::Skipped(reason);
+        self.stop_cases(reason);
+    }
+
+    fn stop_before_cases(&mut self, reason: SkipReason) {
+        if matches!(self.discovery, PhaseState::Pending) {
+            self.discovery = PhaseState::Skipped(reason);
+        }
+        if matches!(self.schemas, PhaseState::Pending) {
+            self.schemas = PhaseState::Skipped(reason);
+        }
+        self.stop_cases(reason);
+    }
+
+    fn stop_cases(&mut self, reason: SkipReason) {
+        for state in &mut self.case_states[self.next_case..] {
+            if matches!(state, CaseState::Pending) {
+                *state = CaseState::Skipped(reason);
+            }
+        }
+        self.stage = Stage::Done;
+    }
+
+    pub(crate) fn into_diagnostic(
+        mut self,
+        stdio: StdioDiagnostic,
+        format: ReportFormat,
+    ) -> RenderedDiagnostic {
+        if stdio.primary.is_some() {
+            if let Some(PendingRequest::Call(index)) = self.pending.take() {
+                self.case_states[index] = CaseState::Skipped(SkipReason::PrerequisiteFailed);
+                self.next_case = index.saturating_add(1);
+            }
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+        }
+        let transport_findings = stdio_findings(stdio);
+        self.fit_report_finding_budget(transport_findings.len());
+        let mut checks = vec![
+            CheckResult::performed(
+                CheckId::ScenarioConfiguration,
+                Requirement::Required,
+                Vec::new(),
+            ),
+            CheckResult::performed(
+                CheckId::ActiveAuthorization,
+                Requirement::Required,
+                Vec::new(),
+            ),
+            CheckResult::performed(
+                CheckId::TransportStdio,
+                Requirement::Required,
+                transport_findings,
+            ),
+            phase_check(CheckId::ProtocolEnvelope, self.envelope),
+            phase_check(CheckId::ProtocolRevision, self.revision),
+            phase_check(CheckId::DiscoveryCatalogs, self.discovery),
+            phase_check(CheckId::SchemaContracts, self.schemas),
+        ];
+        checks.extend(
+            self.case_states
+                .into_iter()
+                .enumerate()
+                .map(|(index, state)| match state {
+                    CaseState::Performed(findings) => CheckResult::performed(
+                        CheckId::RuntimeToolCase(index),
+                        Requirement::Required,
+                        findings,
+                    ),
+                    CaseState::Incomplete => CheckResult::skipped(
+                        CheckId::RuntimeToolCase(index),
+                        Requirement::Required,
+                        SkipReason::InputRequired,
+                    ),
+                    CaseState::Skipped(reason) => CheckResult::skipped(
+                        CheckId::RuntimeToolCase(index),
+                        Requirement::Required,
+                        reason,
+                    ),
+                    CaseState::Pending => CheckResult::skipped(
+                        CheckId::RuntimeToolCase(index),
+                        Requirement::Required,
+                        SkipReason::PrerequisiteFailed,
+                    ),
+                }),
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            checks,
+        )
+        .expect("the active application must construct a valid diagnostic report");
+        RenderedDiagnostic {
+            output: render_report(&report, format),
+            exit: report.exit_status().into(),
+        }
+    }
+
+    fn fit_report_finding_budget(&mut self, transport_findings: usize) {
+        let maximum = usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings)
+            .unwrap_or(usize::MAX);
+        let total = transport_findings
+            .saturating_add(phase_finding_count(&self.envelope))
+            .saturating_add(phase_finding_count(&self.revision))
+            .saturating_add(phase_finding_count(&self.discovery))
+            .saturating_add(phase_finding_count(&self.schemas))
+            .saturating_add(
+                self.case_states
+                    .iter()
+                    .map(case_finding_count)
+                    .sum::<usize>(),
+            );
+        if total <= maximum {
+            return;
+        }
+
+        let observed = u64::try_from(total).unwrap_or(u64::MAX);
+        let target = match &mut self.discovery {
+            PhaseState::Performed(findings) if !findings.is_empty() => {
+                Some((findings, Location::root(LocationField::Tools)))
+            }
+            _ => match &mut self.schemas {
+                PhaseState::Performed(findings) if !findings.is_empty() => {
+                    Some((findings, Location::root(LocationField::Tools)))
+                }
+                _ => match &mut self.revision {
+                    PhaseState::Performed(findings) if !findings.is_empty() => Some((
+                        findings,
+                        Location::root(LocationField::Server)
+                            .field(LocationField::SupportedVersions),
+                    )),
+                    _ => None,
+                },
+            },
+        }
+        .expect("only bounded catalog or schema findings can exhaust the active report budget");
+        let target_count = target.0.len();
+        let capacity = maximum.saturating_sub(total.saturating_sub(target_count));
+        assert!(
+            capacity > 0,
+            "independent active findings fit the report budget"
+        );
+        *target.0 =
+            cap_active_phase_to_budget(std::mem::take(target.0), capacity, observed, target.1);
+    }
+}
+
+impl StdioConversation for ActiveConversation {
+    fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest> {
+        if let Some(response) = previous {
+            self.process_response(response);
+        } else {
+            assert!(
+                self.pending.is_none(),
+                "discovery is the first active request"
+            );
+        }
+        self.next_outbound()
+    }
+}
+
+fn phase_check(id: CheckId, state: PhaseState) -> CheckResult {
+    match state {
+        PhaseState::Performed(findings) => {
+            CheckResult::performed(id, Requirement::Required, findings)
+        }
+        PhaseState::Skipped(reason) => CheckResult::skipped(id, Requirement::Required, reason),
+        PhaseState::Pending => {
+            CheckResult::skipped(id, Requirement::Required, SkipReason::PrerequisiteFailed)
+        }
+    }
+}
+
+fn phase_finding_count(state: &PhaseState) -> usize {
+    match state {
+        PhaseState::Performed(findings) => findings.len(),
+        PhaseState::Pending | PhaseState::Skipped(_) => 0,
+    }
+}
+
+fn case_finding_count(state: &CaseState) -> usize {
+    match state {
+        CaseState::Performed(findings) => findings.len(),
+        CaseState::Pending | CaseState::Incomplete | CaseState::Skipped(_) => 0,
+    }
+}
+
+fn cap_active_phase_findings(
+    mut findings: Vec<Finding>,
+    overflow: bool,
+    location: Location,
+) -> Vec<Finding> {
+    findings.sort();
+    findings.dedup();
+    let capacity = report_finding_capacity();
+    if !overflow && findings.len() <= capacity {
+        return findings;
+    }
+
+    cap_active_phase_to_budget(
+        findings,
+        capacity,
+        DiagnosticLimits::M1_DEFAULTS
+            .values()
+            .report_findings
+            .saturating_add(1),
+        location,
+    )
+}
+
+fn cap_active_phase_to_budget(
+    mut findings: Vec<Finding>,
+    capacity: usize,
+    observed: u64,
+    location: Location,
+) -> Vec<Finding> {
+    let maximum = DiagnosticLimits::M1_DEFAULTS.values().report_findings;
+    findings.retain(|finding| {
+        !matches!(
+            finding.evidence(),
+            FindingEvidence::LimitViolation(violation)
+                if violation.kind() == LimitKind::ReportFindings
+        )
+    });
+    findings.sort();
+    findings.dedup();
+    findings.truncate(capacity.saturating_sub(1));
+    findings.push(Finding::limit_exceeded(
+        SupportedRevision::CURRENT,
+        location,
+        LimitViolation::new(
+            LimitKind::ReportFindings,
+            observed.max(maximum.saturating_add(1)),
+            maximum,
+        )
+        .expect("the active report overflow observation exceeds its maximum"),
+    ));
+    findings
+}
+
+fn report_finding_capacity() -> usize {
+    usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings).unwrap_or(usize::MAX)
+}
+
+fn validate_optional_output(
+    validator: &LocalValidator,
+    structured: Option<&Value>,
+) -> Option<InstanceValidationIssue> {
+    match structured {
+        Some(value) => validator.validate(value).err(),
+        None => Some(InstanceValidationIssue::Mismatch { error_count: 1 }),
+    }
+}
+
+fn scenario_schema_findings(findings: Vec<Finding>) -> Vec<Finding> {
+    findings
+        .into_iter()
+        .map(|finding| {
+            if finding.code() == FindingCode::SchemaContractInvalid
+                && let FindingEvidence::RuleViolation(violation) = finding.evidence()
+            {
+                return Finding::scenario_schema_invalid(finding.location().clone(), *violation);
+            }
+            finding
+        })
+        .collect()
+}
+
+fn validation_limit(issue: &InstanceValidationIssue) -> Option<LimitViolation> {
+    match issue {
+        InstanceValidationIssue::Limit(violation) => Some(*violation),
+        _ => None,
+    }
+}
+
+fn validation_invalid_schema(issue: &InstanceValidationIssue) -> bool {
+    matches!(issue, InstanceValidationIssue::InvalidSchema)
+}
+
+fn mismatch_count(issue: Option<&InstanceValidationIssue>) -> u64 {
+    match issue {
+        Some(InstanceValidationIssue::Mismatch { error_count }) => *error_count,
+        _ => 0,
+    }
+}
+
+fn scenario_location() -> Location {
+    Location::root(LocationField::Scenario)
+}
+
+fn case_location(index: usize) -> Location {
+    scenario_location().field(LocationField::Cases).index(index)
+}
+
+fn shape_failure(
+    location: Location,
+    expected: ExpectedShape,
+    observed: JsonKind,
+) -> ScenarioFailure {
+    ScenarioFailure::one(Finding::scenario_invalid(
+        location,
+        RuleViolation::ExpectedShape { expected, observed },
+    ))
+}
+
+fn required_object(
+    value: Option<&Value>,
+    location: Location,
+) -> Result<&Map<String, Value>, ScenarioFailure> {
+    value
+        .and_then(Value::as_object)
+        .ok_or_else(|| shape_failure(location, ExpectedShape::Object, json_kind(value)))
+}
+
+fn required_nonempty_string(
+    value: Option<&Value>,
+    location: Location,
+) -> Result<&str, ScenarioFailure> {
+    match value.and_then(Value::as_str) {
+        Some(value) if !value.is_empty() => Ok(value),
+        _ => Err(shape_failure(
+            location,
+            ExpectedShape::String,
+            json_kind(value),
+        )),
+    }
+}
+
+fn ensure_fields(
+    object: &Map<String, Value>,
+    allowed: &[&str],
+    required: &[&str],
+    location: Location,
+) -> Result<(), ScenarioFailure> {
+    if object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return Err(ScenarioFailure::one(Finding::scenario_invalid(
+            location.wildcard(),
+            RuleViolation::InvalidScenarioShape,
+        )));
+    }
+    if required.iter().any(|field| !object.contains_key(*field)) {
+        return Err(ScenarioFailure::one(Finding::scenario_invalid(
+            location,
+            RuleViolation::InvalidScenarioShape,
+        )));
+    }
+    Ok(())
+}
+
+fn check_instance_bytes(value: &Value, location: Location) -> Result<(), ScenarioFailure> {
+    let observed = u64::try_from(serialized_len(value)).unwrap_or(u64::MAX);
+    let maximum = DiagnosticLimits::M1_DEFAULTS.values().instance_bytes;
+    if observed > maximum {
+        return Err(ScenarioFailure::one(Finding::limit_exceeded(
+            SupportedRevision::CURRENT,
+            location,
+            LimitViolation::new(LimitKind::InstanceBytes, observed, maximum)
+                .expect("the scenario instance exceeds its checked maximum"),
+        )));
+    }
+    Ok(())
+}
+
+fn valid_json_pointer(pointer: &str) -> bool {
+    if pointer.is_empty() || !pointer.starts_with('/') {
+        return false;
+    }
+    let bytes = pointer.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'~' {
+            if !matches!(bytes.get(index + 1), Some(b'0' | b'1')) {
+                return false;
+            }
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    true
+}
+
+fn valid_environment_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first == b'_' || first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
+fn environment_identity(name: &str) -> String {
+    #[cfg(windows)]
+    {
+        name.to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        name.to_owned()
+    }
+}
+
+fn serialized_len(value: &Value) -> usize {
+    serde_json::to_vec(value)
+        .map(|bytes| bytes.len())
+        .unwrap_or(usize::MAX)
+}
+
+fn json_kind(value: Option<&Value>) -> JsonKind {
+    match value {
+        None => JsonKind::Missing,
+        Some(Value::Null) => JsonKind::Null,
+        Some(Value::Bool(_)) => JsonKind::Boolean,
+        Some(Value::Number(_)) => JsonKind::Number,
+        Some(Value::String(_)) => JsonKind::String,
+        Some(Value::Array(_)) => JsonKind::Array,
+        Some(Value::Object(_)) => JsonKind::Object,
+    }
+}
+
+struct UniqueValue(Value);
+
+impl<'de> Deserialize<'de> for UniqueValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(UniqueValueVisitor)
+    }
+}
+
+struct UniqueValueVisitor;
+
+impl<'de> Visitor<'de> for UniqueValueVisitor {
+    type Value = UniqueValue;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("one JSON value without duplicate object members")
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::Null))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::Null))
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::Bool(value)))
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::Number(Number::from(value))))
+    }
+
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::Number(Number::from(value))))
+    }
+
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Number::from_f64(value)
+            .map(Value::Number)
+            .map(UniqueValue)
+            .ok_or_else(|| E::custom("invalid JSON number"))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::String(value.to_owned())))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E> {
+        Ok(UniqueValue(Value::String(value)))
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut values = Vec::new();
+        while let Some(UniqueValue(value)) = sequence.next_element()? {
+            values.push(value);
+        }
+        Ok(UniqueValue(Value::Array(values)))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut values = Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if values.contains_key(&key) {
+                return Err(de::Error::custom("duplicate JSON object member"));
+            }
+            let UniqueValue(value) = map.next_value()?;
+            values.insert(key, value);
+        }
+        Ok(UniqueValue(Value::Object(values)))
+    }
+}
+
+pub(crate) fn resolve_target_environment<F>(
+    scenario: &ActiveScenario,
+    mut lookup: F,
+) -> Result<Vec<(OsString, OsString)>, ScenarioFailure>
+where
+    F: FnMut(&str) -> Option<OsString>,
+{
+    let mut resolved = Vec::new();
+    let mut aggregate_bytes = 0_u64;
+    let maximum_bytes = DiagnosticLimits::M1_DEFAULTS.values().instance_bytes;
+    for (index, name) in scenario.target_environment_names().enumerate() {
+        let Some(value) = lookup(name) else {
+            return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                scenario_location()
+                    .field(LocationField::TargetEnv)
+                    .index(index),
+                RuleViolation::MissingEnvironmentValue,
+            )));
+        };
+        let entry_bytes = name
+            .len()
+            .saturating_add(value.as_os_str().as_encoded_bytes().len());
+        aggregate_bytes =
+            aggregate_bytes.saturating_add(u64::try_from(entry_bytes).unwrap_or(u64::MAX));
+        if aggregate_bytes > maximum_bytes {
+            return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                scenario_location().field(LocationField::TargetEnv),
+                LimitViolation::new(LimitKind::EnvironmentBytes, aggregate_bytes, maximum_bytes)
+                    .expect("the explicit target environment exceeds its byte maximum"),
+            )));
+        }
+        resolved.push((OsString::from(name), value));
+    }
+    Ok(resolved)
+}

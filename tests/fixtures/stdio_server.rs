@@ -51,6 +51,26 @@ fn main() -> ExitCode {
         Some("catalog-item-limit") => catalog_item_limit(),
         Some("report-finding-limit") => report_finding_limit(),
         Some("report-finding-exact") => report_finding_exact(),
+        Some("active-success") => active_success(),
+        Some("active-one-success") => active_one_success(),
+        Some("active-output-instance-depth") => active_output_instance_depth(),
+        Some("active-output-evaluation-limit") => active_output_evaluation_limit(),
+        Some("active-mismatch-continue") => active_mismatch_continue(&remaining),
+        Some("active-input-required") => active_input_required(),
+        Some("active-tool-rejection") => active_tool_rejection(&remaining),
+        Some("active-no-calls") => active_no_calls(),
+        Some("active-advertised-schema-invalid") => active_advertised_schema_invalid(),
+        Some("active-advertised-output-depth") => active_advertised_output_depth(),
+        Some("active-discovery-contract-invalid") => active_discovery_contract_invalid(),
+        Some("active-tools-contract-invalid") => active_tools_contract_invalid(),
+        Some("active-invalid-result") => active_invalid_result(),
+        Some("active-tool-not-found") => active_tool_not_found(),
+        Some("active-revision-limit") => active_revision_limit(),
+        Some("active-catalog-finding-overflow") => active_catalog_finding_overflow(),
+        Some("active-crash") => active_crash(),
+        Some("active-oversize") => active_oversize(),
+        Some("active-resistant-child") => active_resistant_child(&remaining),
+        Some("active-started-marker") => active_started_marker(&remaining),
         Some("descendant") => descendant(&remaining),
         _ => ExitCode::from(2),
     }
@@ -493,6 +513,516 @@ fn report_finding_exact() -> ExitCode {
     report_finding_count(255)
 }
 
+fn active_success() -> ExitCode {
+    assert_eq!(
+        env::var("ACTIVE_TARGET_SECRET").ok().as_deref(),
+        Some(REDACTION_SENTINEL),
+        "the explicitly allowed target environment value should be present"
+    );
+    assert!(
+        env::var_os("MCP_DOCTOR_UNLISTED_SECRET").is_none(),
+        "an unlisted target environment value leaked"
+    );
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+
+    let first = read_active_call(&mut input, 3);
+    assert_active_arguments(&first, 0, true);
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+
+    let second = read_active_call(&mut input, 4);
+    assert_active_arguments(&second, 1, true);
+    write_result(
+        4,
+        json!({
+            "resultType": "complete",
+            "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+            "structuredContent": {"ok": false},
+            "isError": true
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_one_success() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_output_instance_depth() -> ExitCode {
+    let mut structured = json!({"value": true});
+    for _ in 0..70 {
+        structured = json!({"nested": structured});
+    }
+    active_single_structured_result(structured)
+}
+
+fn active_output_evaluation_limit() -> ExitCode {
+    active_single_structured_result(json!({"values": vec![Value::Null; 100_001]}))
+}
+
+fn active_single_structured_result(structured: Value) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": structured,
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_mismatch_continue(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+
+    let first = read_active_call(&mut input, 3);
+    assert_active_arguments(&first, 0, false);
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+
+    let second = read_active_call(&mut input, 4);
+    assert_active_arguments(&second, 1, false);
+    write_result(
+        4,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": REDACTION_SENTINEL},
+            "isError": false
+        }),
+    );
+
+    let third = read_active_call(&mut input, 5);
+    assert_active_arguments(&third, 2, false);
+    fs::write(marker, b"third reviewed case called")
+        .expect("the continuation marker should be writable");
+    write_result(
+        5,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_input_required() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let first = read_active_call(&mut input, 3);
+    assert_active_arguments(&first, 0, false);
+    write_result(
+        3,
+        json!({
+            "resultType": "input_required",
+            "inputRequests": {
+                "synthetic": {
+                    "type": "elicitation",
+                    "message": REDACTION_SENTINEL,
+                    "schema": {"type": "boolean"}
+                }
+            },
+            "requestState": REDACTION_SENTINEL
+        }),
+    );
+
+    let second = read_active_call(&mut input, 4);
+    assert_active_arguments(&second, 1, false);
+    assert!(
+        second["params"].get("inputResponses").is_none()
+            && second["params"].get("requestState").is_none(),
+        "mcp-doctor must not continue the input-required round"
+    );
+    write_result(
+        4,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_crash() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    ExitCode::from(7)
+}
+
+fn active_tool_rejection(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let first = read_active_call(&mut input, 3);
+    assert_active_arguments(&first, 0, false);
+    write_error(3);
+    let second = read_active_call(&mut input, 4);
+    assert_active_arguments(&second, 1, false);
+    fs::write(marker, b"later reviewed case called")
+        .expect("the rejection continuation marker should be writable");
+    write_result(
+        4,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_no_calls() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_advertised_schema_invalid() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.reviewed",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"$ref": "https://invalid.example/secret-schema"}
+                    }
+                }
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_advertised_output_depth() -> ExitCode {
+    let mut nested = json!({"type": "boolean"});
+    for _ in 0..70 {
+        nested = json!({"not": nested});
+    }
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.reviewed",
+                "inputSchema": {"type": "object"},
+                "outputSchema": nested
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_discovery_contract_invalid() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {"tools": {"listChanged": REDACTION_SENTINEL}},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_tools_contract_invalid() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": -1,
+            "cacheScope": REDACTION_SENTINEL,
+            "tools": [{
+                "name": "synthetic.reviewed",
+                "inputSchema": {"type": "object"}
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_invalid_result() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_tool_not_found() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.other",
+                "inputSchema": {"type": "object"}
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_revision_limit() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    let mut versions = vec![Value::String("2026-07-28".to_owned())];
+    versions.extend(vec![
+        Value::String("synthetic-private-revision".to_owned());
+        32
+    ]);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": versions,
+            "capabilities": {"tools": {}},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_catalog_finding_overflow() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": vec![Value::Null; 300]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_oversize() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    let mut stdout = io::stdout().lock();
+    write_repeated(&mut stdout, b'x', MIB + 1);
+    stdout.flush().expect("STDOUT should flush");
+    wait_forever()
+}
+
+fn active_resistant_child(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin(&mut input);
+    let request = read_active_call(&mut input, 3);
+    assert_active_arguments(&request, 0, false);
+    let descendant =
+        Command::new(env::current_exe().expect("the fixture path should be available"))
+            .arg("descendant")
+            .arg(marker)
+            .spawn()
+            .expect("the resistant active descendant should start");
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    wait_with_child(descendant)
+}
+
+fn active_started_marker(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    fs::write(marker, b"target started unexpectedly")
+        .expect("the target-start marker should be writable");
+    wait_forever()
+}
+
+fn active_begin(input: &mut impl BufRead) {
+    read_request(input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.reviewed",
+                "annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": true
+                },
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "sequence": {"type": "integer"},
+                        "secret": {"type": "string"}
+                    },
+                    "required": ["sequence"],
+                    "additionalProperties": false
+                },
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                    "additionalProperties": false
+                }
+            }]
+        }),
+    );
+}
+
+fn read_active_call(input: &mut impl BufRead, expected_id: i64) -> Value {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the active request should be readable");
+    assert!(read > 0, "the active request should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("the active request should be JSON");
+    assert!(
+        value["jsonrpc"] == "2.0" && value["id"] == expected_id && value["method"] == "tools/call",
+        "the expected ordered tools/call request should be sent"
+    );
+    assert!(
+        value["params"]["name"] == "synthetic.reviewed",
+        "only the exactly reviewed tool should be called"
+    );
+    assert_eq!(
+        value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
+        "2026-07-28"
+    );
+    assert!(!request.contains("initialize"));
+    value
+}
+
+fn assert_active_arguments(request: &Value, sequence: i64, secret: bool) {
+    let arguments = &request["params"]["arguments"];
+    assert!(
+        arguments["sequence"].as_i64() == Some(sequence),
+        "reviewed cases must preserve their declared order"
+    );
+    if secret {
+        assert!(
+            arguments["secret"].as_str() == Some(REDACTION_SENTINEL),
+            "the argument secret should resolve into its exact null placeholder"
+        );
+    } else {
+        assert!(
+            arguments.get("secret").is_none(),
+            "undeclared argument data must not be injected"
+        );
+    }
+}
+
 fn report_finding_count(count: usize) -> ExitCode {
     let result = json!({
         "resultType": "complete",
@@ -603,6 +1133,25 @@ fn write_result(id: i64, result: Value) {
         }),
     )
     .expect("the response should be writable");
+    stdout.write_all(b"\n").expect("the frame should terminate");
+    stdout.flush().expect("STDOUT should flush");
+}
+
+fn write_error(id: i64) {
+    let mut stdout = io::stdout().lock();
+    serde_json::to_writer(
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": -32000,
+                "message": REDACTION_SENTINEL,
+                "data": {"secret": REDACTION_SENTINEL}
+            }
+        }),
+    )
+    .expect("the error response should be writable");
     stdout.write_all(b"\n").expect("the frame should terminate");
     stdout.flush().expect("STDOUT should flush");
 }

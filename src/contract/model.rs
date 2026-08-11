@@ -6,30 +6,36 @@ use super::redaction::RedactedValue;
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum CheckId {
+    ScenarioConfiguration,
+    ActiveAuthorization,
     TransportStdio,
     ProtocolEnvelope,
     ProtocolRevision,
     DiscoveryCatalogs,
     SchemaContracts,
     RuntimeTools,
+    RuntimeToolCase(usize),
 }
 
 impl CheckId {
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(super) fn as_str(self) -> String {
         match self {
-            Self::TransportStdio => "transport.stdio",
-            Self::ProtocolRevision => "protocol.revision",
-            Self::ProtocolEnvelope => "protocol.envelope",
-            Self::DiscoveryCatalogs => "discovery.catalogs",
-            Self::SchemaContracts => "schema.contracts",
-            Self::RuntimeTools => "runtime.tools",
+            Self::ScenarioConfiguration => "scenario.configuration".to_owned(),
+            Self::ActiveAuthorization => "authorization.active".to_owned(),
+            Self::TransportStdio => "transport.stdio".to_owned(),
+            Self::ProtocolRevision => "protocol.revision".to_owned(),
+            Self::ProtocolEnvelope => "protocol.envelope".to_owned(),
+            Self::DiscoveryCatalogs => "discovery.catalogs".to_owned(),
+            Self::SchemaContracts => "schema.contracts".to_owned(),
+            Self::RuntimeTools => "runtime.tools".to_owned(),
+            Self::RuntimeToolCase(index) => format!("runtime.tools.case[{index}]"),
         }
     }
 }
 
 impl fmt::Display for CheckId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
+        formatter.write_str(&self.as_str())
     }
 }
 
@@ -51,7 +57,9 @@ impl Requirement {
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum SkipReason {
     NotAuthorized,
+    AuthorizationFailed,
     NotAdvertised,
+    InputRequired,
     UnsupportedRevision,
     PrerequisiteFailed,
     LimitReached,
@@ -62,7 +70,9 @@ impl SkipReason {
     pub(super) const fn as_str(self) -> &'static str {
         match self {
             Self::NotAuthorized => "not_authorized",
+            Self::AuthorizationFailed => "authorization_failed",
             Self::NotAdvertised => "not_advertised",
+            Self::InputRequired => "input_required",
             Self::UnsupportedRevision => "unsupported_revision",
             Self::PrerequisiteFailed => "prerequisite_failed",
             Self::LimitReached => "limit_reached",
@@ -73,7 +83,11 @@ impl SkipReason {
     pub(super) const fn description(self) -> &'static str {
         match self {
             Self::NotAuthorized => "active behavior was not authorized",
+            Self::AuthorizationFailed => "an explicit active authorization gate failed",
             Self::NotAdvertised => "the capability was not advertised",
+            Self::InputRequired => {
+                "the server requires input that mcp-doctor is not authorized to provide"
+            }
             Self::UnsupportedRevision => "the protocol revision is unsupported",
             Self::PrerequisiteFailed => "a required prerequisite did not pass",
             Self::LimitReached => "a safety limit prevented the check",
@@ -84,7 +98,10 @@ impl SkipReason {
     pub(super) const fn is_causal(self) -> bool {
         matches!(
             self,
-            Self::UnsupportedRevision | Self::PrerequisiteFailed | Self::LimitReached
+            Self::AuthorizationFailed
+                | Self::UnsupportedRevision
+                | Self::PrerequisiteFailed
+                | Self::LimitReached
         )
     }
 }
@@ -130,6 +147,17 @@ pub(super) enum FindingCode {
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
     ExternalSchemaReferenceBlocked,
+    ScenarioInvalid,
+    SecretReferenceInvalid,
+    ScenarioSchemaInvalid,
+    ToolAuthorizationMissing,
+    SideEffectsNotAuthorized,
+    ToolNotFound,
+    ToolArgumentsMismatch,
+    ToolCallRejected,
+    ToolResultMismatch,
+    ToolOutputMismatch,
+    ToolResultInvalid,
 }
 
 impl FindingCode {
@@ -151,6 +179,17 @@ impl FindingCode {
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
+            Self::ScenarioInvalid => "MCP-SCENARIO-001",
+            Self::SecretReferenceInvalid => "MCP-SCENARIO-002",
+            Self::ScenarioSchemaInvalid => "MCP-SCENARIO-003",
+            Self::ToolAuthorizationMissing => "MCP-AUTH-001",
+            Self::SideEffectsNotAuthorized => "MCP-AUTH-002",
+            Self::ToolNotFound => "MCP-ACTIVE-001",
+            Self::ToolArgumentsMismatch => "MCP-ACTIVE-002",
+            Self::ToolCallRejected => "MCP-ACTIVE-003",
+            Self::ToolResultMismatch => "MCP-ACTIVE-004",
+            Self::ToolOutputMismatch => "MCP-ACTIVE-005",
+            Self::ToolResultInvalid => "MCP-ACTIVE-006",
         }
     }
 
@@ -170,7 +209,18 @@ impl FindingCode {
             | Self::PaginationCursorRepeated
             | Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
-            | Self::ExternalSchemaReferenceBlocked => Severity::Error,
+            | Self::ExternalSchemaReferenceBlocked
+            | Self::ScenarioInvalid
+            | Self::SecretReferenceInvalid
+            | Self::ScenarioSchemaInvalid
+            | Self::ToolAuthorizationMissing
+            | Self::SideEffectsNotAuthorized
+            | Self::ToolNotFound
+            | Self::ToolArgumentsMismatch
+            | Self::ToolCallRejected
+            | Self::ToolResultMismatch
+            | Self::ToolOutputMismatch
+            | Self::ToolResultInvalid => Severity::Error,
             Self::CleanupFailed => Severity::Critical,
         }
     }
@@ -202,12 +252,39 @@ impl FindingCode {
             Self::PaginationCursorRepeated => {
                 "A catalog repeated a pagination cursor and inspection stopped."
             }
-            Self::SchemaContractInvalid => "An advertised JSON Schema contract is invalid.",
+            Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
             Self::UnsupportedSchemaDialect => {
-                "An advertised schema uses an unsupported JSON Schema dialect."
+                "A local schema uses an unsupported JSON Schema dialect."
             }
             Self::ExternalSchemaReferenceBlocked => {
-                "An advertised schema requires external reference retrieval."
+                "A schema requires prohibited external reference retrieval."
+            }
+            Self::ScenarioInvalid => "The check scenario does not match its versioned contract.",
+            Self::SecretReferenceInvalid => {
+                "A scenario environment reference could not be resolved safely."
+            }
+            Self::ScenarioSchemaInvalid => {
+                "A scenario-provided output schema is not a valid bounded local contract."
+            }
+            Self::ToolAuthorizationMissing => {
+                "The invocation does not authorize the scenario's exact tool."
+            }
+            Self::SideEffectsNotAuthorized => {
+                "The invocation does not authorize this side-effecting scenario."
+            }
+            Self::ToolNotFound => "The exactly authorized tool was not advertised uniquely.",
+            Self::ToolArgumentsMismatch => {
+                "The reviewed case arguments do not match the advertised input schema."
+            }
+            Self::ToolCallRejected => "The server rejected the active tool request.",
+            Self::ToolResultMismatch => {
+                "The completed tool result does not match the reviewed result expectation."
+            }
+            Self::ToolOutputMismatch => {
+                "The structured tool output does not match its required local schema contract."
+            }
+            Self::ToolResultInvalid => {
+                "The tool response does not match the MCP 2026-07-28 result contract."
             }
         }
     }
@@ -218,13 +295,13 @@ impl FindingCode {
                 "No protocol or contract check can run until the target starts."
             }
             Self::StdioIoFailed => {
-                "A broken channel prevents the passive inspection from completing reliably."
+                "A broken channel prevents the diagnosis from completing reliably."
             }
             Self::InvalidStdioMessage => {
                 "MCP clients cannot interpret this output as a JSON-RPC response."
             }
             Self::ServerExitedEarly => {
-                "The pending passive request cannot complete after the server exits."
+                "The pending request cannot complete after the server exits."
             }
             Self::ProtocolRevisionConfirmed => {
                 "The advertised revision determines which protocol rules can be applied."
@@ -262,6 +339,36 @@ impl FindingCode {
             Self::ExternalSchemaReferenceBlocked => {
                 "Resolving this contract would require network or file access that was not authorized."
             }
+            Self::ScenarioInvalid => {
+                "The declared cases cannot be replayed deterministically or within their safety boundary."
+            }
+            Self::SecretReferenceInvalid => {
+                "Starting the target could omit, misplace, or disclose a required secret."
+            }
+            Self::ScenarioSchemaInvalid => {
+                "The expected structured output cannot be checked locally and deterministically."
+            }
+            Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
+                "Calling the tool without every redundant authorization gate could cause unexpected activity."
+            }
+            Self::ToolNotFound => {
+                "mcp-doctor cannot safely choose the one tool authorized by the scenario and invocation."
+            }
+            Self::ToolArgumentsMismatch => {
+                "Sending invalid arguments would turn a local scenario defect into target activity."
+            }
+            Self::ToolCallRejected => {
+                "The reviewed case did not produce a completed tool result to validate."
+            }
+            Self::ToolResultMismatch => {
+                "The tool behaved differently from the case's reviewed success or error expectation."
+            }
+            Self::ToolOutputMismatch => {
+                "Consumers cannot rely on the structured result shape promised for this case."
+            }
+            Self::ToolResultInvalid => {
+                "Continuing after an invalid result envelope could make later conclusions unreliable."
+            }
         }
     }
 
@@ -269,7 +376,7 @@ impl FindingCode {
         match self {
             Self::ProcessStartFailed => "The target must be a directly executable local program.",
             Self::StdioIoFailed => {
-                "The target must keep its STDIO pipes available through the passive inspection."
+                "The target must keep its STDIO pipes available through the diagnosis."
             }
             Self::InvalidStdioMessage => {
                 "Each STDOUT frame must be one valid JSON-RPC 2.0 message terminated by a newline."
@@ -290,10 +397,10 @@ impl FindingCode {
                 "Servers should avoid features deprecated by MCP 2026-07-28."
             }
             Self::LimitExceeded => {
-                "Passive inspection must remain within every configured safety limit."
+                "Every diagnostic path must remain within its reported safety limit."
             }
             Self::CleanupFailed => {
-                "The managed process tree must terminate and be reaped before inspection returns."
+                "The managed process tree must terminate and be reaped before mcp-doctor returns."
             }
             Self::CatalogContractInvalid => {
                 "Each advertised catalog response and item must match MCP 2026-07-28."
@@ -305,13 +412,46 @@ impl FindingCode {
                 "Each nextCursor must advance the catalog or end pagination."
             }
             Self::SchemaContractInvalid => {
-                "Tool schemas must be valid local JSON Schema Draft 2020-12 objects."
+                "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects."
             }
             Self::UnsupportedSchemaDialect => {
-                "Tool schemas must omit $schema or declare JSON Schema Draft 2020-12."
+                "Local schemas must omit $schema or declare JSON Schema Draft 2020-12."
             }
             Self::ExternalSchemaReferenceBlocked => {
-                "Passive inspection accepts only references contained in the advertised schema."
+                "mcp-doctor accepts only references contained in the local schema being checked."
+            }
+            Self::ScenarioInvalid => {
+                "The file must be one strict mcp-doctor.scenario/v1alpha1 JSON scenario with 1–100 ordered cases."
+            }
+            Self::SecretReferenceInvalid => {
+                "Every reference must name an existing invoking-process environment value and every argument pointer must target an existing null placeholder."
+            }
+            Self::ScenarioSchemaInvalid => {
+                "Scenario output schemas must be bounded local JSON Schema Draft 2020-12 objects."
+            }
+            Self::ToolAuthorizationMissing => {
+                "--allow-tool must match the scenario and discovered tool byte for byte."
+            }
+            Self::SideEffectsNotAuthorized => {
+                "A side_effecting scenario also requires --allow-side-effects."
+            }
+            Self::ToolNotFound => {
+                "The server must advertise exactly one tool matching the authorized scenario tool."
+            }
+            Self::ToolArgumentsMismatch => {
+                "Each case must pass the selected tool's advertised input schema before it is called."
+            }
+            Self::ToolCallRejected => {
+                "The server must return a completed or input_required tools/call result for a reviewed case."
+            }
+            Self::ToolResultMismatch => {
+                "The isError classification must match the case's success or tool_error expectation."
+            }
+            Self::ToolOutputMismatch => {
+                "structuredContent must match the advertised output schema and the scenario schema when present."
+            }
+            Self::ToolResultInvalid => {
+                "A tools/call response must contain a valid complete or input_required result envelope."
             }
         }
     }
@@ -319,9 +459,9 @@ impl FindingCode {
     pub(super) const fn remediation(self) -> &'static str {
         match self {
             Self::ProcessStartFailed => {
-                "Check the executable path and permissions, then rerun inspect."
+                "Check the executable path and permissions, then rerun the same command."
             }
-            Self::StdioIoFailed => "Fix the server's STDIO lifecycle and rerun inspect.",
+            Self::StdioIoFailed => "Fix the server's STDIO lifecycle and rerun the same command.",
             Self::InvalidStdioMessage => {
                 "Write only newline-delimited JSON-RPC messages to STDOUT; send logs to STDERR."
             }
@@ -335,7 +475,7 @@ impl FindingCode {
             }
             Self::DeprecatedProtocolFeature => "Remove or replace the deprecated capability.",
             Self::LimitExceeded => {
-                "Reduce the advertised data or work below the reported maximum, then rerun inspect."
+                "Reduce the reported data or work below the maximum, then rerun the same command."
             }
             Self::CleanupFailed => {
                 "Make the server and descendants exit when STDIN closes or termination is requested."
@@ -358,6 +498,37 @@ impl FindingCode {
             Self::ExternalSchemaReferenceBlocked => {
                 "Inline the referenced schema or move it into local $defs and use a fragment reference."
             }
+            Self::ScenarioInvalid => "Correct the reported scenario structure and rerun check.",
+            Self::SecretReferenceInvalid => {
+                "Correct the environment reference or null placeholder, provide the value, and rerun check."
+            }
+            Self::ScenarioSchemaInvalid => {
+                "Correct or bound the local output schema, then rerun check."
+            }
+            Self::ToolAuthorizationMissing => {
+                "Pass the scenario's exact tool name through --allow-tool."
+            }
+            Self::SideEffectsNotAuthorized => {
+                "Use a disposable target and add --allow-side-effects only after reviewing every case."
+            }
+            Self::ToolNotFound => {
+                "Advertise one exact matching tool or correct the scenario and authorization together."
+            }
+            Self::ToolArgumentsMismatch => {
+                "Correct the case arguments or the advertised input schema; the case was not called."
+            }
+            Self::ToolCallRejected => {
+                "Correct the server-side rejection and replay the same reviewed case."
+            }
+            Self::ToolResultMismatch => {
+                "Correct the tool behavior or the reviewed expectation, then replay the scenario."
+            }
+            Self::ToolOutputMismatch => {
+                "Correct structuredContent or the applicable local output schema, then replay the scenario."
+            }
+            Self::ToolResultInvalid => {
+                "Return a valid MCP 2026-07-28 tool result before replaying later cases."
+            }
         }
     }
 
@@ -368,7 +539,7 @@ impl FindingCode {
             | Self::InvalidStdioMessage
             | Self::ServerExitedEarly
             | Self::LimitExceeded
-            | Self::CleanupFailed => "mcp-doctor M1 passive STDIO safety contract",
+            | Self::CleanupFailed => "mcp-doctor bounded local STDIO safety contract",
             Self::ProtocolRevisionConfirmed
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
@@ -381,6 +552,20 @@ impl FindingCode {
             | Self::ExternalSchemaReferenceBlocked => {
                 "MCP 2026-07-28 Tool contract and JSON Schema Draft 2020-12"
             }
+            Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
+                "mcp-doctor.scenario/v1alpha1 contract"
+            }
+            Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
+                "mcp-doctor MCPD-009 active-authorization contract"
+            }
+            Self::ToolNotFound
+            | Self::ToolArgumentsMismatch
+            | Self::ToolCallRejected
+            | Self::ToolResultMismatch
+            | Self::ToolOutputMismatch
+            | Self::ToolResultInvalid => {
+                "MCP 2026-07-28 tools contract and mcp-doctor MCPD-009 replay contract"
+            }
         }
     }
 
@@ -391,6 +576,17 @@ impl FindingCode {
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum LocationField {
+    Scenario,
+    SchemaVersion,
+    Authorization,
+    Safety,
+    Effects,
+    TargetEnv,
+    Cases,
+    Id,
+    SecretRefs,
+    Expect,
+    StructuredOutputSchema,
     Request,
     Meta,
     ProtocolVersion,
@@ -414,6 +610,9 @@ pub(super) enum LocationField {
     UriTemplate,
     InputSchema,
     OutputSchema,
+    Content,
+    StructuredContent,
+    IsError,
     Schema,
     Type,
     Properties,
@@ -440,6 +639,17 @@ pub(super) enum LocationField {
 impl LocationField {
     const fn as_str(self) -> &'static str {
         match self {
+            Self::Scenario => "scenario",
+            Self::SchemaVersion => "schema_version",
+            Self::Authorization => "authorization",
+            Self::Safety => "safety",
+            Self::Effects => "effects",
+            Self::TargetEnv => "target_env",
+            Self::Cases => "cases",
+            Self::Id => "id",
+            Self::SecretRefs => "secret_refs",
+            Self::Expect => "expect",
+            Self::StructuredOutputSchema => "structured_output_schema",
             Self::Request => "request",
             Self::Meta => "_meta",
             Self::ProtocolVersion => "io.modelcontextprotocol/protocolVersion",
@@ -463,6 +673,9 @@ impl LocationField {
             Self::UriTemplate => "uriTemplate",
             Self::InputSchema => "inputSchema",
             Self::OutputSchema => "outputSchema",
+            Self::Content => "content",
+            Self::StructuredContent => "structuredContent",
+            Self::IsError => "isError",
             Self::Schema => "$schema",
             Self::Type => "type",
             Self::Properties => "properties",
@@ -616,6 +829,30 @@ pub(super) enum RuleViolation {
     InvalidDraft202012 {
         error_count: u64,
     },
+    InvalidScenarioShape,
+    UnsupportedScenarioVersion,
+    DuplicateCaseId,
+    InvalidEnvironmentReference,
+    MissingEnvironmentValue,
+    ToolAuthorizationMismatch,
+    SideEffectsAuthorizationRequired,
+    ToolNotFound,
+    ArgumentsDoNotMatchSchema {
+        error_count: u64,
+    },
+    ToolCallRejected,
+    ExpectedSuccess,
+    ExpectedToolError,
+    AdvertisedOutputMismatch {
+        error_count: u64,
+    },
+    ScenarioOutputMismatch {
+        error_count: u64,
+    },
+    AdvertisedAndScenarioOutputMismatch {
+        error_count: u64,
+    },
+    InvalidToolResult,
 }
 
 impl RuleViolation {
@@ -633,6 +870,24 @@ impl RuleViolation {
             Self::ExternalSchemaReference => "external_schema_reference",
             Self::UnresolvedLocalReference => "unresolved_local_reference",
             Self::InvalidDraft202012 { .. } => "invalid_draft_2020_12",
+            Self::InvalidScenarioShape => "invalid_scenario_shape",
+            Self::UnsupportedScenarioVersion => "unsupported_scenario_version",
+            Self::DuplicateCaseId => "duplicate_case_id",
+            Self::InvalidEnvironmentReference => "invalid_environment_reference",
+            Self::MissingEnvironmentValue => "missing_environment_value",
+            Self::ToolAuthorizationMismatch => "exact_tool_authorization_required",
+            Self::SideEffectsAuthorizationRequired => "side_effects_authorization_required",
+            Self::ToolNotFound => "exact_tool_not_found",
+            Self::ArgumentsDoNotMatchSchema { .. } => "arguments_do_not_match_input_schema",
+            Self::ToolCallRejected => "tool_call_rejected",
+            Self::ExpectedSuccess => "expected_success",
+            Self::ExpectedToolError => "expected_tool_error",
+            Self::AdvertisedOutputMismatch { .. } => "advertised_output_schema_mismatch",
+            Self::ScenarioOutputMismatch { .. } => "scenario_output_schema_mismatch",
+            Self::AdvertisedAndScenarioOutputMismatch { .. } => {
+                "advertised_and_scenario_output_schema_mismatch"
+            }
+            Self::InvalidToolResult => "invalid_tool_result",
         }
     }
 
@@ -649,7 +904,23 @@ impl RuleViolation {
             | Self::RepeatedCursor
             | Self::ExternalSchemaReference
             | Self::UnresolvedLocalReference
-            | Self::InvalidDraft202012 { .. } => None,
+            | Self::InvalidDraft202012 { .. }
+            | Self::InvalidScenarioShape
+            | Self::UnsupportedScenarioVersion
+            | Self::DuplicateCaseId
+            | Self::InvalidEnvironmentReference
+            | Self::MissingEnvironmentValue
+            | Self::ToolAuthorizationMismatch
+            | Self::SideEffectsAuthorizationRequired
+            | Self::ToolNotFound
+            | Self::ArgumentsDoNotMatchSchema { .. }
+            | Self::ToolCallRejected
+            | Self::ExpectedSuccess
+            | Self::ExpectedToolError
+            | Self::AdvertisedOutputMismatch { .. }
+            | Self::ScenarioOutputMismatch { .. }
+            | Self::AdvertisedAndScenarioOutputMismatch { .. }
+            | Self::InvalidToolResult => None,
         }
     }
 
@@ -662,7 +933,11 @@ impl RuleViolation {
 
     pub(super) const fn error_count(self) -> Option<u64> {
         match self {
-            Self::InvalidDraft202012 { error_count } => Some(error_count),
+            Self::InvalidDraft202012 { error_count }
+            | Self::ArgumentsDoNotMatchSchema { error_count }
+            | Self::AdvertisedOutputMismatch { error_count }
+            | Self::ScenarioOutputMismatch { error_count }
+            | Self::AdvertisedAndScenarioOutputMismatch { error_count } => Some(error_count),
             _ => None,
         }
     }
@@ -867,6 +1142,117 @@ impl Finding {
             revision,
             location,
             FindingEvidence::RuleViolation(RuleViolation::ExternalSchemaReference),
+        )
+    }
+
+    pub(super) fn scenario_invalid(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::ScenarioInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn secret_reference_invalid(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::SecretReferenceInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn scenario_schema_invalid(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::ScenarioSchemaInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn tool_authorization_missing(location: Location) -> Self {
+        Self::new(
+            FindingCode::ToolAuthorizationMissing,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ToolAuthorizationMismatch),
+        )
+    }
+
+    pub(super) fn side_effects_not_authorized(location: Location) -> Self {
+        Self::new(
+            FindingCode::SideEffectsNotAuthorized,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::SideEffectsAuthorizationRequired),
+        )
+    }
+
+    pub(super) fn tool_not_found(location: Location) -> Self {
+        Self::new(
+            FindingCode::ToolNotFound,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ToolNotFound),
+        )
+    }
+
+    pub(super) fn tool_arguments_mismatch(location: Location, error_count: u64) -> Self {
+        Self::new(
+            FindingCode::ToolArgumentsMismatch,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ArgumentsDoNotMatchSchema {
+                error_count,
+            }),
+        )
+    }
+
+    pub(super) fn tool_call_rejected(location: Location) -> Self {
+        Self::new(
+            FindingCode::ToolCallRejected,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ToolCallRejected),
+        )
+    }
+
+    pub(super) fn tool_result_mismatch(location: Location, violation: RuleViolation) -> Self {
+        debug_assert!(matches!(
+            violation,
+            RuleViolation::ExpectedSuccess | RuleViolation::ExpectedToolError
+        ));
+        Self::new(
+            FindingCode::ToolResultMismatch,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn tool_output_mismatch(location: Location, violation: RuleViolation) -> Self {
+        debug_assert!(matches!(
+            violation,
+            RuleViolation::AdvertisedOutputMismatch { .. }
+                | RuleViolation::ScenarioOutputMismatch { .. }
+                | RuleViolation::AdvertisedAndScenarioOutputMismatch { .. }
+        ));
+        Self::new(
+            FindingCode::ToolOutputMismatch,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn tool_result_invalid(location: Location) -> Self {
+        Self::new(
+            FindingCode::ToolResultInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::InvalidToolResult),
         )
     }
 
@@ -1113,6 +1499,57 @@ mod tests {
                 "MCP-SCHEMA-003",
                 Severity::Error,
             ),
+            (
+                FindingCode::ScenarioInvalid,
+                "MCP-SCENARIO-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::SecretReferenceInvalid,
+                "MCP-SCENARIO-002",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ScenarioSchemaInvalid,
+                "MCP-SCENARIO-003",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolAuthorizationMissing,
+                "MCP-AUTH-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::SideEffectsNotAuthorized,
+                "MCP-AUTH-002",
+                Severity::Error,
+            ),
+            (FindingCode::ToolNotFound, "MCP-ACTIVE-001", Severity::Error),
+            (
+                FindingCode::ToolArgumentsMismatch,
+                "MCP-ACTIVE-002",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolCallRejected,
+                "MCP-ACTIVE-003",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolResultMismatch,
+                "MCP-ACTIVE-004",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolOutputMismatch,
+                "MCP-ACTIVE-005",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolResultInvalid,
+                "MCP-ACTIVE-006",
+                Severity::Error,
+            ),
         ];
 
         for (code, stable_code, severity) in cases {
@@ -1129,16 +1566,21 @@ mod tests {
     #[test]
     fn check_ids_and_skip_reasons_have_stable_report_values() {
         let check_ids = [
+            (CheckId::ScenarioConfiguration, "scenario.configuration"),
+            (CheckId::ActiveAuthorization, "authorization.active"),
             (CheckId::TransportStdio, "transport.stdio"),
             (CheckId::ProtocolEnvelope, "protocol.envelope"),
             (CheckId::ProtocolRevision, "protocol.revision"),
             (CheckId::DiscoveryCatalogs, "discovery.catalogs"),
             (CheckId::SchemaContracts, "schema.contracts"),
             (CheckId::RuntimeTools, "runtime.tools"),
+            (CheckId::RuntimeToolCase(17), "runtime.tools.case[17]"),
         ];
         let skip_reasons = [
             (SkipReason::NotAuthorized, "not_authorized"),
+            (SkipReason::AuthorizationFailed, "authorization_failed"),
             (SkipReason::NotAdvertised, "not_advertised"),
+            (SkipReason::InputRequired, "input_required"),
             (SkipReason::UnsupportedRevision, "unsupported_revision"),
             (SkipReason::PrerequisiteFailed, "prerequisite_failed"),
             (SkipReason::LimitReached, "limit_reached"),
@@ -1155,6 +1597,7 @@ mod tests {
         assert!(SkipReason::PrerequisiteFailed.is_causal());
         assert!(SkipReason::UnsupportedRevision.is_causal());
         assert!(SkipReason::LimitReached.is_causal());
+        assert!(SkipReason::AuthorizationFailed.is_causal());
         assert!(!SkipReason::NotAuthorized.is_causal());
     }
 

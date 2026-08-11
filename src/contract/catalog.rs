@@ -241,7 +241,7 @@ fn encode_request(id: i64, kind: RequestKind, cursor: Option<&str>) -> Vec<u8> {
     .expect("the typed passive request must serialize")
 }
 
-fn request_meta() -> Value {
+pub(super) fn request_meta() -> Value {
     json!({
         "io.modelcontextprotocol/clientCapabilities": {},
         "io.modelcontextprotocol/clientInfo": {
@@ -363,6 +363,15 @@ impl Analyzer {
     }
 
     fn push(&mut self, bucket: FindingBucket, finding: Finding) {
+        let duplicate = match bucket {
+            FindingBucket::Revision => self.revision.contains(&finding),
+            FindingBucket::Envelope => self.envelope.contains(&finding),
+            FindingBucket::Catalog => self.catalog.contains(&finding),
+            FindingBucket::Schema => self.schema.contains(&finding),
+        };
+        if duplicate {
+            return;
+        }
         if self.stored_findings < self.finding_capacity {
             match bucket {
                 FindingBucket::Revision => self.revision.push(finding),
@@ -502,65 +511,12 @@ impl Analyzer {
     }
 
     fn analyze_capabilities(&mut self, result: &Map<String, Value>, base: Location) -> bool {
-        let location = base.field(LocationField::Capabilities);
-        let Some(capabilities) = result.get("capabilities").and_then(Value::as_object) else {
-            self.expected_shape(
-                FindingBucket::Envelope,
-                location,
-                ExpectedShape::Object,
-                result.get("capabilities"),
-            );
-            return false;
-        };
-
-        let mut valid = true;
-        for kind in [
-            CatalogKind::Tools,
-            CatalogKind::Prompts,
-            CatalogKind::Resources,
-        ] {
-            let capability = kind.capability();
-            let Some(value) = capabilities.get(capability) else {
-                continue;
-            };
-            if !value.is_object() {
-                self.expected_shape(
-                    FindingBucket::Envelope,
-                    location.clone().field(kind.location_field()),
-                    ExpectedShape::Object,
-                    Some(value),
-                );
-                valid = false;
-                continue;
-            }
-            let capability = value
-                .as_object()
-                .expect("the capability object shape was checked");
-            for (field_name, field) in match kind {
-                CatalogKind::Resources => [
-                    ("listChanged", LocationField::ListChanged),
-                    ("subscribe", LocationField::Subscribe),
-                ]
-                .as_slice(),
-                CatalogKind::Tools | CatalogKind::Prompts => {
-                    [("listChanged", LocationField::ListChanged)].as_slice()
-                }
-                CatalogKind::ResourceTemplates => unreachable!("not a discovery capability"),
-            } {
-                if let Some(setting) = capability.get(*field_name)
-                    && !setting.is_boolean()
-                {
-                    self.expected_shape(
-                        FindingBucket::Envelope,
-                        location.clone().field(kind.location_field()).field(*field),
-                        ExpectedShape::Boolean,
-                        Some(setting),
-                    );
-                    valid = false;
-                }
-            }
+        let (findings, tools_advertised) = validate_discovery_capabilities(result, base);
+        let valid = findings.is_empty();
+        self.tools_advertised = tools_advertised;
+        for finding in findings {
+            self.push(FindingBucket::Envelope, finding);
         }
-        self.tools_advertised = capabilities.get("tools").is_some_and(Value::is_object);
         valid
     }
 
@@ -570,49 +526,10 @@ impl Analyzer {
         base: Location,
         bucket: FindingBucket,
     ) -> bool {
-        let mut valid = true;
-        let result_type = result.get("resultType");
-        if result_type.and_then(Value::as_str) != Some("complete") {
-            self.push(
-                bucket,
-                Finding::catalog_contract_invalid(
-                    SupportedRevision::CURRENT,
-                    base.clone().field(LocationField::ResultType),
-                    RuleViolation::ExpectedCompleteResult {
-                        observed: json_kind(result_type),
-                    },
-                ),
-            );
-            valid = false;
-        }
-
-        let ttl = result.get("ttlMs");
-        if !ttl.is_some_and(is_non_negative_number) {
-            self.expected_shape(
-                bucket,
-                base.clone().field(LocationField::TtlMs),
-                ExpectedShape::NonNegativeNumber,
-                ttl,
-            );
-            valid = false;
-        }
-
-        let cache_scope = result.get("cacheScope");
-        if !matches!(
-            cache_scope.and_then(Value::as_str),
-            Some("public" | "private")
-        ) {
-            self.push(
-                bucket,
-                Finding::catalog_contract_invalid(
-                    SupportedRevision::CURRENT,
-                    base.field(LocationField::CacheScope),
-                    RuleViolation::ExpectedCacheScope {
-                        observed: json_kind(cache_scope),
-                    },
-                ),
-            );
-            valid = false;
+        let findings = validate_cacheable_result(result, base);
+        let valid = findings.is_empty();
+        for finding in findings {
+            self.push(bucket, finding);
         }
         valid
     }
@@ -1245,6 +1162,236 @@ impl Analyzer {
                 SkipReason::NotAuthorized,
             ),
         ]
+    }
+}
+
+pub(super) fn validate_cacheable_result(
+    result: &Map<String, Value>,
+    base: Location,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let result_type = result.get("resultType");
+    if result_type.and_then(Value::as_str) != Some("complete") {
+        findings.push(Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            base.clone().field(LocationField::ResultType),
+            RuleViolation::ExpectedCompleteResult {
+                observed: json_kind(result_type),
+            },
+        ));
+    }
+
+    let ttl = result.get("ttlMs");
+    if !ttl.is_some_and(is_non_negative_number) {
+        findings.push(Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            base.clone().field(LocationField::TtlMs),
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::NonNegativeNumber,
+                observed: json_kind(ttl),
+            },
+        ));
+    }
+
+    let cache_scope = result.get("cacheScope");
+    if !matches!(
+        cache_scope.and_then(Value::as_str),
+        Some("public" | "private")
+    ) {
+        findings.push(Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            base.field(LocationField::CacheScope),
+            RuleViolation::ExpectedCacheScope {
+                observed: json_kind(cache_scope),
+            },
+        ));
+    }
+    findings
+}
+
+pub(super) fn validate_discovery_capabilities(
+    result: &Map<String, Value>,
+    base: Location,
+) -> (Vec<Finding>, bool) {
+    let location = base.field(LocationField::Capabilities);
+    let Some(capabilities) = result.get("capabilities").and_then(Value::as_object) else {
+        return (
+            vec![Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                location,
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(result.get("capabilities")),
+                },
+            )],
+            false,
+        );
+    };
+
+    let mut findings = Vec::new();
+    for kind in [
+        CatalogKind::Tools,
+        CatalogKind::Prompts,
+        CatalogKind::Resources,
+    ] {
+        let Some(value) = capabilities.get(kind.capability()) else {
+            continue;
+        };
+        let Some(capability) = value.as_object() else {
+            findings.push(Finding::catalog_contract_invalid(
+                SupportedRevision::CURRENT,
+                location.clone().field(kind.location_field()),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(Some(value)),
+                },
+            ));
+            continue;
+        };
+        for (field_name, field) in match kind {
+            CatalogKind::Resources => [
+                ("listChanged", LocationField::ListChanged),
+                ("subscribe", LocationField::Subscribe),
+            ]
+            .as_slice(),
+            CatalogKind::Tools | CatalogKind::Prompts => {
+                [("listChanged", LocationField::ListChanged)].as_slice()
+            }
+            CatalogKind::ResourceTemplates => unreachable!("not a discovery capability"),
+        } {
+            if let Some(setting) = capability.get(*field_name)
+                && !setting.is_boolean()
+            {
+                findings.push(Finding::catalog_contract_invalid(
+                    SupportedRevision::CURRENT,
+                    location.clone().field(kind.location_field()).field(*field),
+                    RuleViolation::ExpectedShape {
+                        expected: ExpectedShape::Boolean,
+                        observed: json_kind(Some(setting)),
+                    },
+                ));
+            }
+        }
+    }
+    (
+        findings,
+        capabilities.get("tools").is_some_and(Value::is_object),
+    )
+}
+
+pub(super) fn validate_local_schema(schema: &Value, base: Location) -> Vec<Finding> {
+    let mut analyzer = Analyzer::new(0);
+    analyzer.analyze_schema(schema, base.clone());
+    if analyzer.finding_overflow {
+        analyzer.schema.pop();
+        let maximum = analyzer.limits.values().report_findings;
+        analyzer.schema.push(Finding::limit_exceeded(
+            SupportedRevision::CURRENT,
+            base,
+            LimitViolation::new(
+                LimitKind::ReportFindings,
+                maximum.saturating_add(1),
+                maximum,
+            )
+            .expect("the local schema finding overflow exceeds the report maximum"),
+        ));
+    }
+    analyzer.schema
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum InstanceValidationIssue {
+    Mismatch { error_count: u64 },
+    Limit(LimitViolation),
+    InvalidSchema,
+}
+
+pub(super) struct LocalValidator {
+    validator: jsonschema::Validator,
+}
+
+impl LocalValidator {
+    pub(super) fn compile(schema: &Value) -> Result<Self, InstanceValidationIssue> {
+        let validator = jsonschema::draft202012::options()
+            .with_retriever(NoExternalRetrieval)
+            .build(schema)
+            .map_err(|_| InstanceValidationIssue::InvalidSchema)?;
+        Ok(Self { validator })
+    }
+
+    pub(super) fn validate(&self, instance: &Value) -> Result<(), InstanceValidationIssue> {
+        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let bytes = u64::try_from(serialized_len(instance)).unwrap_or(u64::MAX);
+        if bytes > values.instance_bytes {
+            return Err(InstanceValidationIssue::Limit(
+                LimitViolation::new(LimitKind::InstanceBytes, bytes, values.instance_bytes)
+                    .expect("the instance byte count exceeds its checked maximum"),
+            ));
+        }
+
+        let mut stack = vec![(instance, 0_u64)];
+        let mut work = 0_u64;
+        while let Some((value, depth)) = stack.pop() {
+            work = work.saturating_add(1);
+            if work > values.schema_evaluation_steps {
+                return Err(InstanceValidationIssue::Limit(
+                    LimitViolation::new(
+                        LimitKind::SchemaEvaluationSteps,
+                        work,
+                        values.schema_evaluation_steps,
+                    )
+                    .expect("the instance traversal work exceeds its checked maximum"),
+                ));
+            }
+            if depth > values.schema_depth {
+                return Err(InstanceValidationIssue::Limit(
+                    LimitViolation::new(LimitKind::SchemaDepth, depth, values.schema_depth)
+                        .expect("the instance depth exceeds its checked maximum"),
+                ));
+            }
+            match value {
+                Value::Array(values) => {
+                    stack.extend(
+                        values
+                            .iter()
+                            .rev()
+                            .map(|value| (value, depth.saturating_add(1))),
+                    );
+                }
+                Value::Object(values) => {
+                    stack.extend(
+                        values
+                            .values()
+                            .rev()
+                            .map(|value| (value, depth.saturating_add(1))),
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        let maximum_errors = values.validation_errors;
+        let error_count = u64::try_from(
+            self.validator
+                .iter_errors(instance)
+                .take(
+                    usize::try_from(maximum_errors)
+                        .unwrap_or(usize::MAX)
+                        .saturating_add(1),
+                )
+                .count(),
+        )
+        .unwrap_or(u64::MAX);
+        if error_count > maximum_errors {
+            return Err(InstanceValidationIssue::Limit(
+                LimitViolation::new(LimitKind::ValidationErrors, error_count, maximum_errors)
+                    .expect("the validation error count exceeds its checked maximum"),
+            ));
+        }
+        if error_count > 0 {
+            return Err(InstanceValidationIssue::Mismatch { error_count });
+        }
+        Ok(())
     }
 }
 

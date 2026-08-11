@@ -1,13 +1,10 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, StdioDiagnostic, StdioLimitKind,
-    StdioPrimaryFailure, StdioStream as ContractStream, m1_stdio_limit_profile,
-    render_catalog_diagnostic, render_stdio_diagnostic,
+    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, m1_stdio_limit_profile,
+    render_catalog_diagnostic, render_stdio_diagnostic, stdio_diagnostic,
 };
-use crate::transport::stdio::{
-    StdioFailure, StdioLimit, StdioLimits, StdioStream, StdioTarget, StdioTransport, TargetError,
-};
+use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
 pub(crate) async fn run(
     target: Vec<OsString>,
@@ -35,10 +32,10 @@ pub(crate) async fn run(
     let result = transport.probe(&target, &mut conversation).await;
 
     debug_assert!(result.failure().is_some() || result.response().is_some());
-    let diagnostic = StdioDiagnostic {
-        primary: result.failure().map(map_failure),
-        cleanup_failed: result.cleanup_failed() || internal_test_cleanup_failure(),
-    };
+    let diagnostic = stdio_diagnostic(
+        result.failure(),
+        result.cleanup_failed() || internal_test_cleanup_failure(),
+    );
     if result.failure().is_some() {
         Ok(render_stdio_diagnostic(diagnostic, format))
     } else {
@@ -61,50 +58,4 @@ fn internal_test_cleanup_failure() -> bool {
 #[cfg(not(feature = "internal-test-fixtures"))]
 const fn internal_test_cleanup_failure() -> bool {
     false
-}
-
-fn map_failure(failure: StdioFailure) -> StdioPrimaryFailure {
-    match failure {
-        StdioFailure::ProcessStart => StdioPrimaryFailure::ProcessStart,
-        StdioFailure::Io { stream } => StdioPrimaryFailure::Io {
-            stream: map_stream(stream),
-        },
-        StdioFailure::InvalidMessage { byte_count, index } => {
-            StdioPrimaryFailure::InvalidMessage { byte_count, index }
-        }
-        StdioFailure::EarlyExit => StdioPrimaryFailure::EarlyExit,
-        StdioFailure::Limit {
-            kind,
-            observed,
-            maximum,
-        } => StdioPrimaryFailure::Limit {
-            kind: map_limit(kind),
-            observed,
-            maximum,
-        },
-    }
-}
-
-const fn map_stream(stream: StdioStream) -> ContractStream {
-    match stream {
-        StdioStream::Process => ContractStream::Process,
-        StdioStream::Stdin => ContractStream::Stdin,
-        StdioStream::Stdout => ContractStream::Stdout,
-        StdioStream::Stderr => ContractStream::Stderr,
-    }
-}
-
-const fn map_limit(limit: StdioLimit) -> StdioLimitKind {
-    match limit {
-        StdioLimit::StartupTime => StdioLimitKind::StartupTime,
-        StdioLimit::DiscoveryTime => StdioLimitKind::DiscoveryTime,
-        StdioLimit::RequestTime => StdioLimitKind::RequestTime,
-        StdioLimit::ResponseTime => StdioLimitKind::ResponseTime,
-        StdioLimit::TotalTime => StdioLimitKind::TotalTime,
-        StdioLimit::MessageBytes => StdioLimitKind::MessageBytes,
-        StdioLimit::StdoutBytes => StdioLimitKind::StdoutBytes,
-        StdioLimit::StderrBytes => StdioLimitKind::StderrBytes,
-        StdioLimit::AggregateOutputBytes => StdioLimitKind::AggregateOutputBytes,
-        StdioLimit::MessageCount => StdioLimitKind::MessageCount,
-    }
 }

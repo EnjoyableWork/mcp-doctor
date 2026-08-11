@@ -417,7 +417,10 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(notes.contains("does not call tools"));
     assert!(notes.contains("does not call tools, connect to remote HTTP endpoints"));
     assert!(adoption.contains("Opened: 2026-08-10"));
+    assert!(adoption.contains("Closed: 2026-08-10"));
     assert!(adoption.contains("zero independent adoption reports at opening"));
+    assert!(adoption.contains("no adoption or repeat-use claim"));
+    assert!(adoption.contains("does not block M3"));
     assert!(adoption.contains("at least five independently authored servers"));
     for sensitive in [
         "endpoint URLs",
@@ -427,6 +430,40 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "tool arguments or results",
     ] {
         assert!(adoption.contains(sensitive));
+    }
+}
+
+#[test]
+fn project_keeps_mcpd_009_active_authorization_boundary_explicit() {
+    let project = repository_file("PROJECT.md");
+    let agents = repository_file("AGENTS.md");
+
+    for contract in [
+        "mcp-doctor.scenario/v1alpha1",
+        "RFC 6901",
+        "`read_only` or `side_effecting`",
+        "`--allow-tool <exact-name>`",
+        "`--allow-side-effects`",
+        "An `input_required` result is recorded as incomplete",
+        "| MCPD-009 | Add explicit, budgeted, deterministic `check` scenario replay and result-schema validation | M3 | Done |",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain MCPD-009 contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "mcp-doctor.scenario/v1alpha1",
+        "--allow-tool",
+        "--allow-side-effects",
+        "RFC 6901",
+        "Treat `input_required` as incomplete",
+    ] {
+        assert!(
+            agents.contains(contract),
+            "AGENTS.md should retain active safety rule: {contract}"
+        );
     }
 }
 
