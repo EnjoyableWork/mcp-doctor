@@ -27,10 +27,36 @@ removal takes precedence over investigation.
 
 ## Closure record
 
-Status: pending
+Status: closed at `2026-08-11T21:55:10Z`
 
-The protected follow-up pull request will record the exact emergency pull
-request and squash commit, the requirements incomplete at merge time, removal
-time, empty-bypass readback, canonical public-projection verification, and
-post-merge gate evidence. Security-sensitive detail and actor identities are
-not public evidence.
+| Field | Recorded value |
+| --- | --- |
+| Dedicated pull request | [PR 18](https://github.com/EnjoyableWork/mcp-doctor/pull/18) |
+| Exact change commit | `05090b3b62ae145f06dbdd69f3346e4cd2fa607a` |
+| Pre-merge state | `BLOCKED`; neither `Required CI` nor `Required release preflight` had reported |
+| Requirement exercised | Strict required-status-check completion. The branch was current, had no unresolved review thread, and used a pull request and squash merge, so no other merge requirement needed bypass. |
+| Merge-window activation | `2026-08-11T21:42:39.603Z`; one built-in repository-administrator role, `pull_request` mode |
+| Merge | `2026-08-11T21:42:41Z`; squash commit `8487b47dbddb2dd1c50020b5b157d9807bc4fcd7` |
+| Bypass removal | `2026-08-11T21:42:44.005Z`; active ruleset with zero bypass actors |
+| Public projection after removal | `date=2026-08-11 canonical_sha256=2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794 result=PASS` |
+| Administrative readback after removal | The same bounded date, canonical hash, and `PASS`; no settings, actor inventory, or identity were emitted |
+| Post-removal CI | [Required CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31539153287/job/93938063807) passed on the exact squash commit |
+| Post-removal release preflight | [Required release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31539153316/job/93940246247) passed on the exact squash commit |
+| Protected closure | [PR 19](https://github.com/EnjoyableWork/mcp-doctor/pull/19) publishes this record through the normal no-bypass path and must pass both required aggregates |
+| Head branch | Deleted after merge |
+
+The first activation at `2026-08-11T21:41:04Z` did not merge or update a
+protected ref. A local evidence-formatting command failed, and its rollback
+trap restored the empty bypass list at `2026-08-11T21:41:38.192Z` while PR 18
+remained open and `main` remained
+`09765f6fe13eb050de32033fc6d51b3e8b5da37f`. The merge window above began only
+after that empty state was read back again. Recording this aborted window is
+part of the exercise evidence; it consumed no pull-request merge budget.
+
+The actor existed only during the recorded windows and never had `always`
+mode. The ruleset was never disabled, and the exercise did not directly update,
+delete, or non-fast-forward `main`. Public evidence proves the configured and
+effective rule projection. The authenticated result is intentionally
+non-disclosing and self-attested because GitHub hides bypass actors and merge
+settings from credential-free repository readback. No actor identity,
+credential, security finding, or private setting value is part of this record.

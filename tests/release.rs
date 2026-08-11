@@ -633,7 +633,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is In progress |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Done and `MCPD-014` is Ready |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -720,6 +720,62 @@ fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
         !project.contains("| OPEN-09 |"),
         "accepted OPEN-09 should leave the open-decision table"
     );
+}
+
+#[test]
+fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence() {
+    let project = repository_file("PROJECT.md");
+    let exercise = repository_file("docs/assurance/mcpd-013-emergency-exercise.md");
+
+    for contract in [
+        "| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done |",
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Ready |",
+        "### MCPD-013 completion evidence",
+        "`MCPD-013` completed on 2026-08-11",
+        "2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/16",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/17",
+        "31537654995/job/93933333425",
+        "31537655042/job/93935386965",
+        "29d83e094b1112b6c86fbcabeb93667e11e02a53",
+        "direct update, primary-branch",
+        "leased same-tree non-fast-forward force-update attempts were each",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/18",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/19",
+        "31539153287/job/93938063807",
+        "31539153316/job/93940246247",
+        "Mitigated for the 2026-08-11 `MCPD-013` scope",
+        "An administrator can still change repository policy",
+        "Security controls remain\n`MCPD-014`",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain MCPD-013 completion evidence: {contract}"
+        );
+    }
+
+    for contract in [
+        "Status: closed at `2026-08-11T21:55:10Z`",
+        "MCPD-013-EXERCISE-20260811-01",
+        "05090b3b62ae145f06dbdd69f3346e4cd2fa607a",
+        "`BLOCKED`; neither `Required CI` nor `Required release preflight` had reported",
+        "2026-08-11T21:42:39.603Z",
+        "8487b47dbddb2dd1c50020b5b157d9807bc4fcd7",
+        "2026-08-11T21:42:44.005Z",
+        "31539153287/job/93938063807",
+        "31539153316/job/93940246247",
+        "first activation at `2026-08-11T21:41:04Z`",
+        "restored the empty bypass list at `2026-08-11T21:41:38.192Z`",
+        "The ruleset was never disabled",
+        "No actor identity",
+    ] {
+        assert!(
+            exercise.contains(contract),
+            "emergency record should retain bounded closure evidence: {contract}"
+        );
+    }
+
+    assert!(!exercise.contains("Status: pending"));
 }
 
 #[test]
