@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const RELEASE_VERSION: &str = "0.1.0";
+const CURRENT_RELEASE_VERSION: &str = "0.2.0";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,10 +57,11 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.1.0\"",
+        "version = \"0.2.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.github/workflows/*.yml\"",
+        "\"/schemas/**\"",
         "\"/scripts/**\"",
         "\"/docs/**\"",
     ] {
@@ -402,7 +403,8 @@ fn assert_release_version_case(arguments: &[&str], expected_success: bool) {
 #[test]
 fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let release = repository_file("docs/release.md");
-    let notes = repository_file("docs/releases/v0.1.0.md");
+    let first_notes = repository_file("docs/releases/v0.1.0.md");
+    let current_notes = repository_file("docs/releases/v0.2.0.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -414,8 +416,20 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("No publish command exists in the authorization job"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
-    assert!(notes.contains("does not call tools"));
-    assert!(notes.contains("does not call tools, connect to remote HTTP endpoints"));
+    assert!(first_notes.contains("does not call tools"));
+    assert!(first_notes.contains("does not call tools, connect to remote HTTP endpoints"));
+    for contract in [
+        "mcp-doctor.report/v1",
+        "JUnit",
+        "--allow-tool",
+        "does not add SARIF",
+        "does not become a general security scanner",
+    ] {
+        assert!(
+            current_notes.contains(contract),
+            "current release notes should preserve {contract}"
+        );
+    }
     assert!(adoption.contains("Opened: 2026-08-10"));
     assert!(adoption.contains("Closed: 2026-08-10"));
     assert!(adoption.contains("zero independent adoption reports at opening"));
@@ -430,6 +444,25 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "tool arguments or results",
     ] {
         assert!(adoption.contains(sensitive));
+    }
+}
+
+#[test]
+fn junit_compatibility_evidence_is_scoped_and_pinned() {
+    let evidence = repository_file("tests/junit/README.md");
+
+    for contract in [
+        "not a JUnit standard claim",
+        "process exit status",
+        "67a81935603ce6740d5036f23f867ada49bd5cb3",
+        "7f38b981fe5d1895345f265b70773e98927b0893",
+        "1 success, 1 failed, and 1 skipped",
+        "two selected independent parsers at pinned commits",
+    ] {
+        assert!(
+            evidence.contains(contract),
+            "JUnit evidence should preserve {contract}"
+        );
     }
 }
 
@@ -729,6 +762,6 @@ fn inspect_text_path(path: &Path, forbidden: &str) {
 }
 
 #[test]
-fn release_version_constant_matches_the_first_version() {
-    assert_eq!(RELEASE_VERSION, "0.1.0");
+fn release_version_constant_matches_the_current_version() {
+    assert_eq!(CURRENT_RELEASE_VERSION, "0.2.0");
 }

@@ -55,6 +55,7 @@ fn every_direct_registry_dependency_has_an_exact_version() {
             "serde",
             "serde_json",
             "tokio",
+            "quick-xml",
             "rcgen",
             "tempfile",
         ],

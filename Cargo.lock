@@ -929,12 +929,13 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "mcp-doctor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "clap",
  "jsonschema",
  "process-wrap",
+ "quick-xml",
  "rcgen",
  "reqwest",
  "rustls",
@@ -1192,6 +1193,15 @@ dependencies = [
  "nix",
  "tokio",
  "windows",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

@@ -19,7 +19,7 @@ use super::model::{
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
 use super::redaction::RedactedValue;
-use super::report::{DiagnosticReport, ExitStatus, ReportFormat, render_report};
+use super::report::{DiagnosticReport, ExitStatus, ReportFormat};
 use super::{
     HttpDiagnostic, RenderedDiagnostic, ReportTransport, StdioDiagnostic, http_checks,
     stdio_findings,
@@ -646,10 +646,7 @@ fn render_prestart_failure(
     )
     .expect("a scenario configuration failure is a valid report")
     .with_exit_status(ExitStatus::InvocationError);
-    RenderedDiagnostic {
-        output: render_report(&report, format),
-        exit: report.exit_status().into(),
-    }
+    RenderedDiagnostic::from_report(&report, format)
 }
 
 pub(crate) fn render_authorization_failure(
@@ -717,10 +714,7 @@ pub(crate) fn render_authorization_failure(
     )
     .expect("an active authorization failure is a valid report")
     .with_exit_status(ExitStatus::InvocationError);
-    RenderedDiagnostic {
-        output: render_report(&report, format),
-        exit: report.exit_status().into(),
-    }
+    RenderedDiagnostic::from_report(&report, format)
 }
 
 fn prestart_transport_checks(transport: ReportTransport, reason: SkipReason) -> Vec<CheckResult> {
@@ -1765,10 +1759,7 @@ impl ActiveConversation {
             checks,
         )
         .expect("the active application must construct a valid diagnostic report");
-        RenderedDiagnostic {
-            output: render_report(&report, format),
-            exit: report.exit_status().into(),
-        }
+        RenderedDiagnostic::from_report(&report, format)
     }
 
     fn fit_report_finding_budget(&mut self, transport_findings: usize) {

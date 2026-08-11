@@ -1,6 +1,6 @@
 [package]
 name = "mcp-doctor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Diagnose protocol, schema, and runtime failures in MCP servers"
 license = "MIT"
@@ -12,6 +12,7 @@ categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
     "/.github/workflows/*.yml",
+    "/schemas/**",
     "/src/**",
     "/tests/**",
     "/scripts/**",
@@ -67,6 +68,7 @@ tokio = { version = "=1.53.1", features = [
 ] }
 
 [dev-dependencies]
+quick-xml = { version = "=0.41.0", default-features = false }
 rcgen = { version = "=0.14.9", default-features = false, features = [
     "pem",
     "ring",

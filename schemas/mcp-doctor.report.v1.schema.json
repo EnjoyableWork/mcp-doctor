@@ -1,0 +1,815 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.report.v1.schema.json",
+  "title": "mcp-doctor stable diagnostic report",
+  "description": "The redacted, vendor-neutral mcp-doctor.report/v1 automation contract. Unknown optional properties and new finding codes are compatible within v1 and must be ignored or handled from their reported safe metadata.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "schema_stability",
+    "protocol_revision",
+    "primary_diagnosis",
+    "independent_findings",
+    "outcome",
+    "exit_code",
+    "limits",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.report/v1"
+    },
+    "schema_stability": {
+      "const": "stable"
+    },
+    "protocol_revision": {
+      "$ref": "#/$defs/protocol_revision"
+    },
+    "primary_diagnosis": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/diagnosis"
+        }
+      ]
+    },
+    "independent_findings": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/independent_finding"
+      }
+    },
+    "outcome": {
+      "enum": [
+        "passed",
+        "failed",
+        "incomplete"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "bounded_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "positive_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    },
+    "protocol_revision": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "maxLength": 10
+    },
+    "check_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)*(?:\\[[0-9]+\\])?$",
+      "maxLength": 128
+    },
+    "finding_code": {
+      "type": "string",
+      "pattern": "^MCP-[A-Z][A-Z0-9-]*-[0-9]{3}$",
+      "maxLength": 64
+    },
+    "location": {
+      "type": "string",
+      "pattern": "^[A-Za-z_$][A-Za-z0-9_$./*\\[\\]]*$",
+      "maxLength": 512
+    },
+    "safe_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "diagnosis_finding": {
+      "type": "object",
+      "required": [
+        "code",
+        "location"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/finding_code"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnosis": {
+      "type": "object",
+      "required": [
+        "check_id",
+        "findings"
+      ],
+      "properties": {
+        "check_id": {
+          "$ref": "#/$defs/check_id"
+        },
+        "findings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/diagnosis_finding"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "independent_finding": {
+      "type": "object",
+      "required": [
+        "check_id",
+        "code",
+        "location"
+      ],
+      "properties": {
+        "check_id": {
+          "$ref": "#/$defs/check_id"
+        },
+        "code": {
+          "$ref": "#/$defs/finding_code"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      },
+      "additionalProperties": true
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "startup_ms",
+        "discovery_ms",
+        "request_ms",
+        "response_ms",
+        "shutdown_grace_ms",
+        "total_ms",
+        "message_bytes",
+        "stdout_bytes",
+        "stderr_bytes",
+        "aggregate_output_bytes",
+        "endpoint_bytes",
+        "resolution_addresses",
+        "resolution_count",
+        "trust_bytes",
+        "trust_certificates",
+        "request_fields",
+        "request_field_name_bytes",
+        "request_field_value_bytes",
+        "request_fields_bytes",
+        "response_fields",
+        "response_field_name_bytes",
+        "response_field_value_bytes",
+        "response_fields_bytes",
+        "message_count",
+        "protocol_revisions",
+        "catalog_items",
+        "schema_bytes",
+        "instance_bytes",
+        "schema_nodes",
+        "schema_depth",
+        "schema_ref_depth",
+        "schema_evaluation_steps",
+        "validation_errors",
+        "report_findings",
+        "report_bytes",
+        "active_cases",
+        "generation_attempts",
+        "generation_candidates",
+        "generation_steps",
+        "redirects",
+        "retries",
+        "concurrency"
+      ],
+      "properties": {
+        "startup_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "discovery_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "request_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "response_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "shutdown_grace_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "total_ms": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "message_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "stdout_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "stderr_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "aggregate_output_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "endpoint_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "resolution_addresses": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "resolution_count": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "trust_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "trust_certificates": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "request_fields": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "request_field_name_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "request_field_value_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "request_fields_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "response_fields": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "response_field_name_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "response_field_value_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "response_fields_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "message_count": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "protocol_revisions": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "catalog_items": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "schema_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "instance_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "schema_nodes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "schema_depth": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "schema_ref_depth": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "schema_evaluation_steps": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "validation_errors": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "report_findings": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "report_bytes": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "active_cases": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "generation_attempts": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "generation_candidates": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "generation_steps": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "redirects": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "retries": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "concurrency": {
+          "$ref": "#/$defs/positive_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "severity_counts": {
+      "type": "object",
+      "required": [
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ],
+      "properties": {
+        "info": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "warning": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "error": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "critical": {
+          "$ref": "#/$defs/bounded_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "checks",
+        "required",
+        "optional",
+        "performed",
+        "skipped",
+        "passed",
+        "warned",
+        "failed",
+        "required_skipped",
+        "findings"
+      ],
+      "properties": {
+        "checks": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "required": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "optional": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "performed": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "skipped": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "passed": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "warned": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "failed": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "required_skipped": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "findings": {
+          "$ref": "#/$defs/severity_counts"
+        }
+      },
+      "additionalProperties": true
+    },
+    "structural_input": {
+      "type": "object",
+      "required": [
+        "root",
+        "byte_count",
+        "node_count",
+        "maximum_depth",
+        "nulls",
+        "booleans",
+        "numbers",
+        "strings",
+        "arrays",
+        "array_items",
+        "objects",
+        "object_members"
+      ],
+      "properties": {
+        "root": {
+          "enum": [
+            "null",
+            "boolean",
+            "number",
+            "string",
+            "array",
+            "object"
+          ]
+        },
+        "byte_count": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "node_count": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "maximum_depth": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "nulls": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "booleans": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "numbers": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "strings": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "arrays": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "array_items": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "objects": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "object_members": {
+          "$ref": "#/$defs/bounded_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "reproduction": {
+      "type": "object",
+      "required": [
+        "generator",
+        "seed",
+        "input"
+      ],
+      "properties": {
+        "generator": {
+          "type": "string",
+          "pattern": "^mcp-doctor\\.generator/v[0-9]+$",
+          "maxLength": 64
+        },
+        "seed": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "input": {
+          "$ref": "#/$defs/structural_input"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_none": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_revision_advertisement": {
+      "type": "object",
+      "required": [
+        "kind",
+        "required",
+        "offered",
+        "recognized_legacy",
+        "unknown_date",
+        "opaque"
+      ],
+      "properties": {
+        "kind": {
+          "const": "revision_advertisement"
+        },
+        "required": {
+          "$ref": "#/$defs/protocol_revision"
+        },
+        "offered": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "recognized_legacy": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "unknown_date": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "opaque": {
+          "$ref": "#/$defs/bounded_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_redacted_observation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "marker",
+        "byte_count"
+      ],
+      "properties": {
+        "kind": {
+          "const": "redacted_observation"
+        },
+        "marker": {
+          "const": "[REDACTED]"
+        },
+        "byte_count": {
+          "$ref": "#/$defs/bounded_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_limit_violation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "limit",
+        "unit",
+        "observed",
+        "maximum"
+      ],
+      "properties": {
+        "kind": {
+          "const": "limit_violation"
+        },
+        "limit": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64
+        },
+        "unit": {
+          "enum": [
+            "milliseconds",
+            "bytes",
+            "count"
+          ]
+        },
+        "observed": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "maximum": {
+          "$ref": "#/$defs/bounded_count"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_rule_violation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule"
+      ],
+      "properties": {
+        "kind": {
+          "const": "rule_violation"
+        },
+        "rule": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 96
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "error_count": {
+          "$ref": "#/$defs/bounded_count"
+        },
+        "http_status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 999
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/evidence_none"
+        },
+        {
+          "$ref": "#/$defs/evidence_revision_advertisement"
+        },
+        {
+          "$ref": "#/$defs/evidence_redacted_observation"
+        },
+        {
+          "$ref": "#/$defs/evidence_limit_violation"
+        },
+        {
+          "$ref": "#/$defs/evidence_rule_violation"
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "code",
+        "severity",
+        "protocol_revision",
+        "location",
+        "message",
+        "impact",
+        "expectation",
+        "remediation",
+        "reference",
+        "evidence"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/finding_code"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error",
+            "critical"
+          ]
+        },
+        "protocol_revision": {
+          "$ref": "#/$defs/protocol_revision"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "message": {
+          "$ref": "#/$defs/safe_text"
+        },
+        "impact": {
+          "$ref": "#/$defs/safe_text"
+        },
+        "expectation": {
+          "$ref": "#/$defs/safe_text"
+        },
+        "remediation": {
+          "$ref": "#/$defs/safe_text"
+        },
+        "reference": {
+          "$ref": "#/$defs/safe_text"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      },
+      "additionalProperties": true
+    },
+    "check": {
+      "type": "object",
+      "required": [
+        "id",
+        "requirement",
+        "state",
+        "findings"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/check_id"
+        },
+        "requirement": {
+          "enum": [
+            "required",
+            "optional"
+          ]
+        },
+        "state": {
+          "enum": [
+            "performed",
+            "skipped"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "warning",
+            "failed"
+          ]
+        },
+        "skip_reason": {
+          "enum": [
+            "not_authorized",
+            "authorization_failed",
+            "not_advertised",
+            "input_required",
+            "unsupported_revision",
+            "prerequisite_failed",
+            "limit_reached",
+            "not_applicable"
+          ]
+        },
+        "blocked_by": {
+          "$ref": "#/$defs/diagnosis"
+        },
+        "reproduction": {
+          "$ref": "#/$defs/reproduction"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "performed"
+            }
+          },
+          "required": [
+            "outcome"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "skip_reason"
+                ]
+              },
+              {
+                "required": [
+                  "blocked_by"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "skipped"
+            },
+            "findings": {
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "skip_reason"
+          ],
+          "not": {
+            "required": [
+              "outcome"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  }
+}

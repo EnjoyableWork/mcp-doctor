@@ -109,8 +109,8 @@ compat_assert_report() {
   local report_path="$2"
 
   if ! jq -e '
-    .schema_version == "mcp-doctor.report/v1alpha1" and
-    .schema_stability == "experimental" and
+    .schema_version == "mcp-doctor.report/v1" and
+    .schema_stability == "stable" and
     .protocol_revision == "2026-07-28" and
     .primary_diagnosis == null and
     .independent_findings == [] and

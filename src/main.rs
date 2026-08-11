@@ -37,7 +37,7 @@ enum Command {
         .args(["endpoint", "target"])
 ))]
 struct InspectArgs {
-    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
@@ -73,7 +73,7 @@ struct CheckArgs {
     #[arg(long)]
     allow_side_effects: bool,
 
-    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
@@ -121,7 +121,7 @@ struct BreakArgs {
     #[arg(long, value_name = "U64")]
     seed: u64,
 
-    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
@@ -182,6 +182,7 @@ impl RemoteArgs {
 enum OutputFormat {
     Human,
     Json,
+    Junit,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
@@ -197,8 +198,17 @@ impl From<OutputFormat> for contract::ReportFormat {
         match format {
             OutputFormat::Human => Self::Human,
             OutputFormat::Json => Self::Json,
+            OutputFormat::Junit => Self::Junit,
         }
     }
+}
+
+fn emit_diagnostic(diagnostic: contract::RenderedDiagnostic) -> ExitCode {
+    print!("{}", diagnostic.output);
+    if let Some(error) = diagnostic.error {
+        eprintln!("error: {error}");
+    }
+    diagnostic.exit
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -212,14 +222,10 @@ async fn main() -> ExitCode {
                     arguments.format.into(),
                 )
                 .await;
-                print!("{}", diagnostic.output);
-                diagnostic.exit
+                emit_diagnostic(diagnostic)
             } else {
                 match inspect::run_stdio(arguments.target, arguments.format.into()).await {
-                    Ok(diagnostic) => {
-                        print!("{}", diagnostic.output);
-                        diagnostic.exit
-                    }
+                    Ok(diagnostic) => emit_diagnostic(diagnostic),
                     Err(error) => {
                         eprintln!("error: {error}");
                         ExitCode::from(2)
@@ -237,8 +243,7 @@ async fn main() -> ExitCode {
                     arguments.format.into(),
                 )
                 .await;
-                print!("{}", diagnostic.output);
-                diagnostic.exit
+                emit_diagnostic(diagnostic)
             } else {
                 match check::run_stdio(
                     arguments.target,
@@ -249,10 +254,7 @@ async fn main() -> ExitCode {
                 )
                 .await
                 {
-                    Ok(diagnostic) => {
-                        print!("{}", diagnostic.output);
-                        diagnostic.exit
-                    }
+                    Ok(diagnostic) => emit_diagnostic(diagnostic),
                     Err(error) => {
                         eprintln!("error: {error}");
                         ExitCode::from(2)
@@ -285,14 +287,10 @@ async fn main() -> ExitCode {
             if let Some(endpoint) = endpoint {
                 let diagnostic =
                     break_command::run_http(remote.into_options(endpoint), options).await;
-                print!("{}", diagnostic.output);
-                diagnostic.exit
+                emit_diagnostic(diagnostic)
             } else {
                 match break_command::run_stdio(target, options).await {
-                    Ok(diagnostic) => {
-                        print!("{}", diagnostic.output);
-                        diagnostic.exit
-                    }
+                    Ok(diagnostic) => emit_diagnostic(diagnostic),
                     Err(error) => {
                         eprintln!("error: {error}");
                         ExitCode::from(2)

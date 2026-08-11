@@ -67,8 +67,8 @@ The runner:
    socket;
 5. launches each server with no network, a read-only root filesystem, no Linux
    capabilities, `no-new-privileges`, and an ephemeral `/tmp`;
-6. passes the server command to the built CLI and accepts only an experimental
-   `mcp-doctor.report/v1alpha1` pass whose runtime-tool check is explicitly
+6. passes the server command to the built CLI and accepts only a stable
+   `mcp-doctor.report/v1` pass whose runtime-tool check is explicitly
    `not_authorized`; and
 7. removes the upstream checkouts, dependency caches, and reports.
 

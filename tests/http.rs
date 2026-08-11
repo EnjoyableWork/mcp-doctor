@@ -17,7 +17,7 @@ use rcgen::{
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use serde_json::{Value, json};
-use support::TestEnvironment;
+use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
 
 const TOOL: &str = "synthetic.remote-reviewed";
 const CASE_ID: &str = "author-only-remote-case-never-report-4a91";
@@ -929,7 +929,7 @@ fn request_and_response_resource_bounds_stop_at_the_first_excess() {
 }
 
 #[test]
-fn human_and_json_reports_share_the_same_primary_cause_and_causal_skips() {
+fn human_json_and_junit_reports_share_the_same_primary_cause_and_causal_skips() {
     let endpoint = "http://127.0.0.1:9/synthetic-private-path-never-report-4a91";
     let human_environment = TestEnvironment::new();
     let human = run(human_environment.command().arg("inspect").arg(endpoint));
@@ -940,17 +940,27 @@ fn human_and_json_reports_share_the_same_primary_cause_and_causal_skips() {
         .arg("--format")
         .arg("json")
         .arg(endpoint));
+    let junit_environment = TestEnvironment::new();
+    let junit_output = run(junit_environment
+        .command()
+        .arg("inspect")
+        .arg("--format")
+        .arg("junit")
+        .arg(endpoint));
     assert_eq!(human.status.code(), Some(1));
     assert_eq!(json_output.status.code(), Some(1));
+    assert_eq!(junit_output.status.code(), Some(1));
     let (human_stdout, human_stderr) = text(&human);
     let (json_stdout, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
     assert!(human_stderr.is_empty());
     assert!(json_stderr.is_empty());
+    assert!(junit_stderr.is_empty());
     assert!(human_stdout.contains("PRIMARY DIAGNOSIS · network.target"));
     assert!(human_stdout.contains("MCP-TARGET-002"));
     assert!(human_stdout.contains("blocked by network.target"));
 
-    let report: Value = serde_json::from_str(json_stdout).expect("JSON report should parse");
+    let report = parse_and_validate_report(json_stdout.as_bytes());
     assert_eq!(report["primary_diagnosis"]["check_id"], "network.target");
     assert_eq!(
         report["primary_diagnosis"]["findings"][0]["code"],
@@ -972,8 +982,15 @@ fn human_and_json_reports_share_the_same_primary_cause_and_causal_skips() {
         assert_eq!(check["blocked_by"]["check_id"], "network.target");
         assert_eq!(check["blocked_by"]["findings"][0]["code"], "MCP-TARGET-002");
     }
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+    assert_eq!(junit_summary.failures, 1);
+    assert!(junit_summary.skipped > 0);
+    assert!(junit.contains("type=\"MCP-TARGET-002\""));
+    assert!(junit.contains("blocked_by.check_id=network.target"));
+    assert!(junit.contains("report_outcome=failed\nexit_code=1"));
     assert_redacted(&human, endpoint, &[]);
     assert_redacted(&json_output, endpoint, &[]);
+    assert_redacted(&junit_output, endpoint, &[]);
 }
 
 #[test]

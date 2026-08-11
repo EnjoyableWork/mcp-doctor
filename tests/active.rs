@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use support::TestEnvironment;
+use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
 
 const TOOL: &str = "synthetic.reviewed";
 const SECRET_VALUE: &str = "synthetic-secret-payload-7f2c";
@@ -185,8 +185,7 @@ fn machine_success_report_redacts_resolved_arguments_results_and_author_identifi
         .output()
         .expect("the active machine success journey should run");
     let (_, stderr) = text(&output);
-    let report: Value =
-        serde_json::from_slice(&output.stdout).expect("STDOUT should be one JSON report");
+    let report = parse_and_validate_report(&output.stdout);
 
     assert!(output.status.success(), "{report:#}");
     assert!(stderr.is_empty());
@@ -202,6 +201,43 @@ fn machine_success_report_redacts_resolved_arguments_results_and_author_identifi
             "sequence",
             "structuredContent",
         ],
+    );
+}
+
+#[test]
+fn junit_active_success_preserves_each_case_and_the_process_exit_gate() {
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "active-junit-success.json",
+        &scenario("read_only", vec![reviewed_case(0, "success")]),
+    );
+    let output = environment
+        .command()
+        .arg("check")
+        .arg("--scenario")
+        .arg(&path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("junit")
+        .arg("--")
+        .arg(fixture())
+        .arg("active-one-success")
+        .output()
+        .expect("the active JUnit journey should run");
+    let (_, stderr) = text(&output);
+    let (document, summary) = parse_and_validate_junit(&output.stdout);
+
+    assert!(output.status.success(), "{document}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(document.contains("name=\"runtime.tools.case[0]\""));
+    assert!(document.contains("report_outcome=passed\nexit_code=0"));
+    assert_redacted(
+        &output,
+        &[TOOL, "author-only-case-0-never-report", "sequence"],
     );
 }
 
@@ -537,8 +573,7 @@ fn hostile_scenario_schema_findings_are_capped_before_target_start() {
         .output()
         .expect("the bounded scenario-schema rejection should run");
     let (_, stderr) = text(&output);
-    let report: Value =
-        serde_json::from_slice(&output.stdout).expect("STDOUT should be one JSON report");
+    let report = parse_and_validate_report(&output.stdout);
 
     assert_eq!(output.status.code(), Some(2), "{report:#}");
     assert!(stderr.is_empty());
@@ -775,8 +810,7 @@ fn hostile_catalog_findings_are_capped_in_a_valid_causal_report() {
         .output()
         .expect("the bounded finding-overflow journey should run");
     let (_, stderr) = text(&output);
-    let report: Value =
-        serde_json::from_slice(&output.stdout).expect("STDOUT should be one JSON report");
+    let report = parse_and_validate_report(&output.stdout);
 
     assert_eq!(output.status.code(), Some(1), "{report:#}");
     assert!(stderr.is_empty());
@@ -842,7 +876,7 @@ fn active_cleanup_terminates_and_reaps_a_resistant_process_tree() {
 }
 
 #[test]
-fn experimental_json_reports_indexed_cases_without_arguments_results_or_ids() {
+fn stable_json_reports_indexed_cases_without_arguments_results_or_ids() {
     let environment = TestEnvironment::new();
     let path = write_scenario(
         &environment,
@@ -864,12 +898,11 @@ fn experimental_json_reports_indexed_cases_without_arguments_results_or_ids() {
         .output()
         .expect("the active JSON report should run");
     let (_, stderr) = text(&output);
-    let report: Value =
-        serde_json::from_slice(&output.stdout).expect("STDOUT should be one JSON report");
+    let report = parse_and_validate_report(&output.stdout);
 
     assert_eq!(output.status.code(), Some(1), "{report:#}");
     assert!(stderr.is_empty());
-    assert_eq!(report["schema_version"], "mcp-doctor.report/v1alpha1");
+    assert_eq!(report["schema_version"], "mcp-doctor.report/v1");
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["exit_code"], 1);
     let case = report["checks"]

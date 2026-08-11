@@ -1,4 +1,5 @@
 use std::fmt::{self, Write as _};
+use std::io;
 use std::process::ExitCode;
 
 use serde::Serialize;
@@ -11,12 +12,101 @@ use super::model::{
 use super::protocol::SupportedRevision;
 use super::redaction::REDACTION_MARKER;
 
-pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1alpha1";
+pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ReportFormat {
     Human,
     Json,
+    Junit,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum ReportRenderError {
+    SizeLimitExceeded { maximum: u64 },
+}
+
+impl fmt::Display for ReportRenderError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SizeLimitExceeded { maximum } => write!(
+                formatter,
+                "diagnostic report exceeded the configured {maximum}-byte output limit"
+            ),
+        }
+    }
+}
+
+struct BoundedOutput {
+    output: Vec<u8>,
+    maximum: usize,
+    declared_maximum: u64,
+    exceeded: bool,
+}
+
+impl BoundedOutput {
+    fn for_report(report: &DiagnosticReport) -> Self {
+        let declared_maximum = report.limits().values().report_bytes;
+        Self {
+            output: Vec::new(),
+            maximum: usize::try_from(declared_maximum).unwrap_or(usize::MAX),
+            declared_maximum,
+            exceeded: false,
+        }
+    }
+
+    fn push(&mut self, value: char) {
+        self.write_char(value)
+            .expect("the bounded report writer records limit failures");
+    }
+
+    fn push_str(&mut self, value: &str) {
+        self.append(value.as_bytes());
+    }
+
+    fn finish(self) -> Result<String, ReportRenderError> {
+        if self.exceeded {
+            Err(ReportRenderError::SizeLimitExceeded {
+                maximum: self.declared_maximum,
+            })
+        } else {
+            Ok(String::from_utf8(self.output)
+                .expect("typed report serialization must produce valid UTF-8"))
+        }
+    }
+
+    fn append(&mut self, value: &[u8]) {
+        if self.exceeded {
+            return;
+        }
+        let Some(length) = self.output.len().checked_add(value.len()) else {
+            self.exceeded = true;
+            return;
+        };
+        if length > self.maximum {
+            self.exceeded = true;
+            return;
+        }
+        self.output.extend_from_slice(value);
+    }
+}
+
+impl fmt::Write for BoundedOutput {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        self.append(value.as_bytes());
+        Ok(())
+    }
+}
+
+impl io::Write for BoundedOutput {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.append(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -408,12 +498,14 @@ impl fmt::Display for ReportContractError {
     }
 }
 
-pub(super) fn render_report(report: &DiagnosticReport, format: ReportFormat) -> String {
+pub(super) fn render_report(
+    report: &DiagnosticReport,
+    format: ReportFormat,
+) -> Result<String, ReportRenderError> {
     match format {
-        ReportFormat::Human => HumanReporter::render(report),
-        ReportFormat::Json => {
-            JsonReporter::render(report).expect("a typed diagnostic report must serialize as JSON")
-        }
+        ReportFormat::Human => HumanReporter::try_render(report),
+        ReportFormat::Json => JsonReporter::render(report),
+        ReportFormat::Junit => JunitReporter::render(report),
     }
 }
 
@@ -421,13 +513,17 @@ pub(super) struct HumanReporter;
 
 impl HumanReporter {
     pub(super) fn render(report: &DiagnosticReport) -> String {
-        let mut output = String::new();
+        Self::try_render(report).expect("the synthetic human report must fit its output limit")
+    }
+
+    fn try_render(report: &DiagnosticReport) -> Result<String, ReportRenderError> {
+        let mut output = BoundedOutput::for_report(report);
         writeln!(
             output,
             "mcp-doctor report · MCP {} · {REPORT_SCHEMA_VERSION}",
             report.revision()
         )
-        .expect("writing to a String cannot fail");
+        .expect("the bounded report writer records limit failures");
         output.push('\n');
 
         write_human_diagnosis(&mut output, report);
@@ -444,7 +540,7 @@ impl HumanReporter {
                     check.id().as_str(),
                     check.requirement().as_str()
                 )
-                .expect("writing to a String cannot fail");
+                .expect("the bounded report writer records limit failures");
                 write_human_reproduction(&mut output, check.reproduction());
 
                 for finding in check.findings().expect("performed check findings exist") {
@@ -454,20 +550,20 @@ impl HumanReporter {
                         finding.code().as_str(),
                         finding.severity().as_str()
                     )
-                    .expect("writing to a String cannot fail");
+                    .expect("the bounded report writer records limit failures");
                     writeln!(output, "      Where: {}", finding.location())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                     writeln!(output, "      What: {}", finding.code().title())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                     writeln!(output, "      Why: {}", finding.impact())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                     write_human_evidence(&mut output, finding);
                     writeln!(output, "      Expected: {}", finding.expectation())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                     writeln!(output, "      Fix: {}", finding.remediation())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                     writeln!(output, "      Reference: {}", finding.reference())
-                        .expect("writing to a String cannot fail");
+                        .expect("the bounded report writer records limit failures");
                 }
             } else {
                 let reason = check.skip_reason().expect("skipped check has a reason");
@@ -479,7 +575,7 @@ impl HumanReporter {
                     reason.description(),
                     human_blocked_by(report, reason)
                 )
-                .expect("writing to a String cannot fail");
+                .expect("the bounded report writer records limit failures");
                 write_human_reproduction(&mut output, check.reproduction());
             }
         }
@@ -496,13 +592,13 @@ impl HumanReporter {
             report.outcome().as_str(),
             report.exit_status().code()
         )
-        .expect("writing to a String cannot fail");
-        output
+        .expect("the bounded report writer records limit failures");
+        output.finish()
     }
 }
 
-fn write_human_limits(output: &mut String, values: LimitValues) {
-    writeln!(output, "LIMITS").expect("writing to a String cannot fail");
+fn write_human_limits(output: &mut BoundedOutput, values: LimitValues) {
+    writeln!(output, "LIMITS").expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  time · startup_ms={} · discovery_ms={} · request_ms={} · response_ms={} · shutdown_grace_ms={} · total_ms={}",
@@ -513,7 +609,7 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.shutdown_grace_ms,
         values.total_ms
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  io · message_bytes={} · stdout_bytes={} · stderr_bytes={} · aggregate_output_bytes={} · message_count={}",
@@ -523,7 +619,7 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.aggregate_output_bytes,
         values.message_count
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  network · endpoint_bytes={} · resolution_addresses={} · resolution_count={} · trust_bytes={} · trust_certificates={}",
@@ -533,7 +629,7 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.trust_bytes,
         values.trust_certificates
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  request · request_fields={} · request_field_name_bytes={} · request_field_value_bytes={} · request_fields_bytes={}",
@@ -542,7 +638,7 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.request_field_value_bytes,
         values.request_fields_bytes
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  response · response_fields={} · response_field_name_bytes={} · response_field_value_bytes={} · response_fields_bytes={}",
@@ -551,13 +647,16 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.response_field_value_bytes,
         values.response_fields_bytes
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
-        "  discovery · protocol_revisions={} · catalog_items={} · report_findings={}",
-        values.protocol_revisions, values.catalog_items, values.report_findings
+        "  discovery · protocol_revisions={} · catalog_items={} · report_findings={} · report_bytes={}",
+        values.protocol_revisions,
+        values.catalog_items,
+        values.report_findings,
+        values.report_bytes
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  schema · schema_bytes={} · instance_bytes={} · schema_nodes={} · schema_depth={} · schema_ref_depth={} · schema_evaluation_steps={} · validation_errors={}",
@@ -569,7 +668,7 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.schema_evaluation_steps,
         values.validation_errors
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  generation · active_cases={} · generation_attempts={} · generation_candidates={} · generation_steps={}",
@@ -578,16 +677,19 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
         values.generation_candidates,
         values.generation_steps
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  activity · redirects={} · retries={} · concurrency={}",
         values.redirects, values.retries, values.concurrency
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
 }
 
-fn write_human_reproduction(output: &mut String, reproduction: Option<&GeneratedCaseReproduction>) {
+fn write_human_reproduction(
+    output: &mut BoundedOutput,
+    reproduction: Option<&GeneratedCaseReproduction>,
+) {
     let Some(reproduction) = reproduction else {
         return;
     };
@@ -610,13 +712,13 @@ fn write_human_reproduction(output: &mut String, reproduction: Option<&Generated
         input.objects(),
         input.object_members(),
     )
-    .expect("writing to a String cannot fail");
+    .expect("the bounded report writer records limit failures");
 }
 
-fn write_human_diagnosis(output: &mut String, report: &DiagnosticReport) {
+fn write_human_diagnosis(output: &mut BoundedOutput, report: &DiagnosticReport) {
     if let Some(diagnosis) = report.primary_diagnosis() {
         writeln!(output, "PRIMARY DIAGNOSIS · {}", diagnosis.check())
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
         for finding in diagnosis.findings() {
             writeln!(
                 output,
@@ -624,10 +726,11 @@ fn write_human_diagnosis(output: &mut String, report: &DiagnosticReport) {
                 finding.code().as_str(),
                 finding.location()
             )
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
         }
     } else {
-        writeln!(output, "PRIMARY DIAGNOSIS · none").expect("writing to a String cannot fail");
+        writeln!(output, "PRIMARY DIAGNOSIS · none")
+            .expect("the bounded report writer records limit failures");
     }
 
     if !report.independent_findings().is_empty() {
@@ -636,7 +739,7 @@ fn write_human_diagnosis(output: &mut String, report: &DiagnosticReport) {
             "INDEPENDENT SAFETY FINDINGS · {}",
             report.independent_findings().len()
         )
-        .expect("writing to a String cannot fail");
+        .expect("the bounded report writer records limit failures");
         for finding in report.independent_findings() {
             writeln!(
                 output,
@@ -645,7 +748,7 @@ fn write_human_diagnosis(output: &mut String, report: &DiagnosticReport) {
                 finding.check(),
                 finding.location()
             )
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
         }
     }
 }
@@ -674,7 +777,7 @@ fn human_blocked_by(report: &DiagnosticReport, reason: super::model::SkipReason)
     rendered
 }
 
-fn write_human_evidence(output: &mut String, finding: &Finding) {
+fn write_human_evidence(output: &mut BoundedOutput, finding: &Finding) {
     match finding.evidence() {
         FindingEvidence::None => {}
         FindingEvidence::RevisionAdvertisement(summary) => {
@@ -687,11 +790,11 @@ fn write_human_evidence(output: &mut String, finding: &Finding) {
                 summary.unknown_date(),
                 summary.opaque()
             )
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
         }
         FindingEvidence::RedactedObservation(observation) => {
             writeln!(output, "      observed {observation}")
-                .expect("writing to a String cannot fail");
+                .expect("the bounded report writer records limit failures");
         }
         FindingEvidence::LimitViolation(violation) => {
             writeln!(
@@ -703,7 +806,7 @@ fn write_human_evidence(output: &mut String, finding: &Finding) {
                 violation.maximum(),
                 violation.kind().unit().as_str()
             )
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
         }
         FindingEvidence::RuleViolation(violation) => {
             write_human_rule(output, *violation);
@@ -711,35 +814,493 @@ fn write_human_evidence(output: &mut String, finding: &Finding) {
     }
 }
 
-fn write_human_rule(output: &mut String, violation: RuleViolation) {
-    write!(output, "      rule {}", violation.as_str()).expect("writing to a String cannot fail");
+fn write_human_rule(output: &mut BoundedOutput, violation: RuleViolation) {
+    write!(output, "      rule {}", violation.as_str())
+        .expect("the bounded report writer records limit failures");
     if let Some(expected) = violation.expected_shape() {
         write!(output, " · expected {}", expected.as_str())
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
     }
     if let Some(observed) = violation.observed() {
         write!(output, " · observed {}", observed.as_str())
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
     }
     if let Some(error_count) = violation.error_count() {
         write!(output, " · {error_count} validation error(s)")
-            .expect("writing to a String cannot fail");
+            .expect("the bounded report writer records limit failures");
     }
     if let Some(status) = violation.http_status() {
-        write!(output, " · HTTP status {status}").expect("writing to a String cannot fail");
+        write!(output, " · HTTP status {status}")
+            .expect("the bounded report writer records limit failures");
     }
     output.push('\n');
+}
+
+pub(super) struct JunitReporter;
+
+impl JunitReporter {
+    pub(super) fn render(report: &DiagnosticReport) -> Result<String, ReportRenderError> {
+        let mut output = BoundedOutput::for_report(report);
+        let summary = report.summary();
+        writeln!(output, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+            .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "<testsuites name=\"mcp-doctor\" tests=\"{}\" failures=\"{}\" errors=\"0\" skipped=\"{}\" time=\"0\">",
+            summary.checks, summary.failed, summary.skipped
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "  <testsuite name=\"mcp-doctor\" tests=\"{}\" failures=\"{}\" errors=\"0\" skipped=\"{}\" time=\"0\">",
+            summary.checks, summary.failed, summary.skipped
+        )
+        .expect("the bounded report writer records limit failures");
+
+        for check in report.checks() {
+            write_junit_testcase(&mut output, report, check);
+        }
+
+        writeln!(output, "  </testsuite>")
+            .expect("the bounded report writer records limit failures");
+        writeln!(output, "</testsuites>")
+            .expect("the bounded report writer records limit failures");
+        output.finish()
+    }
+}
+
+fn write_junit_testcase(
+    output: &mut BoundedOutput,
+    report: &DiagnosticReport,
+    check: &CheckResult,
+) {
+    write!(
+        output,
+        "    <testcase classname=\"mcp-doctor.diagnostic\" name=\""
+    )
+    .expect("the bounded report writer records limit failures");
+    write_xml_escaped(output, &check.id().as_str());
+    writeln!(output, "\" time=\"0\">").expect("the bounded report writer records limit failures");
+
+    if let Some(reason) = check.skip_reason() {
+        write!(output, "      <skipped message=\"")
+            .expect("the bounded report writer records limit failures");
+        write_xml_escaped(output, reason.as_str());
+        output.push_str("\">");
+        write_xml_line(output, "skip_reason", reason.as_str());
+        write_xml_line(output, "skip_description", reason.description());
+        if reason.is_causal() {
+            let diagnosis = report
+                .primary_diagnosis()
+                .expect("the report contract requires a diagnosis for a causal skip");
+            write_xml_line(output, "blocked_by.check_id", &diagnosis.check().as_str());
+            for (index, finding) in diagnosis.findings().iter().enumerate() {
+                write_indexed_xml_line(
+                    output,
+                    "blocked_by.finding",
+                    index,
+                    "code",
+                    finding.code().as_str(),
+                );
+                write_indexed_xml_line(
+                    output,
+                    "blocked_by.finding",
+                    index,
+                    "location",
+                    &finding.location().to_string(),
+                );
+            }
+        }
+        writeln!(output, "      </skipped>")
+            .expect("the bounded report writer records limit failures");
+    } else if check.outcome() == Some(CheckOutcome::Failed) {
+        let findings = check
+            .findings()
+            .expect("a performed failed check has findings");
+        let first_failure = findings
+            .iter()
+            .find(|finding| finding.severity().is_failure())
+            .expect("a failed check has one failing finding");
+        write!(output, "      <failure message=\"")
+            .expect("the bounded report writer records limit failures");
+        write_xml_escaped(output, first_failure.code().title());
+        output.push_str("\" type=\"");
+        write_xml_escaped(output, first_failure.code().as_str());
+        output.push_str("\">");
+        write_junit_findings(output, report, check, findings);
+        writeln!(output, "      </failure>")
+            .expect("the bounded report writer records limit failures");
+    }
+
+    output.push_str("      <system-out>");
+    write_junit_metadata(output, report, check);
+    if check.outcome() != Some(CheckOutcome::Failed)
+        && let Some(findings) = check.findings()
+    {
+        write_junit_findings(output, report, check, findings);
+    }
+    write_junit_reproduction(output, check.reproduction());
+    writeln!(output, "      </system-out>")
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "    </testcase>").expect("the bounded report writer records limit failures");
+}
+
+fn write_junit_metadata(
+    output: &mut BoundedOutput,
+    report: &DiagnosticReport,
+    check: &CheckResult,
+) {
+    write_xml_line(output, "schema_version", REPORT_SCHEMA_VERSION);
+    write_xml_line(output, "schema_stability", "stable");
+    write_xml_line(output, "protocol_revision", report.revision().as_str());
+    write_xml_line(output, "report_outcome", report.outcome().as_str());
+    writeln!(output, "exit_code={}", report.exit_status().code())
+        .expect("the bounded report writer records limit failures");
+    write_xml_line(output, "check_id", &check.id().as_str());
+    write_xml_line(output, "requirement", check.requirement().as_str());
+    if let Some(outcome) = check.outcome() {
+        write_xml_line(output, "state", "performed");
+        write_xml_line(output, "outcome", outcome.as_str());
+    } else {
+        write_xml_line(output, "state", "skipped");
+        write_xml_line(output, "outcome", "skipped");
+    }
+    let primary = report
+        .primary_diagnosis()
+        .is_some_and(|diagnosis| diagnosis.check() == check.id());
+    write_xml_line(
+        output,
+        "primary_diagnosis",
+        if primary { "true" } else { "false" },
+    );
+}
+
+fn write_junit_findings(
+    output: &mut BoundedOutput,
+    report: &DiagnosticReport,
+    check: &CheckResult,
+    findings: &[Finding],
+) {
+    for (index, finding) in findings.iter().enumerate() {
+        write_indexed_xml_line(output, "finding", index, "code", finding.code().as_str());
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "severity",
+            finding.severity().as_str(),
+        );
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "protocol_revision",
+            finding.revision().as_str(),
+        );
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "location",
+            &finding.location().to_string(),
+        );
+        write_indexed_xml_line(output, "finding", index, "message", finding.code().title());
+        write_indexed_xml_line(output, "finding", index, "impact", finding.impact());
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "expectation",
+            finding.expectation(),
+        );
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "remediation",
+            finding.remediation(),
+        );
+        write_indexed_xml_line(output, "finding", index, "reference", finding.reference());
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "primary",
+            if finding_is_primary(report, check.id(), finding) {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        write_indexed_xml_line(
+            output,
+            "finding",
+            index,
+            "independent_safety",
+            if finding_is_independent(report, check.id(), finding) {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        write_junit_evidence(output, index, finding);
+    }
+}
+
+fn finding_is_primary(report: &DiagnosticReport, check: CheckId, finding: &Finding) -> bool {
+    report.primary_diagnosis().is_some_and(|diagnosis| {
+        diagnosis.check() == check
+            && diagnosis.findings().iter().any(|reference| {
+                reference.code() == finding.code() && reference.location() == finding.location()
+            })
+    })
+}
+
+fn finding_is_independent(report: &DiagnosticReport, check: CheckId, finding: &Finding) -> bool {
+    report.independent_findings().iter().any(|reference| {
+        reference.check() == check
+            && reference.code() == finding.code()
+            && reference.location() == finding.location()
+    })
+}
+
+fn write_junit_evidence(output: &mut BoundedOutput, index: usize, finding: &Finding) {
+    match finding.evidence() {
+        FindingEvidence::None => {
+            write_indexed_xml_line(output, "finding", index, "evidence.kind", "none");
+        }
+        FindingEvidence::RevisionAdvertisement(summary) => {
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.kind",
+                "revision_advertisement",
+            );
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.required",
+                finding.revision().as_str(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.offered",
+                summary.offered(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.recognized_legacy",
+                summary.recognized_legacy(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.unknown_date",
+                summary.unknown_date(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.opaque",
+                summary.opaque(),
+            );
+        }
+        FindingEvidence::RedactedObservation(observation) => {
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.kind",
+                "redacted_observation",
+            );
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.marker",
+                REDACTION_MARKER,
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.byte_count",
+                observation.byte_count(),
+            );
+        }
+        FindingEvidence::LimitViolation(violation) => {
+            write_indexed_xml_line(output, "finding", index, "evidence.kind", "limit_violation");
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.limit",
+                violation.kind().as_str(),
+            );
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.unit",
+                violation.kind().unit().as_str(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.observed",
+                violation.observed(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.maximum",
+                violation.maximum(),
+            );
+        }
+        FindingEvidence::RuleViolation(violation) => {
+            write_indexed_xml_line(output, "finding", index, "evidence.kind", "rule_violation");
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.rule",
+                violation.as_str(),
+            );
+            if let Some(expected) = violation.expected_shape() {
+                write_indexed_xml_line(
+                    output,
+                    "finding",
+                    index,
+                    "evidence.expected",
+                    expected.as_str(),
+                );
+            }
+            if let Some(observed) = violation.observed() {
+                write_indexed_xml_line(
+                    output,
+                    "finding",
+                    index,
+                    "evidence.observed",
+                    observed.as_str(),
+                );
+            }
+            if let Some(error_count) = violation.error_count() {
+                write_indexed_number_line(
+                    output,
+                    "finding",
+                    index,
+                    "evidence.error_count",
+                    error_count,
+                );
+            }
+            if let Some(status) = violation.http_status() {
+                write_indexed_number_line(output, "finding", index, "evidence.http_status", status);
+            }
+        }
+    }
+}
+
+fn write_junit_reproduction(
+    output: &mut BoundedOutput,
+    reproduction: Option<&GeneratedCaseReproduction>,
+) {
+    let Some(reproduction) = reproduction else {
+        return;
+    };
+    let input = reproduction.input();
+    write_xml_line(output, "reproduction.generator", reproduction.generator());
+    writeln!(output, "reproduction.seed={}", reproduction.seed())
+        .expect("the bounded report writer records limit failures");
+    write_xml_line(output, "reproduction.input.root", input.root().as_str());
+    for (name, value) in [
+        ("byte_count", input.byte_count()),
+        ("node_count", input.node_count()),
+        ("maximum_depth", input.maximum_depth()),
+        ("nulls", input.nulls()),
+        ("booleans", input.booleans()),
+        ("numbers", input.numbers()),
+        ("strings", input.strings()),
+        ("arrays", input.arrays()),
+        ("array_items", input.array_items()),
+        ("objects", input.objects()),
+        ("object_members", input.object_members()),
+    ] {
+        writeln!(output, "reproduction.input.{name}={value}")
+            .expect("the bounded report writer records limit failures");
+    }
+}
+
+fn write_xml_line(output: &mut BoundedOutput, key: &str, value: &str) {
+    write!(output, "{key}=").expect("the bounded report writer records limit failures");
+    write_xml_escaped(output, value);
+    output.push('\n');
+}
+
+fn write_indexed_xml_line(
+    output: &mut BoundedOutput,
+    prefix: &str,
+    index: usize,
+    key: &str,
+    value: &str,
+) {
+    write!(output, "{prefix}[{index}].{key}=")
+        .expect("the bounded report writer records limit failures");
+    write_xml_escaped(output, value);
+    output.push('\n');
+}
+
+fn write_indexed_number_line<T: fmt::Display>(
+    output: &mut BoundedOutput,
+    prefix: &str,
+    index: usize,
+    key: &str,
+    value: T,
+) {
+    writeln!(output, "{prefix}[{index}].{key}={value}")
+        .expect("the bounded report writer records limit failures");
+}
+
+fn write_xml_escaped(output: &mut BoundedOutput, value: &str) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '\"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&apos;"),
+            character if !is_xml_10_character(character) => output.push('\u{fffd}'),
+            character => output.push(character),
+        }
+    }
+}
+
+fn is_xml_10_character(character: char) -> bool {
+    matches!(character, '\u{9}' | '\u{a}' | '\u{d}')
+        || ('\u{20}'..='\u{d7ff}').contains(&character)
+        || ('\u{e000}'..='\u{fffd}').contains(&character)
+        || ('\u{10000}'..='\u{10ffff}').contains(&character)
 }
 
 pub(super) struct JsonReporter;
 
 impl JsonReporter {
-    pub(super) fn render(report: &DiagnosticReport) -> Result<String, serde_json::Error> {
+    pub(super) fn render(report: &DiagnosticReport) -> Result<String, ReportRenderError> {
         let envelope = JsonReport::from(report);
-        serde_json::to_string_pretty(&envelope).map(|mut output| {
-            output.push('\n');
-            output
-        })
+        let mut output = BoundedOutput::for_report(report);
+        serde_json::to_writer_pretty(&mut output, &envelope)
+            .expect("a typed diagnostic report must serialize as JSON");
+        output.push('\n');
+        output.finish()
     }
 }
 
@@ -761,7 +1322,7 @@ impl From<&DiagnosticReport> for JsonReport {
     fn from(report: &DiagnosticReport) -> Self {
         Self {
             schema_version: REPORT_SCHEMA_VERSION,
-            schema_stability: "experimental",
+            schema_stability: "stable",
             protocol_revision: report.revision().as_str(),
             primary_diagnosis: report.primary_diagnosis().map(JsonDiagnosis::from),
             independent_findings: report
@@ -869,6 +1430,7 @@ struct JsonLimits {
     schema_evaluation_steps: u64,
     validation_errors: u64,
     report_findings: u64,
+    report_bytes: u64,
     active_cases: u64,
     generation_attempts: u64,
     generation_candidates: u64,
@@ -915,6 +1477,7 @@ impl From<LimitValues> for JsonLimits {
             schema_evaluation_steps: values.schema_evaluation_steps,
             validation_errors: values.validation_errors,
             report_findings: values.report_findings,
+            report_bytes: values.report_bytes,
             active_cases: values.active_cases,
             generation_attempts: values.generation_attempts,
             generation_candidates: values.generation_candidates,
@@ -1122,8 +1685,8 @@ impl JsonEvidence {
 #[cfg(test)]
 mod tests {
     use super::{
-        DiagnosticReport, ExitStatus, HumanReporter, JsonReporter, OverallOutcome,
-        ReportContractError,
+        BoundedOutput, DiagnosticReport, ExitStatus, HumanReporter, JsonReporter, JunitReporter,
+        OverallOutcome, ReportContractError, ReportRenderError, write_xml_escaped,
     };
     use crate::contract::limits::{DiagnosticLimits, LimitKind, LimitValues, LimitViolation};
     use crate::contract::model::{
@@ -1132,6 +1695,94 @@ mod tests {
     };
     use crate::contract::protocol::SupportedRevision;
     use crate::contract::redaction::Sensitive;
+    use quick_xml::Reader;
+    use quick_xml::events::Event;
+
+    const STABLE_REPORT_SCHEMA: &str =
+        include_str!("../../schemas/mcp-doctor.report.v1.schema.json");
+
+    fn stable_report_validator() -> jsonschema::Validator {
+        let schema: serde_json::Value = serde_json::from_str(STABLE_REPORT_SCHEMA)
+            .expect("the committed report schema is JSON");
+        jsonschema::draft202012::options()
+            .build(&schema)
+            .expect("the committed report schema follows Draft 2020-12")
+    }
+
+    fn assert_stable_report(value: &serde_json::Value) {
+        let errors = stable_report_validator()
+            .iter_errors(value)
+            .map(|error| error.instance_path().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            errors.is_empty(),
+            "stable report schema rejected synthetic fields at {errors:?}"
+        );
+    }
+
+    fn assert_common_junit_document(
+        document: &str,
+        expected_tests: usize,
+        expected_failures: usize,
+        expected_skips: usize,
+    ) {
+        let mut reader = Reader::from_str(document);
+        let mut stack = Vec::<Vec<u8>>::new();
+        let mut tests = 0;
+        let mut failures = 0;
+        let mut skips = 0;
+        let mut system_outputs = 0;
+
+        loop {
+            match reader
+                .read_event()
+                .expect("quick-xml should accept the common JUnit document")
+            {
+                Event::Start(element) => {
+                    for attribute in element.attributes() {
+                        attribute.expect("every JUnit attribute should parse");
+                    }
+                    let name = element.name().as_ref().to_vec();
+                    let parent = stack.last().map(Vec::as_slice);
+                    match name.as_slice() {
+                        b"testsuites" => assert!(parent.is_none()),
+                        b"testsuite" => assert_eq!(parent, Some(b"testsuites".as_slice())),
+                        b"testcase" => {
+                            assert_eq!(parent, Some(b"testsuite".as_slice()));
+                            tests += 1;
+                        }
+                        b"failure" => {
+                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                            failures += 1;
+                        }
+                        b"skipped" => {
+                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                            skips += 1;
+                        }
+                        b"system-out" => {
+                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                            system_outputs += 1;
+                        }
+                        name => panic!("unexpected common JUnit element: {name:?}"),
+                    }
+                    stack.push(name);
+                }
+                Event::End(element) => {
+                    let expected = stack.pop().expect("every JUnit end tag has a start tag");
+                    assert_eq!(element.name().as_ref(), expected);
+                }
+                Event::Decl(_) | Event::Text(_) | Event::CData(_) | Event::Comment(_) => {}
+                Event::Eof => break,
+                event => panic!("unexpected XML event in common JUnit output: {event:?}"),
+            }
+        }
+
+        assert!(stack.is_empty());
+        assert_eq!(tests, expected_tests);
+        assert_eq!(failures, expected_failures);
+        assert_eq!(skips, expected_skips);
+        assert_eq!(system_outputs, expected_tests);
+    }
 
     fn passing_revision_check() -> CheckResult {
         CheckResult::performed(CheckId::ProtocolRevision, Requirement::Required, Vec::new())
@@ -1169,10 +1820,13 @@ mod tests {
     }
 
     #[test]
-    fn human_and_json_reports_match_canonical_synthetic_fixtures() {
+    fn all_reporters_match_canonical_synthetic_fixtures() {
         let report = synthetic_failed_report();
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
+        let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        let json_value: serde_json::Value =
+            serde_json::from_str(&json).expect("the JSON reporter should emit one value");
 
         assert_eq!(
             human,
@@ -1182,8 +1836,124 @@ mod tests {
             json,
             include_str!("../../tests/fixtures/contracts/failed-report.json")
         );
+        assert_eq!(
+            junit,
+            include_str!("../../tests/fixtures/contracts/failed-report.junit.xml")
+        );
         assert_eq!(report.outcome(), OverallOutcome::Failed);
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
+        assert_stable_report(&json_value);
+        assert_common_junit_document(&junit, 3, 1, 1);
+    }
+
+    #[test]
+    fn junit_escapes_xml_metacharacters_and_replaces_invalid_xml_characters() {
+        let mut output = BoundedOutput {
+            output: Vec::new(),
+            maximum: 1_024,
+            declared_maximum: 1_024,
+            exceeded: false,
+        };
+        write_xml_escaped(&mut output, "<&>\"'\u{1}\t");
+
+        assert_eq!(
+            output.finish().expect("the escaped fixture should fit"),
+            "&lt;&amp;&gt;&quot;&apos;�\t"
+        );
+    }
+
+    #[test]
+    fn every_reporter_enforces_the_declared_output_byte_limit() {
+        let limits = DiagnosticLimits::try_from_values(LimitValues {
+            report_bytes: 32,
+            ..DiagnosticLimits::M1_DEFAULTS.values()
+        })
+        .expect("the synthetic report byte limit should be valid");
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            limits,
+            vec![passing_revision_check()],
+        )
+        .expect("the synthetic report should satisfy the contract");
+        let expected = Err(ReportRenderError::SizeLimitExceeded { maximum: 32 });
+
+        assert_eq!(HumanReporter::try_render(&report), expected);
+        assert_eq!(JsonReporter::render(&report), expected);
+        assert_eq!(JunitReporter::render(&report), expected);
+    }
+
+    #[test]
+    fn junit_preserves_primary_independent_and_causal_relationships() {
+        let cleanup = Finding::cleanup_failed(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Process),
+        );
+        let catalog = Finding::catalog_contract_invalid(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Tools),
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::Array,
+                observed: JsonKind::String,
+            },
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            vec![
+                CheckResult::performed(
+                    CheckId::TransportStdio,
+                    Requirement::Required,
+                    vec![cleanup],
+                ),
+                CheckResult::performed(
+                    CheckId::DiscoveryCatalogs,
+                    Requirement::Required,
+                    vec![catalog],
+                ),
+                CheckResult::skipped(
+                    CheckId::RuntimeTools,
+                    Requirement::Required,
+                    SkipReason::PrerequisiteFailed,
+                ),
+            ],
+        )
+        .expect("the relationship fixture should satisfy the report contract");
+        let junit = JunitReporter::render(&report).expect("the JUnit report should fit");
+
+        assert!(junit.contains("finding[0].independent_safety=true"));
+        assert!(junit.contains("finding[0].primary=true"));
+        assert!(junit.contains("blocked_by.check_id=discovery.catalogs"));
+        assert!(junit.contains("blocked_by.finding[0].code=MCP-CATALOG-001"));
+        assert!(junit.contains("report_outcome=failed\nexit_code=1"));
+        assert_common_junit_document(&junit, 3, 2, 1);
+    }
+
+    #[test]
+    fn stable_schema_allows_compatible_optional_fields_and_new_finding_codes() {
+        let rendered = JsonReporter::render(&synthetic_failed_report())
+            .expect("typed report should serialize");
+        let mut value: serde_json::Value =
+            serde_json::from_str(&rendered).expect("the JSON reporter should emit one value");
+        value["future_optional"] = serde_json::json!({"safe": true});
+        value["checks"][1]["findings"][0]["code"] =
+            serde_json::Value::String("MCP-FUTURE-999".to_owned());
+        value["checks"][1]["findings"][0]["future_optional"] = serde_json::json!("safe metadata");
+
+        assert_stable_report(&value);
+    }
+
+    #[test]
+    fn stable_schema_rejects_a_removed_required_field() {
+        let rendered = JsonReporter::render(&synthetic_failed_report())
+            .expect("typed report should serialize");
+        let mut value: serde_json::Value =
+            serde_json::from_str(&rendered).expect("the JSON reporter should emit one value");
+        value
+            .as_object_mut()
+            .expect("the report envelope is an object")
+            .remove("exit_code");
+
+        assert!(!stable_report_validator().is_valid(&value));
     }
 
     #[test]
@@ -1214,9 +1984,10 @@ mod tests {
         )
         .expect("redacted synthetic report should satisfy the contract");
         let rendered = format!(
-            "{}\n{}",
+            "{}\n{}\n{}",
             HumanReporter::render(&report),
-            JsonReporter::render(&report).expect("typed report should serialize")
+            JsonReporter::render(&report).expect("typed report should serialize"),
+            JunitReporter::render(&report).expect("typed report should serialize as JUnit")
         );
 
         assert!(rendered.contains("[REDACTED]"));
@@ -1251,8 +2022,9 @@ mod tests {
         .expect("synthetic catalog report should satisfy the contract");
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
+        let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
 
-        for rendered in [&human, &json] {
+        for rendered in [&human, &json, &junit] {
             assert!(rendered.contains("MCP-CATALOG-001"));
             assert!(rendered.contains("prompts[0].arguments"));
             assert!(rendered.contains("expected_shape"));
@@ -1357,9 +2129,10 @@ mod tests {
         )
         .expect("unsupported revision report should satisfy the contract");
         let rendered = format!(
-            "{}\n{}",
+            "{}\n{}\n{}",
             HumanReporter::render(&report),
-            JsonReporter::render(&report).expect("typed report should serialize")
+            JsonReporter::render(&report).expect("typed report should serialize"),
+            JunitReporter::render(&report).expect("typed report should serialize as JUnit")
         );
 
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
