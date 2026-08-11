@@ -1520,7 +1520,7 @@ fn is_local_reference(reference: &str) -> bool {
     reference.is_empty() || reference.starts_with('#')
 }
 
-fn resolve_local_reference<'a>(schema: &'a Value, reference: &str) -> Option<&'a Value> {
+pub(super) fn resolve_local_reference<'a>(schema: &'a Value, reference: &str) -> Option<&'a Value> {
     if matches!(reference, "" | "#") {
         return Some(schema);
     }

@@ -148,6 +148,115 @@ fn check_requires_scenario_tool_authorization_and_literal_target() {
 }
 
 #[test]
+fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
+    let output = run_cli(&["break", "--help"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(stdout.contains("Generate deterministic boundary cases"));
+    assert!(stdout.contains("--tool <EXACT-NAME>"));
+    assert!(stdout.contains("--allow-tool <EXACT-NAME>"));
+    assert!(stdout.contains("--effects <EFFECTS>"));
+    assert!(stdout.contains("[possible values: read_only, side_effecting]"));
+    assert!(stdout.contains("--allow-side-effects"));
+    assert!(stdout.contains("--cases <COUNT>"));
+    assert!(stdout.contains("--seed <U64>"));
+    assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
+    assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
+}
+
+#[test]
+fn break_requires_every_generation_authority_and_one_literal_target() {
+    for arguments in [
+        vec![
+            "break",
+            "--allow-tool",
+            "synthetic.generated",
+            "--effects",
+            "read_only",
+            "--cases",
+            "1",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "break",
+            "--tool",
+            "synthetic.generated",
+            "--effects",
+            "read_only",
+            "--cases",
+            "1",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "break",
+            "--tool",
+            "synthetic.generated",
+            "--allow-tool",
+            "synthetic.generated",
+            "--cases",
+            "1",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "break",
+            "--tool",
+            "synthetic.generated",
+            "--allow-tool",
+            "synthetic.generated",
+            "--effects",
+            "read_only",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "break",
+            "--tool",
+            "synthetic.generated",
+            "--allow-tool",
+            "synthetic.generated",
+            "--effects",
+            "read_only",
+            "--cases",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "break",
+            "--tool",
+            "synthetic.generated",
+            "--allow-tool",
+            "synthetic.generated",
+            "--effects",
+            "read_only",
+            "--cases",
+            "1",
+            "--seed",
+            "1",
+        ],
+    ] {
+        let output = run_cli(&arguments);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+        assert!(stderr.contains("required arguments"), "{stderr}");
+    }
+}
+
+#[test]
 fn cli_processes_receive_only_disposable_user_locations() {
     let environment = TestEnvironment::new();
     let command: Command = environment.command();

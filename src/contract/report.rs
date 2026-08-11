@@ -5,8 +5,8 @@ use serde::Serialize;
 
 use super::limits::{DiagnosticLimits, LimitValues};
 use super::model::{
-    CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence, Location,
-    Requirement, RuleViolation, Severity,
+    CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence,
+    GeneratedCaseReproduction, Location, Requirement, RuleViolation, Severity, StructuralInput,
 };
 use super::protocol::SupportedRevision;
 use super::redaction::REDACTION_MARKER;
@@ -445,6 +445,7 @@ impl HumanReporter {
                     check.requirement().as_str()
                 )
                 .expect("writing to a String cannot fail");
+                write_human_reproduction(&mut output, check.reproduction());
 
                 for finding in check.findings().expect("performed check findings exist") {
                     writeln!(
@@ -479,6 +480,7 @@ impl HumanReporter {
                     human_blocked_by(report, reason)
                 )
                 .expect("writing to a String cannot fail");
+                write_human_reproduction(&mut output, check.reproduction());
             }
         }
 
@@ -570,8 +572,43 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
     .expect("writing to a String cannot fail");
     writeln!(
         output,
-        "  reserved · active_cases={} · redirects={} · retries={} · concurrency={}",
-        values.active_cases, values.redirects, values.retries, values.concurrency
+        "  generation · active_cases={} · generation_attempts={} · generation_candidates={} · generation_steps={}",
+        values.active_cases,
+        values.generation_attempts,
+        values.generation_candidates,
+        values.generation_steps
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  activity · redirects={} · retries={} · concurrency={}",
+        values.redirects, values.retries, values.concurrency
+    )
+    .expect("writing to a String cannot fail");
+}
+
+fn write_human_reproduction(output: &mut String, reproduction: Option<&GeneratedCaseReproduction>) {
+    let Some(reproduction) = reproduction else {
+        return;
+    };
+    let input = reproduction.input();
+    writeln!(
+        output,
+        "      Reproduce: {} · seed={} · input={} bytes={} nodes={} depth={} · null={} boolean={} number={} string={} array={} array_items={} object={} object_members={}",
+        reproduction.generator(),
+        reproduction.seed(),
+        input.root().as_str(),
+        input.byte_count(),
+        input.node_count(),
+        input.maximum_depth(),
+        input.nulls(),
+        input.booleans(),
+        input.numbers(),
+        input.strings(),
+        input.arrays(),
+        input.array_items(),
+        input.objects(),
+        input.object_members(),
     )
     .expect("writing to a String cannot fail");
 }
@@ -833,6 +870,9 @@ struct JsonLimits {
     validation_errors: u64,
     report_findings: u64,
     active_cases: u64,
+    generation_attempts: u64,
+    generation_candidates: u64,
+    generation_steps: u64,
     redirects: u64,
     retries: u64,
     concurrency: u64,
@@ -876,6 +916,9 @@ impl From<LimitValues> for JsonLimits {
             validation_errors: values.validation_errors,
             report_findings: values.report_findings,
             active_cases: values.active_cases,
+            generation_attempts: values.generation_attempts,
+            generation_candidates: values.generation_candidates,
+            generation_steps: values.generation_steps,
             redirects: values.redirects,
             retries: values.retries,
             concurrency: values.concurrency,
@@ -894,6 +937,8 @@ struct JsonCheck {
     skip_reason: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     blocked_by: Option<JsonDiagnosis>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reproduction: Option<JsonReproduction>,
     findings: Vec<JsonFinding>,
 }
 
@@ -914,12 +959,65 @@ impl JsonCheck {
                 .filter(|reason| reason.is_causal())
                 .and(diagnosis)
                 .map(JsonDiagnosis::from),
+            reproduction: check.reproduction().map(JsonReproduction::from),
             findings: check
                 .findings()
                 .unwrap_or_default()
                 .iter()
                 .map(JsonFinding::from)
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonReproduction {
+    generator: &'static str,
+    seed: u64,
+    input: JsonStructuralInput,
+}
+
+impl From<&GeneratedCaseReproduction> for JsonReproduction {
+    fn from(reproduction: &GeneratedCaseReproduction) -> Self {
+        Self {
+            generator: reproduction.generator(),
+            seed: reproduction.seed(),
+            input: JsonStructuralInput::from(reproduction.input()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct JsonStructuralInput {
+    root: &'static str,
+    byte_count: u64,
+    node_count: u64,
+    maximum_depth: u64,
+    nulls: u64,
+    booleans: u64,
+    numbers: u64,
+    strings: u64,
+    arrays: u64,
+    array_items: u64,
+    objects: u64,
+    object_members: u64,
+}
+
+impl From<&StructuralInput> for JsonStructuralInput {
+    fn from(input: &StructuralInput) -> Self {
+        Self {
+            root: input.root().as_str(),
+            byte_count: input.byte_count(),
+            node_count: input.node_count(),
+            maximum_depth: input.maximum_depth(),
+            nulls: input.nulls(),
+            booleans: input.booleans(),
+            numbers: input.numbers(),
+            strings: input.strings(),
+            arrays: input.arrays(),
+            array_items: input.array_items(),
+            objects: input.objects(),
+            object_members: input.object_members(),
         }
     }
 }

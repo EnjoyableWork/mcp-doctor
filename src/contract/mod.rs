@@ -5,6 +5,7 @@
 
 mod active;
 mod catalog;
+mod generate;
 mod http_headers;
 mod limits;
 mod model;
@@ -27,8 +28,8 @@ use report::{DiagnosticReport, render_report};
 
 pub(crate) use active::{
     ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, ScenarioFailure,
-    render_authorization_failure, render_resolved_scenario_failure, render_scenario_failure,
-    resolve_target_environment,
+    render_authorization_failure, render_generation_configuration_failure,
+    render_resolved_scenario_failure, render_scenario_failure, resolve_target_environment,
 };
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use report::ReportFormat;

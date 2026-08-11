@@ -1135,3 +1135,104 @@ fn authorized_remote_check_maps_validated_arguments_to_mcp_fields() {
         ],
     );
 }
+
+#[test]
+fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool() {
+    let discovery = discovery_response(json!({"tools": {}}));
+    let tools = tools_response(false);
+    let call = FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }
+    }));
+    let server = FixtureServer::spawn(
+        WireMode::Https,
+        vec![
+            PlannedExchange::reply(ExpectedRequest::method("server/discover"), discovery),
+            PlannedExchange::reply(ExpectedRequest::method("tools/list"), tools),
+            PlannedExchange::reply(
+                ExpectedRequest {
+                    method: "tools/call",
+                    name: Some(TOOL),
+                    bearer: None,
+                    custom: None,
+                    mirrored: None,
+                },
+                call,
+            ),
+        ],
+        false,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let ca = ca_file(&environment);
+    let mut command = remote_command(&environment, "break", &endpoint);
+    command
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--cases")
+        .arg("1")
+        .arg("--seed")
+        .arg("8080")
+        .arg("--tls-ca-file")
+        .arg(&ca);
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    assert!(output.status.success());
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let (stdout, stderr) = text(&output);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("PASS  generation.cases"));
+    assert!(stdout.contains("PASS  runtime.tools.case[0]"));
+    assert!(stdout.contains("mcp-doctor.generator/v1 · seed=8080 · input=object"));
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[TOOL, MIRRORED_VALUE, ca.to_str().unwrap()],
+    );
+
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .expect("an unauthorized generated endpoint trap should bind");
+    listener
+        .set_nonblocking(true)
+        .expect("the generated endpoint trap should become nonblocking");
+    let endpoint = format!(
+        "http://127.0.0.1:{}/mcp",
+        listener.local_addr().unwrap().port()
+    );
+    let environment = TestEnvironment::new();
+    let mut rejected = remote_command(&environment, "break", &endpoint);
+    rejected
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg("synthetic.remote-other")
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--cases")
+        .arg("1")
+        .arg("--seed")
+        .arg("8080");
+    let output = run(&mut rejected);
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-AUTH-001"));
+    assert!(
+        listener.accept().is_err(),
+        "authorization rejection connected"
+    );
+    assert_redacted(&output, &endpoint, &[TOOL, "synthetic.remote-other"]);
+}

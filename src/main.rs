@@ -1,3 +1,4 @@
+mod break_command;
 mod check;
 mod contract;
 mod inspect;
@@ -24,6 +25,8 @@ enum Command {
     Inspect(InspectArgs),
     /// Replay reviewed cases against one explicitly authorized local or remote tool.
     Check(CheckArgs),
+    /// Generate deterministic boundary cases for one explicitly authorized tool.
+    Break(BreakArgs),
 }
 
 #[derive(Debug, Args)]
@@ -69,6 +72,54 @@ struct CheckArgs {
     /// Additionally authorize a scenario classified as side_effecting.
     #[arg(long)]
     allow_side_effects: bool,
+
+    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    format: OutputFormat,
+
+    /// One absolute Streamable HTTP endpoint.
+    #[arg(value_name = "URL")]
+    endpoint: Option<String>,
+
+    #[command(flatten)]
+    remote: RemoteArgs,
+
+    /// Server executable followed by its literal arguments after `--`.
+    #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
+    target: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("transport")
+        .required(true)
+        .multiple(false)
+        .args(["endpoint", "target"])
+))]
+struct BreakArgs {
+    /// Exact tool selected as the only generation and execution target.
+    #[arg(long, value_name = "EXACT-NAME")]
+    tool: String,
+
+    /// Independently authorize the same exact tool for this run.
+    #[arg(long, value_name = "EXACT-NAME")]
+    allow_tool: String,
+
+    /// Classify the selected tool's possible effects for this run.
+    #[arg(long, value_enum)]
+    effects: ToolEffects,
+
+    /// Additionally authorize generated calls to a side_effecting tool.
+    #[arg(long)]
+    allow_side_effects: bool,
+
+    /// Number of deterministic generated cases to run, from 1 through 100.
+    #[arg(long, value_name = "COUNT")]
+    cases: usize,
+
+    /// Reproducible unsigned 64-bit generation seed.
+    #[arg(long, value_name = "U64")]
+    seed: u64,
 
     /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
@@ -133,6 +184,14 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum ToolEffects {
+    #[value(name = "read_only")]
+    ReadOnly,
+    #[value(name = "side_effecting")]
+    SideEffecting,
+}
+
 impl From<OutputFormat> for contract::ReportFormat {
     fn from(format: OutputFormat) -> Self {
         match format {
@@ -190,6 +249,46 @@ async fn main() -> ExitCode {
                 )
                 .await
                 {
+                    Ok(diagnostic) => {
+                        print!("{}", diagnostic.output);
+                        diagnostic.exit
+                    }
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        ExitCode::from(2)
+                    }
+                }
+            }
+        }
+        Some(Command::Break(arguments)) => {
+            let BreakArgs {
+                tool,
+                allow_tool,
+                effects,
+                allow_side_effects,
+                cases,
+                seed,
+                format,
+                endpoint,
+                remote,
+                target,
+            } = arguments;
+            let options = break_command::BreakOptions {
+                tool,
+                allowed_tool: &allow_tool,
+                side_effecting: effects == ToolEffects::SideEffecting,
+                allow_side_effects,
+                cases,
+                seed,
+                format: format.into(),
+            };
+            if let Some(endpoint) = endpoint {
+                let diagnostic =
+                    break_command::run_http(remote.into_options(endpoint), options).await;
+                print!("{}", diagnostic.output);
+                diagnostic.exit
+            } else {
+                match break_command::run_stdio(target, options).await {
                     Ok(diagnostic) => {
                         print!("{}", diagnostic.output);
                         diagnostic.exit
