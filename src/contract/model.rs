@@ -8,6 +8,10 @@ use super::redaction::RedactedValue;
 pub(super) enum CheckId {
     ScenarioConfiguration,
     ActiveAuthorization,
+    NetworkTarget,
+    NetworkResolution,
+    TransportTls,
+    TransportHttp,
     TransportStdio,
     ProtocolEnvelope,
     ProtocolRevision,
@@ -22,6 +26,10 @@ impl CheckId {
         match self {
             Self::ScenarioConfiguration => "scenario.configuration".to_owned(),
             Self::ActiveAuthorization => "authorization.active".to_owned(),
+            Self::NetworkTarget => "network.target".to_owned(),
+            Self::NetworkResolution => "network.resolution".to_owned(),
+            Self::TransportTls => "transport.tls".to_owned(),
+            Self::TransportHttp => "transport.http".to_owned(),
             Self::TransportStdio => "transport.stdio".to_owned(),
             Self::ProtocolRevision => "protocol.revision".to_owned(),
             Self::ProtocolEnvelope => "protocol.envelope".to_owned(),
@@ -135,6 +143,16 @@ pub(super) enum FindingCode {
     StdioIoFailed,
     InvalidStdioMessage,
     ServerExitedEarly,
+    RemoteTargetInvalid,
+    NetworkAuthorizationMissing,
+    ResolutionFailed,
+    AddressPolicyBlocked,
+    PeerAddressMismatch,
+    TlsVerificationFailed,
+    HttpExchangeFailed,
+    HttpResponseInvalid,
+    RemoteAuthenticationRejected,
+    HttpHeaderMappingInvalid,
     ProtocolRevisionConfirmed,
     UnsupportedProtocolRevision,
     InvalidProtocolRevisionValue,
@@ -167,6 +185,16 @@ impl FindingCode {
             Self::StdioIoFailed => "MCP-TRANSPORT-002",
             Self::InvalidStdioMessage => "MCP-TRANSPORT-003",
             Self::ServerExitedEarly => "MCP-TRANSPORT-004",
+            Self::RemoteTargetInvalid => "MCP-TARGET-001",
+            Self::NetworkAuthorizationMissing => "MCP-TARGET-002",
+            Self::ResolutionFailed => "MCP-NETWORK-001",
+            Self::AddressPolicyBlocked => "MCP-NETWORK-002",
+            Self::PeerAddressMismatch => "MCP-NETWORK-003",
+            Self::TlsVerificationFailed => "MCP-TLS-001",
+            Self::HttpExchangeFailed => "MCP-HTTP-001",
+            Self::HttpResponseInvalid => "MCP-HTTP-002",
+            Self::RemoteAuthenticationRejected => "MCP-HTTP-AUTH-001",
+            Self::HttpHeaderMappingInvalid => "MCP-HTTP-HEADER-001",
             Self::ProtocolRevisionConfirmed => "MCP-PROTOCOL-001",
             Self::UnsupportedProtocolRevision => "MCP-PROTOCOL-002",
             Self::InvalidProtocolRevisionValue => "MCP-PROTOCOL-003",
@@ -201,6 +229,16 @@ impl FindingCode {
             | Self::StdioIoFailed
             | Self::InvalidStdioMessage
             | Self::ServerExitedEarly
+            | Self::RemoteTargetInvalid
+            | Self::NetworkAuthorizationMissing
+            | Self::ResolutionFailed
+            | Self::AddressPolicyBlocked
+            | Self::PeerAddressMismatch
+            | Self::TlsVerificationFailed
+            | Self::HttpExchangeFailed
+            | Self::HttpResponseInvalid
+            | Self::RemoteAuthenticationRejected
+            | Self::HttpHeaderMappingInvalid
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
             | Self::LimitExceeded
@@ -231,6 +269,28 @@ impl FindingCode {
             Self::StdioIoFailed => "The STDIO channel failed before diagnosis completed.",
             Self::InvalidStdioMessage => "The server wrote an invalid STDIO message.",
             Self::ServerExitedEarly => "The server process exited before returning a response.",
+            Self::RemoteTargetInvalid => "The remote MCP endpoint is not safe to use.",
+            Self::NetworkAuthorizationMissing => {
+                "The invocation does not authorize this remote network activity."
+            }
+            Self::ResolutionFailed => "The remote endpoint could not be resolved safely.",
+            Self::AddressPolicyBlocked => {
+                "A resolved address is outside the permitted destination classes."
+            }
+            Self::PeerAddressMismatch => {
+                "The connected peer is outside the one validated pinned address set."
+            }
+            Self::TlsVerificationFailed => "The remote endpoint did not complete verified TLS.",
+            Self::HttpExchangeFailed => "The bounded HTTP exchange did not complete.",
+            Self::HttpResponseInvalid => {
+                "The HTTP response does not match the bounded Streamable HTTP contract."
+            }
+            Self::RemoteAuthenticationRejected => {
+                "The remote endpoint rejected the pre-provisioned authentication."
+            }
+            Self::HttpHeaderMappingInvalid => {
+                "A remote request header mapping is invalid or unsafe."
+            }
             Self::ProtocolRevisionConfirmed => "The requested protocol revision is supported.",
             Self::UnsupportedProtocolRevision => {
                 "The server does not advertise the required protocol revision."
@@ -302,6 +362,25 @@ impl FindingCode {
             }
             Self::ServerExitedEarly => {
                 "The pending request cannot complete after the server exits."
+            }
+            Self::RemoteTargetInvalid
+            | Self::NetworkAuthorizationMissing
+            | Self::ResolutionFailed
+            | Self::AddressPolicyBlocked
+            | Self::PeerAddressMismatch => {
+                "Continuing could connect to a destination the invocation did not safely authorize."
+            }
+            Self::TlsVerificationFailed => {
+                "The server identity and protected channel cannot be trusted."
+            }
+            Self::HttpExchangeFailed | Self::HttpResponseInvalid => {
+                "No reliable MCP response can be diagnosed from this exchange."
+            }
+            Self::RemoteAuthenticationRejected => {
+                "The requested remote operation cannot proceed with the supplied credentials."
+            }
+            Self::HttpHeaderMappingInvalid => {
+                "Sending the mapping could create ambiguous routing or expose an unbounded value."
             }
             Self::ProtocolRevisionConfirmed => {
                 "The advertised revision determines which protocol rules can be applied."
@@ -383,6 +462,36 @@ impl FindingCode {
             }
             Self::ServerExitedEarly => {
                 "The server must remain alive until it returns the pending passive response."
+            }
+            Self::RemoteTargetInvalid => {
+                "Use one strict absolute HTTPS endpoint, or an exactly gated loopback HTTP endpoint."
+            }
+            Self::NetworkAuthorizationMissing => {
+                "Private, cleartext, and credential use each require their exact matching endpoint gate."
+            }
+            Self::ResolutionFailed => {
+                "The endpoint must resolve once to at most 16 unique addresses within the startup bound."
+            }
+            Self::AddressPolicyBlocked => {
+                "Every answer must be public or belong to one consistently and exactly authorized private class."
+            }
+            Self::PeerAddressMismatch => {
+                "Every connection peer must belong to the sorted address set validated for this run."
+            }
+            Self::TlsVerificationFailed => {
+                "HTTPS must verify TLS 1.2 or 1.3, the complete chain, validity, and canonical service identity."
+            }
+            Self::HttpExchangeFailed => {
+                "Each planned MCP operation must complete once, directly, within its request and response deadlines."
+            }
+            Self::HttpResponseInvalid => {
+                "The endpoint must return one bounded application/json response or request-scoped SSE response."
+            }
+            Self::RemoteAuthenticationRejected => {
+                "A pre-provisioned credential must be accepted without redirect, replay, or automatic OAuth discovery."
+            }
+            Self::HttpHeaderMappingInvalid => {
+                "Custom and Mcp-Param fields must satisfy the current-revision token, type, encoding, uniqueness, and size rules."
             }
             Self::ProtocolRevisionConfirmed => {
                 "The server advertises MCP protocol revision 2026-07-28."
@@ -466,6 +575,36 @@ impl FindingCode {
                 "Write only newline-delimited JSON-RPC messages to STDOUT; send logs to STDERR."
             }
             Self::ServerExitedEarly => "Keep the server alive long enough to answer the request.",
+            Self::RemoteTargetInvalid => {
+                "Correct the endpoint structure and rerun with the same intended destination."
+            }
+            Self::NetworkAuthorizationMissing => {
+                "Review the destination and add only the required exact endpoint gate."
+            }
+            Self::ResolutionFailed => {
+                "Correct DNS or reduce the answer set, then rerun without widening destination authority."
+            }
+            Self::AddressPolicyBlocked => {
+                "Use an eligible destination; prohibited special-purpose addresses cannot be authorized."
+            }
+            Self::PeerAddressMismatch => {
+                "Correct the resolver or route so the peer matches the validated pinned set."
+            }
+            Self::TlsVerificationFailed => {
+                "Correct the certificate chain and identity, or provide the intended CA with --tls-ca-file."
+            }
+            Self::HttpExchangeFailed => {
+                "Correct the direct endpoint or server lifecycle, then rerun the same single operation."
+            }
+            Self::HttpResponseInvalid => {
+                "Return a bounded identity-encoded current-revision JSON or request-scoped SSE response."
+            }
+            Self::RemoteAuthenticationRejected => {
+                "Provision the intended credential and rerun; mcp-doctor will not start an OAuth flow."
+            }
+            Self::HttpHeaderMappingInvalid => {
+                "Correct or remove the unsafe header mapping before replaying the tool."
+            }
             Self::ProtocolRevisionConfirmed => "No correction is needed.",
             Self::UnsupportedProtocolRevision => {
                 "Add MCP 2026-07-28 support and advertise it from server/discover."
@@ -540,6 +679,18 @@ impl FindingCode {
             | Self::ServerExitedEarly
             | Self::LimitExceeded
             | Self::CleanupFailed => "mcp-doctor bounded local STDIO safety contract",
+            Self::RemoteTargetInvalid
+            | Self::NetworkAuthorizationMissing
+            | Self::ResolutionFailed
+            | Self::AddressPolicyBlocked
+            | Self::PeerAddressMismatch
+            | Self::TlsVerificationFailed
+            | Self::HttpExchangeFailed
+            | Self::HttpResponseInvalid
+            | Self::RemoteAuthenticationRejected
+            | Self::HttpHeaderMappingInvalid => {
+                "MCP 2026-07-28 Streamable HTTP and mcp-doctor DEC-030"
+            }
             Self::ProtocolRevisionConfirmed
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
@@ -634,6 +785,18 @@ pub(super) enum LocationField {
     Stdout,
     Stderr,
     Message,
+    Endpoint,
+    Resolution,
+    Address,
+    Peer,
+    Trust,
+    Tls,
+    Http,
+    Headers,
+    Status,
+    Body,
+    Event,
+    Credentials,
 }
 
 impl LocationField {
@@ -697,6 +860,18 @@ impl LocationField {
             Self::Stdout => "stdout",
             Self::Stderr => "stderr",
             Self::Message => "message",
+            Self::Endpoint => "endpoint",
+            Self::Resolution => "resolution",
+            Self::Address => "address",
+            Self::Peer => "peer",
+            Self::Trust => "trust",
+            Self::Tls => "tls",
+            Self::Http => "http",
+            Self::Headers => "headers",
+            Self::Status => "status",
+            Self::Body => "body",
+            Self::Event => "event",
+            Self::Credentials => "credentials",
         }
     }
 }
@@ -853,6 +1028,36 @@ pub(super) enum RuleViolation {
         error_count: u64,
     },
     InvalidToolResult,
+    InvalidEndpoint,
+    PrivateNetworkAuthorizationRequired,
+    CleartextAuthorizationRequired,
+    CredentialAuthorizationRequired,
+    CredentialsRequireHttps,
+    InvalidCredential,
+    InvalidCustomField,
+    InvalidTrustFile,
+    ResolutionUnavailable,
+    ProhibitedAddress,
+    MixedAddressClasses,
+    PeerOutsidePinnedSet,
+    TlsVerificationFailed,
+    HttpRequestFailed,
+    RedirectRejected {
+        status: u16,
+    },
+    AuthenticationRejected {
+        status: u16,
+    },
+    HttpStatusRejected {
+        status: u16,
+    },
+    ContentEncodingRejected,
+    MediaTypeRejected,
+    InvalidResponseMessage,
+    InvalidSseEvent,
+    InvalidHttpHeaderAnnotation,
+    InvalidMirroredHeaderValue,
+    HeaderMismatch,
 }
 
 impl RuleViolation {
@@ -888,6 +1093,30 @@ impl RuleViolation {
                 "advertised_and_scenario_output_schema_mismatch"
             }
             Self::InvalidToolResult => "invalid_tool_result",
+            Self::InvalidEndpoint => "invalid_endpoint",
+            Self::PrivateNetworkAuthorizationRequired => "private_network_authorization_required",
+            Self::CleartextAuthorizationRequired => "cleartext_authorization_required",
+            Self::CredentialAuthorizationRequired => "credential_authorization_required",
+            Self::CredentialsRequireHttps => "credentials_require_https",
+            Self::InvalidCredential => "invalid_credential",
+            Self::InvalidCustomField => "invalid_custom_field",
+            Self::InvalidTrustFile => "invalid_trust_file",
+            Self::ResolutionUnavailable => "resolution_unavailable",
+            Self::ProhibitedAddress => "prohibited_address",
+            Self::MixedAddressClasses => "mixed_address_classes",
+            Self::PeerOutsidePinnedSet => "peer_outside_pinned_set",
+            Self::TlsVerificationFailed => "tls_verification_failed",
+            Self::HttpRequestFailed => "http_request_failed",
+            Self::RedirectRejected { .. } => "redirect_rejected",
+            Self::AuthenticationRejected { .. } => "authentication_rejected",
+            Self::HttpStatusRejected { .. } => "http_status_rejected",
+            Self::ContentEncodingRejected => "content_encoding_rejected",
+            Self::MediaTypeRejected => "media_type_rejected",
+            Self::InvalidResponseMessage => "invalid_response_message",
+            Self::InvalidSseEvent => "invalid_sse_event",
+            Self::InvalidHttpHeaderAnnotation => "invalid_http_header_annotation",
+            Self::InvalidMirroredHeaderValue => "invalid_mirrored_header_value",
+            Self::HeaderMismatch => "header_mismatch",
         }
     }
 
@@ -921,6 +1150,30 @@ impl RuleViolation {
             | Self::ScenarioOutputMismatch { .. }
             | Self::AdvertisedAndScenarioOutputMismatch { .. }
             | Self::InvalidToolResult => None,
+            Self::InvalidEndpoint
+            | Self::PrivateNetworkAuthorizationRequired
+            | Self::CleartextAuthorizationRequired
+            | Self::CredentialAuthorizationRequired
+            | Self::CredentialsRequireHttps
+            | Self::InvalidCredential
+            | Self::InvalidCustomField
+            | Self::InvalidTrustFile
+            | Self::ResolutionUnavailable
+            | Self::ProhibitedAddress
+            | Self::MixedAddressClasses
+            | Self::PeerOutsidePinnedSet
+            | Self::TlsVerificationFailed
+            | Self::HttpRequestFailed
+            | Self::RedirectRejected { .. }
+            | Self::AuthenticationRejected { .. }
+            | Self::HttpStatusRejected { .. }
+            | Self::ContentEncodingRejected
+            | Self::MediaTypeRejected
+            | Self::InvalidResponseMessage
+            | Self::InvalidSseEvent
+            | Self::InvalidHttpHeaderAnnotation
+            | Self::InvalidMirroredHeaderValue
+            | Self::HeaderMismatch => None,
         }
     }
 
@@ -938,6 +1191,15 @@ impl RuleViolation {
             | Self::AdvertisedOutputMismatch { error_count }
             | Self::ScenarioOutputMismatch { error_count }
             | Self::AdvertisedAndScenarioOutputMismatch { error_count } => Some(error_count),
+            _ => None,
+        }
+    }
+
+    pub(super) const fn http_status(self) -> Option<u16> {
+        match self {
+            Self::RedirectRejected { status }
+            | Self::AuthenticationRejected { status }
+            | Self::HttpStatusRejected { status } => Some(status),
             _ => None,
         }
     }
@@ -998,6 +1260,102 @@ impl Finding {
             revision,
             location,
             FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn remote_target_invalid(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::RemoteTargetInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn network_authorization_missing(
+        location: Location,
+        violation: RuleViolation,
+    ) -> Self {
+        Self::new(
+            FindingCode::NetworkAuthorizationMissing,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn resolution_failed(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::ResolutionFailed,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn address_policy_blocked(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::AddressPolicyBlocked,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn peer_address_mismatch(location: Location) -> Self {
+        Self::new(
+            FindingCode::PeerAddressMismatch,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::PeerOutsidePinnedSet),
+        )
+    }
+
+    pub(super) fn tls_verification_failed(location: Location) -> Self {
+        Self::new(
+            FindingCode::TlsVerificationFailed,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::TlsVerificationFailed),
+        )
+    }
+
+    pub(super) fn http_exchange_failed(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::HttpExchangeFailed,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn http_response_invalid(location: Location, violation: RuleViolation) -> Self {
+        Self::new(
+            FindingCode::HttpResponseInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn remote_authentication_rejected(location: Location, status: u16) -> Self {
+        Self::new(
+            FindingCode::RemoteAuthenticationRejected,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::AuthenticationRejected { status }),
+        )
+    }
+
+    pub(super) fn http_header_mapping_invalid(
+        location: Location,
+        violation: RuleViolation,
+    ) -> Self {
+        Self::new(
+            FindingCode::HttpHeaderMappingInvalid,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
         )
     }
 

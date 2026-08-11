@@ -46,12 +46,16 @@ fn every_direct_registry_dependency_has_an_exact_version() {
     assert_eq!(
         observed,
         [
+            "base64",
             "clap",
             "jsonschema",
             "process-wrap",
+            "reqwest",
+            "rustls",
             "serde",
             "serde_json",
             "tokio",
+            "rcgen",
             "tempfile",
         ],
         "the reviewed direct dependency inventory changed; update the dated PROJECT.md review"

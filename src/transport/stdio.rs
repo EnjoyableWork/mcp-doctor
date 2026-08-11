@@ -17,6 +17,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Instant;
 
+use super::{Conversation, ProbeRequest, ProbeResponse};
+
 const READ_BUFFER_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -190,81 +192,6 @@ impl StdioFailure {
     }
 }
 
-pub(crate) struct ProbeRequest {
-    id: i64,
-    bytes: Vec<u8>,
-}
-
-impl ProbeRequest {
-    pub(crate) fn new(id: i64, mut bytes: Vec<u8>) -> Self {
-        assert!(
-            id >= 0,
-            "a locally generated JSON-RPC request id must be non-negative"
-        );
-        assert!(
-            !bytes.contains(&b'\n'),
-            "a locally generated request must contain exactly one terminal frame delimiter"
-        );
-        bytes.push(b'\n');
-        Self { id, bytes }
-    }
-
-    const fn id(&self) -> i64 {
-        self.id
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-}
-
-impl fmt::Debug for ProbeRequest {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ProbeRequest")
-            .field("id", &self.id)
-            .field("value", &"[REDACTED]")
-            .field("byte_count", &self.bytes.len().saturating_sub(1))
-            .finish()
-    }
-}
-
-pub(crate) trait StdioConversation {
-    fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest>;
-}
-
-pub(crate) struct ProbeResponse {
-    request_id: i64,
-    bytes: Vec<u8>,
-}
-
-impl ProbeResponse {
-    pub(crate) const fn request_id(&self) -> i64 {
-        self.request_id
-    }
-
-    #[cfg(test)]
-    pub(crate) fn byte_count(&self) -> usize {
-        self.bytes.len()
-    }
-
-    #[allow(dead_code, reason = "MCPD-006 consumes the bounded discovery result")]
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-}
-
-impl fmt::Debug for ProbeResponse {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ProbeResponse")
-            .field("request_id", &self.request_id)
-            .field("value", &"[REDACTED]")
-            .field("byte_count", &self.bytes.len())
-            .finish()
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct StdioRun {
     responses: Vec<ProbeResponse>,
@@ -302,7 +229,7 @@ impl StdioTransport {
 
     pub(crate) async fn probe<C>(self, target: &StdioTarget, conversation: &mut C) -> StdioRun
     where
-        C: StdioConversation,
+        C: Conversation,
     {
         let run_started = Instant::now();
         let total_deadline =
@@ -450,8 +377,7 @@ impl ManagedProcess {
         } else {
             total_deadline
         };
-        let request_size =
-            u64::try_from(request.as_bytes().len().saturating_sub(1)).unwrap_or(u64::MAX);
+        let request_size = u64::try_from(request.as_bytes().len()).unwrap_or(u64::MAX);
         if request_size > self.limits.message_bytes {
             return Err(StdioFailure::limit(
                 StdioLimit::MessageBytes,
@@ -472,6 +398,7 @@ impl ManagedProcess {
         let stdin = self.stdin.as_mut().expect("the stdin pipe was checked");
         match tokio::time::timeout_at(request_deadline.at, async {
             stdin.write_all(request.as_bytes()).await?;
+            stdin.write_all(b"\n").await?;
             stdin.flush().await
         })
         .await
@@ -955,10 +882,7 @@ impl ProtocolTracker {
         let request_id = response_id.expect("a matching active response id was checked");
         self.active_request = None;
         self.completed_requests.push(request_id);
-        Ok(Some(ProbeResponse {
-            request_id,
-            bytes: frame.bytes,
-        }))
+        Ok(Some(ProbeResponse::new(request_id, frame.bytes)))
     }
 }
 
@@ -1089,9 +1013,10 @@ mod tests {
     use std::ffi::{OsStr, OsString};
 
     use super::{
-        FrameDecoder, OutputBudget, ProbeRequest, ProtocolTracker, StdioFailure, StdioLimit,
-        StdioLimits, StdioTarget, constrained_environment,
+        FrameDecoder, OutputBudget, ProtocolTracker, StdioFailure, StdioLimit, StdioLimits,
+        StdioTarget, constrained_environment,
     };
+    use crate::transport::ProbeRequest;
 
     fn small_limits() -> StdioLimits {
         StdioLimits {
@@ -1142,17 +1067,19 @@ mod tests {
     }
 
     #[test]
-    fn locally_generated_request_framing_is_single_message_and_redacted() {
-        let request = ProbeRequest::new(7, br#"{"jsonrpc":"2.0","id":7}"#.to_vec());
+    fn locally_generated_request_is_unframed_and_redacted() {
+        let request = ProbeRequest::new(
+            7,
+            br#"{"jsonrpc":"2.0","id":7,"method":"server/discover","params":{}}"#.to_vec(),
+        );
 
-        assert_eq!(request.as_bytes().last(), Some(&b'\n'));
         assert_eq!(
             request
                 .as_bytes()
                 .iter()
                 .filter(|byte| **byte == b'\n')
                 .count(),
-            1
+            0
         );
         let rendered = format!("{request:?}");
         assert!(rendered.contains("[REDACTED]"));

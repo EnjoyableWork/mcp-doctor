@@ -247,6 +247,11 @@ and hide secrets, so they work well in logs and saved build results.
 - Every active run names the exact tool and target. Reviewed scenarios declare
   their effect and case limit; generated cases also declare their seed.
 - Side-effecting scenarios require a separate `--allow-side-effects` gate.
+- Remote connections default to direct public HTTPS with verified TLS, pinned
+  bounded address resolution, and no redirect, retry, proxy, cookie, or cache.
+- Private targets, loopback cleartext, and environment-sourced credentials each
+  require their own exact endpoint gate; credentials never travel over HTTP or
+  trigger an automatic OAuth or metadata flow.
 - Hard limits cover time, data size, messages, schema work, test cases,
   redirects, retries, and parallel work.
 - Normal output hides headers, credentials, tool inputs, raw results, and server
