@@ -741,6 +741,7 @@ fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence()
         "direct update, primary-branch",
         "leased same-tree non-fast-forward force-update attempts were each",
         "https://github.com/EnjoyableWork/mcp-doctor/pull/18",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/19",
         "31539153287/job/93938063807",
         "31539153316/job/93940246247",
         "Mitigated for the 2026-08-11 `MCPD-013` scope",

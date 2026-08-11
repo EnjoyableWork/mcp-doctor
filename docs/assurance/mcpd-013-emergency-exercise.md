@@ -42,6 +42,7 @@ Status: closed at `2026-08-11T21:55:10Z`
 | Administrative readback after removal | The same bounded date, canonical hash, and `PASS`; no settings, actor inventory, or identity were emitted |
 | Post-removal CI | [Required CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31539153287/job/93938063807) passed on the exact squash commit |
 | Post-removal release preflight | [Required release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31539153316/job/93940246247) passed on the exact squash commit |
+| Protected closure | [PR 19](https://github.com/EnjoyableWork/mcp-doctor/pull/19) publishes this record through the normal no-bypass path and must pass both required aggregates |
 | Head branch | Deleted after merge |
 
 The first activation at `2026-08-11T21:41:04Z` did not merge or update a
