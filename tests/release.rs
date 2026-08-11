@@ -634,7 +634,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Done and `MCPD-014` is In progress |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-014` is Done and `MCPD-015` is Ready |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -698,7 +698,7 @@ fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
         "Both aggregate jobs use `needs` with `always()`",
         "GitHub omits repository merge settings and bypass actors from credential-free REST readback",
         "authenticated owner check must verify the exact canonical merge projection and empty bypass list",
-        "a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default",
+        "A future `mcp-doctor` MCP security scanner remains product behavior rather than a repository check by default",
         "Enable squash merge only",
         "Keep auto-merge and merge queue disabled",
         "Keep `bypass_actors` empty",
@@ -709,7 +709,7 @@ fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
         "Credential-free readback verifies `default_branch` plus the configured and effective public rules",
         "exact canonical merge settings and empty hidden bypass list",
         "no ruleset or legacy branch protection on `main`",
-        "resolving this policy does not activate M4 early",
+        "resolving this policy did not activate them early",
     ] {
         assert!(
             project.contains(contract),
@@ -730,7 +730,7 @@ fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence()
 
     for contract in [
         "| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done |",
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
         "### MCPD-013 completion evidence",
         "`MCPD-013` completed on 2026-08-11",
         "2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794",
@@ -747,7 +747,7 @@ fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence()
         "31539153316/job/93940246247",
         "Mitigated for the 2026-08-11 `MCPD-013` scope",
         "An administrator can still change repository policy",
-        "Security controls remain\n`MCPD-014`",
+        "Security controls are\nowned by `MCPD-014`",
     ] {
         assert!(
             project.contains(contract),
@@ -965,11 +965,12 @@ fn security_control_verifier_is_authenticated_bounded_and_non_disclosing() {
 }
 
 #[test]
-fn project_records_the_scoped_mcpd_014_contract_without_a_baseline_claim() {
+fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready |",
         "### Accepted vulnerability-disclosure and repository-security policy",
         "`DEC-037` fixes the `MCPD-014` contract.",
         "Support only the latest published minor line, currently `0.2.x`.",
@@ -986,16 +987,40 @@ fn project_records_the_scoped_mcpd_014_contract_without_a_baseline_claim() {
         "https://github.com/EnjoyableWork/mcp-doctor/pull/20",
         "7097b683fc6619447b31db0b55db12467626e446",
         "https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31545582099",
-        "the protected canonical correction, representative pull request, and\nfinal non-disclosing verifier pass remain required before completion",
         "Provider-routed partner alerts for public\nrepositories are not visible to repository administrators",
         "does not prove all OSPS Level 1 controls",
+        "### MCPD-014 completion evidence",
+        "`MCPD-014` completed on 2026-08-11",
+        "d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/21",
+        "31546161736",
+        "31546164626",
+        "31546164631",
+        "7f777b32e88356cea8f0212ec9bfa61a7373907b",
+        "31547028561",
+        "31547028549",
+        "31547028600",
+        "date=2026-08-11 canonical_sha256=d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a result=PASS",
+        "No alert body,\ncount payload, secret value, credential source, or finding detail was retained",
+        "complete-M4 exclusions above remain part\nof the result rather than being treated as passes",
         "| DEC-037 | Support the latest release line through private coordinated disclosure and every entitled repository-security control | Accepted |",
         "| DEC-038 | Refine the `MCPD-014` clean baseline to GitHub Free's observable security surfaces | Accepted |",
-        "In progress: the policy, private route, dependency controls, CodeQL, secret scanning, and push protection are live",
+        "Mitigated for the scoped 2026-08-11 `MCPD-014` surfaces",
     ] {
         assert!(
             project.contains(contract),
             "PROJECT.md should preserve the scoped MCPD-014 contract: {contract}"
+        );
+    }
+
+    for stale_status in [
+        "`MCPD-014` is In progress",
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed |",
+    ] {
+        assert!(
+            !project.contains(stale_status),
+            "PROJECT.md must not retain stale MCPD-014 status: {stale_status}"
         );
     }
 }
