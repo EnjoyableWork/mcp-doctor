@@ -177,6 +177,159 @@ products may consume or complement its evidence; they do not widen the MVP.
 - **Narrow before extensible:** build one vertical journey, then introduce an
   interface only when a second real transport, revision, or reporter needs it.
 
+## Product category and comparative evaluation
+
+`DEC-033` defines a durable way to assess the intended product, an exact
+implementation, or an immutable release without turning this plan into a
+scoreboard. `mcp-doctor` is a **safety-bounded MCP server-author diagnostic
+preflight**: its primary job is to find the earliest actionable failing layer,
+explain a safe correction, and produce reproducible evidence for people and
+automation. Interactive exploration, official protocol conformance, LLM-based
+quality evaluation, and broad vulnerability scanning are adjacent categories,
+not identities that silently broaden this one.
+
+This section retains the category, dimensions, weights, scoring method, and a
+seed comparison set. It deliberately does not retain a current score, ranking,
+winner, or market-dominance claim. A requested evaluation is a new, dated
+assessment against then-current primary evidence. Its result stays outside
+`PROJECT.md` unless a separately accepted ticket calls for a durable snapshot.
+
+### Category and excellence posture
+
+The postures below are product intentions, not claims about shipped behavior.
+Acceptance evidence in the ticket board and exact artifacts remains the only
+authority for what exists.
+
+| Goal category | Product areas | Intended posture |
+| --- | --- | --- |
+| Excel | Causal diagnosis and remediation; safety and containment; deterministic runtime evidence | Be the tool a server author trusts first for a noninteractive preflight: identify the root layer, preserve independent safety failures, recommend a concrete correction, reproduce the result, and leave no surprising execution or residue |
+| Be strong | Protocol and contract correctness; CI and machine interoperability; adoption UX and integration reach; release and project assurance | Meet the full accepted revision, transport, reporter, platform, installation, and public-proof contracts with evidence that is easy to consume and independently repeat |
+| Complement deliberately | General security-vulnerability detection; interactive debugging; official conformance; LLM behavior evaluation | Diagnose structural and runtime safety failures inside the accepted threat model, exchange evidence with specialists when a real consumer exists, and avoid relabeling ordinary findings or aspirational integrations as scanner, conformance, or evaluation coverage |
+
+### Weighted evaluation dimensions
+
+Every full assessment uses all dimensions and the fixed weights below. A
+specialist view may highlight a subset, but it must still show the unmodified
+full score so omitted weaknesses cannot be normalized away.
+
+| Dimension | Weight | Evaluation question |
+| --- | ---: | --- |
+| Causal diagnosis and remediation | 18 | Does the result identify the earliest actionable layer, preserve independent failures, explain causal skips, and give a safe correction using report-sufficient evidence? |
+| Protocol and contract correctness | 15 | Are revision, transport, lifecycle, schema, capability, and rejection rules explicit and proven against the claimed MCP contract? |
+| Runtime testing and reproducibility | 15 | Can passive and expressly authorized active behavior be exercised deterministically with bounded, replayable cases and reliable cleanup across claimed platforms? |
+| Safety and containment | 17 | Are execution, network, credentials, untrusted values, resources, redaction, process trees, and performed-versus-skipped claims controlled by tested fail-closed boundaries? |
+| CI and machine interoperability | 10 | Do stable vendor-neutral results, exit semantics, compatibility fixtures, and loss-aware CI projections work without rerunning or exposing the target? |
+| Adoption UX and integration reach | 10 | Is the preflight installable, noninteractive, actionable from its ordinary output, available on claimed platforms, and usable by common developer and automation workflows? |
+| Security-vulnerability detection | 10 | Within an explicit threat model, does the product detect meaningful security conditions with safe validation, measured accuracy, and useful interoperability rather than security-flavored labels? |
+| Release and project assurance | 5 | Do reproducible builds, authenticated artifacts, dependency policy, repository controls, maintenance practice, and narrowly evidenced public claims support trust in the delivered tool? |
+| **Total** | **100** | Full intended-category assessment |
+
+The capability score for each row is `weight * rating / 5`; the total is the
+sum of all eight rows. Ratings may use half points and follow one scale:
+
+| Rating | Meaning |
+| ---: | --- |
+| 0 | Absent, contradicted, or no positive evidence in the selected assessment scope |
+| 1 | Minimal, claim-only, or unsuitable for dependable use |
+| 2 | Basic and useful only in a narrow path with important gaps |
+| 3 | Credible and usable for the declared scope |
+| 4 | Strong, well-evidenced, and differentiated |
+| 5 | Category-leading for the declared scope with direct comparative evidence |
+
+Unknown and unverifiable capabilities receive no positive credit in an
+implemented or released assessment; the evaluator records them as unknown
+rather than claiming they are absent. Popularity, feature count, and prose
+claims are not substitutes for exercised behavior or report quality.
+
+### Scope, proof maturity, and safety gate
+
+Each assessment chooses and headlines exactly one capability scope:
+
+- **Intended:** the accepted README destination and `PROJECT.md` plan. This
+  scores design completeness and positioning and must say that it is not a
+  shipped-capability assessment.
+- **Implemented:** one exact commit plus code, fixtures, local tests, and any
+  hosted checks tied to it. Planned behavior receives no capability credit.
+- **Released:** one immutable version and only behavior reproduced from its
+  published artifacts. Later source changes receive no credit.
+
+A comparative assessment applies the same scope and evidence cutoff to every
+candidate. If comparable evidence cannot be obtained, show the cells as
+unknown and do not issue an aggregate ranking. Record the strongest applicable
+proof maturity separately from the capability rating:
+
+| Grade | Evidence maturity |
+| --- | --- |
+| `P` | Accepted plan or documented product intention only |
+| `L` | Exact source implementation with local, reproducible test evidence |
+| `H` | Exact source verified by project-hosted automation on a named host |
+| `R` | Exact immutable release artifact reproduced on a claimed platform |
+| `I` | Exact behavior independently reproduced, or sustained use independently evidenced |
+
+Proof maturity does not add points. It prevents an intended design score from
+being presented as implementation, release, adoption, or dominance evidence.
+
+Apply the safety gate before assigning an assessment band. Evidence of
+surprising or insufficiently authorized execution, secret or raw-untrusted
+value disclosure, an unbounded critical path, orphaned managed processes,
+false success or hidden causal skips, or unsupported security/trust claims
+classifies the candidate as unsafe for recommended use. Preserve the raw
+arithmetic for diagnosis, but cap the reported total at 49 until the gate is
+cleared.
+
+| Score | Capability assessment band |
+| ---: | --- |
+| 90–100 | Category-leading candidate; requires a clear safety gate and direct comparative evidence |
+| 80–89 | Strong and differentiated |
+| 70–79 | Credible with major gaps |
+| 60–69 | Partial category fit |
+| 0–59 | Insufficient for the category promise |
+
+These are capability bands, not market-adoption or market-dominance bands.
+Assess adoption separately with dated evidence such as verified package and
+artifact use, independent repeat usage, durable third-party integrations,
+external reproduction, and maintainer responsiveness. Stars, forks, downloads,
+company size, or a capability total alone must not be translated into a
+dominance claim.
+
+### Dynamic assessment procedure
+
+When an evaluation is requested:
+
+1. Record the date, question, capability scope, evidence cutoff, exact commit
+   or release, target user, and comparison cohort.
+2. Revalidate every candidate's identity, ownership, activity, license,
+   releases, documented scope, and primary evidence; search for material new
+   entrants before retaining or changing the seed set.
+3. Use the same safe scenarios and declared MCP revision, transport, platform,
+   and output expectations where head-to-head execution is authorized and
+   possible. Record incomparable surfaces instead of inventing parity.
+4. For every dimension, record the rating, weighted points, proof grade,
+   concise rationale, primary sources, unknowns, and evidence age.
+5. Apply the safety gate, calculate the total and capability band, and state
+   the highest-impact gaps or differentiators. A 5 requires direct comparative
+   evidence, not confidence in a roadmap.
+6. Report adoption and market position as a separate qualitative assessment;
+   distinguish direct competitors, reference tools, and complementary
+   specialists.
+7. Return the date-stamped assessment without writing its scores or ranking
+   into this file. Re-run rather than reuse it after a material release,
+   protocol change, competitor change, security incident, or evidence expiry.
+
+### Seed comparison set
+
+This is a discovery roster, not an endorsement, exhaustive market map, feature
+claim, or ranking. Similar names do not establish shared identity or scope.
+Every evaluation must revalidate these projects from primary sources and add,
+remove, or recategorize material entrants before scoring.
+
+| Cohort | Seed projects | Why compare |
+| --- | --- | --- |
+| Direct and similarly named diagnostics | [DestiLabs `mcp-doctor`](https://github.com/destilabs/mcp-doctor), [`realwigu/mcp-doctor`](https://github.com/realwigu/mcp-doctor), [`Jiansen/mcp-doctor`](https://github.com/Jiansen/mcp-doctor), and [Stephen Wilson `MCP-Doctor`](https://github.com/stephenywilson/MCP-Doctor) | Discover projects positioned around MCP diagnosis, health, readiness, or server-author recommendations; verify actual overlap dynamically |
+| Official reference tools | [MCP Inspector](https://github.com/modelcontextprotocol/inspector) and [MCP Conformance](https://github.com/modelcontextprotocol/conformance) | Compare interactive debugging and protocol-conformance evidence without treating either official reference as the same product category |
+| Broader testing and evaluation | [MCPJam Inspector](https://github.com/MCPJam/inspector) | Compare server testing, CI, and evaluation workflows that overlap parts of the intended developer journey |
+| Security specialists | [Cisco MCP Scanner](https://github.com/cisco-ai-defense/mcp-scanner), [Snyk Agent Scan](https://github.com/snyk/agent-scan), and [MCP Server Audit](https://github.com/ModelContextProtocol-Security/mcpserver-audit) | Compare explicit vulnerability and security-analysis depth, threat models, validation safety, and evidence exchange while preserving the deliberate specialist boundary |
+
 ## Growth model
 
 | Milestone | Exit gate | State |
@@ -185,7 +338,7 @@ products may consume or complement its evidence; they do not widen the MVP.
 | M1 | One built-binary `inspect` journey identifies the earliest actionable failing layer and report-only correction in redacted human and experimental JSON for synthetic fixtures and a representative real-server compatibility matrix without calling a tool | Done |
 | M2 | One immutable passive-MVP release installs and passes its diagnostic smoke journey through every advertised channel; its least-privilege repeat-release path is rehearsed | Done |
 | M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | In progress |
-| M4 | The selected current OpenSSF OSPS Baseline Level 1 controls pass with dated public evidence and official self-certification proof; exact release-artifact provenance is separately evaluated against the selected current SLSA Build L2 requirements | Proposed |
+| M4 | The `DEC-034`-locked OSPS `v2026.02.19` Level 1 controls pass with dated public evidence and official self-assessment proof; every canonical M3 GitHub Release asset is separately evaluated against SLSA `v1.2` Build L2, or a superseding decision explicitly replaces the target before proof | Proposed |
 
 Each milestone must leave the preceding milestone working. Expansion does not
 justify weakening cleanup, redaction, determinism, or active-execution consent.
@@ -1085,7 +1238,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done | `MCPD-009` | The [bounded transport](src/transport/http.rs), [typed HTTP-header contract](src/contract/http_headers.rs), [application/report integration](src/contract/mod.rs), and [ten disposable built-binary HTTP/TLS journeys](tests/http.rs) prove exact target gates, classified and pinned addresses, peer checks, direct zero-redirect/retry/proxy connections, current-revision JSON/SSE and headers, verified identity, environment-only credential delivery and redaction, passive and authorized active authority, causal report parity, and every target, field, body, event, status, TLS, time, and resource bound without a real endpoint |
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done | `MCPD-010` | The [bounded generator](src/contract/generate.rs), [`break` application](src/break_command.rs), [nine disposable local journeys](tests/break.rs), and [exact-authority HTTP/TLS journey](tests/http.rs) prove versioned known-seed reproduction, schema-valid structural inputs, every generation and active-input bound, sequential continuation, redaction, exact tool/effect/target gates before activity, no schema retrieval or unauthorized connection, and resistant-process-tree cleanup without a new dependency |
 | MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Proposed | `MCPD-011` | A committed schema and compatibility fixtures prove authoritative `mcp-doctor.report/v1` JSON across every retained journey; a bounded JUnit-compatible projection preserves safe findings, skips, and the authoritative exit without target re-execution and passes representative CI consumers; the `MCPD-008A` path publishes every expanded-release artifact and channel, and each passes its applicable installed smoke journey |
-| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Proposed | `MCPD-012` | A live public ruleset, credential-free verifier, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy |
+| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Proposed | `MCPD-012` | A live public ruleset, credential-free public-projection verifier, non-disclosing administrative bypass readback, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy without claiming hidden fields are publicly reproducible |
 | MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Proposed | `MCPD-013` | The recognized security policy, private route, supported-version and response contract, enabled entitled security features, non-disclosing verifier, and recorded clean baseline prove the scoped controls and limitations without exposing findings |
 | MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed | `MCPD-014` | Public workflows and recognized community files, complete in-scope repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence pass a credential-free verifier |
 | MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed | `MCPD-015` | Reviewed non-auto-merged dependency update proposals preserve exact direct requirements and pass maintenance/provenance/graph checks; full-SHA action inventory, fork and permission policy, tracked-artifact rejection, authenticated distribution verification, negative exercises, and operator audit pass against exact `main` and the immutable release |
@@ -1295,12 +1448,12 @@ Use the matching objective when beginning an eligible main-story ticket:
 | MCPD-010 | Complete `MCPD-010` under `DEC-030`: add direct, pinned, bounded Streamable HTTP `2026-07-28` diagnosis for public HTTPS by default, with exact private, loopback-cleartext, and credential-to-endpoint gates; verified TLS; environment-only pre-provisioned credentials; current protocol and bounded `x-mcp-header` fields; zero redirects, application retries, proxies, implicit OAuth discovery, or legacy fallback; and equivalent redacted reports for passive and authorized active journeys. Do not begin adversarial generation or claim OAuth client conformance. Finish when deterministic resolver plus disposable HTTP/TLS fixtures prove every target, address, peer, header, credential, JSON/SSE, status, TLS, redaction, time, and resource boundary without network escape. |
 | MCPD-011 | Complete `MCPD-011` after `MCPD-010`: generate bounded deterministic boundary cases only for explicitly authorized tools, record reproducible seeds and structural inputs, and enforce schema and scenario limits. Finish when generation cannot widen target or execution scope. |
 | MCPD-012 | Complete `MCPD-012` under `DEC-032`: promote the redacted authoritative machine-result contract to schema-backed `mcp-doctor.report/v1`; add one deterministic, bounded, correctly escaped JUnit-compatible projection of the same result without rerunning a target; preserve safe findings, causal skips, outcomes, and exit semantics across every retained local and remote journey; and verify the selected common JUnit subset with representative independent CI consumers. Keep SARIF and general security-scanner positioning out of scope. Then publish one protected immutable expanded version with authenticated artifacts and installed smokes for every represented channel. Do not retain an M3 feature that its owning ticket deferred or cancelled. |
-| MCPD-013 | Complete `MCPD-013`: protect the default branch with a contributor-compatible public ruleset, deliberate approval, check, bypass, merge, deletion, non-fast-forward, and commit-signing choices; implement credential-free drift verification; and prove normal, rejected, and bounded emergency paths. Do not change immutable release bytes or begin later assurance tickets. |
+| MCPD-013 | Complete `MCPD-013` under `DEC-034` and `DEC-035`: revalidate the locked M4 versions, then protect `main` with the canonical contributor-compatible public ruleset and repository merge settings; add the two non-skipping aggregate required gates; implement credential-free drift verification for the public rule projection plus non-disclosing authenticated readback for hidden bypass state; and prove the normal pull-request path, rejected direct update, deletion and force-push paths, and bounded pull-request-only emergency bypass lifecycle. Do not require an unavailable reviewer or unproven commit-signing path, change immutable release bytes, or begin later assurance tickets. |
 | MCPD-014 | Complete `MCPD-014`: establish recognized supported-version, security-contact, private-reporting, response, and coordinated-disclosure guidance; enable and read back the entitled dependency, code-scanning, secret-prevention, and private-reporting controls; document unavailable features exactly; and verify a non-disclosing clean baseline. Do not publish a complete-baseline claim. |
 | MCPD-015 | Complete `MCPD-015`: verify public contribution, conduct, support, defect-reporting, repository-inventory, official-channel, inbound-license, source-license, and released-asset license contracts across every in-scope repository and distribution channel. Avoid nominal reviewers, owners, or controls, and do not begin supply-chain changes. |
 | MCPD-016 | Complete `MCPD-016`: automate grouped dependency update proposals without auto-merge and verify they preserve exact direct requirements plus the accepted maintenance, provenance, feature, transitive-graph, license, advisory, Rust/platform, and behavioral review; inventory and verify every selected Action at a reviewed full commit SHA; prove untrusted workflows are read-only and secretless; reject generated executables and unreviewable binary artifacts; and authenticate the immutable release, Cargo package, and Homebrew formula without changing published bytes. |
 | MCPD-017 | Complete `MCPD-017`: define and verify strong-MFA, lowest-default-access, manual-grant, repository-creation, installed-application, automation-credential, ownership-continuity, and recovery controls using aggregate non-sensitive evidence. Any live organization mutation or private recovery confirmation requires explicit owner authority and must not expose identities or recovery material. |
-| MCPD-018 | Complete `MCPD-018`: confirm the current official OSPS, BadgeApp, and SLSA versions; publish a dated and scoped crosswalk for every selected OSPS Level 1 control; complete the official self-assessment and obtain its official badge only after every control passes; verify that badge and evidence on exact `main`; evaluate only the exact M3 release artifacts against SLSA Build L2; and define annual, framework-change, issuer-status, security-incident, release-pipeline-change, organization-change, and evidence-drift review and removal triggers. Never imply independent certification, regulatory compliance, higher OSPS levels, all-artifact SLSA coverage, or paid platform signing. |
+| MCPD-018 | Complete `MCPD-018` under `DEC-034`: confirm that the activation-locked OSPS `v2026.02.19`, BadgeApp baseline series `v2026.02.19`, and SLSA `v1.2` proof routes remain current and available or stop for a superseding decision; publish the two dated and scoped crosswalks; complete the official baseline-1 self-assessment only after every applicable control passes; verify its public record, JSON, badge, and exact-`main` evidence; and verify every canonical M3 GitHub Release asset against Build L2 using its exact digest and constrained signed provenance. Define annual and event-driven review and removal triggers. Never imply independent certification, regulatory compliance, higher OSPS levels, channel-wide or future-artifact SLSA coverage, or paid platform signing. |
 
 ## M4 enterprise assurance boundary
 
@@ -1309,14 +1462,72 @@ dated, scoped, independently inspectable adoption evidence. It is a
 post-release assurance milestone, not another product release and not a reason
 to rewrite, replace, or weaken the immutable M3 artifacts.
 
-The planning baseline is the current
-[OpenSSF OSPS Baseline `v2026.02.19`](https://baseline.openssf.org/versions/2026-02-19)
-Level 1 checklist and the current
-[SLSA `v1.2`](https://slsa.dev/spec/v1.2/) specification. `MCPD-018` must
-recheck the official current versions and proof mechanisms before publishing a
-claim. A superseding version or changed issuer process triggers a documented
-scope decision and an updated control map rather than silent reuse of this
-snapshot.
+### Locked assurance target and proof
+
+`DEC-034` selects the following exact first-M4 target, revalidated against
+official primary sources on 2026-08-11:
+
+- [OpenSSF OSPS Baseline `v2026.02.19`](https://baseline.openssf.org/versions/2026-02-19)
+  Level 1, including all 24 controls in the map below;
+- the official BadgeApp baseline series displaying OSPS `v2026.02.19`, as
+  recorded by its pinned
+  [version configuration](https://github.com/ossf/best-practices-badge/blob/16340332a377c483d82ca4634eaa6799af9bab64/app/lib/baseline_config.rb);
+  and
+- the approved [SLSA `v1.2`](https://slsa.dev/spec/v1.2/) Build L2
+  requirements.
+
+Before `MCPD-013` changes live repository state, it must recheck the official
+current-version pointers, exact BadgeApp series, and proof availability. Any
+different current version, unavailable exact series, withdrawn proof, or
+material issuer change blocks M4 activation until a superseding decision
+updates the scope and control map. Activation locks one internally consistent
+set; M4 never silently floats, mixes framework versions, or treats a mutable
+service deployment as a versioned standard. A superseding or withdrawn target
+before `MCPD-018` publishes proof causes the same stop-and-decide gate. A later
+change after publication triggers immediate claim review, correction, or
+removal under the public-proof policy.
+
+| Proof target | Exact evidence contract |
+| --- | --- |
+| OSPS Level 1 | `docs/assurance/osps-v2026.02.19-level-1.md` names the date, exact `main`, assessed repository, organization and release boundary, every control, status, applicability reasoning, non-sensitive evidence, limitations, and review triggers. Every applicable control must pass; an N/A needs explicit framework-compatible reasoning. |
+| BadgeApp baseline-1 | The official public assessment must display `v2026.02.19`, reach 100% through `Met` or justified N/A answers, and link its justifications to the project crosswalk. Proof comprises the stable assessment ID and HTML page, its public project JSON, and the official baseline badge SVG linking back to that assessment, all re-read on exact `main`. The result is an official-hosted self-assessment, not independent certification. |
+| SLSA Build L2 | `docs/assurance/slsa-v1.2-build-l2.md` lists every asset in the immutable canonical M3 GitHub Release with its SHA-256 digest and maps every `v1.2` L2 requirement. One exactly reviewed and pinned `gh` release verifies each public attestation against the exact repository, signer workflow, tag ref, and source commit; retained structural evidence confirms the subject digest, GitHub-hosted builder identity, and `predicateType` is `https://slsa.dev/provenance/v1`. The artifact-specific result does not cover registry or Homebrew operations, dependencies, unlisted or future artifacts, or a project-wide certification. |
+
+BadgeApp account creation, human OAuth, acceptance of proposed answers, and
+publication of the assessment are explicit owner actions at `MCPD-018`.
+Automation may prepare evidence and verify public output, but it may not assert
+answers or publish a badge for the owner.
+
+### Accepted default-branch policy
+
+The 2026-08-11 read-only baseline found a public repository whose one admin is
+its only collaborator, with no ruleset or legacy branch protection on `main`,
+all three merge methods enabled, and passing current CI and release-preflight
+jobs. CodeQL default setup and secret-scanning controls were not configured.
+This records the gap; it is not achieved protection, review, or scanner
+evidence.
+
+`DEC-035` fixes the `MCPD-013` implementation contract:
+
+| Choice | Accepted policy |
+| --- | --- |
+| Scope and enforcement | Check in the normalized canonical ruleset as `.github/rulesets/main.json`; activate one public repository ruleset for only `refs/heads/main`; require a pull request, linear history, strict required status checks, and resolved conversations; block deletion and non-fast-forward updates. The pull-request rule, not a push allowlist, prevents direct commits. A credential-free verifier compares the publicly visible live rule and repository-merge projection with the canonical file and confirms the default branch is still `main`. GitHub omits bypass actors from credential-free REST readback, so a separate authenticated owner check must verify the exact empty list and publish only its date, canonical hash, and pass/fail result. |
+| Approval count | Set `required_approving_review_count` to `0`. Do not enable code-owner, stale-approval, or last-push approval requirements while the only maintainer cannot supply an independent approval. Never describe this as peer review. A second active independent maintainer plus a successfully rehearsed normal path triggers a separate policy revision toward one approval; it does not change the count automatically. |
+| Required checks | Add exact GitHub-Actions-bound contexts `Required CI` and `Required release preflight`, with strict branch-up-to-date enforcement. `Required CI` depends on dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 format, Clippy, and test jobs. `Required release preflight` depends on deterministic source/formula generation, macOS ARM64, GNU/Linux ARM64/x64, Windows x64, and exact non-publishing payload verification. Both aggregate jobs use `needs` with `always()` and fail unless every intended dependency succeeded, so a failed, cancelled, or skipped dependency cannot turn green. Limit ordinary branch `push` triggers to `main` so a same-repository branch push cannot produce a duplicate required context alongside its pull-request run. |
+| Future security gates | Dependency policy is already inside `Required CI`. Code scanning and secret prevention are not current required gates because they are not configured, and a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default. `MCPD-014` may add an exact code-scanning rule or separately named security context only after the analysis exists, passes on `main` and representative pull requests, handles contributors safely, and receives an accepted ruleset update. |
+| Merge method | Enable squash merge only, require linear history, and disable merge commits and rebase merges. Use the pull-request title and body for the squash commit; the existing Conventional Commits policy governs the title. Enable contributor branch-update suggestions and deletion of the head branch after merge. Keep auto-merge and merge queue disabled until measured need justifies either. |
+| Standing bypass | Keep `bypass_actors` empty, including for repository administrators, GitHub Apps, and Dependabot. Because this field is hidden from public unauthenticated readback, verify it administratively at activation, after every emergency, and at each assurance review; expose no actor inventory. Administrators can still edit repository rules, so the canonical config, public projection, bounded private readback, and emergency record are the honest controls; no text may claim that GitHub makes the owner technically unable to change policy. |
+| Emergency administration | When a material incident cannot wait for the normal gates, use a dedicated pull request and temporarily add only the repository-administrator role with `pull_request` bypass mode. Record a non-sensitive incident ID, reason, exact commit, rules bypassed, canonical pre-change hash, start time, and rollback owner. Never disable the ruleset, grant `always` bypass, push directly, delete `main`, or force-push. Remove the actor immediately after the one merge, re-run the credential-free public-projection verifier, authenticated empty-bypass readback, and all gates on the merged commit, and publish a non-sensitive closure record; security-sensitive detail remains private. Any additional administrator or changed GitHub capability blocks use until this actor boundary is re-decided. |
+| Commit signing | Required commit signing stays off. Existing artifact provenance is not relabeled as commit signing, and `MCPD-013` does not impose an unproven contributor, Dependabot, web-squash, local-tooling, or emergency path. A later focused ticket may reconsider only after all normal and emergency actors succeed with verified signatures and its merge-method interaction is accepted. |
+
+`MCPD-013` must read back effective layered rules, repository merge settings,
+and the private empty-bypass result, not merely the submitted JSON. It must
+prove one normal protected pull request, safe rejected direct-update, deletion,
+and force-push paths after confirming the active target, and the temporary
+pull-request-only bypass add/remove lifecycle without leaving a standing
+exception. Public evidence must distinguish independently reproducible fields
+from the self-attested non-disclosing bypass result. Security controls remain
+`MCPD-014`; resolving this policy does not activate M4 early.
 
 ### OSPS Level 1 planning control map
 
@@ -1361,8 +1572,8 @@ evidence, and official proof.
 
 | Target | M4 role | Permitted claim boundary | Required public proof |
 | --- | --- | --- | --- |
-| [OpenSSF OSPS Baseline Level 1](https://baseline.openssf.org/) | Project-wide M4 gate against the exact current version selected at activation | Dated and scoped self-assessment; never independent certification or regulatory compliance | Official [BadgeApp](https://www.bestpractices.dev/) baseline self-certification badge linked to the public assessment and project crosswalk |
-| [SLSA Build L2](https://slsa.dev/spec/v1.2/build-track-basics) | Required evaluation of only the exact M3 release artifacts with qualifying signed provenance | Artifact-specific result under the exact selected SLSA version; never a project-wide, all-channel, dependency, or future-release claim | Signed provenance plus a public verification record; no certification-like project badge |
+| [OpenSSF OSPS Baseline `v2026.02.19` Level 1](https://baseline.openssf.org/versions/2026-02-19) | Project-wide M4 gate against the exact activation-locked version under `DEC-034` | Dated and scoped self-assessment; never independent certification or regulatory compliance | Official [BadgeApp](https://www.bestpractices.dev/) `v2026.02.19` baseline-1 public record, JSON, and badge linked to the exact project crosswalk |
+| [SLSA `v1.2` Build L2](https://slsa.dev/spec/v1.2/build-track-basics) | Required evaluation of every asset in only the canonical immutable M3 GitHub Release | Artifact-specific result under `v1.2`; never a project-wide, channel-operation, dependency, unlisted-artifact, or future-release claim | Digest-matched signed provenance, constrained public verification, and the exact requirement crosswalk; no certification-like project badge |
 | [OpenSSF Best Practices Passing](https://www.bestpractices.dev/en/criteria) | Candidate after M4 | Public project self-certification only after every applicable criterion passes | Official Passing badge linked to its assessment |
 | [NIST SSDF](https://csrc.nist.gov/Projects/ssdf/publications) | Candidate gap assessment after M4 | Dated practice-alignment crosswalk against the selected final publication; never “NIST certified” | Scoped public evidence link; no unofficial certification shield |
 | [OpenChain ISO/IEC 18974](https://openchainproject.org/security-assurance) and [ISO/IEC 5230](https://openchainproject.org/license-compliance) | Organization-process candidate after M4 | Only the organization program and scope accepted through the official process; never product certification | Applicable official self-certification or conformance proof under issuer terms |
@@ -1403,19 +1614,22 @@ evidence, and official proof.
 | DEC-030 | Resolve `OPEN-06` with one direct, pinned, credential-scoped Streamable HTTP endpoint | Accepted | 2026-08-10 | Public HTTPS is the default; exact endpoint gates bound eligible private, loopback-cleartext, and credential use; DNS answers are classified once and pinned; TLS identity is mandatory; headers and JSON/SSE are finite; redirects, application retries, proxies, ambient credentials, automatic OAuth discovery, legacy fallback, and value-bearing reports are prohibited |
 | DEC-031 | Generate only versioned, bounded, schema-valid cases for one redundantly authorized tool | Accepted | 2026-08-11 | `break` requires matching `--tool` and `--allow-tool`, an explicit effect classification, 1–100 cases, a seed, and side-effect consent when applicable; `mcp-doctor.generator/v1` uses fixed-width deterministic selection, finite candidates and work, existing local schema validation, sequential calls, and value-free structural reproduction evidence without another dependency, target source, schema retrieval, or authority derived from discovery or annotations |
 | DEC-032 | Resolve `OPEN-07` with stable vendor-neutral JSON and a JUnit-compatible CI projection | Accepted | 2026-08-11 | `MCPD-012` promotes the shared redacted result to schema-backed `mcp-doctor.report/v1`, permits only compatible optional-field and new-code additions within `v1`, and renders one bounded JUnit projection without target re-execution; JSON and exit status remain authoritative and portable, while SARIF and general security-scanner positioning remain deferred pending a real security-analysis consumer and threat model |
+| DEC-033 | Retain a result-free weighted product and market evaluation method | Accepted | 2026-08-11 | `PROJECT.md` fixes the intended category, excellence posture, eight dimensions totaling 100, rating and evidence rules, safety cap, assessment bands, dynamic procedure, and revalidated seed comparison set without retaining a current score, ranking, or dominance claim |
+| DEC-034 | Resolve `OPEN-08` with one activation-locked assurance version set and exact proof routes | Accepted | 2026-08-11 | First-M4 targets are OSPS `v2026.02.19` Level 1, BadgeApp's baseline series for that exact version, and SLSA `v1.2` Build L2; checked-in dated crosswalks, the official public self-assessment record/JSON/badge, and digest-matched constrained provenance verification form the proof, while any pre-publication version or issuer drift blocks for a superseding decision instead of silently floating |
+| DEC-035 | Resolve `OPEN-09` with a usable single-maintainer default-branch policy | Accepted | 2026-08-11 | `main` requires a pull request with zero approvals, resolved conversations, strict non-skipping `Required CI` and `Required release preflight` gates, squash-only linear history, and deletion/force-push protection; there is no standing bypass or signing requirement, and emergency administration is one recorded temporary pull-request-only administrator bypass followed by immediate removal, public-projection verification, and non-disclosing authenticated empty-bypass readback |
 
 ## Open decisions
 
-`OPEN-04`, `OPEN-05`, and `OPEN-06` are accepted as `DEC-028`, `DEC-029`, and
-`DEC-030`; their owning `MCPD-009` and `MCPD-010` tickets are implemented
-locally. `DEC-031` records the implemented `MCPD-011` generation boundary, and
-`OPEN-07` is accepted as the future-facing `DEC-032` reporting boundary for
-`MCPD-012`. The remaining entries belong to their listed later tickets.
+`OPEN-04` through `OPEN-06` are accepted as `DEC-028` through `DEC-030`,
+`DEC-031` records the implemented `MCPD-011` generation boundary, `OPEN-07` is
+accepted as `DEC-032`, and `OPEN-08` and `OPEN-09` are accepted as `DEC-034`
+and `DEC-035`. `DEC-033` separately records the dynamic comparative evaluation
+method. Resolution makes the owning future ticket ready once its predecessor
+passes; it does not claim that proposed behavior or live controls already
+exist. The remaining entry belongs to its listed later ticket.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
-| OPEN-08 | Exact OSPS, BadgeApp, and SLSA versions and proof mechanisms at M4 activation | `MCPD-013` | Use the then-current official versions; planning baseline is OSPS `v2026.02.19` Level 1 and SLSA `v1.2` Build L2, with a documented update if either is superseded |
-| OPEN-09 | Default-branch approval count, required checks, merge methods, bypass, emergency administration, and commit-signing policy | `MCPD-013` | Prevent direct updates and deletion with strict current checks and no standing bypass; do not require an unavailable independent reviewer or unproven signature path |
 | OPEN-10 | Organization membership, application, automation-credential, owner-continuity, and private recovery boundary | `MCPD-017` | Lowest default access, deliberate grants, strong MFA, scoped automation, explicit residual-risk acceptance, and non-disclosing recovery evidence |
 
 ## Risk register
@@ -1433,11 +1647,11 @@ locally. `DEC-031` records the implemented `MCPD-011` generation boundary, and
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and M3 stays an ordered set of bounded vertical tickets; any broad feature becoming a prerequisite for an earlier completed slice escalates | Mitigated by the ordered plan and `DEC-027`; voluntary evidence may reprioritize work, but its absence neither authorizes breadth nor blocks scoped work |
 | RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Mitigated for the first release: the preferred `mcp-doctor` crate identity is published under the exact EnjoyableWork source and metadata; future channel guidance must preserve the distinction |
 | RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and the repeat-release path by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, and successful channel verification; every future release must retain the same immutable-byte gates |
-| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `MCPD-013` requires an enforced public ruleset, drift verifier, rejected-path exercises, and a bounded emergency process; any unverified bypass or destructive path blocks M4 | Deferred with M4 |
+| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Policy resolved; the 2026-08-11 live readback still has no ruleset or branch protection, so mitigation remains deferred to `MCPD-013` after M3 |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Deferred with M4 |
 | RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; the completed repeat-release rehearsal proves exact OIDC and tap authority plus a clean credential inventory at the merged commits, while future drift blocks publication and full assurance remains `MCPD-016` |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
-| RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `MCPD-018` binds every claim to exact version, scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Deferred with M4 |
+| RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `DEC-034` locks exact version and proof routes and makes drift a stop-and-decide gate; `MCPD-018` binds every claim to exact scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Policy resolved; proof remains deferred with M4 |
 | RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, maintainer trials, and voluntary feedback record unclear findings, false findings, time to value, and repeat use | M1 report sufficiency passes locally and hosted; the checkpoint closed with zero independent reports and no adoption claim, while future feedback may reprioritize M3 |
 | RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages passed locally and hosted before M2 release; future protocol revisions reopen the risk |
 | RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated locally by the MCPD-003 policy refinement; complete live update and supply-chain verification remains `MCPD-016` |
@@ -1507,19 +1721,21 @@ M4 is complete only when:
 
 - `MCPD-013` through `MCPD-018` are done in order and D-09 links their durable
   public and non-disclosing verification evidence;
-- every Level 1 control in the exact OSPS version selected at activation passes,
-  including applicable conditional controls, with evidence or explicit
+- every Level 1 control in OSPS `v2026.02.19` as locked by `DEC-034`, or an
+  explicitly accepted superseding decision, passes with evidence or exact
   applicability reasoning for every row;
 - the public self-assessment states the framework version, level, assessed
   repositories and organization and release boundaries, assessment date,
   limitations, self-assessed status, evidence links, and review triggers;
-- the official BadgeApp baseline assessment has achieved the selected Level 1
-  status and its official badge links from the README to that assessment and is
-  verified on exact `main`;
-- the exact M3 GitHub release assets named by the SLSA statement meet the
-  selected SLSA Build L2 requirements and their signed provenance is publicly
-  reproducibly verified, while Cargo, Homebrew, dependencies, future releases,
-  and any unassessed artifacts remain explicitly outside that claim;
+- the official BadgeApp assessment displays `v2026.02.19`, has achieved
+  baseline-1 through supported `Met` or justified N/A answers, and its public
+  page, JSON, and official badge link from the README are verified on exact
+  `main`;
+- every asset in the canonical immutable M3 GitHub Release meets the SLSA
+  `v1.2` Build L2 requirements and its exact digest, provenance predicate,
+  builder, signer workflow, tag, and source commit are publicly reproducibly
+  verified, while registry and Homebrew operations, dependencies, unlisted
+  artifacts, and future releases remain explicitly outside that claim;
 - no public text implies higher OSPS levels, independent certification,
   regulatory compliance, NIST certification, OpenChain product certification,
   universal SLSA coverage, a warranty, an SLA, or paid native signing;
