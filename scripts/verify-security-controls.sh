@@ -59,13 +59,14 @@ if ! jq -e '
   .clean_baseline == {
     "require_readable_dependency_graph": true,
     "require_successful_default_branch_codeql_analyses": ["actions", "rust"],
-    "require_completed_default_secret_backfill": true,
+    "require_repository_visible_secret_alert_endpoint": true,
     "require_zero_open_dependabot_alerts": true,
     "require_zero_open_code_scanning_alerts": true,
     "require_zero_open_secret_scanning_alerts": true
   } and
   (.unavailable_features | map(.feature)) == [
     "secret_scanning_validity_checks",
+    "secret_scanning_scan_history_readback",
     "secret_scanning_non_provider_and_generic_patterns",
     "ai_generic_secret_detection",
     "delegated_push_protection_bypass",
@@ -112,7 +113,6 @@ code_analyses_path="$work_dir/code-analyses.json"
 dependabot_alerts_path="$work_dir/dependabot-alerts.json"
 code_alerts_path="$work_dir/code-alerts.json"
 secret_alerts_path="$work_dir/secret-alerts.json"
-secret_history_path="$work_dir/secret-history.json"
 sbom_path="$work_dir/sbom.json"
 
 api_get() {
@@ -134,7 +134,6 @@ if ! api_get "repos/$repository" "$repository_path" ||
   ! api_get "repos/$repository/dependabot/alerts?state=open&per_page=1" "$dependabot_alerts_path" ||
   ! api_get "repos/$repository/code-scanning/alerts?state=open&per_page=1" "$code_alerts_path" ||
   ! api_get "repos/$repository/secret-scanning/alerts?state=open&hide_secret=true&per_page=1" "$secret_alerts_path" ||
-  ! api_get "repos/$repository/secret-scanning/scan-history" "$secret_history_path" ||
   ! api_get "repos/$repository/dependency-graph/sbom" "$sbom_path" ||
   ! GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api \
     -H "X-GitHub-Api-Version: $api_version" \
@@ -178,7 +177,7 @@ if ! jq -e --arg repository "$repository" --arg branch "$default_branch" '
     all($required[];
       . as $language |
       any($analyses[];
-        .language == $language and
+        .category == ("/language:" + $language) and
         .ref == "refs/heads/main" and
         .commit_sha == $sha and
         (.error // "") == ""
@@ -188,12 +187,6 @@ if ! jq -e --arg repository "$repository" --arg branch "$default_branch" '
   ! jq -e 'length == 0' "$dependabot_alerts_path" >/dev/null 2>&1 ||
   ! jq -e 'length == 0' "$code_alerts_path" >/dev/null 2>&1 ||
   ! jq -e 'length == 0' "$secret_alerts_path" >/dev/null 2>&1 ||
-  ! jq -e '
-    (.incremental_scans | type == "array" and length > 0) and
-    all(.incremental_scans[]; .status == "completed") and
-    (.backfill_scans | type == "array" and length > 0) and
-    all(.backfill_scans[]; .status == "completed")
-  ' "$secret_history_path" >/dev/null 2>&1 ||
   ! jq -e '
     .sbom.spdxVersion == "SPDX-2.3" and
     (.sbom.documentNamespace | type == "string" and length > 0) and

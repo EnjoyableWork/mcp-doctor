@@ -46,7 +46,7 @@
       "actions",
       "rust"
     ],
-    "require_completed_default_secret_backfill": true,
+    "require_repository_visible_secret_alert_endpoint": true,
     "require_zero_open_dependabot_alerts": true,
     "require_zero_open_code_scanning_alerts": true,
     "require_zero_open_secret_scanning_alerts": true
@@ -55,6 +55,10 @@
     {
       "feature": "secret_scanning_validity_checks",
       "reason": "requires GitHub Secret Protection on an eligible paid organization plan"
+    },
+    {
+      "feature": "secret_scanning_scan_history_readback",
+      "reason": "requires GitHub Advanced Security and is not exposed for this GitHub Free public-repository baseline; backfill completion therefore cannot be attested"
     },
     {
       "feature": "secret_scanning_non_provider_and_generic_patterns",

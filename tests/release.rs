@@ -820,7 +820,7 @@ fn security_policy_defines_private_reporting_support_and_coordination() {
 }
 
 #[test]
-fn security_control_projection_matches_dec_037() {
+fn security_control_projection_matches_dec_037_and_dec_038() {
     let canonical = repository_file(".github/security-controls.json");
     let canonical: serde_json::Value =
         serde_json::from_str(&canonical).expect("security controls should be valid JSON");
@@ -873,7 +873,7 @@ fn security_control_projection_matches_dec_037() {
         serde_json::json!({
             "require_readable_dependency_graph": true,
             "require_successful_default_branch_codeql_analyses": ["actions", "rust"],
-            "require_completed_default_secret_backfill": true,
+            "require_repository_visible_secret_alert_endpoint": true,
             "require_zero_open_dependabot_alerts": true,
             "require_zero_open_code_scanning_alerts": true,
             "require_zero_open_secret_scanning_alerts": true
@@ -894,6 +894,7 @@ fn security_control_projection_matches_dec_037() {
         unavailable,
         [
             "secret_scanning_validity_checks",
+            "secret_scanning_scan_history_readback",
             "secret_scanning_non_provider_and_generic_patterns",
             "ai_generic_secret_detection",
             "delegated_push_protection_bypass",
@@ -938,10 +939,9 @@ fn security_control_verifier_is_authenticated_bounded_and_non_disclosing() {
         "dependabot/alerts?state=open&per_page=1",
         "code-scanning/alerts?state=open&per_page=1",
         "secret-scanning/alerts?state=open&hide_secret=true&per_page=1",
-        "secret-scanning/scan-history",
         "dependency-graph/sbom",
         ".commit_sha == $sha",
-        "all(.backfill_scans[]; .status == \"completed\")",
+        ".category == (\"/language:\" + $language)",
         "date=%s canonical_sha256=%s result=FAIL",
         "date=%s canonical_sha256=%s result=PASS",
     ] {
@@ -950,7 +950,13 @@ fn security_control_verifier_is_authenticated_bounded_and_non_disclosing() {
             "security verifier should preserve {contract}"
         );
     }
-    for forbidden in ["set -x", "--verbose", "jq '.'", "hide_secret=false"] {
+    for forbidden in [
+        "set -x",
+        "--verbose",
+        "jq '.'",
+        "hide_secret=false",
+        "secret-scanning/scan-history",
+    ] {
         assert!(
             !verifier.contains(forbidden),
             "security verifier must not contain {forbidden}"
@@ -972,14 +978,20 @@ fn project_records_the_scoped_mcpd_014_contract_without_a_baseline_claim() {
         "every 14 calendar days",
         "within 90 days of acknowledgement",
         "default query suite, standard runner, weekly schedule, and remote threat model",
-        "Enable secret scanning and push protection.",
+        "Enable secret scanning and push protection, require the repository-visible alert endpoint",
+        "the baseline therefore does not attest backfill completion",
         "emits only UTC date, canonical SHA-256, and `PASS` or `FAIL`",
         "Do not add CodeQL or secret scanning to the `DEC-035` required ruleset in this ticket.",
         "pre-activation gap record, not a clean baseline or achieved assurance result",
-        "Provider-routed partner alerts for public repositories are not\nvisible to repository administrators",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/20",
+        "7097b683fc6619447b31db0b55db12467626e446",
+        "https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31545582099",
+        "the protected canonical correction, representative pull request, and\nfinal non-disclosing verifier pass remain required before completion",
+        "Provider-routed partner alerts for public\nrepositories are not visible to repository administrators",
         "does not prove all OSPS Level 1 controls",
         "| DEC-037 | Support the latest release line through private coordinated disclosure and every entitled repository-security control | Accepted |",
-        "In progress: `DEC-037`, `SECURITY.md`, the canonical projection, and the verifier",
+        "| DEC-038 | Refine the `MCPD-014` clean baseline to GitHub Free's observable security surfaces | Accepted |",
+        "In progress: the policy, private route, dependency controls, CodeQL, secret scanning, and push protection are live",
     ] {
         assert!(
             project.contains(contract),
