@@ -416,6 +416,22 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("No publish command exists in the authorization job"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
+    for contract in [
+        "The current public release is `mcp-doctor` `0.2.0`",
+        "b0805a8f685e46814e358de368e2a270c21704af",
+        "31528649356",
+        "31528649333",
+        "31529740214",
+        "31530330361",
+        "a57736ea1a7abf73eeff9a8278af11110247bd20",
+        "31530466930",
+        "passed all ten jobs",
+    ] {
+        assert!(
+            release.contains(contract),
+            "release guide should retain v0.2.0 evidence: {contract}"
+        );
+    }
     assert!(first_notes.contains("does not call tools"));
     assert!(first_notes.contains("does not call tools, connect to remote HTTP endpoints"));
     for contract in [
@@ -609,6 +625,32 @@ fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_
         !project.contains("| OPEN-07 |"),
         "accepted OPEN-07 should leave the open-decision table"
     );
+}
+
+#[test]
+fn project_records_m3_completion_against_exact_v020_evidence() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Ready |",
+        "| Public release | `mcp-doctor` `v0.2.0`",
+        "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
+        "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
+        "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
+        "b0805a8f685e46814e358de368e2a270c21704af",
+        "31528649356",
+        "31528649333",
+        "31529740214",
+        "31530330361",
+        "a57736ea1a7abf73eeff9a8278af11110247bd20",
+        "31530466930",
+        "`MCPD-012`, D-08, and M3 are Done as\nof 2026-08-11.",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain exact M3 completion evidence: {contract}"
+        );
+    }
 }
 
 #[test]

@@ -1,13 +1,16 @@
 # Release and installation integrity
 
-The first public release is `mcp-doctor` `0.1.0`, tagged `v0.1.0`. GitHub
-Releases is its canonical immutable record. crates.io and the
-`EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source
-package held by that release.
+The current public release is `mcp-doctor` `0.2.0`, tagged `v0.2.0`. GitHub
+Releases is the canonical immutable record for every version. crates.io and
+the `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact
+source package held by the corresponding release. The sections below retain
+the first-release record and the reusable later-release procedure.
 
-## What is published
+## v0.1.0 first-release record
 
-The GitHub Release contains exactly these seven assets:
+### Artifacts
+
+The `v0.1.0` GitHub Release contains exactly these seven assets:
 
 ```text
 SHA256SUMS
@@ -30,7 +33,7 @@ GNU/Linux ARM64 and x64. The project does not issue macOS or Windows binaries
 in this release, and it does not publish a WinGet package. Those native binary
 channels require platform signing and a new version.
 
-## Verify a GitHub download
+### Verify a GitHub download
 
 Download the archive, matching checksum manifest, and attestation from the
 [`v0.1.0` release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.1.0):
@@ -47,7 +50,7 @@ On macOS, use `shasum -a 256 --check SHA256SUMS` for checksum verification.
 Review the matching `.spdx.json` document for the archive's packaged software
 inventory.
 
-## Install the exact source release
+### Install the exact source release
 
 Cargo builds the registry copy while preserving the committed lockfile:
 
@@ -76,7 +79,7 @@ registry package has SHA-256
 identical to the canonical GitHub asset. The one-time first-publication token
 was removed locally and confirmed revoked server-side after publication.
 
-## Publication procedure
+### Publication procedure
 
 1. Work from clean `main` with version `0.1.0`, release notes, and the Rust
    `1.97.1` toolchain pin in agreement.
@@ -136,6 +139,29 @@ rejected authorization and byte-mismatch cases, before any version after
 `v0.1.0` was allowed. [PROJECT.md](../PROJECT.md) records the exact live
 evidence. The first later release confirms the retained path against public
 channels; it does not authorize weakening these gates.
+
+## v0.2.0 retained-path verification
+
+[`v0.2.0`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0)
+is the first release published through the retained subsequent-release path.
+[PR 14](https://github.com/EnjoyableWork/mcp-doctor/pull/14) produced exact
+release commit
+[`b0805a8f685e46814e358de368e2a270c21704af`](https://github.com/EnjoyableWork/mcp-doctor/commit/b0805a8f685e46814e358de368e2a270c21704af).
+The exact-commit [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649356)
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649333)
+passed before the [protected release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31529740214)
+made the GitHub Release immutable and published the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.2.0) with short-lived
+OIDC authority.
+
+The tap-owned [verification and publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31530330361)
+copied the exact release formula in commit
+[`a57736ea1a7abf73eeff9a8278af11110247bd20`](https://github.com/EnjoyableWork/homebrew-tap/commit/a57736ea1a7abf73eeff9a8278af11110247bd20).
+The credential-free [channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31530466930)
+then passed all ten jobs: immutable GitHub, crates.io, and Homebrew byte
+identity; two GNU/Linux archive smokes; four native Cargo smokes; and three
+native Homebrew smokes. This is the completion evidence for the retained path,
+not permission to weaken it for a later release.
 
 ### GitHub-controlled sequence
 

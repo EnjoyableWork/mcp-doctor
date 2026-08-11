@@ -6,13 +6,13 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The passive local STDIO MVP and pinned current-revision compatibility matrix pass locally and in hosted evidence; bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and a JUnit-compatible projection pass the complete locked local gate; the expanded release candidate still requires hosted, publication, and installed-channel gates |
-| Current milestone | M3 — bounded diagnostic expansion; `MCPD-012` is In progress |
-| Overall status | M0, M1, and M2 pass locally and in hosted evidence; the immutable `v0.1.0` channels and least-privilege repeat-release path remain verified; `MCPD-009` through `MCPD-011` are Done, while the `v0.2.0` candidate implements the final M3 reporting slice without yet claiming hosted or public expanded-release evidence |
-| Current focus | Verify the `MCPD-012` stable-reporting candidate in hosted pull-request and release preflight, publish it through the retained protected release path, and independently verify every represented installed channel |
-| Public release | `mcp-doctor` `v0.1.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
+| Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and JUnit-compatible projection pass local, hosted, immutable-release, and represented installed-channel evidence |
+| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Ready |
+| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` GitHub, crates.io, and Homebrew channels are verified, and the least-privilege repeat-release path remains verified |
+| Current focus | Begin `MCPD-013` by applying and verifying the `DEC-035` contributor-compatible default-branch protection contract without making an assurance claim ahead of M4 evidence |
+| Public release | `mcp-doctor` `v0.2.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-11 |
-| Next review trigger | `MCPD-012` hosted pull-request and release evidence; any voluntary usage evidence that changes M3 priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
+| Next review trigger | `MCPD-013` start or live default-branch-control evidence; any voluntary usage evidence that changes product priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -82,18 +82,19 @@ controls now gate every later public version. A reviewed release change and an
 intentionally created annotated tag remain human release authority; automation
 may publish that approved version but may not choose one.
 
-M3 is activated by the dated `DEC-027` owner decision now that M2 and
-`MCPD-008A` are complete. Independent adoption evidence is useful prioritization
-input but is not a prerequisite whose external timing can indefinitely block
-planned feature work. Each M3 ticket must still satisfy its predecessor,
-resolve its own design and safety decisions, preserve the north star, and pass
-its acceptance evidence. Voluntary feedback may reprioritize, narrow, defer, or
-cancel later work, but its absence alone does not stop the ordered story.
+M3 was activated by the dated `DEC-027` owner decision after M2 and
+`MCPD-008A` completed. Independent adoption evidence remained useful
+prioritization input rather than a prerequisite whose external timing could
+indefinitely block planned feature work. Each M3 ticket satisfied its
+predecessor, resolved its design and safety decisions, preserved the north
+star, and passed its acceptance evidence before the expanded `v0.2.0` release
+closed M3 on 2026-08-11. Voluntary feedback may still reprioritize, narrow,
+defer, or cancel later work.
 
-M4 begins only after the expanded M3 release is independently verified. It
-does not delay or reopen M3, and it does not turn a self-assessment into a
-warranty, independent certification, regulatory-compliance claim, or support
-SLA.
+M4 became eligible only after the expanded M3 release was independently
+verified. It does not delay or reopen M3, and it does not turn a
+self-assessment into a warranty, independent certification,
+regulatory-compliance claim, or support SLA.
 
 ## Product outcome
 
@@ -337,8 +338,8 @@ remove, or recategorize material entrants before scoring.
 | M0 | Clean checkout builds; help/version work; format, Clippy, tests, dependency policy, and hosted CI pass | Done |
 | M1 | One built-binary `inspect` journey identifies the earliest actionable failing layer and report-only correction in redacted human and experimental JSON for synthetic fixtures and a representative real-server compatibility matrix without calling a tool | Done |
 | M2 | One immutable passive-MVP release installs and passes its diagnostic smoke journey through every advertised channel; its least-privilege repeat-release path is rehearsed | Done |
-| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | In progress |
-| M4 | The `DEC-034`-locked OSPS `v2026.02.19` Level 1 controls pass with dated public evidence and official self-assessment proof; every canonical M3 GitHub Release asset is separately evaluated against SLSA `v1.2` Build L2, or a superseding decision explicitly replaces the target before proof | Proposed |
+| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |
+| M4 | The `DEC-034`-locked OSPS `v2026.02.19` Level 1 controls pass with dated public evidence and official self-assessment proof; every canonical M3 GitHub Release asset is separately evaluated against SLSA `v1.2` Build L2, or a superseding decision explicitly replaces the target before proof | Ready |
 
 Each milestone must leave the preceding milestone working. Expansion does not
 justify weakening cleanup, redaction, determinism, or active-execution consent.
@@ -388,7 +389,7 @@ or move a published version tag.
 | Active activity | Outside M1; bounded reviewed `check` replay and deterministic generated `break` cases are implemented under `MCPD-009` and `MCPD-011`, and neither changes the passive M1 default |
 | Schemas | JSON Schema 2020-12 under bounded local evaluation; no external retrieval by default |
 | Findings | Earliest actionable layer and primary finding or findings, independent safety findings, typed code, severity, safe location/context, causally linked performed/skipped state, overall outcome, safe expectation, remediation, and specification reference |
-| Output | M1 delivered redacted human output plus experimental `mcp-doctor.report/v1alpha1` JSON with the same diagnosis and result; the current `MCPD-012` candidate promotes that contract to stable `mcp-doctor.report/v1` and adds a JUnit-compatible projection without changing the passive M1 activity boundary |
+| Output | M1 delivered redacted human output plus experimental `mcp-doctor.report/v1alpha1` JSON with the same diagnosis and result; `MCPD-012` promoted that contract to stable `mcp-doctor.report/v1` and added a JUnit-compatible projection in `v0.2.0` without changing the passive M1 activity boundary |
 | Process policy | Literal executable/arguments, constrained environment, bounded I/O and time, full cleanup and reap |
 | Test data | Synthetic fixture servers in the default suite plus a controlled, non-mutating compatibility matrix of official SDK examples and independent implementations |
 | Compatibility positioning | Broad current-revision positioning only when all selected current-revision official and independent cases pass across at least two implementation languages; otherwise use explicit readiness/migration positioning and a separate compatibility ticket if at least one credible independent implementation passes; no credible independent pass blocks M1 |
@@ -504,11 +505,11 @@ fixtures, and built-binary journeys enforce the stable contract.
 
 #### MCPD-012 stable reporting decision
 
-`DEC-032` resolves `OPEN-07`. The `MCPD-012` source candidate promotes the
-shared redacted machine-result contract to `mcp-doctor.report/v1` and adds one
-conservative JUnit-compatible XML projection. The published `v0.1.0` artifacts
-remain experimental JSON-only; stable JSON and JUnit become public release
-claims only after the expanded candidate passes and publishes unchanged.
+`DEC-032` resolves `OPEN-07`. `MCPD-012` promotes the shared redacted
+machine-result contract to `mcp-doctor.report/v1` and adds one conservative
+JUnit-compatible XML projection. The published `v0.1.0` artifacts remain
+experimental JSON-only; stable JSON and JUnit are published unchanged in
+`v0.2.0` after the expanded release gates passed.
 
 Stable `v1` JSON is the authoritative, vendor-neutral automation contract. Its
 committed Draft 2020-12 schema and fixtures must cover every retained passive,
@@ -1193,9 +1194,10 @@ same exact endpoint and tool authority and makes no unauthorized connection.
 Focused generator tests pin `mcp-doctor.generator/v1` outputs and revalidate
 every retained input against its advertised schema. The disposable formatting,
 Clippy, and full-test gate, `cargo deny`, and dirty-tree package verification
-pass locally; no hosted or exact-artifact M3 claim is made.
+pass locally. The exact hosted and published-artifact evidence that closes M3
+is recorded with `MCPD-012` below.
 
-### MCPD-012 stable reporting candidate
+### MCPD-012 stable reporting and expanded-release evidence
 
 The current source renders human, stable JSON, or JUnit output from one
 immutable redacted `DiagnosticReport`. The committed
@@ -1223,11 +1225,24 @@ POSIX gate, and a passing all-feature locked `cargo deny` review. The 91-file
 Cargo package includes the stable schema, verifies as 1.3 MiB uncompressed and
 281.1 KiB compressed, produces byte-stable generated channel inputs across two
 runs, installs and passes the source-channel smoke, and completes
-`cargo publish --dry-run`. This remains a release candidate rather than
-completion evidence. Hosted native CI and release preflight, immutable
-`v0.2.0` publication, authenticated Cargo and Homebrew byte handoffs, and every
-represented installed smoke must still pass before `MCPD-012`, D-08, and M3 can
-be marked Done.
+`cargo publish --dry-run`.
+
+[PR 14](https://github.com/EnjoyableWork/mcp-doctor/pull/14) merged the
+unchanged candidate as exact `main` commit
+[`b0805a8`](https://github.com/EnjoyableWork/mcp-doctor/commit/b0805a8f685e46814e358de368e2a270c21704af).
+The exact-commit [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649356)
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649333)
+passed. The [protected release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31529740214)
+published the [immutable `v0.2.0` GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0)
+and a byte-identical [crates.io package](https://crates.io/crates/mcp-doctor/0.2.0)
+through short-lived OIDC authority. The tap-owned
+[verification and publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31530330361)
+copied the exact formula in commit
+[`a57736e`](https://github.com/EnjoyableWork/homebrew-tap/commit/a57736ea1a7abf73eeff9a8278af11110247bd20).
+The credential-free [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31530466930)
+then proved canonical byte identity and installed smokes for every represented
+GitHub archive, Cargo, and Homebrew host. `MCPD-012`, D-08, and M3 are Done as
+of 2026-08-11.
 
 ## Target architecture
 
@@ -1265,7 +1280,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-06 | Adoption-ready passive `inspect` journey | M1 | Done | [Built-binary journeys](tests/stdio.rs) prove earliest-layer selection, independent safety findings, causal skips, report-only correction, redaction, and equivalent human/experimental JSON; the [four-case compatibility matrix](tests/compatibility/README.md), scoped broad current-revision position, registry/revision rechecks, and conditional test-tool decisions pass locally; [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363588701) and [hosted compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363605095) pass on `main` `24f79f8` |
 | D-07 | Immutable passive MVP release | M2 | Done | The immutable GitHub release, byte-identical crates.io package and Homebrew formula, ten-job installed channel verifier, dated adoption baseline, local credential removal, and confirmed server-side token revocation pass |
 | D-07A | Least-privilege repeat-release path | M2 | Done | Exact source and tap `main` commits, protected environments, crates.io publisher identity, authorized and rejected OIDC paths, immutable byte handoffs, tap-owned no-write rehearsal, ten-job channel verification, and final clean credential readback pass in linked `MCPD-008A` evidence |
-| D-08 | Bounded diagnostic expansion release | M3 | In progress | `MCPD-009` through `MCPD-011` are Done; the `MCPD-012` candidate adds schema-backed stable JSON, bounded JUnit, pinned Jenkins/GitLab consumer evidence, and complete locked local acceptance, while hosted gates, publication, and installed-channel verification remain |
+| D-08 | Bounded diagnostic expansion release | M3 | Done | `MCPD-009` through `MCPD-012` pass their bounded local and built-binary journeys; [PR 14](https://github.com/EnjoyableWork/mcp-doctor/pull/14), exact-commit [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649356) and [preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649333), the [immutable `v0.2.0` release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0), authenticated [Cargo](https://crates.io/crates/mcp-doctor/0.2.0) and [Homebrew](https://github.com/EnjoyableWork/homebrew-tap/commit/a57736ea1a7abf73eeff9a8278af11110247bd20) byte handoffs, and the [ten-job installed-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31530466930) pass |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
 
 ## Ticket board
@@ -1284,8 +1299,8 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-009 | Add explicit, budgeted, deterministic `check` scenario replay and result-schema validation | M3 | Done | `MCPD-008A` | [Twenty-two built-binary active suites](tests/active.rs), the [strict replay adapter](src/contract/active.rs), and the disposable locked gate prove the `DEC-028`/`DEC-029` contract, consent rejection, ordered continuation, redaction, bounded schemas/results/reports, crash, incomplete, limit, and cleanup paths without a new dependency |
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done | `MCPD-009` | The [bounded transport](src/transport/http.rs), [typed HTTP-header contract](src/contract/http_headers.rs), [application/report integration](src/contract/mod.rs), and [ten disposable built-binary HTTP/TLS journeys](tests/http.rs) prove exact target gates, classified and pinned addresses, peer checks, direct zero-redirect/retry/proxy connections, current-revision JSON/SSE and headers, verified identity, environment-only credential delivery and redaction, passive and authorized active authority, causal report parity, and every target, field, body, event, status, TLS, time, and resource bound without a real endpoint |
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done | `MCPD-010` | The [bounded generator](src/contract/generate.rs), [`break` application](src/break_command.rs), [nine disposable local journeys](tests/break.rs), and [exact-authority HTTP/TLS journey](tests/http.rs) prove versioned known-seed reproduction, schema-valid structural inputs, every generation and active-input bound, sequential continuation, redaction, exact tool/effect/target gates before activity, no schema retrieval or unauthorized connection, and resistant-process-tree cleanup without a new dependency |
-| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | In progress | `MCPD-011` | The committed [`mcp-doctor.report/v1` schema](schemas/mcp-doctor.report.v1.schema.json), compatibility fixtures, and local/remote built-binary journeys validate stable JSON; the bounded [JUnit projection](src/contract/report.rs) and [pinned Jenkins/GitLab imports](tests/junit/README.md) preserve safe findings, skips, outcome, and exit without target re-execution; the complete locked local gate, package/install smoke, deterministic channel generation, and publish dry-run pass, while hosted gates, immutable publication, downstream byte handoffs, and installed-channel smokes remain |
-| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Proposed | `MCPD-012` | A live public ruleset, credential-free public-projection verifier, non-disclosing administrative bypass readback, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy without claiming hidden fields are publicly reproducible |
+| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done | `MCPD-011` | The committed [`mcp-doctor.report/v1` schema](schemas/mcp-doctor.report.v1.schema.json), compatibility fixtures, and local/remote built-binary journeys validate stable JSON; the bounded [JUnit projection](src/contract/report.rs) and [pinned Jenkins/GitLab imports](tests/junit/README.md) preserve safe findings, skips, outcome, and exit without target re-execution; the complete locked local gate, exact-commit [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649356) and [preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649333), [immutable publication](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31529740214), authenticated Cargo and [tap](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31530330361) handoffs, and [ten-job installed-channel verification](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31530466930) pass for exact `v0.2.0` commit `b0805a8f685e46814e358de368e2a270c21704af` |
+| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Ready | `MCPD-012` | A live public ruleset, credential-free public-projection verifier, non-disclosing administrative bypass readback, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy without claiming hidden fields are publicly reproducible |
 | MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Proposed | `MCPD-013` | The recognized security policy, private route, supported-version and response contract, enabled entitled security features, non-disclosing verifier, and recorded clean baseline prove the scoped controls and limitations without exposing findings |
 | MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed | `MCPD-014` | Public workflows and recognized community files, complete in-scope repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence pass a credential-free verifier |
 | MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed | `MCPD-015` | Reviewed non-auto-merged dependency update proposals preserve exact direct requirements and pass maintenance/provenance/graph checks; full-SHA action inventory, fork and permission policy, tracked-artifact rejection, authenticated distribution verification, negative exercises, and operator audit pass against exact `main` and the immutable release |
@@ -1342,7 +1357,7 @@ re-review.
 | [`reqwest` `=0.13.4`](https://crates.io/crates/reqwest/0.13.4) | `MCPD-010` — Done | Maintained asynchronous HTTP framing and a rustls/platform-verifier client; defaults are disabled and only `rustls-no-provider` is selected, while the application separately fixes HTTP/1.1, direct connections, identity encoding, no redirects/retries/decompression, one origin, and pinned resolution |
 | [`rustls` `=0.23.43`](https://crates.io/crates/rustls/0.23.43) | `MCPD-010` — Done | Direct selection and installation of the `ring` crypto provider plus TLS 1.2/1.3 configuration and typed TLS-error recognition; defaults are disabled and only `ring`, `std`, and `tls12` are selected |
 | [`rcgen` `=0.14.9`](https://crates.io/crates/rcgen/0.14.9) | `MCPD-010` — Done | Development-only generation of a fresh disposable CA and loopback server identity, preventing checked-in leaf expiry from making native TLS evidence time-dependent; defaults are disabled and only the required `pem` and `ring` features are selected |
-| [`quick-xml` `=0.41.0`](https://crates.io/crates/quick-xml/0.41.0) | `MCPD-012` — In progress | Development-only strict parsing of the conservative JUnit XML subset and escaping boundary; defaults are disabled, no optional feature is selected, and no quick-xml code or transitive is linked into the release binary |
+| [`quick-xml` `=0.41.0`](https://crates.io/crates/quick-xml/0.41.0) | `MCPD-012` — Done | Development-only strict parsing of the conservative JUnit XML subset and escaping boundary; defaults are disabled, no optional feature is selected, and no quick-xml code or transitive is linked into the release binary |
 | [`tempfile` `=3.27.0`](https://crates.io/crates/tempfile/3.27.0) | `MCPD-002` — Done | Development-only ownership of disposable test roots; active upstream, Rust floor, permissive license, graph, cleanup, and synthetic-path isolation are reviewed |
 
 #### MCPD-010 HTTP/TLS adoption review — 2026-08-11
@@ -1708,25 +1723,25 @@ exist. The remaining entry belongs to its listed later ticket.
 
 | ID | Risk | Impact | Mitigation and escalation trigger | State |
 | --- | --- | --- | --- | --- |
-| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default plus `DEC-029`/`DEC-031` exact configuration, effects, tool, seed/case, and side-effect gates with consent and rejection tests; any implicit, mismatched, wildcard, annotation-derived, or continued call blocks every later release | Mitigated locally for reviewed `check`, generated `break`, and exact remote active paths by `MCPD-009` through `MCPD-011`; hosted exact-artifact evidence remains required |
-| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated for M1 by the complete hosted native process matrix and retained locally by reviewed and generated active cleanup journeys; future exact artifacts must retain it |
-| RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, fixtures, and the `DEC-028` environment-only secret boundary; any observed name or value blocks release | `MCPD-009` proves target/argument secret rejection, `MCPD-011` proves structural-only reproduction, and the `MCPD-012` candidate applies the same boundary to human, stable JSON, and JUnit output; the risk remains open for every later boundary and exact release artifact |
+| RISK-01 | A diagnostic invokes a mutating tool unexpectedly | Critical | Passive default plus `DEC-029`/`DEC-031` exact configuration, effects, tool, seed/case, and side-effect gates with consent and rejection tests; any implicit, mismatched, wildcard, annotation-derived, or continued call blocks every later release | Mitigated for exact `v0.2.0` reviewed `check`, generated `break`, and remote active paths by local rejection tests, hosted exact-commit gates, and installed release smokes; every future active boundary must reprove the authority contract |
+| RISK-02 | A timed-out server or descendant remains running | Critical | Managed process tree, shutdown bounds, termination, reap, and resistant-child fixtures; any surviving PID blocks release | Mitigated for exact `v0.2.0` by the hosted native process matrix and retained reviewed/generated resistant-descendant cleanup journeys; every future process boundary and exact artifact must retain it |
+| RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, fixtures, and the `DEC-028` environment-only secret boundary; any observed name or value blocks release | Mitigated for exact `v0.2.0`: target and argument secret rejection, structural-only reproduction, and human, stable JSON, and JUnit redaction pass local and hosted exact-commit evidence; the risk remains open for every later boundary and artifact |
 | RISK-04 | Protocol evolution makes diagnostics incorrect | High | Revision-specific rules and fixtures with explicit unsupported outcomes; a new release triggers contract review | Open |
-| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Mitigated for passive and reviewed active paths plus `MCPD-011` candidate, synthesis, schema, instance, aggregate-input, case, and report work; later boundaries and exact artifacts require their own evidence |
-| RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | `DEC-030` fixes exact target gates, IANA-based address classification and pinning, verified TLS, credential-to-endpoint consent, direct zero-redirect/retry connections, finite headers/bodies, and value-free reports; any bypass, peer drift, implicit network source, or secret output blocks completion | Mitigated locally for bounded passive, reviewed, and generated activity through one `MCPD-010` transport and an `MCPD-011` exact-authority network journey; hosted native evidence and every future multi-origin boundary must reprove it |
-| RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Versioned stable seed selection, ordered generation, structural evidence, exact tool/effect/target gates, and finite cases, candidates, inputs, work, and concurrency; mismatch blocks active testing | Mitigated locally by `DEC-031`, exact-seed fixtures, local and HTTP authorization rejection, structural redaction, every generation limit, and sequential execution evidence; hosted exact-artifact verification remains |
-| RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Mitigated for M1 by hosted human/JSON causal-skip and authorization journeys; the `MCPD-012` candidate preserves the invariant in stable JSON and JUnit, pending exact-release verification |
+| RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Mitigated for exact `v0.2.0` across passive, reviewed active, synthesis, schema, instance, aggregate-input, case, and report work by local and hosted gates; later boundaries and artifacts require their own evidence |
+| RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | `DEC-030` fixes exact target gates, IANA-based address classification and pinning, verified TLS, credential-to-endpoint consent, direct zero-redirect/retry connections, finite headers/bodies, and value-free reports; any bypass, peer drift, implicit network source, or secret output blocks completion | Mitigated for exact `v0.2.0` bounded passive, reviewed, and generated activity through the retained HTTP transport and exact-authority network journeys in hosted native evidence; every future multi-origin boundary must reprove it |
+| RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Versioned stable seed selection, ordered generation, structural evidence, exact tool/effect/target gates, and finite cases, candidates, inputs, work, and concurrency; mismatch blocks active testing | Mitigated for exact `v0.2.0` by fixed-seed fixtures, local and HTTP authorization rejection, structural redaction, every generation limit, sequential execution, and hosted exact-commit verification; future generator changes reopen it |
+| RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Mitigated for exact `v0.2.0` by hosted human, schema-valid stable JSON, and JUnit causal-skip and authorization journeys; every future reporter or check-state change must preserve the invariant |
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and M3 stays an ordered set of bounded vertical tickets; any broad feature becoming a prerequisite for an earlier completed slice escalates | Mitigated by the ordered plan and `DEC-027`; voluntary evidence may reprioritize work, but its absence neither authorizes breadth nor blocks scoped work |
 | RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Mitigated for the first release: the preferred `mcp-doctor` crate identity is published under the exact EnjoyableWork source and metadata; future channel guidance must preserve the distinction |
-| RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and the repeat-release path by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, and successful channel verification; every future release must retain the same immutable-byte gates |
-| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Policy resolved; the 2026-08-11 live readback still has no ruleset or branch protection, so mitigation remains deferred to `MCPD-013` after M3 |
+| RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and `v0.2.0` by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, authenticated assets, and successful native channel verification; every future release must retain the same immutable-byte gates |
+| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Policy resolved; the 2026-08-11 live readback still has no ruleset or branch protection, so mitigation remains open and is next under Ready ticket `MCPD-013` |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Deferred with M4 |
-| RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; the completed repeat-release rehearsal proves exact OIDC and tap authority plus a clean credential inventory at the merged commits, while future drift blocks publication and full assurance remains `MCPD-016` |
+| RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; `v0.2.0` then exercised the exact OIDC and tap authorities with authenticated immutable-byte handoffs and a clean credential inventory, while future drift blocks publication and full assurance remains `MCPD-016` |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `DEC-034` locks exact version and proof routes and makes drift a stop-and-decide gate; `MCPD-018` binds every claim to exact scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Policy resolved; proof remains deferred with M4 |
-| RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, maintainer trials, and voluntary feedback record unclear findings, false findings, time to value, and repeat use | M1 report sufficiency passes locally and hosted; the checkpoint closed with zero independent reports and no adoption claim, while future feedback may reprioritize M3 |
+| RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, maintainer trials, and voluntary feedback record unclear findings, false findings, time to value, and repeat use | M1 report sufficiency passes locally and hosted; the checkpoint closed with zero independent reports and no adoption claim, while future feedback may reprioritize later product work |
 | RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages passed locally and hosted before M2 release; future protocol revisions reopen the risk |
-| RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated locally by the MCPD-003 policy refinement and dated focused `quick-xml` test-only adoption review; complete live update and supply-chain verification remains `MCPD-016` |
+| RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated through M3 by the MCPD-003 policy, exact locked graph, hosted dependency checks, and dated focused `quick-xml` test-only adoption review; complete live update and supply-chain verification remains `MCPD-016` |
 
 ## Readiness and completion gates
 
@@ -1792,7 +1807,7 @@ acceptance gates.
 M3 is complete only when:
 
 - every retained passive, reviewed active, generated, STDIO, and Streamable
-  HTTP journey passes through the built `v0.2.0` candidate without widening
+  HTTP journey passes through the built `v0.2.0` release without widening
   target, tool, side-effect, secret, or network authority;
 - human, schema-valid `mcp-doctor.report/v1` JSON, and bounded JUnit output
   derive from one result and agree on primary diagnosis, independent safety
