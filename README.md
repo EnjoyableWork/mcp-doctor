@@ -127,7 +127,13 @@ mcp-doctor check \
   -- node ./dist/server.js --stdio
 
 # Active: run 50 deterministic edge cases against one selected tool
-mcp-doctor break --tool search --cases 50 --seed 4242 -- node ./dist/server.js --stdio
+mcp-doctor break \
+  --tool search \
+  --allow-tool search \
+  --effects read_only \
+  --cases 50 \
+  --seed 4242 \
+  -- node ./dist/server.js --stdio
 ```
 
 > [!CAUTION]
@@ -187,6 +193,37 @@ failures stop later calls. `input_required` makes that case and an otherwise
 successful report incomplete; `mcp-doctor` neither supplies input nor retries
 that call.
 
+### Generated `break` cases
+
+`break` derives schema-valid object inputs only from the one selected tool's
+bounded local Draft 2020-12 input schema. The invocation must name that tool
+independently with matching `--tool` and `--allow-tool` values, classify it as
+`read_only` or `side_effecting`, choose 1–100 cases, and supply an unsigned
+64-bit seed. A `side_effecting` run also requires `--allow-side-effects`;
+advertised annotations, wildcards, patterns, and discovered selection never
+grant authority.
+
+`mcp-doctor.generator/v1` builds a finite candidate set, validates every
+candidate against the advertised schema, and runs selected cases sequentially
+with concurrency one. Generation is capped at 256 attempts, 64 retained
+candidates, 100,000 synthesis steps, 1 MiB per input, and 8 MiB across active
+inputs. Schema depth, local-reference, validation, transport, response, and
+total-run bounds still apply. An invalid, externally referenced,
+unsatisfiable, or over-limit schema stops generation before `tools/call`.
+
+Each case reports its generator version, case seed, serialized byte count, and
+fixed structural JSON counts without retaining member names or values. Case
+`n` uses the base seed plus `n` with unsigned wraparound. To replay one case,
+run the same tool and advertised schema with that reported seed and
+`--cases 1`. Tool errors remain findings and do not hide later cases;
+`input_required`, unsafe failures, and cleanup retain the same stop rules as
+`check`.
+
+Generated runs do not accept target-environment or argument-secret sources,
+fetch schemas, choose another tool, change the local executable, or widen the
+exact remote endpoint authorized by the command. Ordinary human and JSON
+reports never contain raw generated arguments or tool results.
+
 ## Findings you can act on
 
 Every finding includes a stable code, severity, MCP version, safe field
@@ -244,9 +281,10 @@ and hide secrets, so they work well in logs and saved build results.
 ## Safe by default
 
 - `inspect` lists and checks what the server offers; it never calls a tool.
-- Every active run names the exact tool and target. Reviewed scenarios declare
-  their effect and case limit; generated cases also declare their seed.
-- Side-effecting scenarios require a separate `--allow-side-effects` gate.
+- Every active run names and independently authorizes the exact tool and
+  target. Reviewed scenarios declare their effect and case limit; generated
+  runs also declare their effect, case limit, and seed.
+- Side-effecting active runs require a separate `--allow-side-effects` gate.
 - Remote connections default to direct public HTTPS with verified TLS, pinned
   bounded address resolution, and no redirect, retry, proxy, cookie, or cache.
 - Private targets, loopback cleartext, and environment-sourced credentials each

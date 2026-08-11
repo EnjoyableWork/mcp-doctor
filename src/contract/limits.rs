@@ -40,6 +40,9 @@ pub(super) enum LimitKind {
     ValidationErrors,
     ReportFindings,
     ActiveCases,
+    GenerationAttempts,
+    GenerationCandidates,
+    GenerationSteps,
     Redirects,
     Retries,
     Concurrency,
@@ -86,6 +89,9 @@ impl LimitKind {
             Self::ValidationErrors => "validation_errors",
             Self::ReportFindings => "report_findings",
             Self::ActiveCases => "active_cases",
+            Self::GenerationAttempts => "generation_attempts",
+            Self::GenerationCandidates => "generation_candidates",
+            Self::GenerationSteps => "generation_steps",
             Self::Redirects => "redirects",
             Self::Retries => "retries",
             Self::Concurrency => "concurrency",
@@ -132,6 +138,9 @@ impl LimitKind {
             | Self::ValidationErrors
             | Self::ReportFindings
             | Self::ActiveCases
+            | Self::GenerationAttempts
+            | Self::GenerationCandidates
+            | Self::GenerationSteps
             | Self::Redirects
             | Self::Retries
             | Self::Concurrency => LimitUnit::Count,
@@ -193,6 +202,9 @@ pub(super) struct LimitValues {
     pub(super) validation_errors: u64,
     pub(super) report_findings: u64,
     pub(super) active_cases: u64,
+    pub(super) generation_attempts: u64,
+    pub(super) generation_candidates: u64,
+    pub(super) generation_steps: u64,
     pub(super) redirects: u64,
     pub(super) retries: u64,
     pub(super) concurrency: u64,
@@ -238,6 +250,9 @@ impl DiagnosticLimits {
         validation_errors: 100,
         report_findings: 256,
         active_cases: 100,
+        generation_attempts: 256,
+        generation_candidates: 64,
+        generation_steps: 100_000,
         redirects: 0,
         retries: 0,
         concurrency: 1,
@@ -298,6 +313,12 @@ impl DiagnosticLimits {
             (LimitKind::ValidationErrors, values.validation_errors),
             (LimitKind::ReportFindings, values.report_findings),
             (LimitKind::ActiveCases, values.active_cases),
+            (LimitKind::GenerationAttempts, values.generation_attempts),
+            (
+                LimitKind::GenerationCandidates,
+                values.generation_candidates,
+            ),
+            (LimitKind::GenerationSteps, values.generation_steps),
             (LimitKind::Concurrency, values.concurrency),
         ] {
             if value == 0 {
@@ -339,6 +360,9 @@ impl DiagnosticLimits {
         if values.schema_ref_depth > values.schema_depth {
             return Err(LimitContractError::RefDepthExceedsSchemaDepth);
         }
+        if values.generation_candidates > values.generation_attempts {
+            return Err(LimitContractError::CandidatesExceedAttempts);
+        }
         if values.concurrency > values.active_cases {
             return Err(LimitContractError::ConcurrencyExceedsCases);
         }
@@ -365,6 +389,7 @@ pub(super) enum LimitContractError {
     StreamExceedsAggregate(LimitKind),
     PayloadExceedsMessage(LimitKind),
     RefDepthExceedsSchemaDepth,
+    CandidatesExceedAttempts,
     ConcurrencyExceedsCases,
 }
 
@@ -388,6 +413,9 @@ impl fmt::Display for LimitContractError {
             }
             Self::RefDepthExceedsSchemaDepth => {
                 formatter.write_str("schema_ref_depth cannot exceed schema_depth")
+            }
+            Self::CandidatesExceedAttempts => {
+                formatter.write_str("generation_candidates cannot exceed generation_attempts")
             }
             Self::ConcurrencyExceedsCases => {
                 formatter.write_str("concurrency cannot exceed active_cases")
@@ -466,6 +494,10 @@ mod tests {
         assert_eq!(values.schema_evaluation_steps, 100_000);
         assert_eq!(values.protocol_revisions, 32);
         assert_eq!(values.report_findings, 256);
+        assert_eq!(values.active_cases, 100);
+        assert_eq!(values.generation_attempts, 256);
+        assert_eq!(values.generation_candidates, 64);
+        assert_eq!(values.generation_steps, 100_000);
         assert_eq!(values.redirects, 0);
         assert_eq!(values.retries, 0);
         assert_eq!(values.concurrency, 1);
@@ -515,6 +547,13 @@ mod tests {
                 ..base
             }),
             Err(LimitContractError::RefDepthExceedsSchemaDepth)
+        );
+        assert_eq!(
+            DiagnosticLimits::try_from_values(LimitValues {
+                generation_candidates: base.generation_attempts + 1,
+                ..base
+            }),
+            Err(LimitContractError::CandidatesExceedAttempts)
         );
         assert_eq!(
             DiagnosticLimits::try_from_values(LimitValues {

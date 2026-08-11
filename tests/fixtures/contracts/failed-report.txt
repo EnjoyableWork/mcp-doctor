@@ -11,7 +11,8 @@ LIMITS
   response · response_fields=96 · response_field_name_bytes=256 · response_field_value_bytes=16384 · response_fields_bytes=65536
   discovery · protocol_revisions=32 · catalog_items=10000 · report_findings=256
   schema · schema_bytes=1048576 · instance_bytes=1048576 · schema_nodes=100000 · schema_depth=64 · schema_ref_depth=32 · schema_evaluation_steps=100000 · validation_errors=100
-  reserved · active_cases=100 · redirects=0 · retries=0 · concurrency=1
+  generation · active_cases=100 · generation_attempts=256 · generation_candidates=64 · generation_steps=100000
+  activity · redirects=0 · retries=0 · concurrency=1
 
 PASS  protocol.revision      required
 FAIL  schema.contracts       required

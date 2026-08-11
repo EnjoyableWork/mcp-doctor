@@ -71,6 +71,14 @@ fn main() -> ExitCode {
         Some("active-oversize") => active_oversize(),
         Some("active-resistant-child") => active_resistant_child(&remaining),
         Some("active-started-marker") => active_started_marker(&remaining),
+        Some("break-success") => break_success(&remaining),
+        Some("break-tool-error") => break_tool_error(&remaining),
+        Some("break-impossible") => break_impossible(),
+        Some("break-schema-external") => break_schema_external(),
+        Some("break-oversized-input") => break_oversized_input(),
+        Some("break-aggregate-input") => break_aggregate_input(),
+        Some("break-generation-steps") => break_generation_steps(),
+        Some("break-resistant-child") => break_resistant_child(&remaining),
         Some("descendant") => descendant(&remaining),
         _ => ExitCode::from(2),
     }
@@ -943,6 +951,276 @@ fn active_started_marker(arguments: &[OsString]) -> ExitCode {
     fs::write(marker, b"target started unexpectedly")
         .expect("the target-start marker should be writable");
     wait_forever()
+}
+
+fn break_success(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let Some(case_count) = arguments
+        .get(1)
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<usize>().ok())
+    else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(&mut input, generated_boundary_schema());
+    let mut observed = Vec::with_capacity(case_count);
+    for index in 0..case_count {
+        let request = read_generated_call(&mut input, i64::try_from(index).unwrap_or(i64::MAX) + 3);
+        let arguments = request["params"]["arguments"]
+            .as_object()
+            .expect("generated arguments should remain an object");
+        assert!(
+            arguments
+                .get("synthetic_private_query_never_report_7f2c")
+                .and_then(Value::as_str)
+                .is_some_and(|value| (1..=8).contains(&value.len()))
+        );
+        assert!(
+            arguments
+                .get("synthetic_private_limit_never_report_7f2c")
+                .and_then(Value::as_i64)
+                .is_some_and(|value| (1..=5).contains(&value))
+        );
+        if let Some(flags) = arguments.get("synthetic_private_flags_never_report_7f2c") {
+            let flags = flags
+                .as_array()
+                .expect("generated flags should be an array");
+            assert!((1..=2).contains(&flags.len()));
+            assert!(flags.iter().all(Value::is_boolean));
+        }
+        assert!(arguments.keys().all(|key| matches!(
+            key.as_str(),
+            "synthetic_private_query_never_report_7f2c"
+                | "synthetic_private_limit_never_report_7f2c"
+                | "synthetic_private_flags_never_report_7f2c"
+        )));
+        observed.push(Value::Object(arguments.clone()));
+        write_result(
+            i64::try_from(index).unwrap_or(i64::MAX) + 3,
+            json!({
+                "resultType": "complete",
+                "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+                "structuredContent": {"ok": true},
+                "isError": false
+            }),
+        );
+    }
+    assert_eof(&mut input);
+    fs::write(
+        marker,
+        serde_json::to_vec(&observed).expect("generated observations should serialize"),
+    )
+    .expect("the generated observation marker should be writable");
+    ExitCode::SUCCESS
+}
+
+fn break_tool_error(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(&mut input, generated_boundary_schema());
+    let first = read_generated_call(&mut input, 3);
+    assert!(first["params"]["arguments"].is_object());
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+            "isError": true
+        }),
+    );
+    let second = read_generated_call(&mut input, 4);
+    assert!(second["params"]["arguments"].is_object());
+    fs::write(marker, b"later generated case called")
+        .expect("the generated continuation marker should be writable");
+    write_result(
+        4,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_impossible() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(&mut input, json!({"type": "object", "not": {}}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_schema_external() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(
+        &mut input,
+        json!({"$ref": "https://synthetic.invalid/private-schema-never-report"}),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_oversized_input() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "synthetic_private_value_never_report": {
+                    "type": "string",
+                    "minLength": MIB
+                }
+            },
+            "required": ["synthetic_private_value_never_report"]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_aggregate_input() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "synthetic_private_value_never_report": {
+                    "type": "string",
+                    "minLength": 100_000,
+                    "maxLength": 100_000
+                }
+            },
+            "required": ["synthetic_private_value_never_report"],
+            "additionalProperties": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_generation_steps() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "synthetic_private_values_never_report": {
+                    "type": "array",
+                    "items": {"type": "null"},
+                    "minItems": 100_001
+                }
+            },
+            "required": ["synthetic_private_values_never_report"],
+            "additionalProperties": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn break_resistant_child(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    generated_begin(&mut input, generated_boundary_schema());
+    let request = read_generated_call(&mut input, 3);
+    assert!(request["params"]["arguments"].is_object());
+    let descendant =
+        Command::new(env::current_exe().expect("the fixture path should be available"))
+            .arg("descendant")
+            .arg(marker)
+            .spawn()
+            .expect("the resistant generated descendant should start");
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": {"ok": true},
+            "isError": false
+        }),
+    );
+    wait_with_child(descendant)
+}
+
+fn generated_boundary_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "synthetic_private_query_never_report_7f2c": {"type": "string", "minLength": 1, "maxLength": 8},
+            "synthetic_private_limit_never_report_7f2c": {"type": "integer", "minimum": 1, "maximum": 5},
+            "synthetic_private_flags_never_report_7f2c": {
+                "type": "array",
+                "items": {"type": "boolean"},
+                "minItems": 1,
+                "maxItems": 2
+            }
+        },
+        "required": [
+            "synthetic_private_query_never_report_7f2c",
+            "synthetic_private_limit_never_report_7f2c"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn generated_begin(input: &mut impl BufRead, input_schema: Value) {
+    read_request(input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.generated",
+                "annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": true
+                },
+                "inputSchema": input_schema,
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                    "additionalProperties": false
+                }
+            }]
+        }),
+    );
+}
+
+fn read_generated_call(input: &mut impl BufRead, expected_id: i64) -> Value {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the generated request should be readable");
+    assert!(read > 0, "the generated request should not be empty");
+    let value: Value =
+        serde_json::from_str(&request).expect("the generated request should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], expected_id);
+    assert_eq!(value["method"], "tools/call");
+    assert_eq!(value["params"]["name"], "synthetic.generated");
+    assert_eq!(
+        value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
+        "2026-07-28"
+    );
+    assert!(!request.contains("initialize"));
+    value
 }
 
 fn active_begin(input: &mut impl BufRead) {

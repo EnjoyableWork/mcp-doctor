@@ -50,6 +50,9 @@
     "validation_errors": 100,
     "report_findings": 256,
     "active_cases": 100,
+    "generation_attempts": 256,
+    "generation_candidates": 64,
+    "generation_steps": 100000,
     "redirects": 0,
     "retries": 0,
     "concurrency": 1

@@ -7,6 +7,7 @@ use super::redaction::RedactedValue;
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum CheckId {
     ScenarioConfiguration,
+    GenerationConfiguration,
     ActiveAuthorization,
     NetworkTarget,
     NetworkResolution,
@@ -17,6 +18,7 @@ pub(super) enum CheckId {
     ProtocolRevision,
     DiscoveryCatalogs,
     SchemaContracts,
+    CaseGeneration,
     RuntimeTools,
     RuntimeToolCase(usize),
 }
@@ -25,6 +27,7 @@ impl CheckId {
     pub(super) fn as_str(self) -> String {
         match self {
             Self::ScenarioConfiguration => "scenario.configuration".to_owned(),
+            Self::GenerationConfiguration => "generation.configuration".to_owned(),
             Self::ActiveAuthorization => "authorization.active".to_owned(),
             Self::NetworkTarget => "network.target".to_owned(),
             Self::NetworkResolution => "network.resolution".to_owned(),
@@ -35,6 +38,7 @@ impl CheckId {
             Self::ProtocolEnvelope => "protocol.envelope".to_owned(),
             Self::DiscoveryCatalogs => "discovery.catalogs".to_owned(),
             Self::SchemaContracts => "schema.contracts".to_owned(),
+            Self::CaseGeneration => "generation.cases".to_owned(),
             Self::RuntimeTools => "runtime.tools".to_owned(),
             Self::RuntimeToolCase(index) => format!("runtime.tools.case[{index}]"),
         }
@@ -168,6 +172,7 @@ pub(super) enum FindingCode {
     ScenarioInvalid,
     SecretReferenceInvalid,
     ScenarioSchemaInvalid,
+    CaseGenerationFailed,
     ToolAuthorizationMissing,
     SideEffectsNotAuthorized,
     ToolNotFound,
@@ -210,6 +215,7 @@ impl FindingCode {
             Self::ScenarioInvalid => "MCP-SCENARIO-001",
             Self::SecretReferenceInvalid => "MCP-SCENARIO-002",
             Self::ScenarioSchemaInvalid => "MCP-SCENARIO-003",
+            Self::CaseGenerationFailed => "MCP-GENERATION-001",
             Self::ToolAuthorizationMissing => "MCP-AUTH-001",
             Self::SideEffectsNotAuthorized => "MCP-AUTH-002",
             Self::ToolNotFound => "MCP-ACTIVE-001",
@@ -251,6 +257,7 @@ impl FindingCode {
             | Self::ScenarioInvalid
             | Self::SecretReferenceInvalid
             | Self::ScenarioSchemaInvalid
+            | Self::CaseGenerationFailed
             | Self::ToolAuthorizationMissing
             | Self::SideEffectsNotAuthorized
             | Self::ToolNotFound
@@ -326,19 +333,22 @@ impl FindingCode {
             Self::ScenarioSchemaInvalid => {
                 "A scenario-provided output schema is not a valid bounded local contract."
             }
+            Self::CaseGenerationFailed => {
+                "Bounded boundary inputs could not be generated from the selected tool schema."
+            }
             Self::ToolAuthorizationMissing => {
-                "The invocation does not authorize the scenario's exact tool."
+                "The invocation does not authorize the selected exact tool."
             }
             Self::SideEffectsNotAuthorized => {
-                "The invocation does not authorize this side-effecting scenario."
+                "The invocation does not authorize this side-effecting active run."
             }
             Self::ToolNotFound => "The exactly authorized tool was not advertised uniquely.",
             Self::ToolArgumentsMismatch => {
-                "The reviewed case arguments do not match the advertised input schema."
+                "The active case arguments do not match the advertised input schema."
             }
             Self::ToolCallRejected => "The server rejected the active tool request.",
             Self::ToolResultMismatch => {
-                "The completed tool result does not match the reviewed result expectation."
+                "The completed tool result does not match the active case expectation."
             }
             Self::ToolOutputMismatch => {
                 "The structured tool output does not match its required local schema contract."
@@ -427,6 +437,9 @@ impl FindingCode {
             Self::ScenarioSchemaInvalid => {
                 "The expected structured output cannot be checked locally and deterministically."
             }
+            Self::CaseGenerationFailed => {
+                "No generated call is safe until a schema-valid input can be constructed within every generation and active-input bound."
+            }
             Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
                 "Calling the tool without every redundant authorization gate could cause unexpected activity."
             }
@@ -437,10 +450,10 @@ impl FindingCode {
                 "Sending invalid arguments would turn a local scenario defect into target activity."
             }
             Self::ToolCallRejected => {
-                "The reviewed case did not produce a completed tool result to validate."
+                "The active case did not produce a completed tool result to validate."
             }
             Self::ToolResultMismatch => {
-                "The tool behaved differently from the case's reviewed success or error expectation."
+                "The tool behaved differently from the case's declared or generated expectation."
             }
             Self::ToolOutputMismatch => {
                 "Consumers cannot rely on the structured result shape promised for this case."
@@ -538,20 +551,23 @@ impl FindingCode {
             Self::ScenarioSchemaInvalid => {
                 "Scenario output schemas must be bounded local JSON Schema Draft 2020-12 objects."
             }
+            Self::CaseGenerationFailed => {
+                "The selected input schema must admit at least one bounded object that mcp-doctor.generator/v1 can reproduce."
+            }
             Self::ToolAuthorizationMissing => {
-                "--allow-tool must match the scenario and discovered tool byte for byte."
+                "--allow-tool must match the scenario or generated selection and discovered tool byte for byte."
             }
             Self::SideEffectsNotAuthorized => {
-                "A side_effecting scenario also requires --allow-side-effects."
+                "A side_effecting active run also requires --allow-side-effects."
             }
             Self::ToolNotFound => {
-                "The server must advertise exactly one tool matching the authorized scenario tool."
+                "The server must advertise exactly one tool matching the authorized selection."
             }
             Self::ToolArgumentsMismatch => {
                 "Each case must pass the selected tool's advertised input schema before it is called."
             }
             Self::ToolCallRejected => {
-                "The server must return a completed or input_required tools/call result for a reviewed case."
+                "The server must return a completed or input_required tools/call result for an active case."
             }
             Self::ToolResultMismatch => {
                 "The isError classification must match the case's success or tool_error expectation."
@@ -644,29 +660,32 @@ impl FindingCode {
             Self::ScenarioSchemaInvalid => {
                 "Correct or bound the local output schema, then rerun check."
             }
+            Self::CaseGenerationFailed => {
+                "Expose a bounded object schema with usable const, enum, default, or structural boundaries, or replay reviewed arguments with check."
+            }
             Self::ToolAuthorizationMissing => {
-                "Pass the scenario's exact tool name through --allow-tool."
+                "Pass the selected exact tool name independently through --allow-tool."
             }
             Self::SideEffectsNotAuthorized => {
-                "Use a disposable target and add --allow-side-effects only after reviewing every case."
+                "Use a disposable target and add --allow-side-effects only after reviewing the exact tool, seed, and case bound."
             }
             Self::ToolNotFound => {
-                "Advertise one exact matching tool or correct the scenario and authorization together."
+                "Advertise one exact matching tool or correct the selection and authorization together."
             }
             Self::ToolArgumentsMismatch => {
                 "Correct the case arguments or the advertised input schema; the case was not called."
             }
             Self::ToolCallRejected => {
-                "Correct the server-side rejection and replay the same reviewed case."
+                "Correct the server-side rejection and rerun the same case seed or reviewed case."
             }
             Self::ToolResultMismatch => {
-                "Correct the tool behavior or the reviewed expectation, then replay the scenario."
+                "Correct the tool behavior, then rerun the same generated seed or reviewed scenario."
             }
             Self::ToolOutputMismatch => {
-                "Correct structuredContent or the applicable local output schema, then replay the scenario."
+                "Correct structuredContent or the applicable local output schema, then rerun the active command."
             }
             Self::ToolResultInvalid => {
-                "Return a valid MCP 2026-07-28 tool result before replaying later cases."
+                "Return a valid MCP 2026-07-28 tool result before running later active cases."
             }
         }
     }
@@ -706,8 +725,9 @@ impl FindingCode {
             Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
                 "mcp-doctor.scenario/v1alpha1 contract"
             }
+            Self::CaseGenerationFailed => "mcp-doctor MCPD-011 bounded generation contract",
             Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
-                "mcp-doctor MCPD-009 active-authorization contract"
+                "mcp-doctor MCPD-009 and MCPD-011 active-authorization contract"
             }
             Self::ToolNotFound
             | Self::ToolArgumentsMismatch
@@ -715,7 +735,7 @@ impl FindingCode {
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
             | Self::ToolResultInvalid => {
-                "MCP 2026-07-28 tools contract and mcp-doctor MCPD-009 replay contract"
+                "MCP 2026-07-28 tools contract and mcp-doctor MCPD-009/MCPD-011 active contract"
             }
         }
     }
@@ -728,6 +748,7 @@ impl FindingCode {
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum LocationField {
     Scenario,
+    Generation,
     SchemaVersion,
     Authorization,
     Safety,
@@ -803,6 +824,7 @@ impl LocationField {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Scenario => "scenario",
+            Self::Generation => "generation",
             Self::SchemaVersion => "schema_version",
             Self::Authorization => "authorization",
             Self::Safety => "safety",
@@ -956,6 +978,134 @@ impl JsonKind {
     }
 }
 
+/// A fixed-size, value-free summary of one generated input. Object member
+/// names, strings, numbers, and booleans are deliberately not retained.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct StructuralInput {
+    root: JsonKind,
+    byte_count: u64,
+    node_count: u64,
+    maximum_depth: u64,
+    nulls: u64,
+    booleans: u64,
+    numbers: u64,
+    strings: u64,
+    arrays: u64,
+    array_items: u64,
+    objects: u64,
+    object_members: u64,
+}
+
+impl StructuralInput {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) const fn new(
+        root: JsonKind,
+        byte_count: u64,
+        node_count: u64,
+        maximum_depth: u64,
+        nulls: u64,
+        booleans: u64,
+        numbers: u64,
+        strings: u64,
+        arrays: u64,
+        array_items: u64,
+        objects: u64,
+        object_members: u64,
+    ) -> Self {
+        Self {
+            root,
+            byte_count,
+            node_count,
+            maximum_depth,
+            nulls,
+            booleans,
+            numbers,
+            strings,
+            arrays,
+            array_items,
+            objects,
+            object_members,
+        }
+    }
+
+    pub(super) const fn root(&self) -> JsonKind {
+        self.root
+    }
+
+    pub(super) const fn byte_count(&self) -> u64 {
+        self.byte_count
+    }
+
+    pub(super) const fn node_count(&self) -> u64 {
+        self.node_count
+    }
+
+    pub(super) const fn maximum_depth(&self) -> u64 {
+        self.maximum_depth
+    }
+
+    pub(super) const fn nulls(&self) -> u64 {
+        self.nulls
+    }
+
+    pub(super) const fn booleans(&self) -> u64 {
+        self.booleans
+    }
+
+    pub(super) const fn numbers(&self) -> u64 {
+        self.numbers
+    }
+
+    pub(super) const fn strings(&self) -> u64 {
+        self.strings
+    }
+
+    pub(super) const fn arrays(&self) -> u64 {
+        self.arrays
+    }
+
+    pub(super) const fn array_items(&self) -> u64 {
+        self.array_items
+    }
+
+    pub(super) const fn objects(&self) -> u64 {
+        self.objects
+    }
+
+    pub(super) const fn object_members(&self) -> u64 {
+        self.object_members
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct GeneratedCaseReproduction {
+    generator: &'static str,
+    seed: u64,
+    input: StructuralInput,
+}
+
+impl GeneratedCaseReproduction {
+    pub(super) const fn new(generator: &'static str, seed: u64, input: StructuralInput) -> Self {
+        Self {
+            generator,
+            seed,
+            input,
+        }
+    }
+
+    pub(super) const fn generator(&self) -> &'static str {
+        self.generator
+    }
+
+    pub(super) const fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    pub(super) const fn input(&self) -> &StructuralInput {
+        &self.input
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum ExpectedShape {
     Object,
@@ -1009,6 +1159,8 @@ pub(super) enum RuleViolation {
     DuplicateCaseId,
     InvalidEnvironmentReference,
     MissingEnvironmentValue,
+    InvalidGenerationConfiguration,
+    NoValidBoundaryInput,
     ToolAuthorizationMismatch,
     SideEffectsAuthorizationRequired,
     ToolNotFound,
@@ -1080,6 +1232,8 @@ impl RuleViolation {
             Self::DuplicateCaseId => "duplicate_case_id",
             Self::InvalidEnvironmentReference => "invalid_environment_reference",
             Self::MissingEnvironmentValue => "missing_environment_value",
+            Self::InvalidGenerationConfiguration => "invalid_generation_configuration",
+            Self::NoValidBoundaryInput => "no_valid_boundary_input",
             Self::ToolAuthorizationMismatch => "exact_tool_authorization_required",
             Self::SideEffectsAuthorizationRequired => "side_effects_authorization_required",
             Self::ToolNotFound => "exact_tool_not_found",
@@ -1139,6 +1293,8 @@ impl RuleViolation {
             | Self::DuplicateCaseId
             | Self::InvalidEnvironmentReference
             | Self::MissingEnvironmentValue
+            | Self::InvalidGenerationConfiguration
+            | Self::NoValidBoundaryInput
             | Self::ToolAuthorizationMismatch
             | Self::SideEffectsAuthorizationRequired
             | Self::ToolNotFound
@@ -1530,6 +1686,19 @@ impl Finding {
         )
     }
 
+    pub(super) fn case_generation_failed(location: Location, violation: RuleViolation) -> Self {
+        debug_assert!(matches!(
+            violation,
+            RuleViolation::InvalidGenerationConfiguration | RuleViolation::NoValidBoundaryInput
+        ));
+        Self::new(
+            FindingCode::CaseGenerationFailed,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::RuleViolation(violation),
+        )
+    }
+
     pub(super) fn tool_authorization_missing(location: Location) -> Self {
         Self::new(
             FindingCode::ToolAuthorizationMissing,
@@ -1705,6 +1874,7 @@ pub(super) struct CheckResult {
     id: CheckId,
     requirement: Requirement,
     state: CheckState,
+    reproduction: Option<GeneratedCaseReproduction>,
 }
 
 impl CheckResult {
@@ -1719,6 +1889,7 @@ impl CheckResult {
             id,
             requirement,
             state: CheckState::Performed { findings },
+            reproduction: None,
         }
     }
 
@@ -1727,7 +1898,17 @@ impl CheckResult {
             id,
             requirement,
             state: CheckState::Skipped { reason },
+            reproduction: None,
         }
+    }
+
+    pub(super) fn with_reproduction(mut self, reproduction: GeneratedCaseReproduction) -> Self {
+        assert!(
+            matches!(self.id, CheckId::RuntimeToolCase(_)),
+            "only a generated runtime case can retain reproduction evidence"
+        );
+        self.reproduction = Some(reproduction);
+        self
     }
 
     pub(super) const fn id(&self) -> CheckId {
@@ -1736,6 +1917,10 @@ impl CheckResult {
 
     pub(super) const fn requirement(&self) -> Requirement {
         self.requirement
+    }
+
+    pub(super) const fn reproduction(&self) -> Option<&GeneratedCaseReproduction> {
+        self.reproduction.as_ref()
     }
 
     pub(super) fn findings(&self) -> Option<&[Finding]> {
@@ -1882,6 +2067,11 @@ mod tests {
                 "MCP-AUTH-002",
                 Severity::Error,
             ),
+            (
+                FindingCode::CaseGenerationFailed,
+                "MCP-GENERATION-001",
+                Severity::Error,
+            ),
             (FindingCode::ToolNotFound, "MCP-ACTIVE-001", Severity::Error),
             (
                 FindingCode::ToolArgumentsMismatch,
@@ -1925,12 +2115,14 @@ mod tests {
     fn check_ids_and_skip_reasons_have_stable_report_values() {
         let check_ids = [
             (CheckId::ScenarioConfiguration, "scenario.configuration"),
+            (CheckId::GenerationConfiguration, "generation.configuration"),
             (CheckId::ActiveAuthorization, "authorization.active"),
             (CheckId::TransportStdio, "transport.stdio"),
             (CheckId::ProtocolEnvelope, "protocol.envelope"),
             (CheckId::ProtocolRevision, "protocol.revision"),
             (CheckId::DiscoveryCatalogs, "discovery.catalogs"),
             (CheckId::SchemaContracts, "schema.contracts"),
+            (CheckId::CaseGeneration, "generation.cases"),
             (CheckId::RuntimeTools, "runtime.tools"),
             (CheckId::RuntimeToolCase(17), "runtime.tools.case[17]"),
         ];

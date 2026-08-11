@@ -9,11 +9,13 @@ use super::catalog::{
     InstanceValidationIssue, LocalValidator, request_meta, validate_cacheable_result,
     validate_discovery_capabilities, validate_local_schema,
 };
+use super::generate::{GenerationFailure, generate_inputs};
 use super::http_headers::{HeaderAnnotation, validate_annotations};
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
-    CheckId, CheckResult, ExpectedShape, Finding, FindingCode, FindingEvidence, JsonKind, Location,
-    LocationField, Requirement, RuleViolation, SkipReason,
+    CheckId, CheckResult, ExpectedShape, Finding, FindingCode, FindingEvidence,
+    GeneratedCaseReproduction, JsonKind, Location, LocationField, Requirement, RuleViolation,
+    SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
 use super::redaction::RedactedValue;
@@ -62,6 +64,7 @@ pub(crate) struct ActiveScenario {
     effects: ScenarioEffects,
     target_env: Vec<String>,
     cases: Vec<ScenarioCase>,
+    source: CaseSource,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -75,6 +78,13 @@ struct ScenarioCase {
     secret_refs: BTreeMap<String, String>,
     expected: ExpectedResult,
     output_validator: Option<LocalValidator>,
+    reproduction: Option<GeneratedCaseReproduction>,
+}
+
+#[derive(Clone, Copy)]
+enum CaseSource {
+    Reviewed,
+    Generated { seed: u64, requested_cases: usize },
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -297,6 +307,7 @@ impl ActiveScenario {
                 secret_refs,
                 expected,
                 output_validator,
+                reproduction: None,
             });
         }
 
@@ -305,6 +316,45 @@ impl ActiveScenario {
             effects,
             target_env,
             cases,
+            source: CaseSource::Reviewed,
+        })
+    }
+
+    pub(crate) fn generated(
+        tool: String,
+        side_effecting: bool,
+        requested_cases: usize,
+        seed: u64,
+    ) -> Result<Self, ScenarioFailure> {
+        if tool.is_empty() || requested_cases == 0 {
+            return Err(ScenarioFailure::one(Finding::case_generation_failed(
+                generation_location(),
+                RuleViolation::InvalidGenerationConfiguration,
+            )));
+        }
+        let observed = u64::try_from(requested_cases).unwrap_or(u64::MAX);
+        let maximum = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        if observed > maximum {
+            return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                generation_location().field(LocationField::Cases),
+                LimitViolation::new(LimitKind::ActiveCases, observed, maximum)
+                    .expect("the generated case count exceeds its checked maximum"),
+            )));
+        }
+        Ok(Self {
+            tool,
+            effects: if side_effecting {
+                ScenarioEffects::SideEffecting
+            } else {
+                ScenarioEffects::ReadOnly
+            },
+            target_env: Vec::new(),
+            cases: Vec::new(),
+            source: CaseSource::Generated {
+                seed,
+                requested_cases,
+            },
         })
     }
 
@@ -405,7 +455,59 @@ impl ActiveScenario {
     }
 
     pub(crate) fn case_count(&self) -> usize {
-        self.cases.len()
+        match self.source {
+            CaseSource::Reviewed => self.cases.len(),
+            CaseSource::Generated {
+                requested_cases, ..
+            } => requested_cases,
+        }
+    }
+
+    fn configuration_check(&self) -> CheckId {
+        match self.source {
+            CaseSource::Reviewed => CheckId::ScenarioConfiguration,
+            CaseSource::Generated { .. } => CheckId::GenerationConfiguration,
+        }
+    }
+
+    fn generates_cases(&self) -> bool {
+        matches!(self.source, CaseSource::Generated { .. })
+    }
+
+    fn case_location(&self, index: usize) -> Location {
+        match self.source {
+            CaseSource::Reviewed => case_location(index),
+            CaseSource::Generated { .. } => generation_location()
+                .field(LocationField::Cases)
+                .index(index),
+        }
+    }
+
+    fn generate_cases(
+        &mut self,
+        schema: &Value,
+        validator: &LocalValidator,
+    ) -> Result<(), GenerationFailure> {
+        let CaseSource::Generated {
+            seed,
+            requested_cases,
+        } = self.source
+        else {
+            return Ok(());
+        };
+        let generated = generate_inputs(schema, validator, seed, requested_cases)?;
+        self.cases = generated
+            .into_iter()
+            .map(|generated| ScenarioCase {
+                arguments: generated.arguments,
+                secret_refs: BTreeMap::new(),
+                expected: ExpectedResult::Success,
+                output_validator: None,
+                reproduction: Some(generated.reproduction),
+            })
+            .collect();
+        debug_assert_eq!(self.cases.len(), requested_cases);
+        Ok(())
     }
 }
 
@@ -414,7 +516,15 @@ pub(crate) fn render_scenario_failure(
     transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    render_prestart_failure(failure, None, false, transport, format)
+    render_prestart_failure(
+        failure,
+        CheckId::ScenarioConfiguration,
+        None,
+        false,
+        false,
+        transport,
+        format,
+    )
 }
 
 pub(crate) fn render_resolved_scenario_failure(
@@ -425,7 +535,29 @@ pub(crate) fn render_resolved_scenario_failure(
 ) -> RenderedDiagnostic {
     render_prestart_failure(
         failure,
+        scenario.configuration_check(),
         Some(scenario.case_count()),
+        true,
+        scenario.generates_cases(),
+        transport,
+        format,
+    )
+}
+
+pub(crate) fn render_generation_configuration_failure(
+    failure: ScenarioFailure,
+    requested_cases: usize,
+    transport: ReportTransport,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let maximum =
+        usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
+    let case_count = (requested_cases > 0 && requested_cases <= maximum).then_some(requested_cases);
+    render_prestart_failure(
+        failure,
+        CheckId::GenerationConfiguration,
+        case_count,
+        false,
         true,
         transport,
         format,
@@ -434,13 +566,15 @@ pub(crate) fn render_resolved_scenario_failure(
 
 fn render_prestart_failure(
     failure: ScenarioFailure,
+    configuration_check: CheckId,
     case_count: Option<usize>,
     authorization_passed: bool,
+    generated: bool,
     transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
     let mut checks = vec![CheckResult::performed(
-        CheckId::ScenarioConfiguration,
+        configuration_check,
         Requirement::Required,
         failure.findings,
     )];
@@ -483,6 +617,13 @@ fn render_prestart_failure(
             SkipReason::PrerequisiteFailed,
         ),
     ]);
+    if generated {
+        checks.push(CheckResult::skipped(
+            CheckId::CaseGeneration,
+            Requirement::Required,
+            SkipReason::PrerequisiteFailed,
+        ));
+    }
     if let Some(case_count) = case_count {
         checks.extend((0..case_count).map(|index| {
             CheckResult::skipped(
@@ -519,7 +660,7 @@ pub(crate) fn render_authorization_failure(
 ) -> RenderedDiagnostic {
     let mut checks = vec![
         CheckResult::performed(
-            CheckId::ScenarioConfiguration,
+            scenario.configuration_check(),
             Requirement::Required,
             Vec::new(),
         ),
@@ -555,6 +696,13 @@ pub(crate) fn render_authorization_failure(
             SkipReason::AuthorizationFailed,
         ),
     ]);
+    if scenario.generates_cases() {
+        checks.push(CheckResult::skipped(
+            CheckId::CaseGeneration,
+            Requirement::Required,
+            SkipReason::AuthorizationFailed,
+        ));
+    }
     checks.extend((0..scenario.case_count()).map(|index| {
         CheckResult::skipped(
             CheckId::RuntimeToolCase(index),
@@ -600,6 +748,7 @@ pub(crate) struct ActiveConversation {
     revision: PhaseState,
     discovery: PhaseState,
     schemas: PhaseState,
+    generation: Option<PhaseState>,
     case_states: Vec<CaseState>,
     seen_names: BTreeSet<String>,
     seen_cursors: BTreeSet<String>,
@@ -686,6 +835,7 @@ struct ToolValidators {
 
 impl ActiveConversation {
     pub(crate) fn new(scenario: ActiveScenario) -> Self {
+        let generation = scenario.generates_cases().then_some(PhaseState::Pending);
         let case_states = (0..scenario.case_count())
             .map(|_| CaseState::Pending)
             .collect();
@@ -698,6 +848,7 @@ impl ActiveConversation {
             revision: PhaseState::Pending,
             discovery: PhaseState::Pending,
             schemas: PhaseState::Pending,
+            generation,
             case_states,
             seen_names: BTreeSet::new(),
             seen_cursors: BTreeSet::new(),
@@ -776,7 +927,9 @@ impl ActiveConversation {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::tool_arguments_mismatch(
-                                    case_location(index).field(LocationField::Arguments),
+                                    self.scenario
+                                        .case_location(index)
+                                        .field(LocationField::Arguments),
                                     error_count,
                                 )]);
                             self.next_case += 1;
@@ -787,7 +940,9 @@ impl ActiveConversation {
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::limit_exceeded(
                                     SupportedRevision::CURRENT,
-                                    case_location(index).field(LocationField::Arguments),
+                                    self.scenario
+                                        .case_location(index)
+                                        .field(LocationField::Arguments),
                                     violation,
                                 )]);
                             self.next_case += 1;
@@ -798,7 +953,9 @@ impl ActiveConversation {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::tool_result_invalid(
-                                    case_location(index).field(LocationField::InputSchema),
+                                    self.scenario
+                                        .case_location(index)
+                                        .field(LocationField::InputSchema),
                                 )]);
                             self.next_case += 1;
                             self.stop_cases(SkipReason::PrerequisiteFailed);
@@ -824,7 +981,9 @@ impl ActiveConversation {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::http_header_mapping_invalid(
-                                    case_location(index).field(LocationField::Arguments),
+                                    self.scenario
+                                        .case_location(index)
+                                        .field(LocationField::Arguments),
                                     RuleViolation::InvalidMirroredHeaderValue,
                                 )]);
                             self.next_case += 1;
@@ -1262,6 +1421,38 @@ impl ActiveConversation {
                 }),
                 header_annotations: contract.header_annotations.clone(),
             };
+            if self.scenario.generates_cases() {
+                match self
+                    .scenario
+                    .generate_cases(&contract.input_schema, &validators.input)
+                {
+                    Ok(()) => {
+                        self.generation = Some(PhaseState::Performed(Vec::new()));
+                    }
+                    Err(GenerationFailure::Limit(violation)) => {
+                        self.schemas = PhaseState::Performed(Vec::new());
+                        self.generation =
+                            Some(PhaseState::Performed(vec![Finding::limit_exceeded(
+                                SupportedRevision::CURRENT,
+                                generation_location().field(LocationField::Cases),
+                                violation,
+                            )]));
+                        self.stop_cases(SkipReason::LimitReached);
+                        return;
+                    }
+                    Err(GenerationFailure::Unavailable) => {
+                        self.schemas = PhaseState::Performed(Vec::new());
+                        self.generation = Some(PhaseState::Performed(vec![
+                            Finding::case_generation_failed(
+                                generation_location().field(LocationField::Cases),
+                                RuleViolation::NoValidBoundaryInput,
+                            ),
+                        ]));
+                        self.stop_cases(SkipReason::PrerequisiteFailed);
+                        return;
+                    }
+                }
+            }
             self.tool_validators = Some(validators);
             self.selected_tool = None;
             self.schemas = PhaseState::Performed(Vec::new());
@@ -1284,7 +1475,9 @@ impl ActiveConversation {
             .expect("the transport accepted only JSON-RPC objects");
         if object.contains_key("error") {
             self.case_states[index] = CaseState::Performed(vec![Finding::tool_call_rejected(
-                case_location(index).field(LocationField::Result),
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::Result),
             )]);
             self.next_case = index.saturating_add(1);
             self.stage = Stage::Cases;
@@ -1336,7 +1529,9 @@ impl ActiveConversation {
         );
         if !classification_matches {
             findings.push(Finding::tool_result_mismatch(
-                case_location(index).field(LocationField::IsError),
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::IsError),
                 if case.expected == ExpectedResult::Success {
                     RuleViolation::ExpectedSuccess
                 } else {
@@ -1365,7 +1560,9 @@ impl ActiveConversation {
         if let Some(violation) = limit {
             findings.push(Finding::limit_exceeded(
                 SupportedRevision::CURRENT,
-                case_location(index).field(LocationField::StructuredContent),
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::StructuredContent),
                 violation,
             ));
             self.case_states[index] = CaseState::Performed(findings);
@@ -1381,7 +1578,9 @@ impl ActiveConversation {
                 .is_some_and(validation_invalid_schema)
         {
             findings.push(Finding::tool_result_invalid(
-                case_location(index).field(LocationField::StructuredContent),
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::StructuredContent),
             ));
             self.case_states[index] = CaseState::Performed(findings);
             self.next_case = index.saturating_add(1);
@@ -1405,7 +1604,9 @@ impl ActiveConversation {
                 (false, false) => unreachable!(),
             };
             findings.push(Finding::tool_output_mismatch(
-                case_location(index).field(LocationField::StructuredContent),
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::StructuredContent),
                 violation,
             ));
         }
@@ -1417,7 +1618,7 @@ impl ActiveConversation {
 
     fn invalid_tool_result(&mut self, index: usize, field: LocationField) {
         self.case_states[index] = CaseState::Performed(vec![Finding::tool_result_invalid(
-            case_location(index).field(field),
+            self.scenario.case_location(index).field(field),
         )]);
         self.next_case = index.saturating_add(1);
         self.stop_cases(SkipReason::PrerequisiteFailed);
@@ -1440,6 +1641,9 @@ impl ActiveConversation {
     }
 
     fn stop_cases(&mut self, reason: SkipReason) {
+        if let Some(state @ PhaseState::Pending) = self.generation.as_mut() {
+            *state = PhaseState::Skipped(reason);
+        }
         for state in &mut self.case_states[self.next_case..] {
             if matches!(state, CaseState::Pending) {
                 *state = CaseState::Skipped(reason);
@@ -1494,12 +1698,18 @@ impl ActiveConversation {
             .map(<[Finding]>::len)
             .sum();
         self.fit_report_finding_budget(transport_finding_count);
+        let configuration_check = self.scenario.configuration_check();
+        let mut reproductions = (0..self.case_states.len())
+            .map(|index| {
+                self.scenario
+                    .cases
+                    .get_mut(index)
+                    .and_then(|case| case.reproduction.take())
+            })
+            .collect::<Vec<_>>()
+            .into_iter();
         let mut checks = vec![
-            CheckResult::performed(
-                CheckId::ScenarioConfiguration,
-                Requirement::Required,
-                Vec::new(),
-            ),
+            CheckResult::performed(configuration_check, Requirement::Required, Vec::new()),
             CheckResult::performed(
                 CheckId::ActiveAuthorization,
                 Requirement::Required,
@@ -1513,31 +1723,40 @@ impl ActiveConversation {
             phase_check(CheckId::DiscoveryCatalogs, self.discovery),
             phase_check(CheckId::SchemaContracts, self.schemas),
         ]);
+        if let Some(generation) = self.generation {
+            checks.push(phase_check(CheckId::CaseGeneration, generation));
+        }
         checks.extend(
             self.case_states
                 .into_iter()
                 .enumerate()
-                .map(|(index, state)| match state {
-                    CaseState::Performed(findings) => CheckResult::performed(
-                        CheckId::RuntimeToolCase(index),
-                        Requirement::Required,
-                        findings,
-                    ),
-                    CaseState::Incomplete => CheckResult::skipped(
-                        CheckId::RuntimeToolCase(index),
-                        Requirement::Required,
-                        SkipReason::InputRequired,
-                    ),
-                    CaseState::Skipped(reason) => CheckResult::skipped(
-                        CheckId::RuntimeToolCase(index),
-                        Requirement::Required,
-                        reason,
-                    ),
-                    CaseState::Pending => CheckResult::skipped(
-                        CheckId::RuntimeToolCase(index),
-                        Requirement::Required,
-                        SkipReason::PrerequisiteFailed,
-                    ),
+                .map(|(index, state)| {
+                    let check = match state {
+                        CaseState::Performed(findings) => CheckResult::performed(
+                            CheckId::RuntimeToolCase(index),
+                            Requirement::Required,
+                            findings,
+                        ),
+                        CaseState::Incomplete => CheckResult::skipped(
+                            CheckId::RuntimeToolCase(index),
+                            Requirement::Required,
+                            SkipReason::InputRequired,
+                        ),
+                        CaseState::Skipped(reason) => CheckResult::skipped(
+                            CheckId::RuntimeToolCase(index),
+                            Requirement::Required,
+                            reason,
+                        ),
+                        CaseState::Pending => CheckResult::skipped(
+                            CheckId::RuntimeToolCase(index),
+                            Requirement::Required,
+                            SkipReason::PrerequisiteFailed,
+                        ),
+                    };
+                    match reproductions.next().flatten() {
+                        Some(reproduction) => check.with_reproduction(reproduction),
+                        None => check,
+                    }
                 }),
         );
         let report = DiagnosticReport::new(
@@ -1560,6 +1779,7 @@ impl ActiveConversation {
             .saturating_add(phase_finding_count(&self.revision))
             .saturating_add(phase_finding_count(&self.discovery))
             .saturating_add(phase_finding_count(&self.schemas))
+            .saturating_add(self.generation.as_ref().map_or(0, phase_finding_count))
             .saturating_add(
                 self.case_states
                     .iter()
@@ -1742,6 +1962,10 @@ fn mismatch_count(issue: Option<&InstanceValidationIssue>) -> u64 {
 
 fn scenario_location() -> Location {
     Location::root(LocationField::Scenario)
+}
+
+fn generation_location() -> Location {
+    Location::root(LocationField::Generation)
 }
 
 fn case_location(index: usize) -> Location {

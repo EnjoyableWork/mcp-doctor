@@ -513,6 +513,44 @@ fn project_keeps_mcpd_010_network_boundary_explicit() {
 }
 
 #[test]
+fn project_keeps_mcpd_011_generation_boundary_explicit() {
+    let project = repository_file("PROJECT.md");
+    let readme = repository_file("README.md");
+
+    for contract in [
+        "| DEC-031 | Generate only versioned, bounded, schema-valid cases for one redundantly authorized tool | Accepted |",
+        "`mcp-doctor.generator/v1`",
+        "`--tool <exact-name>` and `--allow-tool <exact-name>`",
+        "256 synthesis attempts, 64 retained",
+        "100,000 synthesis steps",
+        "`MCP-GENERATION-001`",
+        "Case `n` uses the base seed with wrapping addition",
+        "| MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done |",
+        "`proptest` or another property framework | `MCPD-011` — evaluated 2026-08-11 | Not adopted",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain MCPD-011 generation contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "--tool search",
+        "--allow-tool search",
+        "--effects read_only",
+        "--cases 50",
+        "--seed 4242",
+        "A `side_effecting` run also requires `--allow-side-effects`",
+        "reports never contain raw generated arguments or tool results",
+    ] {
+        assert!(
+            readme.contains(contract),
+            "README.md should describe the bounded break contract: {contract}"
+        );
+    }
+}
+
+#[test]
 fn repository_does_not_reference_the_scaffolding_project() {
     let forbidden = ["mcp", "sync"].join("-");
     let roots = [
