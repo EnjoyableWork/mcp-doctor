@@ -16,6 +16,17 @@ confidence-threshold = 0.93
 # without a new review.
 exceptions = [
   { allow = ["MIT-0"], crate = "borrow-or-share@0.2.4" },
+  # MCPD-010 uses rustls with the narrowly selected ring provider. These
+  # exact permissive licenses are scoped to the reviewed TLS graph rather
+  # than widening the repository-wide allowlist.
+  { allow = ["Apache-2.0", "ISC"], crate = "ring@0.17.14" },
+  { allow = ["ISC"], crate = "rustls-webpki@0.103.13" },
+  { allow = ["BSD-3-Clause"], crate = "subtle@2.6.1" },
+  { allow = ["ISC"], crate = "untrusted@0.9.0" },
+  # rustls-platform-verifier embeds Mozilla's root-certificate data on
+  # targets without an operating-system verifier. CDLA-Permissive-2.0 is a
+  # permissive data license, not a new code-license allowance.
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-root-certs@1.0.9" },
   { allow = ["Zlib"], crate = "foldhash@0.2.0" },
 ]
 
@@ -26,7 +37,9 @@ highlight = "all"
 allow = []
 deny = []
 skip = [
+  { crate = "getrandom@0.2.17", reason = "ring 0.17.14 retains getrandom 0.2 for its reviewed TLS entropy path while the schema graph uses 0.3 and disposable tests use 0.4" },
   { crate = "syn@2.0.119", reason = "process-wrap 9.1.0 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
+  { crate = "windows-sys@0.52.0", reason = "ring 0.17.14 retains windows-sys 0.52 for its reviewed Windows entropy path while the current runtime and platform verifier use 0.61" },
 ]
 skip-tree = []
 

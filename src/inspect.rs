@@ -1,12 +1,17 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, m1_stdio_limit_profile,
-    render_catalog_diagnostic, render_stdio_diagnostic, stdio_diagnostic,
+    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, http_diagnostic,
+    m1_http_limit_profile, m1_stdio_limit_profile, render_catalog_diagnostic,
+    render_http_catalog_diagnostic, render_http_diagnostic, render_stdio_diagnostic,
+    stdio_diagnostic,
+};
+use crate::transport::http::{
+    HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
 };
 use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
-pub(crate) async fn run(
+pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     format: ReportFormat,
 ) -> Result<RenderedDiagnostic, TargetError> {
@@ -45,6 +50,52 @@ pub(crate) async fn run(
             result.responses(),
             format,
         ))
+    }
+}
+
+pub(crate) async fn run_http(options: RemoteOptions, format: ReportFormat) -> RenderedDiagnostic {
+    let profile = m1_http_limit_profile();
+    let limits = HttpLimits {
+        startup_ms: profile.startup_ms,
+        discovery_ms: profile.discovery_ms,
+        request_ms: profile.request_ms,
+        response_ms: profile.response_ms,
+        total_ms: profile.total_ms,
+        endpoint_bytes: profile.endpoint_bytes,
+        resolution_addresses: profile.resolution_addresses,
+        trust_bytes: profile.trust_bytes,
+        trust_certificates: profile.trust_certificates,
+        request_fields: profile.request_fields,
+        request_field_name_bytes: profile.request_field_name_bytes,
+        request_field_value_bytes: profile.request_field_value_bytes,
+        request_fields_bytes: profile.request_fields_bytes,
+        response_fields: profile.response_fields,
+        response_field_name_bytes: profile.response_field_name_bytes,
+        response_field_value_bytes: profile.response_field_value_bytes,
+        response_fields_bytes: profile.response_fields_bytes,
+        message_bytes: profile.message_bytes,
+        aggregate_output_bytes: profile.aggregate_output_bytes,
+        message_count: profile.message_count,
+    };
+    let target = match HttpTarget::prepare(options, limits, &SystemResolver).await {
+        Ok(target) => target,
+        Err(failure) => {
+            return render_http_diagnostic(http_diagnostic(Some(failure), None), format);
+        }
+    };
+    let transport = match HttpTransport::new(target) {
+        Ok(transport) => transport,
+        Err(failure) => {
+            return render_http_diagnostic(http_diagnostic(Some(failure), Some(true)), format);
+        }
+    };
+    let mut conversation = PassiveCatalogConversation::new_http();
+    let result = transport.probe(&mut conversation).await;
+    let diagnostic = http_diagnostic(result.failure(), Some(result.tls_applicable()));
+    if result.failure().is_some() {
+        render_http_diagnostic(diagnostic, format)
+    } else {
+        render_http_catalog_diagnostic(diagnostic, &conversation, result.responses(), format)
     }
 }
 

@@ -7,7 +7,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
+use transport::http::RemoteOptions;
 
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
 #[derive(Debug, Parser)]
@@ -19,24 +20,43 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Passively inspect a local MCP server over STDIO.
+    /// Passively inspect a local STDIO server or one Streamable HTTP endpoint.
     Inspect(InspectArgs),
-    /// Replay reviewed cases against one explicitly authorized local tool.
+    /// Replay reviewed cases against one explicitly authorized local or remote tool.
     Check(CheckArgs),
 }
 
 #[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("transport")
+        .required(true)
+        .multiple(false)
+        .args(["endpoint", "target"])
+))]
 struct InspectArgs {
     /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
-    /// Server executable followed by its literal arguments.
-    #[arg(last = true, required = true, num_args = 1.., allow_hyphen_values = true)]
+    /// One absolute Streamable HTTP endpoint.
+    #[arg(value_name = "URL")]
+    endpoint: Option<String>,
+
+    #[command(flatten)]
+    remote: RemoteArgs,
+
+    /// Server executable followed by its literal arguments after `--`.
+    #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
     target: Vec<OsString>,
 }
 
 #[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("transport")
+        .required(true)
+        .multiple(false)
+        .args(["endpoint", "target"])
+))]
 struct CheckArgs {
     /// Versioned JSON scenario containing one exact tool and ordered reviewed cases.
     #[arg(long, value_name = "PATH")]
@@ -54,9 +74,57 @@ struct CheckArgs {
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
-    /// Server executable followed by its literal arguments.
-    #[arg(last = true, required = true, num_args = 1.., allow_hyphen_values = true)]
+    /// One absolute Streamable HTTP endpoint.
+    #[arg(value_name = "URL")]
+    endpoint: Option<String>,
+
+    #[command(flatten)]
+    remote: RemoteArgs,
+
+    /// Server executable followed by its literal arguments after `--`.
+    #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
     target: Vec<OsString>,
+}
+
+#[derive(Debug, Args, Default)]
+struct RemoteArgs {
+    /// Authorize an eligible private destination for this exact endpoint.
+    #[arg(long, value_name = "EXACT-URL", requires = "endpoint")]
+    allow_private_network: Option<String>,
+
+    /// Authorize cleartext HTTP for this exact all-loopback endpoint.
+    #[arg(long, value_name = "EXACT-URL", requires = "endpoint")]
+    allow_cleartext_http: Option<String>,
+
+    /// Authorize environment-provided credentials for this exact HTTPS endpoint.
+    #[arg(long, value_name = "EXACT-URL", requires = "endpoint")]
+    allow_credentials_to: Option<String>,
+
+    /// Read one bearer token from this invoking-process environment variable.
+    #[arg(long, value_name = "NAME", requires = "endpoint")]
+    bearer_token_env: Option<String>,
+
+    /// Read a custom end-to-end field from FIELD=ENV_NAME; may be repeated.
+    #[arg(long, value_name = "FIELD=NAME", requires = "endpoint")]
+    header_env: Vec<String>,
+
+    /// Add at most 32 PEM CA certificates from one bounded regular file.
+    #[arg(long, value_name = "PATH", requires = "endpoint")]
+    tls_ca_file: Option<PathBuf>,
+}
+
+impl RemoteArgs {
+    fn into_options(self, endpoint: String) -> RemoteOptions {
+        RemoteOptions {
+            endpoint,
+            allow_private_network: self.allow_private_network,
+            allow_cleartext_http: self.allow_cleartext_http,
+            allow_credentials_to: self.allow_credentials_to,
+            bearer_token_env: self.bearer_token_env,
+            header_env: self.header_env,
+            tls_ca_file: self.tls_ca_file,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
@@ -79,34 +147,57 @@ async fn main() -> ExitCode {
     match Cli::parse().command {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
-            match inspect::run(arguments.target, arguments.format.into()).await {
-                Ok(diagnostic) => {
-                    print!("{}", diagnostic.output);
-                    diagnostic.exit
-                }
-                Err(error) => {
-                    eprintln!("error: {error}");
-                    ExitCode::from(2)
+            if let Some(endpoint) = arguments.endpoint {
+                let diagnostic = inspect::run_http(
+                    arguments.remote.into_options(endpoint),
+                    arguments.format.into(),
+                )
+                .await;
+                print!("{}", diagnostic.output);
+                diagnostic.exit
+            } else {
+                match inspect::run_stdio(arguments.target, arguments.format.into()).await {
+                    Ok(diagnostic) => {
+                        print!("{}", diagnostic.output);
+                        diagnostic.exit
+                    }
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        ExitCode::from(2)
+                    }
                 }
             }
         }
         Some(Command::Check(arguments)) => {
-            match check::run(
-                arguments.target,
-                &arguments.scenario,
-                &arguments.allow_tool,
-                arguments.allow_side_effects,
-                arguments.format.into(),
-            )
-            .await
-            {
-                Ok(diagnostic) => {
-                    print!("{}", diagnostic.output);
-                    diagnostic.exit
-                }
-                Err(error) => {
-                    eprintln!("error: {error}");
-                    ExitCode::from(2)
+            if let Some(endpoint) = arguments.endpoint {
+                let diagnostic = check::run_http(
+                    arguments.remote.into_options(endpoint),
+                    &arguments.scenario,
+                    &arguments.allow_tool,
+                    arguments.allow_side_effects,
+                    arguments.format.into(),
+                )
+                .await;
+                print!("{}", diagnostic.output);
+                diagnostic.exit
+            } else {
+                match check::run_stdio(
+                    arguments.target,
+                    &arguments.scenario,
+                    &arguments.allow_tool,
+                    arguments.allow_side_effects,
+                    arguments.format.into(),
+                )
+                .await
+                {
+                    Ok(diagnostic) => {
+                        print!("{}", diagnostic.output);
+                        diagnostic.exit
+                    }
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        ExitCode::from(2)
+                    }
                 }
             }
         }

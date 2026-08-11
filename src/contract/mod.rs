@@ -5,17 +5,22 @@
 
 mod active;
 mod catalog;
+mod http_headers;
 mod limits;
 mod model;
 mod protocol;
 mod redaction;
 mod report;
 
-use crate::transport::stdio::{
-    ProbeResponse, StdioFailure, StdioLimit, StdioStream as TransportStream,
+use crate::transport::ProbeResponse;
+use crate::transport::http::{
+    HttpFailure, HttpLimit, ResolutionFailure, ResponseFailure, TargetFailure,
 };
+use crate::transport::stdio::{StdioFailure, StdioLimit, StdioStream as TransportStream};
 use limits::{DiagnosticLimits, LimitKind, LimitViolation};
-use model::{CheckId, CheckResult, Finding, Location, LocationField, Requirement, SkipReason};
+use model::{
+    CheckId, CheckResult, Finding, Location, LocationField, Requirement, RuleViolation, SkipReason,
+};
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
 use report::{DiagnosticReport, render_report};
@@ -27,6 +32,12 @@ pub(crate) use active::{
 };
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use report::ReportFormat;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ReportTransport {
+    Stdio,
+    Http,
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StdioLimitKind {
@@ -72,6 +83,56 @@ pub(crate) struct StdioLimitProfile {
     pub(crate) stderr_bytes: u64,
     pub(crate) aggregate_output_bytes: u64,
     pub(crate) message_count: u64,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct HttpLimitProfile {
+    pub(crate) startup_ms: u64,
+    pub(crate) discovery_ms: u64,
+    pub(crate) request_ms: u64,
+    pub(crate) response_ms: u64,
+    pub(crate) total_ms: u64,
+    pub(crate) endpoint_bytes: u64,
+    pub(crate) resolution_addresses: u64,
+    pub(crate) trust_bytes: u64,
+    pub(crate) trust_certificates: u64,
+    pub(crate) request_fields: u64,
+    pub(crate) request_field_name_bytes: u64,
+    pub(crate) request_field_value_bytes: u64,
+    pub(crate) request_fields_bytes: u64,
+    pub(crate) response_fields: u64,
+    pub(crate) response_field_name_bytes: u64,
+    pub(crate) response_field_value_bytes: u64,
+    pub(crate) response_fields_bytes: u64,
+    pub(crate) message_bytes: u64,
+    pub(crate) aggregate_output_bytes: u64,
+    pub(crate) message_count: u64,
+}
+
+pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
+    let values = DiagnosticLimits::M1_DEFAULTS.values();
+    HttpLimitProfile {
+        startup_ms: values.startup_ms,
+        discovery_ms: values.discovery_ms,
+        request_ms: values.request_ms,
+        response_ms: values.response_ms,
+        total_ms: values.total_ms,
+        endpoint_bytes: values.endpoint_bytes,
+        resolution_addresses: values.resolution_addresses,
+        trust_bytes: values.trust_bytes,
+        trust_certificates: values.trust_certificates,
+        request_fields: values.request_fields,
+        request_field_name_bytes: values.request_field_name_bytes,
+        request_field_value_bytes: values.request_field_value_bytes,
+        request_fields_bytes: values.request_fields_bytes,
+        response_fields: values.response_fields,
+        response_field_name_bytes: values.response_field_name_bytes,
+        response_field_value_bytes: values.response_field_value_bytes,
+        response_fields_bytes: values.response_fields_bytes,
+        message_bytes: values.message_bytes,
+        aggregate_output_bytes: values.aggregate_output_bytes,
+        message_count: values.message_count,
+    }
 }
 
 pub(crate) fn m1_stdio_limit_profile() -> StdioLimitProfile {
@@ -174,6 +235,365 @@ fn map_stdio_failure(failure: StdioFailure) -> StdioPrimaryFailure {
 pub(crate) struct RenderedDiagnostic {
     pub(crate) output: String,
     pub(crate) exit: std::process::ExitCode,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct HttpDiagnostic {
+    failure: Option<HttpFailure>,
+    tls_applicable: Option<bool>,
+}
+
+impl HttpDiagnostic {
+    pub(in crate::contract) const fn failed(self) -> bool {
+        self.failure.is_some()
+    }
+}
+
+pub(crate) const fn http_diagnostic(
+    failure: Option<HttpFailure>,
+    tls_applicable: Option<bool>,
+) -> HttpDiagnostic {
+    HttpDiagnostic {
+        failure,
+        tls_applicable,
+    }
+}
+
+pub(crate) fn render_http_diagnostic(
+    diagnostic: HttpDiagnostic,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let checks = http_checks(diagnostic);
+    let failed = diagnostic.failure.is_some();
+    let mut checks = checks;
+    if failed {
+        checks.extend(protocol_skips(
+            SkipReason::PrerequisiteFailed,
+            Requirement::Optional,
+        ));
+    } else {
+        checks.extend([
+            CheckResult::skipped(
+                CheckId::ProtocolEnvelope,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::ProtocolRevision,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::RuntimeTools,
+                Requirement::Optional,
+                SkipReason::NotAuthorized,
+            ),
+        ]);
+    }
+    render_checks(checks, format)
+}
+
+pub(crate) fn render_http_catalog_diagnostic(
+    diagnostic: HttpDiagnostic,
+    conversation: &PassiveCatalogConversation,
+    responses: &[ProbeResponse],
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let mut checks = http_checks(diagnostic);
+    let reserved_findings = checks
+        .iter()
+        .filter_map(CheckResult::findings)
+        .map(<[Finding]>::len)
+        .sum();
+    checks.extend(catalog::diagnose(
+        conversation,
+        responses,
+        reserved_findings,
+    ));
+    render_checks(checks, format)
+}
+
+pub(in crate::contract) fn http_checks(diagnostic: HttpDiagnostic) -> Vec<CheckResult> {
+    let stage = diagnostic.failure.map(http_failure_stage);
+    let mut checks = Vec::new();
+    checks.push(stage_check(
+        CheckId::NetworkTarget,
+        HttpStage::Target,
+        stage,
+        diagnostic.failure.and_then(http_finding),
+    ));
+    checks.push(stage_check(
+        CheckId::NetworkResolution,
+        HttpStage::Resolution,
+        stage,
+        diagnostic.failure.and_then(http_finding),
+    ));
+    if diagnostic.tls_applicable == Some(false) && stage != Some(HttpStage::Tls) {
+        checks.push(CheckResult::skipped(
+            CheckId::TransportTls,
+            Requirement::Optional,
+            SkipReason::NotApplicable,
+        ));
+    } else {
+        checks.push(stage_check(
+            CheckId::TransportTls,
+            HttpStage::Tls,
+            stage,
+            diagnostic.failure.and_then(http_finding),
+        ));
+    }
+    checks.push(stage_check(
+        CheckId::TransportHttp,
+        HttpStage::Http,
+        stage,
+        diagnostic.failure.and_then(http_finding),
+    ));
+    checks
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum HttpStage {
+    Target,
+    Resolution,
+    Tls,
+    Http,
+}
+
+fn stage_check(
+    id: CheckId,
+    current: HttpStage,
+    failure_stage: Option<HttpStage>,
+    finding: Option<Finding>,
+) -> CheckResult {
+    match failure_stage {
+        Some(stage) if current == stage => {
+            CheckResult::performed(id, Requirement::Required, finding.into_iter().collect())
+        }
+        Some(stage) if current > stage => {
+            CheckResult::skipped(id, Requirement::Required, SkipReason::PrerequisiteFailed)
+        }
+        _ => CheckResult::performed(id, Requirement::Required, Vec::new()),
+    }
+}
+
+fn http_failure_stage(failure: HttpFailure) -> HttpStage {
+    match failure {
+        HttpFailure::Target(_) => HttpStage::Target,
+        HttpFailure::Resolution(_) | HttpFailure::PeerMismatch => HttpStage::Resolution,
+        HttpFailure::Tls => HttpStage::Tls,
+        HttpFailure::Request => HttpStage::Resolution,
+        HttpFailure::ResponseIo | HttpFailure::Response(_) => HttpStage::Http,
+        HttpFailure::Limit { kind, .. } => match kind {
+            HttpLimit::EndpointBytes
+            | HttpLimit::TrustBytes
+            | HttpLimit::TrustCertificates
+            | HttpLimit::RequestFields
+            | HttpLimit::RequestFieldNameBytes
+            | HttpLimit::RequestFieldValueBytes
+            | HttpLimit::RequestFieldsBytes => HttpStage::Target,
+            HttpLimit::StartupTime
+            | HttpLimit::DiscoveryTime
+            | HttpLimit::RequestTime
+            | HttpLimit::TotalTime
+            | HttpLimit::ResolutionAddresses => HttpStage::Resolution,
+            HttpLimit::ResponseTime
+            | HttpLimit::ResponseFields
+            | HttpLimit::ResponseFieldNameBytes
+            | HttpLimit::ResponseFieldValueBytes
+            | HttpLimit::ResponseFieldsBytes
+            | HttpLimit::MessageBytes
+            | HttpLimit::AggregateOutputBytes
+            | HttpLimit::MessageCount => HttpStage::Http,
+        },
+    }
+}
+
+fn http_finding(failure: HttpFailure) -> Option<Finding> {
+    let revision = SupportedRevision::CURRENT;
+    Some(match failure {
+        HttpFailure::Target(failure) => match failure {
+            TargetFailure::InvalidEndpoint => Finding::remote_target_invalid(
+                Location::root(LocationField::Endpoint),
+                RuleViolation::InvalidEndpoint,
+            ),
+            TargetFailure::PrivateNetworkAuthorizationRequired => {
+                Finding::network_authorization_missing(
+                    Location::root(LocationField::Endpoint),
+                    RuleViolation::PrivateNetworkAuthorizationRequired,
+                )
+            }
+            TargetFailure::CleartextAuthorizationRequired => {
+                Finding::network_authorization_missing(
+                    Location::root(LocationField::Endpoint),
+                    RuleViolation::CleartextAuthorizationRequired,
+                )
+            }
+            TargetFailure::CredentialAuthorizationRequired => {
+                Finding::network_authorization_missing(
+                    Location::root(LocationField::Credentials),
+                    RuleViolation::CredentialAuthorizationRequired,
+                )
+            }
+            TargetFailure::CredentialsRequireHttps => Finding::remote_target_invalid(
+                Location::root(LocationField::Credentials),
+                RuleViolation::CredentialsRequireHttps,
+            ),
+            TargetFailure::InvalidCredential => Finding::remote_target_invalid(
+                Location::root(LocationField::Credentials),
+                RuleViolation::InvalidCredential,
+            ),
+            TargetFailure::InvalidCustomField => Finding::remote_target_invalid(
+                Location::root(LocationField::Http).field(LocationField::Headers),
+                RuleViolation::InvalidCustomField,
+            ),
+            TargetFailure::InvalidTrustFile => Finding::remote_target_invalid(
+                Location::root(LocationField::Tls).field(LocationField::Trust),
+                RuleViolation::InvalidTrustFile,
+            ),
+        },
+        HttpFailure::Resolution(failure) => match failure {
+            ResolutionFailure::Unavailable => Finding::resolution_failed(
+                Location::root(LocationField::Resolution),
+                RuleViolation::ResolutionUnavailable,
+            ),
+            ResolutionFailure::ProhibitedAddress => Finding::address_policy_blocked(
+                Location::root(LocationField::Resolution).field(LocationField::Address),
+                RuleViolation::ProhibitedAddress,
+            ),
+            ResolutionFailure::MixedAddressClasses => Finding::address_policy_blocked(
+                Location::root(LocationField::Resolution).field(LocationField::Address),
+                RuleViolation::MixedAddressClasses,
+            ),
+        },
+        HttpFailure::Tls => Finding::tls_verification_failed(Location::root(LocationField::Tls)),
+        HttpFailure::Request | HttpFailure::ResponseIo => Finding::http_exchange_failed(
+            Location::root(LocationField::Http),
+            RuleViolation::HttpRequestFailed,
+        ),
+        HttpFailure::PeerMismatch => Finding::peer_address_mismatch(
+            Location::root(LocationField::Resolution).field(LocationField::Peer),
+        ),
+        HttpFailure::Response(failure) => match failure {
+            ResponseFailure::Redirect { status } => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Status),
+                RuleViolation::RedirectRejected { status },
+            ),
+            ResponseFailure::Authentication { status } => Finding::remote_authentication_rejected(
+                Location::root(LocationField::Http).field(LocationField::Status),
+                status,
+            ),
+            ResponseFailure::Status { status } => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Status),
+                RuleViolation::HttpStatusRejected { status },
+            ),
+            ResponseFailure::ContentEncoding => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Headers),
+                RuleViolation::ContentEncodingRejected,
+            ),
+            ResponseFailure::MediaType => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Headers),
+                RuleViolation::MediaTypeRejected,
+            ),
+            ResponseFailure::InvalidMessage => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Body),
+                RuleViolation::InvalidResponseMessage,
+            ),
+            ResponseFailure::InvalidSse => Finding::http_response_invalid(
+                Location::root(LocationField::Http).field(LocationField::Event),
+                RuleViolation::InvalidSseEvent,
+            ),
+            ResponseFailure::HeaderMismatch => Finding::http_header_mapping_invalid(
+                Location::root(LocationField::Http).field(LocationField::Headers),
+                RuleViolation::HeaderMismatch,
+            ),
+        },
+        HttpFailure::Limit {
+            kind,
+            observed,
+            maximum,
+        } => Finding::limit_exceeded(
+            revision,
+            http_limit_location(kind),
+            LimitViolation::new(http_limit_kind(kind), observed, maximum)
+                .expect("an HTTP limit failure exceeds its maximum"),
+        ),
+    })
+}
+
+fn http_limit_kind(kind: HttpLimit) -> LimitKind {
+    match kind {
+        HttpLimit::StartupTime => LimitKind::StartupTime,
+        HttpLimit::DiscoveryTime => LimitKind::DiscoveryTime,
+        HttpLimit::RequestTime => LimitKind::RequestTime,
+        HttpLimit::ResponseTime => LimitKind::ResponseTime,
+        HttpLimit::TotalTime => LimitKind::TotalTime,
+        HttpLimit::EndpointBytes => LimitKind::EndpointBytes,
+        HttpLimit::ResolutionAddresses => LimitKind::ResolutionAddresses,
+        HttpLimit::TrustBytes => LimitKind::TrustBytes,
+        HttpLimit::TrustCertificates => LimitKind::TrustCertificates,
+        HttpLimit::RequestFields => LimitKind::RequestFields,
+        HttpLimit::RequestFieldNameBytes => LimitKind::RequestFieldNameBytes,
+        HttpLimit::RequestFieldValueBytes => LimitKind::RequestFieldValueBytes,
+        HttpLimit::RequestFieldsBytes => LimitKind::RequestFieldsBytes,
+        HttpLimit::ResponseFields => LimitKind::ResponseFields,
+        HttpLimit::ResponseFieldNameBytes => LimitKind::ResponseFieldNameBytes,
+        HttpLimit::ResponseFieldValueBytes => LimitKind::ResponseFieldValueBytes,
+        HttpLimit::ResponseFieldsBytes => LimitKind::ResponseFieldsBytes,
+        HttpLimit::MessageBytes => LimitKind::MessageBytes,
+        HttpLimit::AggregateOutputBytes => LimitKind::AggregateOutputBytes,
+        HttpLimit::MessageCount => LimitKind::MessageCount,
+    }
+}
+
+fn http_limit_location(kind: HttpLimit) -> Location {
+    match kind {
+        HttpLimit::EndpointBytes => Location::root(LocationField::Endpoint),
+        HttpLimit::ResolutionAddresses | HttpLimit::StartupTime => {
+            Location::root(LocationField::Resolution)
+        }
+        HttpLimit::TrustBytes | HttpLimit::TrustCertificates => {
+            Location::root(LocationField::Tls).field(LocationField::Trust)
+        }
+        HttpLimit::RequestFields
+        | HttpLimit::RequestFieldNameBytes
+        | HttpLimit::RequestFieldValueBytes
+        | HttpLimit::RequestFieldsBytes => Location::root(LocationField::Http)
+            .field(LocationField::Request)
+            .field(LocationField::Headers),
+        HttpLimit::ResponseFields
+        | HttpLimit::ResponseFieldNameBytes
+        | HttpLimit::ResponseFieldValueBytes
+        | HttpLimit::ResponseFieldsBytes => Location::root(LocationField::Http)
+            .field(LocationField::Result)
+            .field(LocationField::Headers),
+        HttpLimit::MessageBytes | HttpLimit::AggregateOutputBytes | HttpLimit::MessageCount => {
+            Location::root(LocationField::Http).field(LocationField::Body)
+        }
+        HttpLimit::DiscoveryTime
+        | HttpLimit::RequestTime
+        | HttpLimit::ResponseTime
+        | HttpLimit::TotalTime => Location::root(LocationField::Http),
+    }
+}
+
+fn protocol_skips(reason: SkipReason, runtime_requirement: Requirement) -> Vec<CheckResult> {
+    vec![
+        CheckResult::skipped(CheckId::ProtocolEnvelope, Requirement::Required, reason),
+        CheckResult::skipped(CheckId::ProtocolRevision, Requirement::Required, reason),
+        CheckResult::skipped(CheckId::DiscoveryCatalogs, Requirement::Required, reason),
+        CheckResult::skipped(CheckId::SchemaContracts, Requirement::Required, reason),
+        CheckResult::skipped(CheckId::RuntimeTools, runtime_requirement, reason),
+    ]
 }
 
 pub(crate) fn render_stdio_diagnostic(
@@ -327,10 +747,12 @@ pub(super) fn success_exit() -> std::process::ExitCode {
 }
 
 #[cfg(test)]
-mod stdio_contract_tests {
+mod transport_contract_tests {
     use super::{
-        ReportFormat, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure, render_stdio_diagnostic,
+        ReportFormat, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure, http_diagnostic,
+        render_http_diagnostic, render_stdio_diagnostic,
     };
+    use crate::transport::http::HttpFailure;
 
     #[test]
     fn transport_and_cleanup_failures_remain_distinct_in_one_safe_report() {
@@ -378,5 +800,22 @@ mod stdio_contract_tests {
                 .contains("stderr_bytes observed 1048577 bytes")
         );
         assert!(rendered.output.contains("maximum 1048576 bytes"));
+    }
+
+    #[test]
+    fn a_pre_response_connection_failure_never_claims_tls_verification() {
+        let rendered = render_http_diagnostic(
+            http_diagnostic(Some(HttpFailure::Request), Some(true)),
+            ReportFormat::Human,
+        );
+
+        assert!(
+            rendered
+                .output
+                .contains("PRIMARY DIAGNOSIS · network.resolution")
+        );
+        assert!(rendered.output.contains("MCP-HTTP-001"));
+        assert!(rendered.output.contains("SKIP  transport.tls"));
+        assert!(!rendered.output.contains("PASS  transport.tls"));
     }
 }

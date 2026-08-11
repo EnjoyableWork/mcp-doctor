@@ -468,6 +468,51 @@ fn project_keeps_mcpd_009_active_authorization_boundary_explicit() {
 }
 
 #[test]
+fn project_keeps_mcpd_010_network_boundary_explicit() {
+    let project = repository_file("PROJECT.md");
+    let agents = repository_file("AGENTS.md");
+
+    for contract in [
+        "| DEC-030 | Resolve `OPEN-06` with one direct, pinned, credential-scoped Streamable HTTP endpoint | Accepted |",
+        "`--allow-private-network <exact-url>`",
+        "`--allow-cleartext-http <exact-url>`",
+        "`--allow-credentials-to <exact-url>`",
+        "outside all reviewed IANA special-purpose blocks",
+        "Name resolution runs once",
+        "Redirects and application retries remain exactly zero",
+        "ignores `HTTP_PROXY`, `HTTPS_PROXY`",
+        "requires TLS 1.2 or 1.3",
+        "does not fetch `resource_metadata`",
+        "`Mcp-Param-*`",
+        "| MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done |",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain MCPD-010 network contract: {contract}"
+        );
+    }
+    assert!(
+        !project.contains("| OPEN-06 |"),
+        "accepted OPEN-06 should leave the open-decision table"
+    );
+
+    for contract in [
+        "Follow `DEC-030` for Streamable HTTP",
+        "16-address cap",
+        "zero redirects and application retries",
+        "full chain and service-identity",
+        "`--allow-credentials-to` HTTPS endpoint",
+        "Do not fetch OAuth metadata",
+        "stateless MCP `2026-07-28` POST binding",
+    ] {
+        assert!(
+            agents.contains(contract),
+            "AGENTS.md should retain remote safety rule: {contract}"
+        );
+    }
+}
+
+#[test]
 fn repository_does_not_reference_the_scaffolding_project() {
     let forbidden = ["mcp", "sync"].join("-");
     let roots = [

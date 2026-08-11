@@ -11,8 +11,8 @@
 
 <p align="center">
   <a href="https://github.com/EnjoyableWork/mcp-doctor/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/EnjoyableWork/mcp-doctor/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://docs.rs/crate/mcp-doctor/latest"><img alt="crates.io version" src="https://img.shields.io/crates/v/mcp-doctor.svg?logo=rust&amp;logoColor=white"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Built with Rust" src="https://img.shields.io/badge/built_with-Rust-dea584.svg?logo=rust&amp;logoColor=white">
   <img alt="MCP transports: STDIO and Streamable HTTP" src="https://img.shields.io/badge/MCP-STDIO_%2B_HTTP-6f42c1.svg">
 </p>
 
@@ -247,6 +247,11 @@ and hide secrets, so they work well in logs and saved build results.
 - Every active run names the exact tool and target. Reviewed scenarios declare
   their effect and case limit; generated cases also declare their seed.
 - Side-effecting scenarios require a separate `--allow-side-effects` gate.
+- Remote connections default to direct public HTTPS with verified TLS, pinned
+  bounded address resolution, and no redirect, retry, proxy, cookie, or cache.
+- Private targets, loopback cleartext, and environment-sourced credentials each
+  require their own exact endpoint gate; credentials never travel over HTTP or
+  trigger an automatic OAuth or metadata flow.
 - Hard limits cover time, data size, messages, schema work, test cases,
   redirects, retries, and parallel work.
 - Normal output hides headers, credentials, tool inputs, raw results, and server

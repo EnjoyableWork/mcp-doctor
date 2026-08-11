@@ -134,9 +134,32 @@ logs, and tool results as untrusted.
 - Treat `input_required` as incomplete in `check`. Do not automatically answer
   elicitation, sampling, roots, or any other server request, and do not retry
   the tool call with additional input without a separately accepted contract.
-- Do not follow remote redirects or resolve local/private network targets under
-  an implicit policy. The Streamable HTTP ticket must define its SSRF,
-  redirect, authentication, TLS, and proxy boundaries before implementation.
+- Follow `DEC-030` for Streamable HTTP. Accept one strict canonical endpoint,
+  use public HTTPS by default, and require an exact matching
+  `--allow-private-network` for eligible loopback/private destinations plus an
+  exact `--allow-cleartext-http` for credential-free all-loopback HTTP. Resolve
+  once under a 16-address cap, reject mixed or prohibited IANA address classes,
+  pin the accepted set, and verify every connected peer. Never accept a
+  wildcard, CIDR, suffix, ambient setting, or prior run as network authority.
+- Keep remote connections direct with zero redirects and application retries.
+  Ignore inherited and platform proxies, proxy credentials, trust-store
+  environment overrides, cookies, caches, service binding, and alternate
+  origins. TLS supports only 1.2 or 1.3 with full chain and service-identity
+  verification; there is no insecure or credential-bearing cleartext fallback.
+- Resolve remote bearer tokens and custom field values only from explicitly
+  named invoking-process environment variables, and require an exact matching
+  `--allow-credentials-to` HTTPS endpoint. Do not accept URL, command-line,
+  `.netrc`, keychain, cookie, proxy, client-certificate, or inherited credential
+  sources. Do not fetch OAuth metadata or start authorization, registration,
+  browser, refresh, or step-up flows in `MCPD-010`; report `401` and `403`
+  structurally without rendering or following challenge values.
+- Implement only the stateless MCP `2026-07-28` POST binding in `MCPD-010`.
+  Generate the exact protocol headers, validate and bound `x-mcp-header`
+  mappings without treating them as execution authority, support bounded JSON
+  and request-scoped SSE responses, and retain no URL, DNS answer, IP, header,
+  certificate identity, challenge, body, credential source, or value in either
+  reporter. The complete finite field, trust, body, time, and activity limits in
+  `DEC-030` are release blockers, not implementation suggestions.
 - Do not fetch external JSON Schema references by default. Bound reference
   depth, instance size, validation work, and error collection.
 

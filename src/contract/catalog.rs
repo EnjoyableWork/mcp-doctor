@@ -6,13 +6,14 @@ use jsonschema::paths::LocationSegment as SchemaLocationSegment;
 use jsonschema::{Retrieve, Uri};
 use serde_json::{Map, Value, json};
 
+use super::http_headers::validate_annotations;
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
     CheckId, CheckResult, ExpectedShape, Finding, JsonKind, Location, LocationField, Requirement,
     RuleViolation, SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
-use crate::transport::stdio::{ProbeRequest, ProbeResponse, StdioConversation};
+use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
 const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -111,6 +112,7 @@ pub(crate) struct PassiveCatalogConversation {
     seen_cursors: BTreeMap<CatalogKind, BTreeSet<String>>,
     observed_items: u64,
     maximum_items: u64,
+    validate_http_headers: bool,
 }
 
 impl PassiveCatalogConversation {
@@ -129,7 +131,14 @@ impl PassiveCatalogConversation {
             seen_cursors: BTreeMap::new(),
             observed_items: 0,
             maximum_items,
+            validate_http_headers: false,
         }
+    }
+
+    pub(crate) fn new_http() -> Self {
+        let mut conversation = Self::new();
+        conversation.validate_http_headers = true;
+        conversation
     }
 
     fn record_request(&mut self, kind: RequestKind, cursor: Option<String>) -> ProbeRequest {
@@ -204,7 +213,7 @@ impl Default for PassiveCatalogConversation {
     }
 }
 
-impl StdioConversation for PassiveCatalogConversation {
+impl Conversation for PassiveCatalogConversation {
     fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest> {
         if self.stopped {
             return None;
@@ -320,6 +329,7 @@ struct Analyzer {
     stored_findings: usize,
     finding_capacity: usize,
     finding_overflow: bool,
+    validate_http_headers: bool,
     discovery_valid: bool,
     revision_checked: bool,
     revision_supported: bool,
@@ -335,7 +345,7 @@ struct Analyzer {
 }
 
 impl Analyzer {
-    fn new(reserved_findings: usize) -> Self {
+    fn new(reserved_findings: usize, validate_http_headers: bool) -> Self {
         let limits = DiagnosticLimits::M1_DEFAULTS;
         let maximum = usize::try_from(limits.values().report_findings).unwrap_or(usize::MAX);
         Self {
@@ -347,6 +357,7 @@ impl Analyzer {
             stored_findings: 0,
             finding_capacity: maximum.saturating_sub(reserved_findings),
             finding_overflow: false,
+            validate_http_headers,
             discovery_valid: false,
             revision_checked: false,
             revision_supported: false,
@@ -750,6 +761,14 @@ impl Analyzer {
             );
         }
         self.analyze_schema(input_schema, input_location);
+        if self.validate_http_headers
+            && let Err(finding) = validate_annotations(
+                input_schema,
+                location.clone().field(LocationField::InputSchema),
+            )
+        {
+            self.push(FindingBucket::Schema, finding);
+        }
 
         if let Some(output_schema) = tool.get("outputSchema") {
             let output_location = location.field(LocationField::OutputSchema);
@@ -1280,7 +1299,7 @@ pub(super) fn validate_discovery_capabilities(
 }
 
 pub(super) fn validate_local_schema(schema: &Value, base: Location) -> Vec<Finding> {
-    let mut analyzer = Analyzer::new(0);
+    let mut analyzer = Analyzer::new(0, false);
     analyzer.analyze_schema(schema, base.clone());
     if analyzer.finding_overflow {
         analyzer.schema.pop();
@@ -1400,7 +1419,7 @@ pub(super) fn diagnose(
     responses: &[ProbeResponse],
     reserved_findings: usize,
 ) -> Vec<CheckResult> {
-    let mut analyzer = Analyzer::new(reserved_findings);
+    let mut analyzer = Analyzer::new(reserved_findings, conversation.validate_http_headers);
     let Some(discovery) = responses.first() else {
         return analyzer.into_checks();
     };

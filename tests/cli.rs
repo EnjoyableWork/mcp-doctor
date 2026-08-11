@@ -47,16 +47,24 @@ fn empty_invocation_remains_a_no_op() {
 }
 
 #[test]
-fn inspect_help_documents_the_explicit_literal_target_boundary() {
+fn inspect_help_documents_local_and_remote_target_boundaries() {
     let output = run_cli(&["inspect", "--help"]);
 
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
 
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
-    assert!(stdout.contains("Passively inspect a local MCP server over STDIO"));
-    assert!(stdout.contains("Usage: mcp-doctor inspect [OPTIONS] -- <TARGET>..."));
+    assert!(
+        stdout.contains("Passively inspect a local STDIO server or one Streamable HTTP endpoint")
+    );
+    assert!(stdout.contains("Usage: mcp-doctor inspect [OPTIONS] <URL|TARGET>"));
     assert!(stdout.contains("literal arguments"));
+    assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
+    assert!(stdout.contains("--allow-cleartext-http <EXACT-URL>"));
+    assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
+    assert!(stdout.contains("--bearer-token-env <NAME>"));
+    assert!(stdout.contains("--header-env <FIELD=NAME>"));
+    assert!(stdout.contains("--tls-ca-file <PATH>"));
     assert!(stdout.contains("--format <FORMAT>"));
     assert!(stdout.contains("experimental mcp-doctor.report/v1alpha1"));
     assert!(stdout.contains("[default: human]"));
@@ -64,7 +72,7 @@ fn inspect_help_documents_the_explicit_literal_target_boundary() {
 }
 
 #[test]
-fn inspect_requires_a_target_after_the_separator() {
+fn inspect_requires_exactly_one_local_or_remote_target() {
     let output = run_cli(&["inspect"]);
 
     assert_eq!(output.status.code(), Some(2));
@@ -72,7 +80,7 @@ fn inspect_requires_a_target_after_the_separator() {
 
     let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
     assert!(stderr.contains("required arguments"));
-    assert!(stderr.contains("Usage: mcp-doctor inspect -- <TARGET>..."));
+    assert!(stderr.contains("Usage: mcp-doctor inspect <URL|TARGET>"));
 }
 
 #[test]
@@ -105,7 +113,11 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--scenario <PATH>"));
     assert!(stdout.contains("--allow-tool <EXACT-NAME>"));
     assert!(stdout.contains("--allow-side-effects"));
-    assert!(stdout.contains("Usage: mcp-doctor check [OPTIONS] --scenario <PATH> --allow-tool <EXACT-NAME> -- <TARGET>..."));
+    assert!(stdout.contains(
+        "Usage: mcp-doctor check [OPTIONS] --scenario <PATH> --allow-tool <EXACT-NAME> <URL|TARGET>"
+    ));
+    assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
+    assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
 }
 
 #[test]

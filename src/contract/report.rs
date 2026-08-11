@@ -524,6 +524,34 @@ fn write_human_limits(output: &mut String, values: LimitValues) {
     .expect("writing to a String cannot fail");
     writeln!(
         output,
+        "  network · endpoint_bytes={} · resolution_addresses={} · resolution_count={} · trust_bytes={} · trust_certificates={}",
+        values.endpoint_bytes,
+        values.resolution_addresses,
+        values.resolution_count,
+        values.trust_bytes,
+        values.trust_certificates
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  request · request_fields={} · request_field_name_bytes={} · request_field_value_bytes={} · request_fields_bytes={}",
+        values.request_fields,
+        values.request_field_name_bytes,
+        values.request_field_value_bytes,
+        values.request_fields_bytes
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "  response · response_fields={} · response_field_name_bytes={} · response_field_value_bytes={} · response_fields_bytes={}",
+        values.response_fields,
+        values.response_field_name_bytes,
+        values.response_field_value_bytes,
+        values.response_fields_bytes
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
         "  discovery · protocol_revisions={} · catalog_items={} · report_findings={}",
         values.protocol_revisions, values.catalog_items, values.report_findings
     )
@@ -660,6 +688,9 @@ fn write_human_rule(output: &mut String, violation: RuleViolation) {
         write!(output, " · {error_count} validation error(s)")
             .expect("writing to a String cannot fail");
     }
+    if let Some(status) = violation.http_status() {
+        write!(output, " · HTTP status {status}").expect("writing to a String cannot fail");
+    }
     output.push('\n');
 }
 
@@ -777,6 +808,19 @@ struct JsonLimits {
     stdout_bytes: u64,
     stderr_bytes: u64,
     aggregate_output_bytes: u64,
+    endpoint_bytes: u64,
+    resolution_addresses: u64,
+    resolution_count: u64,
+    trust_bytes: u64,
+    trust_certificates: u64,
+    request_fields: u64,
+    request_field_name_bytes: u64,
+    request_field_value_bytes: u64,
+    request_fields_bytes: u64,
+    response_fields: u64,
+    response_field_name_bytes: u64,
+    response_field_value_bytes: u64,
+    response_fields_bytes: u64,
     message_count: u64,
     protocol_revisions: u64,
     catalog_items: u64,
@@ -807,6 +851,19 @@ impl From<LimitValues> for JsonLimits {
             stdout_bytes: values.stdout_bytes,
             stderr_bytes: values.stderr_bytes,
             aggregate_output_bytes: values.aggregate_output_bytes,
+            endpoint_bytes: values.endpoint_bytes,
+            resolution_addresses: values.resolution_addresses,
+            resolution_count: values.resolution_count,
+            trust_bytes: values.trust_bytes,
+            trust_certificates: values.trust_certificates,
+            request_fields: values.request_fields,
+            request_field_name_bytes: values.request_field_name_bytes,
+            request_field_value_bytes: values.request_field_value_bytes,
+            request_fields_bytes: values.request_fields_bytes,
+            response_fields: values.response_fields,
+            response_field_name_bytes: values.response_field_name_bytes,
+            response_field_value_bytes: values.response_field_value_bytes,
+            response_fields_bytes: values.response_fields_bytes,
             message_count: values.message_count,
             protocol_revisions: values.protocol_revisions,
             catalog_items: values.catalog_items,
@@ -927,6 +984,8 @@ enum JsonEvidence {
         observed: Option<&'static str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error_count: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        http_status: Option<u16>,
     },
 }
 
@@ -956,6 +1015,7 @@ impl JsonEvidence {
                 expected: violation.expected_shape().map(|shape| shape.as_str()),
                 observed: violation.observed().map(|kind| kind.as_str()),
                 error_count: violation.error_count(),
+                http_status: violation.http_status(),
             },
         }
     }

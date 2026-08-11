@@ -5,13 +5,16 @@ use std::path::Path;
 
 use crate::contract::{
     ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, RenderedDiagnostic, ReportFormat,
-    ScenarioFailure, m1_stdio_limit_profile, render_authorization_failure,
-    render_resolved_scenario_failure, render_scenario_failure, resolve_target_environment,
-    stdio_diagnostic,
+    ReportTransport, ScenarioFailure, http_diagnostic, m1_http_limit_profile,
+    m1_stdio_limit_profile, render_authorization_failure, render_resolved_scenario_failure,
+    render_scenario_failure, resolve_target_environment, stdio_diagnostic,
+};
+use crate::transport::http::{
+    HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
 };
 use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
-pub(crate) async fn run(
+pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     scenario_path: &Path,
     allowed_tool: &str,
@@ -20,25 +23,52 @@ pub(crate) async fn run(
 ) -> Result<RenderedDiagnostic, TargetError> {
     let bytes = match read_scenario(scenario_path) {
         Ok(bytes) => bytes,
-        Err(failure) => return Ok(render_scenario_failure(failure, format)),
+        Err(failure) => {
+            return Ok(render_scenario_failure(
+                failure,
+                ReportTransport::Stdio,
+                format,
+            ));
+        }
     };
     let mut scenario = match ActiveScenario::parse(&bytes) {
         Ok(scenario) => scenario,
-        Err(failure) => return Ok(render_scenario_failure(failure, format)),
+        Err(failure) => {
+            return Ok(render_scenario_failure(
+                failure,
+                ReportTransport::Stdio,
+                format,
+            ));
+        }
     };
     if let Err(failure) = scenario.authorize(allowed_tool, allow_side_effects) {
-        return Ok(render_authorization_failure(&scenario, failure, format));
+        return Ok(render_authorization_failure(
+            &scenario,
+            failure,
+            ReportTransport::Stdio,
+            format,
+        ));
     }
 
     let target_environment =
         match resolve_target_environment(&scenario, |name| std::env::var_os(name)) {
             Ok(environment) => environment,
             Err(failure) => {
-                return Ok(render_resolved_scenario_failure(&scenario, failure, format));
+                return Ok(render_resolved_scenario_failure(
+                    &scenario,
+                    failure,
+                    ReportTransport::Stdio,
+                    format,
+                ));
             }
         };
     if let Err(failure) = scenario.resolve_argument_secrets(|name| std::env::var(name).ok()) {
-        return Ok(render_resolved_scenario_failure(&scenario, failure, format));
+        return Ok(render_resolved_scenario_failure(
+            &scenario,
+            failure,
+            ReportTransport::Stdio,
+            format,
+        ));
     }
     scenario.discard_target_environment_names();
 
@@ -66,6 +96,83 @@ pub(crate) async fn run(
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
     Ok(conversation.into_diagnostic(diagnostic, format))
+}
+
+pub(crate) async fn run_http(
+    options: RemoteOptions,
+    scenario_path: &Path,
+    allowed_tool: &str,
+    allow_side_effects: bool,
+    format: ReportFormat,
+) -> RenderedDiagnostic {
+    let bytes = match read_scenario(scenario_path) {
+        Ok(bytes) => bytes,
+        Err(failure) => {
+            return render_scenario_failure(failure, ReportTransport::Http, format);
+        }
+    };
+    let mut scenario = match ActiveScenario::parse(&bytes) {
+        Ok(scenario) => scenario,
+        Err(failure) => {
+            return render_scenario_failure(failure, ReportTransport::Http, format);
+        }
+    };
+    if let Err(failure) = scenario.authorize(allowed_tool, allow_side_effects) {
+        return render_authorization_failure(&scenario, failure, ReportTransport::Http, format);
+    }
+    if let Err(failure) = scenario.reject_remote_target_environment() {
+        return render_resolved_scenario_failure(&scenario, failure, ReportTransport::Http, format);
+    }
+    if let Err(failure) = scenario.resolve_argument_secrets(|name| std::env::var(name).ok()) {
+        return render_resolved_scenario_failure(&scenario, failure, ReportTransport::Http, format);
+    }
+    scenario.discard_target_environment_names();
+
+    let mut conversation = ActiveConversation::new_http(scenario);
+    let target = match HttpTarget::prepare(options, http_limits(), &SystemResolver).await {
+        Ok(target) => target,
+        Err(failure) => {
+            return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None), format);
+        }
+    };
+    let transport = match HttpTransport::new(target) {
+        Ok(transport) => transport,
+        Err(failure) => {
+            return conversation
+                .into_http_diagnostic(http_diagnostic(Some(failure), Some(true)), format);
+        }
+    };
+    let result = transport.probe(&mut conversation).await;
+    conversation.into_http_diagnostic(
+        http_diagnostic(result.failure(), Some(result.tls_applicable())),
+        format,
+    )
+}
+
+fn http_limits() -> HttpLimits {
+    let profile = m1_http_limit_profile();
+    HttpLimits {
+        startup_ms: profile.startup_ms,
+        discovery_ms: profile.discovery_ms,
+        request_ms: profile.request_ms,
+        response_ms: profile.response_ms,
+        total_ms: profile.total_ms,
+        endpoint_bytes: profile.endpoint_bytes,
+        resolution_addresses: profile.resolution_addresses,
+        trust_bytes: profile.trust_bytes,
+        trust_certificates: profile.trust_certificates,
+        request_fields: profile.request_fields,
+        request_field_name_bytes: profile.request_field_name_bytes,
+        request_field_value_bytes: profile.request_field_value_bytes,
+        request_fields_bytes: profile.request_fields_bytes,
+        response_fields: profile.response_fields,
+        response_field_name_bytes: profile.response_field_name_bytes,
+        response_field_value_bytes: profile.response_field_value_bytes,
+        response_fields_bytes: profile.response_fields_bytes,
+        message_bytes: profile.message_bytes,
+        aggregate_output_bytes: profile.aggregate_output_bytes,
+        message_count: profile.message_count,
+    }
 }
 
 fn read_scenario(path: &Path) -> Result<Vec<u8>, ScenarioFailure> {

@@ -9,6 +9,7 @@ use super::catalog::{
     InstanceValidationIssue, LocalValidator, request_meta, validate_cacheable_result,
     validate_discovery_capabilities, validate_local_schema,
 };
+use super::http_headers::{HeaderAnnotation, validate_annotations};
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
     CheckId, CheckResult, ExpectedShape, Finding, FindingCode, FindingEvidence, JsonKind, Location,
@@ -17,8 +18,11 @@ use super::model::{
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
 use super::redaction::RedactedValue;
 use super::report::{DiagnosticReport, ExitStatus, ReportFormat, render_report};
-use super::{RenderedDiagnostic, StdioDiagnostic, stdio_findings};
-use crate::transport::stdio::{ProbeRequest, ProbeResponse, StdioConversation};
+use super::{
+    HttpDiagnostic, RenderedDiagnostic, ReportTransport, StdioDiagnostic, http_checks,
+    stdio_findings,
+};
+use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
 const PROTOCOL_REVISION: &str = "2026-07-28";
@@ -387,6 +391,19 @@ impl ActiveScenario {
         self.target_env.clear();
     }
 
+    pub(crate) fn reject_remote_target_environment(&self) -> Result<(), ScenarioFailure> {
+        if self.target_env.is_empty() {
+            Ok(())
+        } else {
+            Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                scenario_location()
+                    .field(LocationField::TargetEnv)
+                    .wildcard(),
+                RuleViolation::InvalidEnvironmentReference,
+            )))
+        }
+    }
+
     pub(crate) fn case_count(&self) -> usize {
         self.cases.len()
     }
@@ -394,23 +411,32 @@ impl ActiveScenario {
 
 pub(crate) fn render_scenario_failure(
     failure: ScenarioFailure,
+    transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    render_prestart_failure(failure, None, false, format)
+    render_prestart_failure(failure, None, false, transport, format)
 }
 
 pub(crate) fn render_resolved_scenario_failure(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
+    transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    render_prestart_failure(failure, Some(scenario.case_count()), true, format)
+    render_prestart_failure(
+        failure,
+        Some(scenario.case_count()),
+        true,
+        transport,
+        format,
+    )
 }
 
 fn render_prestart_failure(
     failure: ScenarioFailure,
     case_count: Option<usize>,
     authorization_passed: bool,
+    transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
     let mut checks = vec![CheckResult::performed(
@@ -431,12 +457,11 @@ fn render_prestart_failure(
             SkipReason::PrerequisiteFailed,
         )
     });
+    checks.extend(prestart_transport_checks(
+        transport,
+        SkipReason::PrerequisiteFailed,
+    ));
     checks.extend([
-        CheckResult::skipped(
-            CheckId::TransportStdio,
-            Requirement::Required,
-            SkipReason::PrerequisiteFailed,
-        ),
         CheckResult::skipped(
             CheckId::ProtocolEnvelope,
             Requirement::Required,
@@ -489,6 +514,7 @@ fn render_prestart_failure(
 pub(crate) fn render_authorization_failure(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
+    transport: ReportTransport,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
     let mut checks = vec![
@@ -502,11 +528,12 @@ pub(crate) fn render_authorization_failure(
             Requirement::Required,
             failure.findings,
         ),
-        CheckResult::skipped(
-            CheckId::TransportStdio,
-            Requirement::Required,
-            SkipReason::AuthorizationFailed,
-        ),
+    ];
+    checks.extend(prestart_transport_checks(
+        transport,
+        SkipReason::AuthorizationFailed,
+    ));
+    checks.extend([
         CheckResult::skipped(
             CheckId::ProtocolEnvelope,
             Requirement::Required,
@@ -527,7 +554,7 @@ pub(crate) fn render_authorization_failure(
             Requirement::Required,
             SkipReason::AuthorizationFailed,
         ),
-    ];
+    ]);
     checks.extend((0..scenario.case_count()).map(|index| {
         CheckResult::skipped(
             CheckId::RuntimeToolCase(index),
@@ -545,6 +572,22 @@ pub(crate) fn render_authorization_failure(
     RenderedDiagnostic {
         output: render_report(&report, format),
         exit: report.exit_status().into(),
+    }
+}
+
+fn prestart_transport_checks(transport: ReportTransport, reason: SkipReason) -> Vec<CheckResult> {
+    match transport {
+        ReportTransport::Stdio => vec![CheckResult::skipped(
+            CheckId::TransportStdio,
+            Requirement::Required,
+            reason,
+        )],
+        ReportTransport::Http => vec![
+            CheckResult::skipped(CheckId::NetworkTarget, Requirement::Required, reason),
+            CheckResult::skipped(CheckId::NetworkResolution, Requirement::Required, reason),
+            CheckResult::skipped(CheckId::TransportTls, Requirement::Required, reason),
+            CheckResult::skipped(CheckId::TransportHttp, Requirement::Required, reason),
+        ],
     }
 }
 
@@ -566,6 +609,7 @@ pub(crate) struct ActiveConversation {
     selected_schema_findings: Vec<Finding>,
     selected_count: usize,
     next_case: usize,
+    validate_http_headers: bool,
 }
 
 enum Stage {
@@ -631,11 +675,13 @@ impl ActiveFindingCollector {
 struct ToolContract {
     input_schema: Value,
     output_schema: Option<Value>,
+    header_annotations: Vec<HeaderAnnotation>,
 }
 
 struct ToolValidators {
     input: LocalValidator,
     output: Option<LocalValidator>,
+    header_annotations: Vec<HeaderAnnotation>,
 }
 
 impl ActiveConversation {
@@ -661,7 +707,14 @@ impl ActiveConversation {
             selected_schema_findings: Vec::new(),
             selected_count: 0,
             next_case: 0,
+            validate_http_headers: false,
         }
+    }
+
+    pub(crate) fn new_http(scenario: ActiveScenario) -> Self {
+        let mut conversation = Self::new(scenario);
+        conversation.validate_http_headers = true;
+        conversation
     }
 
     fn request(&mut self, pending: PendingRequest, method: &str, params: Value) -> ProbeRequest {
@@ -752,17 +805,46 @@ impl ActiveConversation {
                             continue;
                         }
                     }
+                    let mirrored_fields = {
+                        let validators = self.tool_validators.as_ref().expect(
+                            "case replay starts only after selecting a valid tool contract",
+                        );
+                        validators
+                            .header_annotations
+                            .iter()
+                            .map(|annotation| {
+                                annotation.extract(&self.scenario.cases[index].arguments)
+                            })
+                            .collect::<Result<Vec<_>, ()>>()
+                            .map(|fields| fields.into_iter().flatten().collect::<Vec<_>>())
+                    };
+                    let mirrored_fields = match mirrored_fields {
+                        Ok(fields) => fields,
+                        Err(()) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] =
+                                CaseState::Performed(vec![Finding::http_header_mapping_invalid(
+                                    case_location(index).field(LocationField::Arguments),
+                                    RuleViolation::InvalidMirroredHeaderValue,
+                                )]);
+                            self.next_case += 1;
+                            continue;
+                        }
+                    };
                     let arguments = std::mem::take(&mut self.scenario.cases[index].arguments);
                     let tool = self.scenario.tool.clone();
-                    return Some(self.request(
-                        PendingRequest::Call(index),
-                        "tools/call",
-                        json!({
-                            "name": tool,
-                            "arguments": arguments,
-                            "_meta": request_meta(),
-                        }),
-                    ));
+                    return Some(
+                        self.request(
+                            PendingRequest::Call(index),
+                            "tools/call",
+                            json!({
+                                "name": tool,
+                                "arguments": arguments,
+                                "_meta": request_meta(),
+                            }),
+                        )
+                        .with_mirrored_fields(mirrored_fields),
+                    );
                 }
                 Stage::Done => return None,
             }
@@ -1064,9 +1146,24 @@ impl ActiveConversation {
                     ));
                 continue;
             }
+            let header_annotations = if self.validate_http_headers {
+                match validate_annotations(
+                    input_schema,
+                    location.clone().field(LocationField::InputSchema),
+                ) {
+                    Ok(annotations) => annotations,
+                    Err(finding) => {
+                        self.selected_schema_findings.push(finding);
+                        continue;
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             self.selected_tool = Some(ToolContract {
                 input_schema: input_schema.clone(),
                 output_schema,
+                header_annotations,
             });
         }
         if !findings.is_empty() {
@@ -1163,6 +1260,7 @@ impl ActiveConversation {
                     LocalValidator::compile(schema)
                         .expect("a validated advertised output schema compiles without retrieval")
                 }),
+                header_annotations: contract.header_annotations.clone(),
             };
             self.tool_validators = Some(validators);
             self.selected_tool = None;
@@ -1351,19 +1449,51 @@ impl ActiveConversation {
     }
 
     pub(crate) fn into_diagnostic(
-        mut self,
+        self,
         stdio: StdioDiagnostic,
         format: ReportFormat,
     ) -> RenderedDiagnostic {
-        if stdio.primary.is_some() {
+        let failed = stdio.primary.is_some();
+        let transport_findings = stdio_findings(stdio);
+        self.into_transport_diagnostic(
+            vec![CheckResult::performed(
+                CheckId::TransportStdio,
+                Requirement::Required,
+                transport_findings,
+            )],
+            failed,
+            format,
+        )
+    }
+
+    pub(crate) fn into_http_diagnostic(
+        self,
+        http: HttpDiagnostic,
+        format: ReportFormat,
+    ) -> RenderedDiagnostic {
+        let failed = http.failed();
+        self.into_transport_diagnostic(http_checks(http), failed, format)
+    }
+
+    fn into_transport_diagnostic(
+        mut self,
+        transport_checks: Vec<CheckResult>,
+        transport_failed: bool,
+        format: ReportFormat,
+    ) -> RenderedDiagnostic {
+        if transport_failed {
             if let Some(PendingRequest::Call(index)) = self.pending.take() {
                 self.case_states[index] = CaseState::Skipped(SkipReason::PrerequisiteFailed);
                 self.next_case = index.saturating_add(1);
             }
             self.stop_before_cases(SkipReason::PrerequisiteFailed);
         }
-        let transport_findings = stdio_findings(stdio);
-        self.fit_report_finding_budget(transport_findings.len());
+        let transport_finding_count = transport_checks
+            .iter()
+            .filter_map(CheckResult::findings)
+            .map(<[Finding]>::len)
+            .sum();
+        self.fit_report_finding_budget(transport_finding_count);
         let mut checks = vec![
             CheckResult::performed(
                 CheckId::ScenarioConfiguration,
@@ -1375,16 +1505,14 @@ impl ActiveConversation {
                 Requirement::Required,
                 Vec::new(),
             ),
-            CheckResult::performed(
-                CheckId::TransportStdio,
-                Requirement::Required,
-                transport_findings,
-            ),
+        ];
+        checks.extend(transport_checks);
+        checks.extend([
             phase_check(CheckId::ProtocolEnvelope, self.envelope),
             phase_check(CheckId::ProtocolRevision, self.revision),
             phase_check(CheckId::DiscoveryCatalogs, self.discovery),
             phase_check(CheckId::SchemaContracts, self.schemas),
-        ];
+        ]);
         checks.extend(
             self.case_states
                 .into_iter()
@@ -1473,7 +1601,7 @@ impl ActiveConversation {
     }
 }
 
-impl StdioConversation for ActiveConversation {
+impl Conversation for ActiveConversation {
     fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest> {
         if let Some(response) = previous {
             self.process_response(response);

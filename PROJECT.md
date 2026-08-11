@@ -6,13 +6,13 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The passive local STDIO MVP and pinned current-revision compatibility matrix pass locally and in hosted evidence; bounded local STDIO `check` scenario replay passes locally but is not yet in a public release; Streamable HTTP and later M3 expansion remain unimplemented |
-| Current milestone | M3 — bounded diagnostic expansion; `MCPD-009` is Done |
-| Overall status | M0, M1, and M2 pass locally and in hosted evidence; the immutable `v0.1.0` channels and least-privilege repeat-release path remain verified; `MCPD-009` completes the first locally verified M3 slice without changing published artifacts or claiming hosted active evidence |
-| Current focus | `MCPD-009` is complete; resolve `OPEN-06` before activating the next ordered ticket, `MCPD-010` |
+| Product state | The passive local STDIO MVP and pinned current-revision compatibility matrix pass locally and in hosted evidence; bounded local and Streamable HTTP `check` paths pass locally but are not yet in a public release; adversarial generation and later M3 expansion remain unimplemented |
+| Current milestone | M3 — bounded diagnostic expansion; `MCPD-010` is Done locally and `MCPD-011` remains Proposed |
+| Overall status | M0, M1, and M2 pass locally and in hosted evidence; the immutable `v0.1.0` channels and least-privilege repeat-release path remain verified; `MCPD-009` and `MCPD-010` complete two locally verified M3 slices without changing published artifacts or claiming hosted active or remote evidence |
+| Current focus | Preserve the completed `DEC-030` remote boundary; activate `MCPD-011` only after its bounded adversarial-generation contract and tool decision are reviewed |
 | Public release | `mcp-doctor` `v0.1.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
-| Last reviewed | 2026-08-10 |
-| Next review trigger | `OPEN-06` resolution or `MCPD-010` activation; any voluntary usage evidence that changes M3 priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
+| Last reviewed | 2026-08-11 |
+| Next review trigger | `MCPD-011` activation or its generation-tool decision; any voluntary usage evidence that changes M3 priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -708,6 +708,200 @@ automatic input response, causal stop behavior, and EOF when no later call is
 safe. The normal disposable quality gate and
 `cargo deny --all-features --locked check` pass without a dependency change.
 
+### MCPD-010 implemented network boundary
+
+`DEC-030` resolved `OPEN-06`; `MCPD-010` implements that boundary and passes its
+local deterministic and built-binary acceptance evidence. It does not change
+the published `v0.1.0` artifacts, begin adversarial generation, add an OAuth
+client, or claim hosted native remote evidence. A future release must still run
+the normal native release and installed-channel gates against its exact bytes.
+
+The decision was reviewed on 2026-08-10 against the official MCP
+[`2026-07-28` Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+and [authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization),
+[HTTP Semantics, RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html),
+[TLS BCP 195, RFC 9325](https://www.rfc-editor.org/rfc/rfc9325.html),
+[service identity verification, RFC 9525](https://www.rfc-editor.org/rfc/rfc9525.html),
+and the dated IANA
+[IPv4](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml)
+and [IPv6](https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml)
+special-purpose address registries. These sources are reviewed design evidence;
+the binary never retrieves policy or registry data at runtime.
+
+#### Transport and protocol scope
+
+One invocation names one absolute MCP endpoint. `inspect` remains passive, and
+remote `check` inherits every `DEC-028` and `DEC-029` scenario, exact-tool,
+side-effect, secret, continuation, and redaction gate. Selecting a network
+transport never grants authority to call a tool.
+
+The first HTTP adapter implements only the stateless MCP `2026-07-28` binding:
+one JSON-RPC request per POST, no `initialize`, no protocol session, no
+standalone GET stream, and no legacy fallback. It sends the matching
+`MCP-Protocol-Version`, `Mcp-Method`, and applicable `Mcp-Name` and
+`Mcp-Param-*` headers. It accepts only `application/json` or request-scoped
+`text/event-stream`, bounds and ignores request-related notifications, and
+requires one final matching response. `subscriptions/listen`, HTTP
+notifications, resumable SSE, HTTP+SSE, WebSocket, HTTP/3, h2c, upgrade, and
+alternate-service behavior are outside `MCPD-010`.
+
+#### Target and address authority
+
+The endpoint must be a strictly parsed absolute `https` URL, except for the
+loopback cleartext exception below. User information, query strings, fragments,
+percent-encoded hosts, IPv6 zone identifiers, noncanonical numeric IPv4 forms,
+empty hosts, and ports outside 1–65535 are rejected before DNS or any request.
+DNS names are converted to their ASCII form and endpoint comparisons use one
+canonical scheme, host, port, and path representation. The raw URL never enters
+an ordinary report.
+
+Public HTTPS is the default. A target is public only when every normalized DNS
+answer is unicast and either outside all reviewed IANA special-purpose blocks or
+covered by the most-specific applicable entry whose `Destination` and
+`Globally Reachable` fields are both true. IPv4-mapped IPv6 addresses are
+classified as IPv4. Loopback, RFC 1918 private-use, RFC 6598 shared, and IPv6
+unique-local destinations are eligible only when
+`--allow-private-network <exact-url>` independently parses to the same canonical
+endpoint. No wildcard, CIDR, suffix, environment setting, configuration file,
+or previous invocation can provide that authority.
+
+Cleartext HTTP is limited to an all-loopback target and additionally requires
+`--allow-cleartext-http <exact-url>` as well as the private-network gate. It can
+never carry a bearer token or user-supplied header. Link-local, unspecified,
+multicast, broadcast, documentation, benchmarking, discard-only, and other
+non-global special-purpose destinations remain prohibited even with either
+gate. This keeps cloud metadata and ambiguous special-use routes outside the
+initial contract.
+
+Name resolution runs once under the connection and total deadlines, retains at
+most 16 unique answers, and fails the whole target on overflow, a prohibited
+answer, or a mixture of public and private classes. The accepted addresses are
+sorted and pinned for the run. Every connection uses only that set, checks its
+peer address, and uses the canonical hostname for HTTP authority, TLS SNI, and
+certificate verification. There is no second resolution after validation;
+the connector attempts only the first sorted address family and does not race
+or fall through to another family. Sequential attempts within those pinned
+candidates are connection establishment, not an application retry.
+
+#### Redirect, proxy, and connection policy
+
+Redirects and application retries remain exactly zero. Every `3xx` response is
+a typed failure; `Location` is neither followed nor rendered. Authentication
+challenges, `429`, stale-header errors, connection failures, and TLS failures do
+not cause an automatic replay. Each planned MCP operation is sent at most once.
+
+Connections are direct. The adapter ignores `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY`, `NO_PROXY`, platform proxy settings, PAC, `.netrc`, DNS service
+binding, and proxy credentials, and exposes no explicit proxy option in this
+ticket. It does not use a cookie jar, cache, HSTS store, `Alt-Svc`, cross-origin
+connection coalescing, or persistent credential store. The implemented adapter
+uses HTTP/1.1 for both HTTPS and explicitly allowed loopback cleartext; HTTP/2
+is outside this ticket.
+
+#### TLS and trust policy
+
+HTTPS requires TLS 1.2 or 1.3 under BCP 195, prefers TLS 1.3, and always verifies
+the complete certificate chain, validity period, and canonical DNS name or IP
+identity. There is no `--insecure`, hostname exception, expired-certificate
+exception, silent downgrade, or credential-bearing cleartext fallback.
+
+The default trust anchors come from the platform verifier. Environment trust
+overrides such as `SSL_CERT_FILE` and `SSL_CERT_DIR` are ignored. A caller may
+add trust for only this run with `--tls-ca-file <path>`: a bounded regular file
+of at most 1 MiB containing at most 32 PEM CA certificates and no private key.
+The path, certificate subjects, SANs, contents, and verifier text stay out of
+ordinary output. Client certificates, private keys, PKCS#12, and mutual TLS are
+outside this ticket. Any selected TLS implementation still requires the full
+dependency review before adoption.
+
+#### Authentication and header policy
+
+`MCPD-010` supports pre-provisioned request credentials, not an OAuth client
+flow. `--bearer-token-env <NAME>` reads one nonempty RFC 6750 bearer token from
+an explicitly named invoking-process environment variable. Repeated
+`--header-env <FIELD=NAME>` options may supply other end-to-end fields from
+explicit environment variables. Either option also requires
+`--allow-credentials-to <exact-url>` matching the canonical HTTPS endpoint.
+Credential values are resolved and validated before the first connection and
+are sent on every MCP POST only after TLS identity verification. They never
+enter a URL, command-line value, redirect, proxy, cleartext request, report,
+error, or debug representation.
+
+The adapter does not fetch `resource_metadata`, authorization-server metadata,
+or another URI from `WWW-Authenticate`; it does not open a browser, register a
+client, request scopes, exchange or refresh tokens, use a keychain, or persist
+credentials. HTTP `401` and `403` become structural authentication findings
+that may record status and challenge kind, never challenge parameters, scopes,
+descriptions, metadata URLs, or raw bodies. This is deliberately not a claim of
+MCP Authorization client conformance; a future authorization flow requires its
+own accepted multi-origin SSRF, phishing, credential-storage, callback, token,
+and consent contract.
+
+User-supplied field names must be valid HTTP tokens, unique case-insensitively,
+and cannot override routing, framing, negotiation, authentication, or MCP-owned
+fields. At minimum `Host`, `Authorization`, `Proxy-Authorization`, `Cookie`,
+`Origin`, `Referer`, `Forwarded`, `X-Forwarded-*`, `Connection`, `TE`, `Trailer`,
+`Transfer-Encoding`, `Upgrade`, `Content-*`, `Accept*`, `User-Agent`, every
+`Mcp-*`, and every `Proxy-*` or `Sec-*` field are reserved. Values must be
+nonempty visible ASCII plus permitted spaces or tabs and contain no control,
+CR, LF, or NUL byte. The dedicated bearer option alone constructs
+`Authorization: Bearer`.
+
+The adapter owns `Host`, `Content-Length`, `Content-Type`, `Accept`,
+`Accept-Encoding: identity`, `User-Agent`, and the current-revision MCP headers.
+Automatic decompression is disabled, and a non-identity `Content-Encoding` is
+rejected. A valid `x-mcp-header` annotation is transport mapping, not execution
+authority: remote `check` applies it only after exact tool authorization and
+input validation, uses the specification's safe/Base64 encoding, charges every
+derived field and value to the header budgets, and never renders the annotation,
+argument path, or value. Invalid or over-budget annotations exclude the tool
+with a typed structural finding; the client does not retry after a header
+mismatch.
+
+#### Network bounds and diagnostic evidence
+
+The existing message, aggregate-output, message-count, request, response, and
+120-second total values apply. For this transport the existing 10-second startup
+value bounds DNS, TCP, and TLS connection establishment. `MCPD-010` adds the
+following typed network limits to the shared result and both reporters:
+
+| Network area | Default bound |
+| --- | --- |
+| Endpoint | 8,192 UTF-8 bytes; one canonical origin and path |
+| Resolution | 16 unique addresses; one resolution; pinned sequential connection attempts |
+| Trust file | 1 MiB; 32 PEM CA certificates |
+| Request fields | 64 fields; 256-byte name; 8 KiB encoded wire value; 32 KiB aggregate wire bytes |
+| Response fields | 96 fields; 256-byte name; 16 KiB wire value; 64 KiB aggregate wire bytes |
+| Body and SSE | 1 MiB per JSON message or SSE event; 8 MiB aggregate; 1,024 messages/events |
+| Activity | zero redirects; zero application retries; concurrency one |
+
+The 96-field response ceiling leaves four slots below the selected HTTP/1
+parser's fixed 100-field hard stop for framing fields, so the first supported
+excess remains a typed `mcp-doctor` limit rather than an unclassified parser
+failure.
+
+Before DNS or connection, human output may describe only structural target
+facts such as HTTPS versus explicitly allowed loopback HTTP and which gates are
+present; it does not echo the endpoint. Reports may retain the address class,
+explicit/default port distinction, TLS version, HTTP status, media-type class,
+and byte, field, event, or address counts. They never retain a host, IP, path,
+URL, DNS answer, socket text, certificate identity, header name or value,
+environment source, authentication challenge, or response body. Machine output
+has the same boundary. The earliest target, resolution, TLS, HTTP, protocol, or
+authentication failure becomes the primary diagnosis; dependent discovery or
+case work is causally skipped, while independent limit and redaction failures
+remain visible.
+
+`MCPD-010` acceptance requires deterministic resolver and connector ports plus
+disposable local HTTP and TLS servers. Built-binary and focused tests must prove
+canonical URL rejection, exact gates, public/private/mixed/special address
+classification, answer overflow and pinning, peer mismatch, zero redirects and
+retries, ignored proxy and trust environment, positive and negative TLS identity,
+bounded custom and `Mcp-Param-*` fields, credential delivery and redaction,
+`401`/`403`, JSON and SSE framing, compression rejection, status/header/body/
+event/time limits, passive-versus-active authority, and human/JSON causal parity
+without a real MCP server, production endpoint, secret output, or network escape.
+
 ## Target architecture
 
 ```text
@@ -744,7 +938,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-06 | Adoption-ready passive `inspect` journey | M1 | Done | [Built-binary journeys](tests/stdio.rs) prove earliest-layer selection, independent safety findings, causal skips, report-only correction, redaction, and equivalent human/experimental JSON; the [four-case compatibility matrix](tests/compatibility/README.md), scoped broad current-revision position, registry/revision rechecks, and conditional test-tool decisions pass locally; [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363588701) and [hosted compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363605095) pass on `main` `24f79f8` |
 | D-07 | Immutable passive MVP release | M2 | Done | The immutable GitHub release, byte-identical crates.io package and Homebrew formula, ten-job installed channel verifier, dated adoption baseline, local credential removal, and confirmed server-side token revocation pass |
 | D-07A | Least-privilege repeat-release path | M2 | Done | Exact source and tap `main` commits, protected environments, crates.io publisher identity, authorized and rejected OIDC paths, immutable byte handoffs, tap-owned no-write rehearsal, ten-job channel verification, and final clean credential readback pass in linked `MCPD-008A` evidence |
-| D-08 | Bounded diagnostic expansion release | M3 | In progress | `MCPD-009` completes bounded reviewed replay locally; ordered remote, adversarial, stable-CI, publication, and independent-verification work remains |
+| D-08 | Bounded diagnostic expansion release | M3 | In progress | `MCPD-009` completes bounded reviewed replay locally and `MCPD-010` completes bounded direct Streamable HTTP locally; adversarial generation, stable CI, publication, and independent verification remain |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
 
 ## Ticket board
@@ -761,7 +955,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-008 | Publish and independently verify the first immutable passive-MVP release through GitHub, Cargo, and Homebrew | M2 | Done | `MCPD-007` | [GitHub publication](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31405768056), byte-identical [crates.io](https://crates.io/crates/mcp-doctor/0.1.0) and [Homebrew](https://github.com/EnjoyableWork/homebrew-tap/commit/6044088bc8b04c24a762a69cabbe52a5b22b1e22) handoffs, the [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31413131715), and dated baseline in [adoption issue 5](https://github.com/EnjoyableWork/mcp-doctor/issues/5) pass; the one-time credential was removed locally and confirmed revoked server-side |
 | MCPD-008A | Establish a GitHub-controlled, least-privilege path for every release after `v0.1.0` | M2 | Done | `MCPD-008` | Exact source [`47aa41e`](https://github.com/EnjoyableWork/mcp-doctor/commit/47aa41efee5eaf1ed81f699611748aff787ed971) and tap [`dafb41a`](https://github.com/EnjoyableWork/homebrew-tap/commit/dafb41ae86968285b5ae85f3dd633cc15103131b) controls, protected-environment and trusted-publisher readback, the [authorized and missing-environment rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330), [wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31441772215), [tap no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455), [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31444142085), and final clean credential inventory pass without republishing `v0.1.0` |
 | MCPD-009 | Add explicit, budgeted, deterministic `check` scenario replay and result-schema validation | M3 | Done | `MCPD-008A` | [Twenty-two built-binary active suites](tests/active.rs), the [strict replay adapter](src/contract/active.rs), and the disposable locked gate prove the `DEC-028`/`DEC-029` contract, consent rejection, ordered continuation, redaction, bounded schemas/results/reports, crash, incomplete, limit, and cleanup paths without a new dependency |
-| MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Proposed | `MCPD-009` | Local HTTP fixtures prove headers, redirects, auth redaction, TLS/error, timeout, and response limits |
+| MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done | `MCPD-009` | The [bounded transport](src/transport/http.rs), [typed HTTP-header contract](src/contract/http_headers.rs), [application/report integration](src/contract/mod.rs), and [ten disposable built-binary HTTP/TLS journeys](tests/http.rs) prove exact target gates, classified and pinned addresses, peer checks, direct zero-redirect/retry/proxy connections, current-revision JSON/SSE and headers, verified identity, environment-only credential delivery and redaction, passive and authorized active authority, causal report parity, and every target, field, body, event, status, TLS, time, and resource bound without a real endpoint |
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Proposed | `MCPD-010` | Schema-derived cases are deterministic, limited, reproducible, and cannot widen target scope |
 | MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Proposed | `MCPD-011` | Stable versioned JSON plus one accepted CI format preserve findings and exits; the `MCPD-008A` path publishes every expanded-release artifact and channel, and each passes its applicable installed smoke journey |
 | MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Proposed | `MCPD-012` | A live public ruleset, credential-free verifier, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy |
@@ -800,21 +994,105 @@ or advisory/license exceptions require an accepted decision.
 
 ### Current direct dependency baseline
 
-The 2026-08-10 review found every selected direct version to be the current
-stable crates.io release, every declared upstream repository active and not
-archived, the locked graph free of known advisories under `cargo-deny`, and
-all selected licenses accepted or narrowly documented. This is dated adoption
-evidence, not a promise about future maintenance; an update, ownership change,
-advisory, unexplained inactivity, or project-need change triggers re-review.
+The 2026-08-11 review found every selected direct version stable, every
+declared upstream repository active and not archived, the locked graph free of
+known advisories under `cargo-deny`, and all selected licenses accepted or
+narrowly documented. `reqwest` and `rustls` are their current stable releases;
+`base64` deliberately retains the exact stable `0.22.1` already selected by the
+HTTP graph instead of adding current `0.23.1` as a duplicate. This is dated
+adoption evidence, not a promise about future maintenance; an update, ownership
+change, advisory, unexplained inactivity, or project-need change triggers
+re-review.
 
 | Dependency | First owning ticket | Narrow role and current review boundary |
 | --- | --- | --- |
+| [`base64` `=0.22.1`](https://crates.io/crates/base64/0.22.1) | `MCPD-010` — Done | Exact standard Base64 encoding for the specification's unsafe-header-value sentinel; direct defaults are disabled and only `alloc` is requested, while reusing the same exact version already required by `reqwest` avoids a second implementation or graph version |
 | [`clap` `=4.6.6`](https://crates.io/crates/clap/4.6.6) | `MCPD-002` — Done | CLI parsing and generated help through the selected `derive` feature; the active clap-rs upstream, Rust floor, permissive license, graph, and built-binary CLI behavior are reviewed |
 | [`serde` `=1.0.229`](https://crates.io/crates/serde/1.0.229) and [`serde_json` `=1.0.151`](https://crates.io/crates/serde_json/1.0.151) | `MCPD-004` — Done | Typed protocol/report serialization and strict JSON parsing; active serde-rs stewardship, Rust floors, permissive licenses, graph, deterministic fixtures, and redaction boundaries are reviewed |
-| [`tokio` `=1.53.1`](https://crates.io/crates/tokio/1.53.1) | `MCPD-005` — Done | Only the async process, I/O, timer, macro, and runtime features needed by bounded STDIO; active upstream, Rust floor, MIT license, feature graph, timing, cleanup, and cross-platform behavior are reviewed |
+| [`tokio` `=1.53.1`](https://crates.io/crates/tokio/1.53.1) | `MCPD-005` — Done; `net` expanded by `MCPD-010` | Only the async process, I/O, timer, macro, runtime, and network features needed by bounded STDIO and one-shot DNS/HTTP; active upstream, Rust floor, MIT license, feature graph, timing, cleanup, and cross-platform behavior are reviewed |
 | [`process-wrap` `=9.1.0`](https://crates.io/crates/process-wrap/9.1.0) | `MCPD-005` — Done | Process-group, Windows Job Object, Tokio, and kill-on-drop control with defaults disabled; watchexec stewardship, Rust floor, permissive license, feature graph, and resistant-descendant cleanup are reviewed |
 | [`jsonschema` `=0.49.9`](https://crates.io/crates/jsonschema/0.49.9) | `MCPD-006` — Done | Draft 2020-12 validation with defaults and retrieval features disabled plus a rejecting retriever; active upstream, Rust floor, MIT license, transitive-license exceptions, no-network graph, bounds, and no-retrieval evidence are reviewed |
+| [`reqwest` `=0.13.4`](https://crates.io/crates/reqwest/0.13.4) | `MCPD-010` — Done | Maintained asynchronous HTTP framing and a rustls/platform-verifier client; defaults are disabled and only `rustls-no-provider` is selected, while the application separately fixes HTTP/1.1, direct connections, identity encoding, no redirects/retries/decompression, one origin, and pinned resolution |
+| [`rustls` `=0.23.43`](https://crates.io/crates/rustls/0.23.43) | `MCPD-010` — Done | Direct selection and installation of the `ring` crypto provider plus TLS 1.2/1.3 configuration and typed TLS-error recognition; defaults are disabled and only `ring`, `std`, and `tls12` are selected |
+| [`rcgen` `=0.14.9`](https://crates.io/crates/rcgen/0.14.9) | `MCPD-010` — Done | Development-only generation of a fresh disposable CA and loopback server identity, preventing checked-in leaf expiry from making native TLS evidence time-dependent; defaults are disabled and only the required `pem` and `ring` features are selected |
 | [`tempfile` `=3.27.0`](https://crates.io/crates/tempfile/3.27.0) | `MCPD-002` — Done | Development-only ownership of disposable test roots; active upstream, Rust floor, permissive license, graph, cleanup, and synthetic-path isolation are reviewed |
+
+#### MCPD-010 HTTP/TLS adoption review — 2026-08-11
+
+The standard library does not provide verified TLS or a maintained HTTP client,
+and implementing HTTP framing, certificate validation, or cryptography inside
+`mcp-doctor` would violate the dependency and network-safety policy. The
+selected crates keep those semantics in maintained implementations while the
+application owns the stricter target, authorization, resolver, retry, proxy,
+redaction, and resource boundaries. `base64` is used for one exact wire
+encoding already present in that graph rather than duplicating a subtle
+protocol representation locally.
+
+Registry ownership and repository identity were checked against crates.io and
+the declared upstreams. [`reqwest`](https://github.com/seanmonstar/reqwest) is
+owned and maintained by Sean McArthur; `0.13.4` was released 2026-05-25.
+[`rustls`](https://github.com/rustls/rustls) is published by its established
+maintainers and rustls organization; `0.23.43` was released 2026-07-29 and its
+[security policy](https://github.com/rustls/rustls/security/policy) covers the
+current line, private reporting, fixes, regression tests, releases, and RustSec
+advisories. [`base64`](https://github.com/marshallpierce/rust-base64) retains
+its two established crates.io owners; `0.22.1` was released 2024-04-30 and the
+repository remained active through 2026-08-05. All three repositories were
+active and unarchived during review with no unexplained registry/repository
+provenance change. `reqwest` and `base64` do not publish a dedicated security
+policy; their active owner and issue/release paths plus RustSec monitoring are
+accepted for these focused roles, and that weaker formal response surface is
+an explicit replacement or re-review trigger.
+
+The direct crates declare permissive MIT/Apache-2.0, MIT/Apache-2.0, and
+Apache-2.0/ISC/MIT licenses and Rust floors 1.48, 1.85, and 1.71 respectively;
+the graph's effective floor is below the repository's Rust 1.97 toolchain.
+`base64` and `rustls` forbid unsafe Rust. `base64` and `reqwest` have no build
+script; the selected `rustls` build script only gates an unselected nightly
+`read_buf` optimization. `reqwest` contains small unsafe buffer adapters, and
+the transitive `ring` `0.17.14` provider owns reviewed native C/assembly, unsafe,
+and `cc` build surfaces. Platform-verifier FFI and trust packages are selected
+per target. These concentrated surfaces, especially `ring`, platform trust,
+and the HTTP parser, require focused TLS, malformed-response, native, advisory,
+and ownership rechecks on every update.
+
+The change adds 72 locked crates for HTTP, URL/IDNA, async connection, TLS,
+cryptography, and target-specific macOS, Windows, Linux, Android, and WebAssembly
+support. Default `reqwest` features such as default TLS, charset conversion,
+HTTP/2, and system-proxy discovery are not selected; automatic compression is
+also absent. Default `rustls` features such as `aws-lc-rs`, logging, and
+post-quantum exchange are not selected. The application selects `ring`, `std`,
+and TLS 1.2 support, explicitly limits the client to HTTP/1.1, disables proxy
+and replay behavior at construction, and proves the runtime settings with trap
+fixtures. `cargo tree --duplicates` reports only reviewed `getrandom` 0.2/0.3/
+0.4, `syn` 2/3, and `windows-sys` 0.52/0.61 transitions; `deny.toml` names those
+exact exceptions and scopes the additional `ring`, `rustls-webpki`, `subtle`,
+`untrusted`, and root-certificate data licenses. The complete all-feature
+locked graph passes advisory, ban, license, and source policy.
+
+Static TLS leaf fixtures are not acceptable evidence because platform-enforced
+validity limits would make them expire. Development-only
+[`rcgen`](https://github.com/rustls/rcgen) `0.14.9`, released 2026-08-10, creates
+one process-local CA and IP-identity leaf with a 397-day-or-shorter window based
+on the current UTC year; the random key and certificate never enter a report or
+tracked artifact. The rustls-owned repository and its two established crates.io
+publishers were active and unarchived, the crate is MIT/Apache-2.0, declares
+Rust 1.88, forbids unsafe Rust, and has no build script. Defaults are disabled;
+only `pem` and the already selected `ring` provider are active. Its 19 additional
+lock entries cover certificate encoding/time support and optional parser
+metadata, while the active test tree reuses `ring` and adds only `pem`, `time`,
+and `yasna` support. `rcgen` has no dedicated security policy; its narrow
+test-only role, easy removal boundary, active rustls stewardship, and the same
+advisory/ownership re-review triggers make that residual acceptable. No rcgen
+code or transitive is linked into the release binary.
+
+On the 2026-08-11 ARM64 macOS review host, the first graph-changing release
+build with a populated prior project cache completed in 16.34 seconds; the
+current optimized binary is 11,234,320 bytes, 100 `--version` starts completed
+in 0.67 seconds, and all ten disposable HTTP/TLS built-binary journeys completed
+in 0.97 seconds inside the isolated gate. These are cost observations, not
+performance guarantees. Native hosted and exact-artifact release gates remain
+mandatory before publishing this implementation.
 
 `MCPD-009` reuses `serde_json` for its versioned JSON scenario and RFC 6901
 pointer resolution, `jsonschema` for bounded local input and output validation,
@@ -839,6 +1117,7 @@ complete dependency policy and be visible in the pull request.
 | --- | --- | --- | --- |
 | Rust `#[test]` and `cargo test` | `MCPD-002` / `MCPD-003` — Done | Baseline | Keep `cargo test --workspace --all-targets --all-features --locked` authoritative and test at the narrowest useful layer |
 | Checked-in synthetic protocol, report, catalog, and process fixtures | `MCPD-004` through `MCPD-006` — Done | Adopted method | Prefer small reviewable fixtures, disposable roots/processes/sockets, exact structural assertions, and unmistakably synthetic redaction sentinels |
+| `rcgen` | `MCPD-010` — selected 2026-08-11 | Adopted development dependency | Generate a process-local CA and loopback leaf only for disposable built-binary TLS journeys; never persist its generated private key or use it for product certificate handling |
 | `tempfile` | `MCPD-002` — Done | Adopted development dependency | Reuse the reviewed disposable-root boundary; do not add another temporary-resource package for convenience |
 | `cargo-deny` | `MCPD-003` — Done | Adopted development/CI tool | Keep advisory, license, ban, and source checks locked; pin the CI action by full commit SHA and review tool-policy changes |
 | `assert_cmd` | 2026-08-10 review | Not adopted | The existing standard-library built-binary harness already controls arguments, environment, time, output, and process fixtures; reconsider only if duplicated orchestration becomes harder to review safely |
@@ -877,7 +1156,7 @@ Use the matching objective when beginning an eligible main-story ticket:
 | MCPD-008 | Complete `MCPD-008`: publish and independently verify the first immutable passive-MVP version through GitHub Releases, crates.io, and source-built Homebrew, with deterministic packages, checksums, SPDX SBOMs, attestations, and installed passive diagnostic smokes for every represented channel. Open the dated, non-sensitive M2 adoption checkpoint; do not add active or remote behavior. |
 | MCPD-008A | Complete `MCPD-008A` only after the first crates.io publication: turn every later release into an intentional GitHub-controlled flow. Generalize stable-tag validation without weakening the reviewed version, source, preflight, annotation, immutability, or provenance contract; bind crates.io Trusted Publishing to the exact repository, workflow, and protected release environment through OIDC; and establish tap-owned or narrowly installed short-lived GitHub authority that copies only the exact verified formula. Publish downstream only after immutable GitHub bytes verify, then run credential-free channel verification. Store no long-lived crates.io token or broad personal access token, do not republish `v0.1.0`, and do not create a new version merely to test automation. Finish when the credential inventory is clean, negative authorization and byte-identity cases fail safely, and a nonpublishing end-to-end rehearsal proves every handoff before any later tag is allowed. |
 | MCPD-009 | Complete `MCPD-009`: add `mcp-doctor.scenario/v1alpha1` JSON replay for one exact tool and 1–100 ordered reviewed cases; bounded advertised and scenario-provided local output-schema validation; environment-only target and argument secret references; exact per-run `--allow-tool`; required `read_only` or `side_effecting` classification; and an additional `--allow-side-effects` gate when applicable. Do not generate inputs, trust server annotations, interpolate values, expose arguments or results, or continue `input_required`. Finish when ordinary mismatches continue to later cases, unsafe failures stop calls, and active success, rejection, crash, silent-failure, incomplete, redaction, limit, and cleanup journeys pass without secret output or orphaned processes. |
-| MCPD-010 | Complete `MCPD-010` after `MCPD-009` and `OPEN-06` are accepted: add bounded Streamable HTTP diagnosis under an accepted redirect, SSRF, proxy, authentication, TLS, header, and redaction policy. Do not begin adversarial generation. Finish when deterministic local remote-server fixtures prove the full network boundary. |
+| MCPD-010 | Complete `MCPD-010` under `DEC-030`: add direct, pinned, bounded Streamable HTTP `2026-07-28` diagnosis for public HTTPS by default, with exact private, loopback-cleartext, and credential-to-endpoint gates; verified TLS; environment-only pre-provisioned credentials; current protocol and bounded `x-mcp-header` fields; zero redirects, application retries, proxies, implicit OAuth discovery, or legacy fallback; and equivalent redacted reports for passive and authorized active journeys. Do not begin adversarial generation or claim OAuth client conformance. Finish when deterministic resolver plus disposable HTTP/TLS fixtures prove every target, address, peer, header, credential, JSON/SSE, status, TLS, redaction, time, and resource boundary without network escape. |
 | MCPD-011 | Complete `MCPD-011` after `MCPD-010`: generate bounded deterministic boundary cases only for explicitly authorized tools, record reproducible seeds and structural inputs, and enforce schema and scenario limits. Finish when generation cannot widen target or execution scope. |
 | MCPD-012 | Complete `MCPD-012`: stabilize the redacted machine-result contract and accepted CI reporter across every retained local and remote journey, then publish one protected immutable expanded version with authenticated artifacts and installed smokes for every represented channel. Do not retain an M3 feature that its owning ticket deferred or cancelled. |
 | MCPD-013 | Complete `MCPD-013`: protect the default branch with a contributor-compatible public ruleset, deliberate approval, check, bypass, merge, deletion, non-fast-forward, and commit-signing choices; implement credential-free drift verification; and prove normal, rejected, and bounded emergency paths. Do not change immutable release bytes or begin later assurance tickets. |
@@ -985,15 +1264,16 @@ evidence, and official proof.
 | DEC-027 | Treat independent adoption evidence as nonblocking M3 prioritization input | Accepted | 2026-08-10 | Issue 5 closed with zero independent reports and no adoption claim; M3 may proceed when each ticket's predecessor, design decisions, safety boundary, and acceptance evidence are ready, while future feedback may still reprioritize, narrow, defer, or cancel work |
 | DEC-028 | Resolve `OPEN-04` with one versioned JSON scenario and environment-only secret-reference boundary | Accepted | 2026-08-10 | `mcp-doctor.scenario/v1alpha1` names one exact tool and 1–100 ordered cases; existing JSON and bounded local-schema machinery owns parsing and expectations; only explicit target-environment names and RFC 6901 pointers to null argument placeholders may resolve invoking-process environment values; no interpolation, secondary parser, secret store, external schema, or arbitrary value reaches reports |
 | DEC-029 | Resolve `OPEN-05` with redundant exact active authorization and no automatic continuation | Accepted | 2026-08-10 | Each scenario declares `read_only` or `side_effecting`, every run repeats the exact tool through `--allow-tool`, side effects also require `--allow-side-effects`, annotations and wildcards never authorize, and `input_required` remains incomplete without elicitation or another retry |
+| DEC-030 | Resolve `OPEN-06` with one direct, pinned, credential-scoped Streamable HTTP endpoint | Accepted | 2026-08-10 | Public HTTPS is the default; exact endpoint gates bound eligible private, loopback-cleartext, and credential use; DNS answers are classified once and pinned; TLS identity is mandatory; headers and JSON/SSE are finite; redirects, application retries, proxies, ambient credentials, automatic OAuth discovery, legacy fallback, and value-bearing reports are prohibited |
 
 ## Open decisions
 
-`OPEN-04` and `OPEN-05` are accepted as `DEC-028` and `DEC-029`, and `MCPD-009`
-is complete. The remaining entries belong to their listed later tickets.
+`OPEN-04`, `OPEN-05`, and `OPEN-06` are accepted as `DEC-028`, `DEC-029`, and
+`DEC-030`; their owning `MCPD-009` and `MCPD-010` tickets are implemented
+locally. The remaining entries belong to their listed later tickets.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
-| OPEN-06 | Streamable HTTP redirect, proxy, private-address, and authentication contract | `MCPD-010` | No redirects, no inherited proxy, explicit headers, and remote target shown before activity |
 | OPEN-07 | Stable machine-output version and first additional CI reporter | `MCPD-012` | Retain experimental `v1alpha1` until evidence supports a stable version; evaluate JUnit versus SARIF from the intended consumer |
 | OPEN-08 | Exact OSPS, BadgeApp, and SLSA versions and proof mechanisms at M4 activation | `MCPD-013` | Use the then-current official versions; planning baseline is OSPS `v2026.02.19` Level 1 and SLSA `v1.2` Build L2, with a documented update if either is superseded |
 | OPEN-09 | Default-branch approval count, required checks, merge methods, bypass, emergency administration, and commit-signing policy | `MCPD-013` | Prevent direct updates and deletion with strict current checks and no standing bypass; do not require an unavailable independent reviewer or unproven signature path |
@@ -1008,7 +1288,7 @@ is complete. The remaining entries belong to their listed later tickets.
 | RISK-03 | Secrets or raw production values reach output | High | Structural redaction and sentinel tests across errors, reports, debug surfaces, fixtures, and the `DEC-028` environment-only secret boundary; any observed name or value blocks release | `MCPD-009` proves local target/argument secret rejection and human/JSON non-disclosure; the risk remains open for every later boundary |
 | RISK-04 | Protocol evolution makes diagnostics incorrect | High | Revision-specific rules and fixtures with explicit unsupported outcomes; a new release triggers contract review | Open |
 | RISK-05 | Pathological schema or output exhausts resources | High | Depth, bytes, errors, cases, time, and reference limits; an unbounded input path blocks release | Mitigated for passive paths and locally for `MCPD-009` scenario, input, schema, result, and report paths; later boundaries require their own evidence |
-| RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | Explicit M3 network policy and local fixtures before HTTP implementation; unclear proxy/address behavior blocks `MCPD-010` | Deferred with M3 |
+| RISK-06 | Remote diagnosis enables SSRF or credential leakage | Critical | `DEC-030` fixes exact target gates, IANA-based address classification and pinning, verified TLS, credential-to-endpoint consent, direct zero-redirect/retry connections, finite headers/bodies, and value-free reports; any bypass, peer drift, implicit network source, or secret output blocks completion | Mitigated locally for the bounded passive and authorized active `MCPD-010` transport; hosted native evidence and every future authorization, generated, or multi-origin boundary must reprove it |
 | RISK-07 | Generated cases are irreproducible or exceed authorized scope | High | Stable seed, ordered generation, structural evidence, and target allowlist; mismatch blocks active testing | Deferred with M3 |
 | RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Mitigated for M1 by hosted human/JSON causal-skip and authorization journeys; new checks must preserve the invariant |
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and M3 stays an ordered set of bounded vertical tickets; any broad feature becoming a prerequisite for an earlier completed slice escalates | Mitigated by the ordered plan and `DEC-027`; voluntary evidence may reprioritize work, but its absence neither authorizes breadth nor blocks scoped work |

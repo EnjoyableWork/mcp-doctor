@@ -15,6 +15,19 @@ pub(super) enum LimitKind {
     ScenarioBytes,
     ActiveInputBytes,
     EnvironmentBytes,
+    EndpointBytes,
+    ResolutionAddresses,
+    ResolutionCount,
+    TrustBytes,
+    TrustCertificates,
+    RequestFields,
+    RequestFieldNameBytes,
+    RequestFieldValueBytes,
+    RequestFieldsBytes,
+    ResponseFields,
+    ResponseFieldNameBytes,
+    ResponseFieldValueBytes,
+    ResponseFieldsBytes,
     MessageCount,
     ProtocolRevisions,
     CatalogItems,
@@ -48,6 +61,19 @@ impl LimitKind {
             Self::ScenarioBytes => "scenario_bytes",
             Self::ActiveInputBytes => "active_input_bytes",
             Self::EnvironmentBytes => "environment_bytes",
+            Self::EndpointBytes => "endpoint_bytes",
+            Self::ResolutionAddresses => "resolution_addresses",
+            Self::ResolutionCount => "resolution_count",
+            Self::TrustBytes => "trust_bytes",
+            Self::TrustCertificates => "trust_certificates",
+            Self::RequestFields => "request_fields",
+            Self::RequestFieldNameBytes => "request_field_name_bytes",
+            Self::RequestFieldValueBytes => "request_field_value_bytes",
+            Self::RequestFieldsBytes => "request_fields_bytes",
+            Self::ResponseFields => "response_fields",
+            Self::ResponseFieldNameBytes => "response_field_name_bytes",
+            Self::ResponseFieldValueBytes => "response_field_value_bytes",
+            Self::ResponseFieldsBytes => "response_fields_bytes",
             Self::MessageCount => "message_count",
             Self::ProtocolRevisions => "protocol_revisions",
             Self::CatalogItems => "catalog_items",
@@ -81,9 +107,22 @@ impl LimitKind {
             | Self::ScenarioBytes
             | Self::ActiveInputBytes
             | Self::EnvironmentBytes
+            | Self::EndpointBytes
+            | Self::TrustBytes
+            | Self::RequestFieldNameBytes
+            | Self::RequestFieldValueBytes
+            | Self::RequestFieldsBytes
+            | Self::ResponseFieldNameBytes
+            | Self::ResponseFieldValueBytes
+            | Self::ResponseFieldsBytes
             | Self::SchemaBytes
             | Self::InstanceBytes => LimitUnit::Bytes,
             Self::MessageCount
+            | Self::ResolutionAddresses
+            | Self::ResolutionCount
+            | Self::TrustCertificates
+            | Self::RequestFields
+            | Self::ResponseFields
             | Self::ProtocolRevisions
             | Self::CatalogItems
             | Self::SchemaNodes
@@ -129,6 +168,19 @@ pub(super) struct LimitValues {
     pub(super) stdout_bytes: u64,
     pub(super) stderr_bytes: u64,
     pub(super) aggregate_output_bytes: u64,
+    pub(super) endpoint_bytes: u64,
+    pub(super) resolution_addresses: u64,
+    pub(super) resolution_count: u64,
+    pub(super) trust_bytes: u64,
+    pub(super) trust_certificates: u64,
+    pub(super) request_fields: u64,
+    pub(super) request_field_name_bytes: u64,
+    pub(super) request_field_value_bytes: u64,
+    pub(super) request_fields_bytes: u64,
+    pub(super) response_fields: u64,
+    pub(super) response_field_name_bytes: u64,
+    pub(super) response_field_value_bytes: u64,
+    pub(super) response_fields_bytes: u64,
     pub(super) message_count: u64,
     pub(super) protocol_revisions: u64,
     pub(super) catalog_items: u64,
@@ -161,6 +213,19 @@ impl DiagnosticLimits {
         stdout_bytes: 8_388_608,
         stderr_bytes: 1_048_576,
         aggregate_output_bytes: 8_388_608,
+        endpoint_bytes: 8_192,
+        resolution_addresses: 16,
+        resolution_count: 1,
+        trust_bytes: 1_048_576,
+        trust_certificates: 32,
+        request_fields: 64,
+        request_field_name_bytes: 256,
+        request_field_value_bytes: 8_192,
+        request_fields_bytes: 32_768,
+        response_fields: 96,
+        response_field_name_bytes: 256,
+        response_field_value_bytes: 16_384,
+        response_fields_bytes: 65_536,
         message_count: 1_024,
         protocol_revisions: 32,
         catalog_items: 10_000,
@@ -193,6 +258,31 @@ impl DiagnosticLimits {
                 LimitKind::AggregateOutputBytes,
                 values.aggregate_output_bytes,
             ),
+            (LimitKind::EndpointBytes, values.endpoint_bytes),
+            (LimitKind::ResolutionAddresses, values.resolution_addresses),
+            (LimitKind::ResolutionCount, values.resolution_count),
+            (LimitKind::TrustBytes, values.trust_bytes),
+            (LimitKind::TrustCertificates, values.trust_certificates),
+            (LimitKind::RequestFields, values.request_fields),
+            (
+                LimitKind::RequestFieldNameBytes,
+                values.request_field_name_bytes,
+            ),
+            (
+                LimitKind::RequestFieldValueBytes,
+                values.request_field_value_bytes,
+            ),
+            (LimitKind::RequestFieldsBytes, values.request_fields_bytes),
+            (LimitKind::ResponseFields, values.response_fields),
+            (
+                LimitKind::ResponseFieldNameBytes,
+                values.response_field_name_bytes,
+            ),
+            (
+                LimitKind::ResponseFieldValueBytes,
+                values.response_field_value_bytes,
+            ),
+            (LimitKind::ResponseFieldsBytes, values.response_fields_bytes),
             (LimitKind::MessageCount, values.message_count),
             (LimitKind::ProtocolRevisions, values.protocol_revisions),
             (LimitKind::CatalogItems, values.catalog_items),
