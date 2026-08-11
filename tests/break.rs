@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use support::TestEnvironment;
+use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
 
 const TOOL: &str = "synthetic.generated";
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -145,8 +145,7 @@ fn machine_report_records_only_reproducible_seed_and_structural_input_evidence()
     let (_, stderr) = text(&output);
     assert!(output.status.success());
     assert!(stderr.is_empty());
-    let report: Value =
-        serde_json::from_slice(&output.stdout).expect("STDOUT should be one JSON report");
+    let report = parse_and_validate_report(&output.stdout);
     assert_eq!(report["outcome"], "passed");
     assert_eq!(report["limits"]["active_cases"], 100);
     assert_eq!(report["limits"]["generation_attempts"], 256);
@@ -185,6 +184,34 @@ fn machine_report_records_only_reproducible_seed_and_structural_input_evidence()
         assert!(case.get("arguments").is_none());
         assert!(case.get("result").is_none());
     }
+    assert_redacted(&output, &[marker.to_str().unwrap()]);
+}
+
+#[test]
+fn junit_break_report_keeps_safe_reproduction_metadata_and_exit_status() {
+    let environment = TestEnvironment::new();
+    let marker = environment.artifact_path("junit-generated-inputs.json");
+    let output = break_command(&environment, TOOL, TOOL, "read_only", 2, 4242)
+        .arg("--format")
+        .arg("junit")
+        .arg("--")
+        .arg(fixture())
+        .arg("break-success")
+        .arg(&marker)
+        .arg("2")
+        .output()
+        .expect("the generated JUnit journey should run");
+    let (_, stderr) = text(&output);
+    let (document, summary) = parse_and_validate_junit(&output.stdout);
+
+    assert!(output.status.success(), "{document}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(document.contains("name=\"runtime.tools.case[0]\""));
+    assert!(document.contains("reproduction.generator=mcp-doctor.generator/v1"));
+    assert!(document.contains("reproduction.seed=4242"));
+    assert!(document.contains("report_outcome=passed\nexit_code=0"));
     assert_redacted(&output, &[marker.to_str().unwrap()]);
 }
 

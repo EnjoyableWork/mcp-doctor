@@ -24,7 +24,7 @@ use model::{
 };
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
-use report::{DiagnosticReport, render_report};
+use report::{DiagnosticReport, ExitStatus, render_report};
 
 pub(crate) use active::{
     ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, ScenarioFailure,
@@ -236,6 +236,27 @@ fn map_stdio_failure(failure: StdioFailure) -> StdioPrimaryFailure {
 pub(crate) struct RenderedDiagnostic {
     pub(crate) output: String,
     pub(crate) exit: std::process::ExitCode,
+    pub(crate) error: Option<String>,
+}
+
+impl RenderedDiagnostic {
+    pub(in crate::contract) fn from_report(
+        report: &DiagnosticReport,
+        format: ReportFormat,
+    ) -> Self {
+        match render_report(report, format) {
+            Ok(output) => Self {
+                output,
+                exit: report.exit_status().into(),
+                error: None,
+            },
+            Err(error) => Self {
+                output: String::new(),
+                exit: ExitStatus::InternalError.into(),
+                error: Some(error.to_string()),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -711,10 +732,7 @@ fn render_checks(checks: Vec<CheckResult>, format: ReportFormat) -> RenderedDiag
     )
     .expect("the STDIO application must construct a valid diagnostic report");
 
-    RenderedDiagnostic {
-        output: render_report(&report, format),
-        exit: report.exit_status().into(),
-    }
+    RenderedDiagnostic::from_report(&report, format)
 }
 
 fn stdio_location(stream: StdioStream) -> Location {

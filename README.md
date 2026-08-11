@@ -80,7 +80,7 @@ Install with Homebrew or Cargo:
 brew install --build-from-source EnjoyableWork/tap/mcp-doctor
 
 # Any supported Rust host
-cargo install mcp-doctor --version '=0.1.0' --locked
+cargo install mcp-doctor --version '=0.2.0' --locked
 ```
 
 Or download a native GNU/Linux archive from
@@ -103,8 +103,9 @@ Inspect a Streamable HTTP endpoint by URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
-The default report is made for people. Add `--format json` to get the same
-findings as experimental, versioned JSON with secrets removed.
+The default report is made for people. Add `--format json` for the stable,
+schema-backed `mcp-doctor.report/v1` result, or `--format junit` for the same
+checks projected into conservative JUnit XML. Both keep secrets removed.
 
 ## Inspect. Check. Break.
 
@@ -253,9 +254,9 @@ Checks skipped because of this issue:
   tool/runtime
 ```
 
-The human and JSON reports use the same findings. This prevents CI from hiding
-a failure, choosing a different main issue, or turning a skipped check into a
-pass.
+The human, stable JSON, and JUnit reports use the same immutable findings. This
+prevents CI from hiding a failure, choosing a different main issue, or turning
+a skipped check into a pass.
 
 The passive STDIO path is checked against pinned official TypeScript and Go
 servers and independent Dart and PHP servers. See the
@@ -264,7 +265,8 @@ results.
 
 ## Bring it into CI
 
-Run the same check in a pull request. Its exit code can block the build:
+Run the same check in a pull request. Stable JSON plus the process exit is the
+portable automation contract:
 
 ```yaml
 - name: Diagnose MCP server
@@ -275,8 +277,11 @@ Run the same check in a pull request. Its exit code can block the build:
     ./target/release/my-mcp-server --stdio
 ```
 
-A required check that fails returns a non-zero status. Reports are repeatable
-and hide secrets, so they work well in logs and saved build results.
+A required check that fails returns a non-zero status. To publish a test report
+in a CI system that accepts JUnit, write `--format junit` to an artifact while
+still using the command's exit status as the gate. Each diagnostic check becomes
+one test case; failures and causal skips retain their safe evidence. Reports are
+deterministic, bounded, and hide secrets.
 
 ## Safe by default
 

@@ -81,8 +81,8 @@ try {
     $report = $reportOutput | ConvertFrom-Json
 
     if (
-        $report.schema_version -ne 'mcp-doctor.report/v1alpha1' -or
-        $report.schema_stability -ne 'experimental' -or
+        $report.schema_version -ne 'mcp-doctor.report/v1' -or
+        $report.schema_stability -ne 'stable' -or
         $report.protocol_revision -ne '2026-07-28' -or
         $null -ne $report.primary_diagnosis -or
         @($report.independent_findings).Count -ne 0 -or

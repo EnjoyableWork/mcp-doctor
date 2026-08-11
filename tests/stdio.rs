@@ -10,7 +10,9 @@ use std::process::{Command, Output};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use support::TestEnvironment;
+use support::{
+    TestEnvironment, parse_and_validate_junit, parse_and_validate_report, validate_report_value,
+};
 
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
 const CATALOG_SENTINEL: &str = "synthetic-secret-payload-never-report-7f2c";
@@ -39,6 +41,18 @@ fn json_inspect_command(environment: &TestEnvironment, mode: &str) -> Command {
     command
 }
 
+fn junit_inspect_command(environment: &TestEnvironment, mode: &str) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--format")
+        .arg("junit")
+        .arg("--")
+        .arg(fixture())
+        .arg(mode);
+    command
+}
+
 fn run_mode(mode: &str) -> Output {
     let environment = TestEnvironment::new();
     inspect_command(&environment, mode)
@@ -60,7 +74,7 @@ fn text(output: &Output) -> (&str, &str) {
 }
 
 fn json_report(output: &Output) -> serde_json::Value {
-    serde_json::from_slice(&output.stdout).expect("machine output should be one JSON report")
+    parse_and_validate_report(&output.stdout)
 }
 
 #[test]
@@ -241,15 +255,15 @@ fn valid_paginated_catalogs_and_complex_local_schemas_pass_passively() {
 }
 
 #[test]
-fn experimental_json_is_a_complete_passive_built_binary_report() {
+fn stable_json_is_a_complete_passive_built_binary_report() {
     let output = run_json_mode("catalog-valid");
     let (_, stderr) = text(&output);
     let report = json_report(&output);
 
     assert!(output.status.success(), "{report:#}");
     assert!(stderr.is_empty(), "{stderr}");
-    assert_eq!(report["schema_version"], "mcp-doctor.report/v1alpha1");
-    assert_eq!(report["schema_stability"], "experimental");
+    assert_eq!(report["schema_version"], "mcp-doctor.report/v1");
+    assert_eq!(report["schema_stability"], "stable");
     assert_eq!(report["protocol_revision"], "2026-07-28");
     assert_eq!(report["outcome"], "passed");
     assert_eq!(report["exit_code"], 0);
@@ -287,8 +301,9 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
 
     // From this point onward the assertions consume only the checked-in reports;
     // they do not inspect the fixture response, target stderr, or implementation.
-    let report: serde_json::Value =
-        serde_json::from_str(REPORT_ONLY_JSON).expect("report-only JSON should parse");
+    let report = validate_report_value(
+        serde_json::from_str(REPORT_ONLY_JSON).expect("report-only JSON should parse"),
+    );
     let diagnosis = &report["primary_diagnosis"];
     let diagnosis_check = diagnosis["check_id"]
         .as_str()
@@ -351,6 +366,25 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     assert!(REPORT_ONLY_HUMAN.contains("blocked by protocol.revision"));
     assert!(!REPORT_ONLY_HUMAN.contains("synthetic-private-revision"));
     assert!(!REPORT_ONLY_JSON.contains("synthetic-private-revision"));
+}
+
+#[test]
+fn junit_inspection_preserves_the_stdio_diagnosis_skips_and_exit_status() {
+    let environment = TestEnvironment::new();
+    let output = junit_inspect_command(&environment, "protocol-unsupported")
+        .output()
+        .expect("mcp-doctor should emit JUnit for the STDIO journey");
+    let (_, stderr) = text(&output);
+    let (document, summary) = parse_and_validate_junit(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "{document}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(summary.failures, 1);
+    assert!(summary.skipped > 0);
+    assert!(document.contains("type=\"MCP-PROTOCOL-002\""));
+    assert!(document.contains("blocked_by.check_id=protocol.revision"));
+    assert!(document.contains("report_outcome=failed\nexit_code=1"));
+    assert!(!document.contains(REDACTION_SENTINEL));
 }
 
 #[test]

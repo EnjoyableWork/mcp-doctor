@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="mcp-doctor" tests="3" failures="1" errors="0" skipped="1" time="0">
+  <testsuite name="mcp-doctor" tests="3" failures="1" errors="0" skipped="1" time="0">
+    <testcase classname="mcp-doctor.diagnostic" name="protocol.revision" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+report_outcome=failed
+exit_code=1
+check_id=protocol.revision
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="schema.contracts" time="0">
+      <failure message="A configured diagnostic safety limit was exceeded." type="MCP-LIMIT-001">finding[0].code=MCP-LIMIT-001
+finding[0].severity=error
+finding[0].protocol_revision=2026-07-28
+finding[0].location=tools[3].inputSchema
+finding[0].message=A configured diagnostic safety limit was exceeded.
+finding[0].impact=Continuing past this bound could make inspection unsafe or unbounded.
+finding[0].expectation=Every diagnostic path must remain within its reported safety limit.
+finding[0].remediation=Reduce the reported data or work below the maximum, then rerun the same command.
+finding[0].reference=mcp-doctor bounded local STDIO safety contract
+finding[0].primary=true
+finding[0].independent_safety=false
+finding[0].evidence.kind=limit_violation
+finding[0].evidence.limit=message_bytes
+finding[0].evidence.unit=bytes
+finding[0].evidence.observed=1048577
+finding[0].evidence.maximum=1048576
+      </failure>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+report_outcome=failed
+exit_code=1
+check_id=schema.contracts
+requirement=required
+state=performed
+outcome=failed
+primary_diagnosis=true
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="runtime.tools" time="0">
+      <skipped message="not_authorized">skip_reason=not_authorized
+skip_description=active behavior was not authorized
+      </skipped>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+report_outcome=failed
+exit_code=1
+check_id=runtime.tools
+requirement=optional
+state=skipped
+outcome=skipped
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -39,6 +39,7 @@ pub(super) enum LimitKind {
     SchemaEvaluationSteps,
     ValidationErrors,
     ReportFindings,
+    ReportBytes,
     ActiveCases,
     GenerationAttempts,
     GenerationCandidates,
@@ -88,6 +89,7 @@ impl LimitKind {
             Self::SchemaEvaluationSteps => "schema_evaluation_steps",
             Self::ValidationErrors => "validation_errors",
             Self::ReportFindings => "report_findings",
+            Self::ReportBytes => "report_bytes",
             Self::ActiveCases => "active_cases",
             Self::GenerationAttempts => "generation_attempts",
             Self::GenerationCandidates => "generation_candidates",
@@ -122,7 +124,8 @@ impl LimitKind {
             | Self::ResponseFieldValueBytes
             | Self::ResponseFieldsBytes
             | Self::SchemaBytes
-            | Self::InstanceBytes => LimitUnit::Bytes,
+            | Self::InstanceBytes
+            | Self::ReportBytes => LimitUnit::Bytes,
             Self::MessageCount
             | Self::ResolutionAddresses
             | Self::ResolutionCount
@@ -201,6 +204,7 @@ pub(super) struct LimitValues {
     pub(super) schema_evaluation_steps: u64,
     pub(super) validation_errors: u64,
     pub(super) report_findings: u64,
+    pub(super) report_bytes: u64,
     pub(super) active_cases: u64,
     pub(super) generation_attempts: u64,
     pub(super) generation_candidates: u64,
@@ -249,6 +253,7 @@ impl DiagnosticLimits {
         schema_evaluation_steps: 100_000,
         validation_errors: 100,
         report_findings: 256,
+        report_bytes: 4_194_304,
         active_cases: 100,
         generation_attempts: 256,
         generation_candidates: 64,
@@ -312,6 +317,7 @@ impl DiagnosticLimits {
             ),
             (LimitKind::ValidationErrors, values.validation_errors),
             (LimitKind::ReportFindings, values.report_findings),
+            (LimitKind::ReportBytes, values.report_bytes),
             (LimitKind::ActiveCases, values.active_cases),
             (LimitKind::GenerationAttempts, values.generation_attempts),
             (

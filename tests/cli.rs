@@ -66,9 +66,9 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("--header-env <FIELD=NAME>"));
     assert!(stdout.contains("--tls-ca-file <PATH>"));
     assert!(stdout.contains("--format <FORMAT>"));
-    assert!(stdout.contains("experimental mcp-doctor.report/v1alpha1"));
+    assert!(stdout.contains("stable mcp-doctor.report/v1"));
     assert!(stdout.contains("[default: human]"));
-    assert!(stdout.contains("[possible values: human, json]"));
+    assert!(stdout.contains("[possible values: human, json, junit]"));
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn inspect_rejects_an_unknown_report_format_before_starting_a_target() {
 
     let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
     assert!(stderr.contains("invalid value 'xml'"));
-    assert!(stderr.contains("[possible values: human, json]"));
+    assert!(stderr.contains("[possible values: human, json, junit]"));
     assert!(!stderr.contains("No such file"));
 }
 

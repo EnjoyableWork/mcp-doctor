@@ -1,4 +1,4 @@
-mcp-doctor report · MCP 2026-07-28 · mcp-doctor.report/v1alpha1
+mcp-doctor report · MCP 2026-07-28 · mcp-doctor.report/v1
 
 PRIMARY DIAGNOSIS · schema.contracts
   MCP-LIMIT-001 · tools[3].inputSchema
@@ -9,7 +9,7 @@ LIMITS
   network · endpoint_bytes=8192 · resolution_addresses=16 · resolution_count=1 · trust_bytes=1048576 · trust_certificates=32
   request · request_fields=64 · request_field_name_bytes=256 · request_field_value_bytes=8192 · request_fields_bytes=32768
   response · response_fields=96 · response_field_name_bytes=256 · response_field_value_bytes=16384 · response_fields_bytes=65536
-  discovery · protocol_revisions=32 · catalog_items=10000 · report_findings=256
+  discovery · protocol_revisions=32 · catalog_items=10000 · report_findings=256 · report_bytes=4194304
   schema · schema_bytes=1048576 · instance_bytes=1048576 · schema_nodes=100000 · schema_depth=64 · schema_ref_depth=32 · schema_evaluation_steps=100000 · validation_errors=100
   generation · active_cases=100 · generation_attempts=256 · generation_candidates=64 · generation_steps=100000
   activity · redirects=0 · retries=0 · concurrency=1

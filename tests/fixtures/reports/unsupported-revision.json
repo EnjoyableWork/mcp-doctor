@@ -1,6 +1,6 @@
 {
-  "schema_version": "mcp-doctor.report/v1alpha1",
-  "schema_stability": "experimental",
+  "schema_version": "mcp-doctor.report/v1",
+  "schema_stability": "stable",
   "protocol_revision": "2026-07-28",
   "primary_diagnosis": {
     "check_id": "protocol.revision",
@@ -49,6 +49,7 @@
     "schema_evaluation_steps": 100000,
     "validation_errors": 100,
     "report_findings": 256,
+    "report_bytes": 4194304,
     "active_cases": 100,
     "generation_attempts": 256,
     "generation_candidates": 64,
