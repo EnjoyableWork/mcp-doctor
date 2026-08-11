@@ -9,10 +9,10 @@ decisions, risks, and release gates.
 | Product state | The passive local STDIO MVP and pinned current-revision compatibility matrix pass locally and in hosted evidence; bounded local and Streamable HTTP `check` plus deterministic `break` paths pass locally but are not yet in a public release; stable CI reporting and the expanded release remain unimplemented |
 | Current milestone | M3 — bounded diagnostic expansion; `MCPD-011` is Done locally and `MCPD-012` remains Proposed |
 | Overall status | M0, M1, and M2 pass locally and in hosted evidence; the immutable `v0.1.0` channels and least-privilege repeat-release path remain verified; `MCPD-009` through `MCPD-011` complete three locally verified M3 slices without changing published artifacts or claiming hosted active, remote, or generated evidence |
-| Current focus | Preserve the completed `DEC-031` generation boundary; resolve `OPEN-07` before activating `MCPD-012` stable reporting, publication, and independent verification |
+| Current focus | Preserve the completed `DEC-031` generation boundary and activate `MCPD-012` under the accepted `DEC-032` stable JSON and JUnit-compatible reporting boundary |
 | Public release | `mcp-doctor` `v0.1.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-11 |
-| Next review trigger | `MCPD-012` activation or resolution of `OPEN-07`; any voluntary usage evidence that changes M3 priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
+| Next review trigger | `MCPD-012` activation; any voluntary usage evidence that changes M3 priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -341,13 +341,54 @@ reference, and typed evidence. Arbitrary values, identifiers, paths, payloads, h
 arguments, results, and logs cannot enter the ordinary result model;
 observations retain only a safe JSON type or `[REDACTED]` and a byte count.
 
-The CLI exposes `mcp-doctor.report/v1alpha1` through `inspect --format json`
-and `check --format json`.
+The CLI exposes `mcp-doctor.report/v1alpha1` through `inspect --format json`,
+`check --format json`, and `break --format json`.
 The experimental envelope includes stability, revision, primary diagnosis,
 independent findings, exact limits, derived summary, performed/skipped checks,
 causal `blocked_by` evidence, findings, outcome, and exit code. It is
 fixture-tested but is not a stable compatibility promise; `MCPD-012` owns the
 stable machine format.
+
+#### MCPD-012 stable reporting decision
+
+`DEC-032` resolves `OPEN-07`. `MCPD-012` will promote the shared redacted
+machine-result contract to `mcp-doctor.report/v1` and add one conservative
+JUnit-compatible XML projection. Until that ticket passes and an expanded
+release publishes, the implemented CLI remains on experimental
+`mcp-doctor.report/v1alpha1` JSON and does not claim stable JSON or JUnit
+support.
+
+Stable `v1` JSON is the authoritative, vendor-neutral automation contract. Its
+committed Draft 2020-12 schema and fixtures must cover every retained passive,
+reviewed active, generated, STDIO, and HTTP journey. Existing required field
+names and types, finding-code meanings and code-owned severities, check and skip
+semantics, primary and independent diagnosis, outcome, exit status, redaction,
+and causal relationships remain compatible throughout `v1`. Consumers must
+ignore unknown optional fields and handle a previously unknown finding code
+from its safe reported severity and description. Adding an optional field or a
+new finding code is compatible; removing or renaming a field, changing a field
+type, or changing an existing code, severity, outcome, exit, skip, redaction, or
+causal meaning requires a new major report version.
+
+JUnit is a projection of that same immutable result, not a second diagnostic
+model. It maps each diagnostic check to one test case and represents performed
+success, failure, warning detail, and skipped or incomplete evidence without
+inventing source locations or dropping the safe finding code, structural
+location, expectation, and remediation. The process exit status remains the CI
+gate because consuming a JUnit artifact does not itself fail every CI job. The
+projection must be deterministic, bounded, correctly escaped, value-free, and
+produced without rerunning a target; representative independent CI consumers
+must accept the selected common subset before compatibility is documented.
+Stable JSON plus exit status remains the portable fallback when a CI system
+does not render JUnit.
+
+`mcp-doctor` remains a security-bounded MCP diagnostic preflight, not a general
+security scanner. SARIF is deferred until an accepted security-analysis scope
+has vulnerability-oriented rules, stable repository artifact or source
+locations, an intended code-scanning consumer, and a reviewed upload-permission
+threat model. Protocol, transport, authorization, limit, redaction, and cleanup
+findings must not be relabeled as source-code vulnerabilities merely to enter a
+security-alert interface.
 
 #### M1 default limit profile
 
@@ -1043,7 +1084,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-009 | Add explicit, budgeted, deterministic `check` scenario replay and result-schema validation | M3 | Done | `MCPD-008A` | [Twenty-two built-binary active suites](tests/active.rs), the [strict replay adapter](src/contract/active.rs), and the disposable locked gate prove the `DEC-028`/`DEC-029` contract, consent rejection, ordered continuation, redaction, bounded schemas/results/reports, crash, incomplete, limit, and cleanup paths without a new dependency |
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done | `MCPD-009` | The [bounded transport](src/transport/http.rs), [typed HTTP-header contract](src/contract/http_headers.rs), [application/report integration](src/contract/mod.rs), and [ten disposable built-binary HTTP/TLS journeys](tests/http.rs) prove exact target gates, classified and pinned addresses, peer checks, direct zero-redirect/retry/proxy connections, current-revision JSON/SSE and headers, verified identity, environment-only credential delivery and redaction, passive and authorized active authority, causal report parity, and every target, field, body, event, status, TLS, time, and resource bound without a real endpoint |
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done | `MCPD-010` | The [bounded generator](src/contract/generate.rs), [`break` application](src/break_command.rs), [nine disposable local journeys](tests/break.rs), and [exact-authority HTTP/TLS journey](tests/http.rs) prove versioned known-seed reproduction, schema-valid structural inputs, every generation and active-input bound, sequential continuation, redaction, exact tool/effect/target gates before activity, no schema retrieval or unauthorized connection, and resistant-process-tree cleanup without a new dependency |
-| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Proposed | `MCPD-011` | Stable versioned JSON plus one accepted CI format preserve findings and exits; the `MCPD-008A` path publishes every expanded-release artifact and channel, and each passes its applicable installed smoke journey |
+| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Proposed | `MCPD-011` | A committed schema and compatibility fixtures prove authoritative `mcp-doctor.report/v1` JSON across every retained journey; a bounded JUnit-compatible projection preserves safe findings, skips, and the authoritative exit without target re-execution and passes representative CI consumers; the `MCPD-008A` path publishes every expanded-release artifact and channel, and each passes its applicable installed smoke journey |
 | MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Proposed | `MCPD-012` | A live public ruleset, credential-free verifier, normal protected pull request, rejected direct-update/deletion exercises, and documented emergency path prove the selected approval, check, bypass, signing, deletion, and non-fast-forward policy |
 | MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Proposed | `MCPD-013` | The recognized security policy, private route, supported-version and response contract, enabled entitled security features, non-disclosing verifier, and recorded clean baseline prove the scoped controls and limitations without exposing findings |
 | MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed | `MCPD-014` | Public workflows and recognized community files, complete in-scope repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence pass a credential-free verifier |
@@ -1253,7 +1294,7 @@ Use the matching objective when beginning an eligible main-story ticket:
 | MCPD-009 | Complete `MCPD-009`: add `mcp-doctor.scenario/v1alpha1` JSON replay for one exact tool and 1–100 ordered reviewed cases; bounded advertised and scenario-provided local output-schema validation; environment-only target and argument secret references; exact per-run `--allow-tool`; required `read_only` or `side_effecting` classification; and an additional `--allow-side-effects` gate when applicable. Do not generate inputs, trust server annotations, interpolate values, expose arguments or results, or continue `input_required`. Finish when ordinary mismatches continue to later cases, unsafe failures stop calls, and active success, rejection, crash, silent-failure, incomplete, redaction, limit, and cleanup journeys pass without secret output or orphaned processes. |
 | MCPD-010 | Complete `MCPD-010` under `DEC-030`: add direct, pinned, bounded Streamable HTTP `2026-07-28` diagnosis for public HTTPS by default, with exact private, loopback-cleartext, and credential-to-endpoint gates; verified TLS; environment-only pre-provisioned credentials; current protocol and bounded `x-mcp-header` fields; zero redirects, application retries, proxies, implicit OAuth discovery, or legacy fallback; and equivalent redacted reports for passive and authorized active journeys. Do not begin adversarial generation or claim OAuth client conformance. Finish when deterministic resolver plus disposable HTTP/TLS fixtures prove every target, address, peer, header, credential, JSON/SSE, status, TLS, redaction, time, and resource boundary without network escape. |
 | MCPD-011 | Complete `MCPD-011` after `MCPD-010`: generate bounded deterministic boundary cases only for explicitly authorized tools, record reproducible seeds and structural inputs, and enforce schema and scenario limits. Finish when generation cannot widen target or execution scope. |
-| MCPD-012 | Complete `MCPD-012`: stabilize the redacted machine-result contract and accepted CI reporter across every retained local and remote journey, then publish one protected immutable expanded version with authenticated artifacts and installed smokes for every represented channel. Do not retain an M3 feature that its owning ticket deferred or cancelled. |
+| MCPD-012 | Complete `MCPD-012` under `DEC-032`: promote the redacted authoritative machine-result contract to schema-backed `mcp-doctor.report/v1`; add one deterministic, bounded, correctly escaped JUnit-compatible projection of the same result without rerunning a target; preserve safe findings, causal skips, outcomes, and exit semantics across every retained local and remote journey; and verify the selected common JUnit subset with representative independent CI consumers. Keep SARIF and general security-scanner positioning out of scope. Then publish one protected immutable expanded version with authenticated artifacts and installed smokes for every represented channel. Do not retain an M3 feature that its owning ticket deferred or cancelled. |
 | MCPD-013 | Complete `MCPD-013`: protect the default branch with a contributor-compatible public ruleset, deliberate approval, check, bypass, merge, deletion, non-fast-forward, and commit-signing choices; implement credential-free drift verification; and prove normal, rejected, and bounded emergency paths. Do not change immutable release bytes or begin later assurance tickets. |
 | MCPD-014 | Complete `MCPD-014`: establish recognized supported-version, security-contact, private-reporting, response, and coordinated-disclosure guidance; enable and read back the entitled dependency, code-scanning, secret-prevention, and private-reporting controls; document unavailable features exactly; and verify a non-disclosing clean baseline. Do not publish a complete-baseline claim. |
 | MCPD-015 | Complete `MCPD-015`: verify public contribution, conduct, support, defect-reporting, repository-inventory, official-channel, inbound-license, source-license, and released-asset license contracts across every in-scope repository and distribution channel. Avoid nominal reviewers, owners, or controls, and do not begin supply-chain changes. |
@@ -1361,17 +1402,18 @@ evidence, and official proof.
 | DEC-029 | Resolve `OPEN-05` with redundant exact active authorization and no automatic continuation | Accepted | 2026-08-10 | Each scenario declares `read_only` or `side_effecting`, every run repeats the exact tool through `--allow-tool`, side effects also require `--allow-side-effects`, annotations and wildcards never authorize, and `input_required` remains incomplete without elicitation or another retry |
 | DEC-030 | Resolve `OPEN-06` with one direct, pinned, credential-scoped Streamable HTTP endpoint | Accepted | 2026-08-10 | Public HTTPS is the default; exact endpoint gates bound eligible private, loopback-cleartext, and credential use; DNS answers are classified once and pinned; TLS identity is mandatory; headers and JSON/SSE are finite; redirects, application retries, proxies, ambient credentials, automatic OAuth discovery, legacy fallback, and value-bearing reports are prohibited |
 | DEC-031 | Generate only versioned, bounded, schema-valid cases for one redundantly authorized tool | Accepted | 2026-08-11 | `break` requires matching `--tool` and `--allow-tool`, an explicit effect classification, 1–100 cases, a seed, and side-effect consent when applicable; `mcp-doctor.generator/v1` uses fixed-width deterministic selection, finite candidates and work, existing local schema validation, sequential calls, and value-free structural reproduction evidence without another dependency, target source, schema retrieval, or authority derived from discovery or annotations |
+| DEC-032 | Resolve `OPEN-07` with stable vendor-neutral JSON and a JUnit-compatible CI projection | Accepted | 2026-08-11 | `MCPD-012` promotes the shared redacted result to schema-backed `mcp-doctor.report/v1`, permits only compatible optional-field and new-code additions within `v1`, and renders one bounded JUnit projection without target re-execution; JSON and exit status remain authoritative and portable, while SARIF and general security-scanner positioning remain deferred pending a real security-analysis consumer and threat model |
 
 ## Open decisions
 
 `OPEN-04`, `OPEN-05`, and `OPEN-06` are accepted as `DEC-028`, `DEC-029`, and
 `DEC-030`; their owning `MCPD-009` and `MCPD-010` tickets are implemented
-locally. `DEC-031` records the implemented `MCPD-011` generation boundary. The
-remaining entries belong to their listed later tickets.
+locally. `DEC-031` records the implemented `MCPD-011` generation boundary, and
+`OPEN-07` is accepted as the future-facing `DEC-032` reporting boundary for
+`MCPD-012`. The remaining entries belong to their listed later tickets.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
-| OPEN-07 | Stable machine-output version and first additional CI reporter | `MCPD-012` | Retain experimental `v1alpha1` until evidence supports a stable version; evaluate JUnit versus SARIF from the intended consumer |
 | OPEN-08 | Exact OSPS, BadgeApp, and SLSA versions and proof mechanisms at M4 activation | `MCPD-013` | Use the then-current official versions; planning baseline is OSPS `v2026.02.19` Level 1 and SLSA `v1.2` Build L2, with a documented update if either is superseded |
 | OPEN-09 | Default-branch approval count, required checks, merge methods, bypass, emergency administration, and commit-signing policy | `MCPD-013` | Prevent direct updates and deletion with strict current checks and no standing bypass; do not require an unavailable independent reviewer or unproven signature path |
 | OPEN-10 | Organization membership, application, automation-credential, owner-continuity, and private recovery boundary | `MCPD-017` | Lowest default access, deliberate grants, strong MFA, scoped automation, explicit residual-risk acceptance, and non-disclosing recovery evidence |

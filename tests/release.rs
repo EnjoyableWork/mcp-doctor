@@ -551,6 +551,34 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
 }
 
 #[test]
+fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_scope() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "| DEC-032 | Resolve `OPEN-07` with stable vendor-neutral JSON and a JUnit-compatible CI projection | Accepted |",
+        "`mcp-doctor.report/v1`",
+        "Stable `v1` JSON is the authoritative, vendor-neutral automation contract.",
+        "ignore unknown optional fields and handle a previously unknown finding code",
+        "JUnit is a projection of that same immutable result",
+        "produced without rerunning a target",
+        "process exit status remains the CI",
+        "SARIF is deferred",
+        "not a general\nsecurity scanner",
+        "Keep SARIF and general security-scanner positioning out of scope.",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain DEC-032 reporting contract: {contract}"
+        );
+    }
+
+    assert!(
+        !project.contains("| OPEN-07 |"),
+        "accepted OPEN-07 should leave the open-decision table"
+    );
+}
+
+#[test]
 fn repository_does_not_reference_the_scaffolding_project() {
     let forbidden = ["mcp", "sync"].join("-");
     let roots = [
