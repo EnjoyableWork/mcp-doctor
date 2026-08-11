@@ -120,6 +120,20 @@ logs, and tool results as untrusted.
   behind success.
 - Never send generated or mutating tool calls merely because a schema permits
   them. Active scenarios must select tools and record their safety assumptions.
+- `check` scenarios use only `mcp-doctor.scenario/v1alpha1` JSON, name one tool,
+  and replay declared cases in order. Every run requires an exact matching
+  `--allow-tool`; every scenario declares `read_only` or `side_effecting`; and
+  side effects also require `--allow-side-effects`. Never accept a wildcard,
+  generic confirmation, discovered selection, or server annotation as authority.
+- Resolve scenario secrets only from explicitly named invoking-process
+  environment variables: a same-name target-environment allowlist or an
+  RFC 6901 pointer to an existing null argument placeholder. Fail before starting
+  the target when a reference is invalid or missing. Do not add interpolation,
+  `.env`, file, command, prompt, keychain, or secret-store sources, and never
+  render source names, pointers, values, resolved arguments, or results.
+- Treat `input_required` as incomplete in `check`. Do not automatically answer
+  elicitation, sampling, roots, or any other server request, and do not retry
+  the tool call with additional input without a separately accepted contract.
 - Do not follow remote redirects or resolve local/private network targets under
   an implicit policy. The Streamable HTTP ticket must define its SSRF,
   redirect, authentication, TLS, and proxy boundaries before implementation.

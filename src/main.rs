@@ -1,8 +1,10 @@
+mod check;
 mod contract;
 mod inspect;
 mod transport;
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -19,10 +21,35 @@ struct Cli {
 enum Command {
     /// Passively inspect a local MCP server over STDIO.
     Inspect(InspectArgs),
+    /// Replay reviewed cases against one explicitly authorized local tool.
+    Check(CheckArgs),
 }
 
 #[derive(Debug, Args)]
 struct InspectArgs {
+    /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    format: OutputFormat,
+
+    /// Server executable followed by its literal arguments.
+    #[arg(last = true, required = true, num_args = 1.., allow_hyphen_values = true)]
+    target: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+struct CheckArgs {
+    /// Versioned JSON scenario containing one exact tool and ordered reviewed cases.
+    #[arg(long, value_name = "PATH")]
+    scenario: PathBuf,
+
+    /// Exact tool name independently authorized for this run.
+    #[arg(long, value_name = "EXACT-NAME")]
+    allow_tool: String,
+
+    /// Additionally authorize a scenario classified as side_effecting.
+    #[arg(long)]
+    allow_side_effects: bool,
+
     /// Report format. JSON uses the experimental mcp-doctor.report/v1alpha1 schema.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
@@ -53,6 +80,26 @@ async fn main() -> ExitCode {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
             match inspect::run(arguments.target, arguments.format.into()).await {
+                Ok(diagnostic) => {
+                    print!("{}", diagnostic.output);
+                    diagnostic.exit
+                }
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some(Command::Check(arguments)) => {
+            match check::run(
+                arguments.target,
+                &arguments.scenario,
+                &arguments.allow_tool,
+                arguments.allow_side_effects,
+                arguments.format.into(),
+            )
+            .await
+            {
                 Ok(diagnostic) => {
                     print!("{}", diagnostic.output);
                     diagnostic.exit

@@ -95,6 +95,47 @@ fn inspect_rejects_an_unknown_report_format_before_starting_a_target() {
 }
 
 #[test]
+fn check_help_documents_every_redundant_active_gate() {
+    let output = run_cli(&["check", "--help"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(stdout.contains("Replay reviewed cases"));
+    assert!(stdout.contains("--scenario <PATH>"));
+    assert!(stdout.contains("--allow-tool <EXACT-NAME>"));
+    assert!(stdout.contains("--allow-side-effects"));
+    assert!(stdout.contains("Usage: mcp-doctor check [OPTIONS] --scenario <PATH> --allow-tool <EXACT-NAME> -- <TARGET>..."));
+}
+
+#[test]
+fn check_requires_scenario_tool_authorization_and_literal_target() {
+    for arguments in [
+        vec![
+            "check",
+            "--allow-tool",
+            "synthetic.reviewed",
+            "--",
+            "target",
+        ],
+        vec!["check", "--scenario", "scenario.json", "--", "target"],
+        vec![
+            "check",
+            "--scenario",
+            "scenario.json",
+            "--allow-tool",
+            "synthetic.reviewed",
+        ],
+    ] {
+        let output = run_cli(&arguments);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+        assert!(stderr.contains("required arguments"), "{stderr}");
+    }
+}
+
+#[test]
 fn cli_processes_receive_only_disposable_user_locations() {
     let environment = TestEnvironment::new();
     let command: Command = environment.command();
