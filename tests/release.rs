@@ -579,6 +579,115 @@ fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_
 }
 
 #[test]
+fn project_resolves_open_08_with_locked_assurance_versions_and_exact_proof() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "| DEC-034 | Resolve `OPEN-08` with one activation-locked assurance version set and exact proof routes | Accepted |",
+        "OpenSSF OSPS Baseline `v2026.02.19`",
+        "official BadgeApp baseline series displaying OSPS `v2026.02.19`",
+        "approved [SLSA `v1.2`]",
+        "M4 never silently floats, mixes framework versions",
+        "`docs/assurance/osps-v2026.02.19-level-1.md`",
+        "The result is an official-hosted self-assessment, not independent certification.",
+        "`docs/assurance/slsa-v1.2-build-l2.md`",
+        "exact repository, signer workflow, tag ref, and source commit",
+        "`predicateType` is `https://slsa.dev/provenance/v1`",
+        "publication of the assessment are explicit owner actions",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain DEC-034 assurance contract: {contract}"
+        );
+    }
+
+    assert!(
+        !project.contains("| OPEN-08 |"),
+        "accepted OPEN-08 should leave the open-decision table"
+    );
+}
+
+#[test]
+fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "| DEC-035 | Resolve `OPEN-09` with a usable single-maintainer default-branch policy | Accepted |",
+        "`required_approving_review_count` to `0`",
+        "`Required CI` and `Required release preflight`",
+        "Both aggregate jobs use `needs` with `always()`",
+        "GitHub omits bypass actors from credential-free REST readback",
+        "authenticated owner check must verify the exact empty list",
+        "a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default",
+        "Enable squash merge only",
+        "Keep auto-merge and merge queue disabled",
+        "Keep `bypass_actors` empty",
+        "temporarily add only the repository-administrator role with `pull_request` bypass mode",
+        "Never disable the ruleset, grant `always` bypass, push directly, delete `main`, or force-push.",
+        "Required commit signing stays off.",
+        "no ruleset or legacy branch protection on `main`",
+        "resolving this policy does not activate M4 early",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain DEC-035 default-branch contract: {contract}"
+        );
+    }
+
+    assert!(
+        !project.contains("| OPEN-09 |"),
+        "accepted OPEN-09 should leave the open-decision table"
+    );
+}
+
+#[test]
+fn project_keeps_a_result_free_dynamic_product_evaluation_method() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "## Product category and comparative evaluation",
+        "safety-bounded MCP server-author diagnostic\npreflight",
+        "does not retain a current score, ranking,\nwinner, or market-dominance claim",
+        "| Causal diagnosis and remediation | 18 |",
+        "| Protocol and contract correctness | 15 |",
+        "| Runtime testing and reproducibility | 15 |",
+        "| Safety and containment | 17 |",
+        "| CI and machine interoperability | 10 |",
+        "| Adoption UX and integration reach | 10 |",
+        "| Security-vulnerability detection | 10 |",
+        "| Release and project assurance | 5 |",
+        "| **Total** | **100** |",
+        "`weight * rating / 5`",
+        "| `P` | Accepted plan or documented product intention only |",
+        "| `L` | Exact source implementation with local, reproducible test evidence |",
+        "| `H` | Exact source verified by project-hosted automation on a named host |",
+        "| `R` | Exact immutable release artifact reproduced on a claimed platform |",
+        "| `I` | Exact behavior independently reproduced, or sustained use independently evidenced |",
+        "cap the reported total at 49",
+        "90–100",
+        "These are capability bands, not market-adoption or market-dominance bands.",
+        "### Dynamic assessment procedure",
+        "### Seed comparison set",
+        "https://github.com/destilabs/mcp-doctor",
+        "https://github.com/realwigu/mcp-doctor",
+        "https://github.com/Jiansen/mcp-doctor",
+        "https://github.com/stephenywilson/MCP-Doctor",
+        "https://github.com/modelcontextprotocol/inspector",
+        "https://github.com/modelcontextprotocol/conformance",
+        "https://github.com/MCPJam/inspector",
+        "https://github.com/cisco-ai-defense/mcp-scanner",
+        "https://github.com/snyk/agent-scan",
+        "https://github.com/ModelContextProtocol-Security/mcpserver-audit",
+        "| DEC-033 | Retain a result-free weighted product and market evaluation method | Accepted |",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain the dynamic product-evaluation contract: {contract}"
+        );
+    }
+}
+
+#[test]
 fn repository_does_not_reference_the_scaffolding_project() {
     let forbidden = ["mcp", "sync"].join("-");
     let roots = [
