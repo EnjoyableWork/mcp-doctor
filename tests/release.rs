@@ -993,6 +993,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
         "`MCPD-014` completed on 2026-08-11",
         "d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a",
         "https://github.com/EnjoyableWork/mcp-doctor/pull/21",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/22",
         "31546161736",
         "31546164626",
         "31546164631",
