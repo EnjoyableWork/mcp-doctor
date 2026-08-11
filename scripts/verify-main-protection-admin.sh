@@ -59,6 +59,16 @@ trap cleanup EXIT
 
 rulesets_path="$work_dir/rulesets.json"
 ruleset_path="$work_dir/ruleset.json"
+repository_path="$work_dir/repository.json"
+canonical_repository_projection="$work_dir/canonical-repository.json"
+live_repository_projection="$work_dir/live-repository.json"
+
+if ! GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api \
+  -H "X-GitHub-Api-Version: $api_version" \
+  "repos/$repository" \
+  >"$repository_path" 2>/dev/null; then
+  report_failure
+fi
 
 if ! GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api \
   -H "X-GitHub-Api-Version: $api_version" \
@@ -87,7 +97,23 @@ if ! GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api \
   report_failure
 fi
 
-if ! jq -e '.bypass_actors == []' "$ruleset_path" >/dev/null 2>&1; then
+if ! jq -S '{default_branch, merge_settings}' "$canonical_path" \
+  >"$canonical_repository_projection" 2>/dev/null ||
+  ! jq -S '{
+    default_branch,
+    merge_settings: {
+      allow_squash_merge,
+      allow_merge_commit,
+      allow_rebase_merge,
+      allow_auto_merge,
+      delete_branch_on_merge,
+      allow_update_branch,
+      squash_merge_commit_title,
+      squash_merge_commit_message
+    }
+  }' "$repository_path" >"$live_repository_projection" 2>/dev/null ||
+  ! cmp -s "$canonical_repository_projection" "$live_repository_projection" ||
+  ! jq -e '.bypass_actors == []' "$ruleset_path" >/dev/null 2>&1; then
   report_failure
 fi
 

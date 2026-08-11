@@ -9,7 +9,7 @@ decisions, risks, and release gates.
 | Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and JUnit-compatible projection pass local, hosted, immutable-release, and represented installed-channel evidence |
 | Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is In progress |
 | Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` GitHub, crates.io, and Homebrew channels are verified, and the least-privilege repeat-release path remains verified |
-| Current focus | Land the `MCPD-013` canonical protection projection and aggregate gates through a bootstrap pull request, then activate and exercise the `DEC-035` controls without making an assurance claim ahead of M4 evidence |
+| Current focus | Reconcile GitHub's documented inactive pull-request defaults through the first protected `MCPD-013` pull request, then complete the `DEC-035` negative and emergency exercises without making an assurance claim ahead of M4 evidence |
 | Public release | `mcp-doctor` `v0.2.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-11 |
 | Next review trigger | `MCPD-013` bootstrap-PR or live default-branch-control evidence; any voluntary usage evidence that changes product priority; any trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
@@ -1605,11 +1605,33 @@ jobs. CodeQL default setup and secret-scanning controls were not configured.
 This records the gap; it is not achieved protection, review, or scanner
 evidence.
 
+Later on 2026-08-11, the bootstrap pull request passed both new aggregate gates
+and landed before the repository enabled squash-only merge settings and active
+public ruleset
+[`20718365`](https://github.com/EnjoyableWork/mcp-doctor/rules/20718365).
+The first credential-free readback failed closed because GitHub materialized a
+disabled dismissal restriction and empty required-reviewer list that were not
+yet explicit in the submitted canonical projection. The authenticated readback
+independently confirmed an empty bypass list. `MCPD-013` remains in progress
+until the public projection is canonicalized through the protected path and
+every required exercise and final readback passes.
+
+The same credential-free readback also established that GitHub's current
+unauthenticated repository response exposes `default_branch` but omits every
+merge-setting field, while authenticated readback exposes those settings.
+`DEC-036` therefore refines only the `DEC-035` verification boundary: the
+credential-free verifier proves the default branch plus public configured and
+effective rules, and the non-disclosing authenticated verifier proves both the
+canonical repository merge projection and exact empty bypass state. The
+selected merge, approval, check, target, deletion, non-fast-forward, signing,
+and emergency values are unchanged. Missing authenticated merge fields now
+fail closed rather than being misrepresented as public evidence.
+
 `DEC-035` fixes the `MCPD-013` implementation contract:
 
 | Choice | Accepted policy |
 | --- | --- |
-| Scope and enforcement | Check in the normalized canonical ruleset as `.github/rulesets/main.json`; activate one public repository ruleset for only `refs/heads/main`; require a pull request, linear history, strict required status checks, and resolved conversations; block deletion and non-fast-forward updates. The pull-request rule, not a push allowlist, prevents direct commits. A credential-free verifier compares the publicly visible live rule and repository-merge projection with the canonical file and confirms the default branch is still `main`. GitHub omits bypass actors from credential-free REST readback, so a separate authenticated owner check must verify the exact empty list and publish only its date, canonical hash, and pass/fail result. |
+| Scope and enforcement | Check in the normalized canonical ruleset as `.github/rulesets/main.json`; activate one public repository ruleset for only `refs/heads/main`; require a pull request, linear history, strict required status checks, and resolved conversations; block deletion and non-fast-forward updates. The pull-request rule, not a push allowlist, prevents direct commits. Under `DEC-036`, a credential-free verifier compares the publicly visible default branch plus configured and effective live rules with the canonical file. GitHub omits repository merge settings and bypass actors from credential-free REST readback, so a separate authenticated owner check must verify the exact canonical merge projection and empty bypass list and publish only its date, canonical hash, and pass/fail result. |
 | Approval count | Set `required_approving_review_count` to `0`. Do not enable code-owner, stale-approval, or last-push approval requirements while the only maintainer cannot supply an independent approval. Never describe this as peer review. A second active independent maintainer plus a successfully rehearsed normal path triggers a separate policy revision toward one approval; it does not change the count automatically. |
 | Required checks | Add exact GitHub-Actions-bound contexts `Required CI` and `Required release preflight`, with strict branch-up-to-date enforcement. `Required CI` depends on dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 format, Clippy, and test jobs. `Required release preflight` depends on deterministic source/formula generation, macOS ARM64, GNU/Linux ARM64/x64, Windows x64, and exact non-publishing payload verification. Both aggregate jobs use `needs` with `always()` and fail unless every intended dependency succeeded, so a failed, cancelled, or skipped dependency cannot turn green. Limit ordinary branch `push` triggers to `main` so a same-repository branch push cannot produce a duplicate required context alongside its pull-request run. |
 | Future security gates | Dependency policy is already inside `Required CI`. Code scanning and secret prevention are not current required gates because they are not configured, and a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default. `MCPD-014` may add an exact code-scanning rule or separately named security context only after the analysis exists, passes on `main` and representative pull requests, handles contributors safely, and receives an accepted ruleset update. |
@@ -1715,6 +1737,7 @@ evidence, and official proof.
 | DEC-033 | Retain a result-free weighted product and market evaluation method | Accepted | 2026-08-11 | `PROJECT.md` fixes the intended category, excellence posture, eight dimensions totaling 100, rating and evidence rules, safety cap, assessment bands, dynamic procedure, and revalidated seed comparison set without retaining a current score, ranking, or dominance claim |
 | DEC-034 | Resolve `OPEN-08` with one activation-locked assurance version set and exact proof routes | Accepted | 2026-08-11 | First-M4 targets are OSPS `v2026.02.19` Level 1, BadgeApp's baseline series for that exact version, and SLSA `v1.2` Build L2; checked-in dated crosswalks, the official public self-assessment record/JSON/badge, and digest-matched constrained provenance verification form the proof, while any pre-publication version or issuer drift blocks for a superseding decision instead of silently floating |
 | DEC-035 | Resolve `OPEN-09` with a usable single-maintainer default-branch policy | Accepted | 2026-08-11 | `main` requires a pull request with zero approvals, resolved conversations, strict non-skipping `Required CI` and `Required release preflight` gates, squash-only linear history, and deletion/force-push protection; there is no standing bypass or signing requirement, and emergency administration is one recorded temporary pull-request-only administrator bypass followed by immediate removal, public-projection verification, and non-disclosing authenticated empty-bypass readback |
+| DEC-036 | Refine the `DEC-035` verification boundary to match GitHub's live observable fields | Accepted | 2026-08-11 | Credential-free readback verifies `default_branch` plus the configured and effective public rules; a bounded authenticated readback verifies the exact canonical merge settings and empty hidden bypass list while emitting only date, canonical hash, and pass/fail; all selected protection values remain unchanged |
 
 ## Open decisions
 
@@ -1722,9 +1745,10 @@ evidence, and official proof.
 `DEC-031` records the implemented `MCPD-011` generation boundary, `OPEN-07` is
 accepted as `DEC-032`, and `OPEN-08` and `OPEN-09` are accepted as `DEC-034`
 and `DEC-035`. `DEC-033` separately records the dynamic comparative evaluation
-method. Resolution makes the owning future ticket ready once its predecessor
-passes; it does not claim that proposed behavior or live controls already
-exist. The remaining entry belongs to its listed later ticket.
+method, and `DEC-036` refines only the live-verification boundary discovered
+during `MCPD-013`. Resolution makes the owning future ticket ready once its
+predecessor passes; it does not claim that proposed behavior or live controls
+already exist. The remaining entry belongs to its listed later ticket.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
@@ -1745,7 +1769,7 @@ exist. The remaining entry belongs to its listed later ticket.
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and M3 stays an ordered set of bounded vertical tickets; any broad feature becoming a prerequisite for an earlier completed slice escalates | Mitigated by the ordered plan and `DEC-027`; voluntary evidence may reprioritize work, but its absence neither authorizes breadth nor blocks scoped work |
 | RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Mitigated for the first release: the preferred `mcp-doctor` crate identity is published under the exact EnjoyableWork source and metadata; future channel guidance must preserve the distinction |
 | RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and `v0.2.0` by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, authenticated assets, and successful native channel verification; every future release must retain the same immutable-byte gates |
-| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Policy resolved and `MCPD-013` is in progress; the 2026-08-11 activation baseline still has no ruleset or branch protection, so the risk remains open until the live controls and exercises pass |
+| RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | The live ruleset and merge settings are active and the hidden bypass readback is empty, but `MCPD-013` remains in progress after the first public verifier failed closed on GitHub-added inactive defaults; the risk is not mitigated until the protected correction, negative exercises, emergency lifecycle, and final readbacks pass |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Deferred with M4 |
 | RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; `v0.2.0` then exercised the exact OIDC and tap authorities with authenticated immutable-byte handoffs and a clean credential inventory, while future drift blocks publication and full assurance remains `MCPD-016` |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
