@@ -366,3 +366,27 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 1
+
+  required-release-preflight:
+    name: Required release preflight
+    if: always()
+    needs:
+      - source
+      - unix
+      - windows
+      - payload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every release-preflight dependency to succeed
+        env:
+          SOURCE_RESULT: ${{ needs.source.result }}
+          UNIX_RESULT: ${{ needs.unix.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          PAYLOAD_RESULT: ${{ needs.payload.result }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$UNIX_RESULT" = success
+          test "$WINDOWS_RESULT" = success
+          test "$PAYLOAD_RESULT" = success

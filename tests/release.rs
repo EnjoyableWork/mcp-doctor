@@ -60,6 +60,7 @@ fn release_identity_and_toolchain_are_exact() {
         "version = \"0.2.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
+        "\"/.github/rulesets/**\"",
         "\"/.github/workflows/*.yml\"",
         "\"/schemas/**\"",
         "\"/scripts/**\"",
@@ -632,7 +633,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Ready |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is In progress |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -662,6 +663,9 @@ fn project_resolves_open_08_with_locked_assurance_versions_and_exact_proof() {
         "OpenSSF OSPS Baseline `v2026.02.19`",
         "official BadgeApp baseline series displaying OSPS `v2026.02.19`",
         "approved [SLSA `v1.2`]",
+        "The `MCPD-013` activation recheck on 2026-08-11 passed.",
+        "73db726e5bc898903995ad63e471ff6f820086e2",
+        "This clears the\npre-activation drift gate only; it is not an achieved assurance result.",
         "M4 never silently floats, mixes framework versions",
         "`docs/assurance/osps-v2026.02.19-level-1.md`",
         "The result is an official-hosted self-assessment, not independent certification.",
@@ -758,6 +762,193 @@ fn project_keeps_a_result_free_dynamic_product_evaluation_method() {
         assert!(
             project.contains(contract),
             "PROJECT.md should retain the dynamic product-evaluation contract: {contract}"
+        );
+    }
+}
+
+#[test]
+fn main_protection_canonical_config_matches_dec_035() {
+    let canonical = repository_file(".github/rulesets/main.json");
+    let canonical: serde_json::Value =
+        serde_json::from_str(&canonical).expect("main protection config should be valid JSON");
+
+    assert_eq!(
+        canonical["schema_version"],
+        "mcp-doctor.github-main-protection/v1"
+    );
+    assert_eq!(canonical["api_version"], "2026-03-10");
+    assert_eq!(canonical["repository"], "EnjoyableWork/mcp-doctor");
+    assert_eq!(canonical["default_branch"], "main");
+    assert_eq!(
+        canonical["merge_settings"],
+        serde_json::json!({
+            "allow_squash_merge": true,
+            "allow_merge_commit": false,
+            "allow_rebase_merge": false,
+            "allow_auto_merge": false,
+            "delete_branch_on_merge": true,
+            "allow_update_branch": true,
+            "squash_merge_commit_title": "PR_TITLE",
+            "squash_merge_commit_message": "PR_BODY"
+        })
+    );
+
+    let ruleset = &canonical["ruleset"];
+    assert_eq!(ruleset["name"], "Protect main");
+    assert_eq!(ruleset["target"], "branch");
+    assert_eq!(ruleset["enforcement"], "active");
+    assert_eq!(ruleset["bypass_actors"], serde_json::json!([]));
+    assert_eq!(
+        ruleset["conditions"],
+        serde_json::json!({
+            "ref_name": {
+                "include": ["refs/heads/main"],
+                "exclude": []
+            }
+        })
+    );
+
+    let rules = ruleset["rules"]
+        .as_array()
+        .expect("canonical rules should be an array");
+    assert_eq!(rules.len(), 5);
+    for required_type in [
+        "deletion",
+        "non_fast_forward",
+        "required_linear_history",
+        "pull_request",
+        "required_status_checks",
+    ] {
+        assert!(
+            rules.iter().any(|rule| rule["type"] == required_type),
+            "canonical ruleset should contain {required_type}"
+        );
+    }
+    for forbidden_type in ["creation", "update", "required_signatures", "merge_queue"] {
+        assert!(
+            rules.iter().all(|rule| rule["type"] != forbidden_type),
+            "canonical ruleset must not contain {forbidden_type}"
+        );
+    }
+
+    let pull_request = rules
+        .iter()
+        .find(|rule| rule["type"] == "pull_request")
+        .expect("pull-request rule should exist");
+    assert_eq!(
+        pull_request["parameters"],
+        serde_json::json!({
+            "allowed_merge_methods": ["squash"],
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_approving_review_count": 0,
+            "required_review_thread_resolution": true
+        })
+    );
+
+    let required_status_checks = rules
+        .iter()
+        .find(|rule| rule["type"] == "required_status_checks")
+        .expect("required-status-check rule should exist");
+    assert_eq!(
+        required_status_checks["parameters"],
+        serde_json::json!({
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+                {"context": "Required CI", "integration_id": 15368},
+                {"context": "Required release preflight", "integration_id": 15368}
+            ],
+            "strict_required_status_checks_policy": true
+        })
+    );
+}
+
+#[test]
+fn required_aggregate_jobs_cannot_hide_unsuccessful_dependencies() {
+    let ci = repository_file(".github/workflows/ci.yml");
+    let preflight = repository_file(".github/workflows/release-preflight.yml");
+
+    for workflow in [&ci, &preflight] {
+        assert!(workflow.contains("push:\n    branches:\n      - main"));
+    }
+
+    for contract in [
+        "required-ci:\n    name: Required CI\n    if: always()",
+        "needs:\n      - dependencies\n      - unix-quality\n      - windows-quality",
+        "DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}",
+        "UNIX_QUALITY_RESULT: ${{ needs.unix-quality.result }}",
+        "WINDOWS_QUALITY_RESULT: ${{ needs.windows-quality.result }}",
+        "test \"$DEPENDENCIES_RESULT\" = success",
+        "test \"$UNIX_QUALITY_RESULT\" = success",
+        "test \"$WINDOWS_QUALITY_RESULT\" = success",
+    ] {
+        assert!(ci.contains(contract), "CI should preserve {contract}");
+    }
+
+    for contract in [
+        "required-release-preflight:\n    name: Required release preflight\n    if: always()",
+        "needs:\n      - source\n      - unix\n      - windows\n      - payload",
+        "SOURCE_RESULT: ${{ needs.source.result }}",
+        "UNIX_RESULT: ${{ needs.unix.result }}",
+        "WINDOWS_RESULT: ${{ needs.windows.result }}",
+        "PAYLOAD_RESULT: ${{ needs.payload.result }}",
+        "test \"$SOURCE_RESULT\" = success",
+        "test \"$UNIX_RESULT\" = success",
+        "test \"$WINDOWS_RESULT\" = success",
+        "test \"$PAYLOAD_RESULT\" = success",
+    ] {
+        assert!(
+            preflight.contains(contract),
+            "release preflight should preserve {contract}"
+        );
+    }
+}
+
+#[test]
+fn protection_verifiers_keep_public_and_private_evidence_separate() {
+    let public = repository_file("scripts/verify-main-protection-public.sh");
+    let admin = repository_file("scripts/verify-main-protection-admin.sh");
+
+    for contract in [
+        "-u GH_TOKEN",
+        "-u GITHUB_TOKEN",
+        "curl --disable",
+        "--noproxy '*'",
+        "--max-filesize 1048576",
+        "rules/branches/$default_branch?per_page=100",
+        "has(\"bypass_actors\") | not",
+        "effective main rules include an unexpected layer or source",
+    ] {
+        assert!(
+            public.contains(contract),
+            "public verifier should preserve {contract}"
+        );
+    }
+    for forbidden in ["gh api", "Authorization:", "set -x"] {
+        assert!(
+            !public.contains(forbidden),
+            "public verifier must not contain {forbidden}"
+        );
+    }
+
+    for contract in [
+        "GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api",
+        ">\"$rulesets_path\" 2>/dev/null",
+        ">\"$ruleset_path\" 2>/dev/null",
+        "jq -e '.bypass_actors == []'",
+        "date=%s canonical_sha256=%s result=FAIL",
+        "date=%s canonical_sha256=%s result=PASS",
+    ] {
+        assert!(
+            admin.contains(contract),
+            "admin verifier should preserve {contract}"
+        );
+    }
+    for forbidden in ["set -x", "--verbose", "jq '.'"] {
+        assert!(
+            !admin.contains(forbidden),
+            "admin verifier must not contain {forbidden}"
         );
     }
 }

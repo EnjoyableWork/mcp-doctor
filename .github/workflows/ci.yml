@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -97,3 +99,24 @@ jobs:
       - name: Run quality gates through a disposable environment
         shell: pwsh
         run: ./scripts/check.ps1
+
+  required-ci:
+    name: Required CI
+    if: always()
+    needs:
+      - dependencies
+      - unix-quality
+      - windows-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every CI dependency to succeed
+        env:
+          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+          UNIX_QUALITY_RESULT: ${{ needs.unix-quality.result }}
+          WINDOWS_QUALITY_RESULT: ${{ needs.windows-quality.result }}
+        run: |
+          test "$DEPENDENCIES_RESULT" = success
+          test "$UNIX_QUALITY_RESULT" = success
+          test "$WINDOWS_QUALITY_RESULT" = success
