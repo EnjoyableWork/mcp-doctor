@@ -7,12 +7,12 @@ decisions, risks, and release gates.
 | --- | --- |
 | Document state | Active |
 | Product state | The passive local STDIO MVP, earliest-layer report parity, and pinned current-revision compatibility matrix pass locally and in hosted evidence; active tool calls and network transport remain unimplemented |
-| Current milestone | M2 — first public MVP release complete; repeat-release automation in progress |
-| Overall status | M0, M1, and `MCPD-008` pass locally and in hosted evidence; immutable GitHub release `v0.1.0`, crates.io package `mcp-doctor` `0.1.0`, and the exact Homebrew formula are public and pass the ten-job channel verifier; `MCPD-008A` has local future-tag, exact-byte handoff, OIDC-boundary, and tap-owned workflow implementation plus live protected GitHub environments, while exact crates.io trusted-publisher, merged hosted rehearsal, and final credential-readback evidence remain required |
-| Current focus | `MCPD-008A` — In progress |
+| Current milestone | M2 — complete; the adoption checkpoint remains open before any M3 activation |
+| Overall status | M0, M1, and M2 pass locally and in hosted evidence; immutable GitHub release `v0.1.0`, crates.io package `mcp-doctor` `0.1.0`, and the exact Homebrew formula are public and pass the ten-job channel verifier; `MCPD-008A` also proves the merged future-tag, immutable-first handoff, exact crates.io OIDC boundary, tap-owned short-lived authority, nonpublishing rehearsal, and clean credential inventory required before every later release |
+| Current focus | [M2 adoption checkpoint](https://github.com/EnjoyableWork/mcp-doctor/issues/5) — collect retained-use evidence before a dated M3 activation decision; no M3 ticket is active |
 | Public release | `mcp-doctor` `v0.1.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-10 |
-| Next review trigger | `MCPD-008A` activation or any trusted-publisher, tap-authority, or release-pipeline change; any dependency or testing-tool adoption, update, ownership change, advisory, or unexplained inactivity; the M2 adoption checkpoint; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, organization-access, or evidence drift |
+| Next review trigger | The M2 adoption checkpoint decision; any trusted-publisher, tap-authority, or release-pipeline change; any dependency or testing-tool adoption, update, ownership change, advisory, or unexplained inactivity; a change to the M1 safety boundary; M4 activation; or assurance-framework, issuer-proof, security, organization-access, or evidence drift |
 
 ## Document roles
 
@@ -76,20 +76,19 @@ Signed native macOS and Windows artifacts are a later candidate, not part of
 the first public release. They require an accepted funding and signing decision
 plus native installed evidence.
 
-`MCPD-008A` begins only after the first crates.io publication completes. It
-does not delay, reopen, or replace the immutable `v0.1.0` release, but it must
-finish before any later public version is tagged. A reviewed release change and
-an intentionally created annotated tag remain human release authority;
-automation may publish that approved version but may not choose one.
+`MCPD-008A` began only after the first crates.io publication completed. It did
+not delay, reopen, or replace the immutable `v0.1.0` release. Its completed
+controls now gate every later public version. A reviewed release change and an
+intentionally created annotated tag remain human release authority; automation
+may publish that approved version but may not choose one.
 
-M3 does not activate automatically when the first M2 release ships. Its
-ordering is the default only after `MCPD-008A` closes and the M2 adoption
-checkpoint records whether users retained the passive MVP, what it found, where
-it produced false or unclear findings, and which next capability removes the
-most common remaining blocker. A dated decision must first accept or revise the
-M3 boundary and ticket board. Only retained tickets form its required order;
-defer, supersede, or cancel the rest with a recorded rationale when the evidence
-points elsewhere.
+M3 does not activate automatically now that the first M2 release has shipped
+and `MCPD-008A` has closed. The M2 adoption checkpoint must first record whether
+users retained the passive MVP, what it found, where it produced false or
+unclear findings, and which next capability removes the most common remaining
+blocker. A dated decision must then accept or revise the M3 boundary and ticket
+board. Only retained tickets form its required order; defer, supersede, or
+cancel the rest with a recorded rationale when the evidence points elsewhere.
 
 M4 begins only after the expanded M3 release is independently verified. It
 does not delay or reopen M3, and it does not turn a self-assessment into a
@@ -543,17 +542,12 @@ Public adoption evidence is collected in
 The owner confirmed server-side revocation of the one-time crates.io token after
 `cargo logout` removed it locally. These results close `MCPD-008`.
 
-`MCPD-008A` is implementing the retained future-release boundary without
-changing `v0.1.0`: canonical future-only stable tags, immutable GitHub bytes
-before any downstream write, registry-order rejection with exact-byte recovery,
-global release serialization, a final main/tag authority recheck, crates.io
-OIDC under the exact workflow and environment, a tap-owned short-lived write
-job, reusable verified handoff manifests, and local rejected provenance and
-byte-mismatch cases. The ticket
-remains incomplete until both repositories merge the workflows, the protected
-environments and exact crates.io publisher are read back, all live
-nonpublishing rehearsal paths pass, the generalized channel verifier passes,
-and the final credential inventory is clean.
+`MCPD-008A` completed the retained future-release boundary without changing
+`v0.1.0`: canonical future-only stable tags, immutable GitHub bytes before any
+downstream write, registry-order rejection with exact-byte recovery, global
+release serialization, a final main/tag authority recheck, crates.io OIDC under
+the exact workflow and environment, a tap-owned short-lived write job, reusable
+verified handoff manifests, and rejected provenance and byte-mismatch cases.
 
 The 2026-08-10 GitHub administration readback shows a required-reviewer
 `release` environment in both public repositories. `mcp-doctor` admits only
@@ -563,9 +557,28 @@ secret inventories are empty, the organization Actions-secret inventory is
 empty, and both repositories retain read-only default workflow permission.
 GitHub reports administrator bypass enabled in this one-member organization,
 so the reviewer gate provides deliberate single-maintainer friction rather
-than independent approval; no two-person claim is made. This is live
-environment evidence, not evidence that the unmerged workflows or the
-crates.io publisher already pass.
+than independent approval; no two-person claim is made.
+
+The exact repeat-release implementation merged at source commit
+[`47aa41e`](https://github.com/EnjoyableWork/mcp-doctor/commit/47aa41efee5eaf1ed81f699611748aff787ed971)
+and tap commit
+[`dafb41a`](https://github.com/EnjoyableWork/homebrew-tap/commit/dafb41ae86968285b5ae85f3dd633cc15103131b).
+The 2026-08-10 crates.io owner readback reports repository
+`EnjoyableWork/mcp-doctor`, owner ID `245300066`, workflow `release.yml`, and
+environment `release`, with trusted publishing required for every new version.
+The live [immutable-first and authorized/missing-environment
+rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330),
+[wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31441772215),
+[tap-owned no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455),
+and post-tap [ten-job channel
+verification](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31444142085)
+all pass on those exact commits. The final
+[`verify-repeat-release-controls.sh`](scripts/verify-repeat-release-controls.sh)
+readback confirms current public main commits, immutable releases, protected
+environment policies, read-only workflow defaults, empty applicable GitHub
+secret inventories, no operator crates.io credential, and no stored or personal
+credential reference. These results close `MCPD-008A`, D-07A, and M2 without a
+new tag, publication, or change to immutable `v0.1.0` bytes.
 
 ### M2 adoption checkpoint
 
@@ -624,7 +637,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-05 | Bounded STDIO process and message boundary | M1 | Done | [Managed STDIO transport](src/transport/stdio.rs), [synthetic fixture server](tests/fixtures/stdio_server.rs), and [nine built-binary journeys](tests/stdio.rs) prove literal arguments, constrained environment, passive discovery, simultaneous bounds, redaction, graceful and forced process-tree cleanup, and distinct transport failures; the full 48-test suite passes locally |
 | D-06 | Adoption-ready passive `inspect` journey | M1 | Done | [Built-binary journeys](tests/stdio.rs) prove earliest-layer selection, independent safety findings, causal skips, report-only correction, redaction, and equivalent human/experimental JSON; the [four-case compatibility matrix](tests/compatibility/README.md), scoped broad current-revision position, registry/revision rechecks, and conditional test-tool decisions pass locally; [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363588701) and [hosted compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363605095) pass on `main` `24f79f8` |
 | D-07 | Immutable passive MVP release | M2 | Done | The immutable GitHub release, byte-identical crates.io package and Homebrew formula, ten-job installed channel verifier, public adoption checkpoint, local credential removal, and confirmed server-side token revocation pass |
-| D-07A | Least-privilege repeat-release path | M2 | In progress | Local stable-tag generalization, verified handoff manifests, exact-byte negative cases, full-SHA crates.io OIDC integration, and a tap-owned short-lived workflow exist; both protected GitHub environments pass administrative readback, while trusted-publisher readback plus merged live nonpublishing rehearsal and final clean credential evidence remain |
+| D-07A | Least-privilege repeat-release path | M2 | Done | Exact source and tap `main` commits, protected environments, crates.io publisher identity, authorized and rejected OIDC paths, immutable byte handoffs, tap-owned no-write rehearsal, ten-job channel verification, and final clean credential readback pass in linked `MCPD-008A` evidence |
 | D-08 | Evidence-led diagnostic expansion release | M3 | Proposed | Post-M2 product evidence, retained expansion journeys, stable CI reports, and independently verified release artifacts |
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
 
@@ -640,7 +653,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-006 | Diagnose discovered tools, prompts, resources, and JSON Schema contracts without implicit tool execution | M1 | Done | `MCPD-005` | [Versioned catalog/schema adapter](src/contract/catalog.rs), [static catalog fixtures](tests/fixtures/catalogs), and [built-binary STDIO journeys](tests/stdio.rs) prove valid, invalid, complex, duplicate, paginated, redacted, no-retrieval, and exact bounded cases with safe expectations and remediation; the complete local locked gate and cross-target checks pass |
 | MCPD-007 | Make passive `inspect` identify the earliest actionable failing layer, remain report-sufficient for humans and agents, and prove its real-server reach and release identity | M1 | Done | `MCPD-006` | Built-binary human and experimental JSON journeys agree on primary and independent findings, causal skips, limits, summary, outcome, and correction; report-only fixtures prove actionability; four pinned official/independent servers across four languages support scoped broad current-revision compatibility; registry and revision rechecks are dated; all conditional tools are resolved under `DEC-025`; [native CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363588701) and [hosted compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31363605095) pass on `main` `24f79f8` |
 | MCPD-008 | Publish and independently verify the first immutable passive-MVP release through GitHub, Cargo, and Homebrew | M2 | Done | `MCPD-007` | [GitHub publication](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31405768056), byte-identical [crates.io](https://crates.io/crates/mcp-doctor/0.1.0) and [Homebrew](https://github.com/EnjoyableWork/homebrew-tap/commit/6044088bc8b04c24a762a69cabbe52a5b22b1e22) handoffs, the [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31413131715), and [adoption issue 5](https://github.com/EnjoyableWork/mcp-doctor/issues/5) pass; the one-time credential was removed locally and confirmed revoked server-side |
-| MCPD-008A | Establish a GitHub-controlled, least-privilege path for every release after `v0.1.0` | M2 | In progress | `MCPD-008` | Local future-only stable-tag, immutable-first, OIDC, tap-owned update, read-only verification, synthetic/verified handoff, and rejected mismatch paths are implemented, and both protected GitHub environments pass readback; finish only when the exact trusted publisher is live, both repositories merge, credential inventory is clean, and every nonpublishing hosted rehearsal passes before any later tag |
+| MCPD-008A | Establish a GitHub-controlled, least-privilege path for every release after `v0.1.0` | M2 | Done | `MCPD-008` | Exact source [`47aa41e`](https://github.com/EnjoyableWork/mcp-doctor/commit/47aa41efee5eaf1ed81f699611748aff787ed971) and tap [`dafb41a`](https://github.com/EnjoyableWork/homebrew-tap/commit/dafb41ae86968285b5ae85f3dd633cc15103131b) controls, protected-environment and trusted-publisher readback, the [authorized and missing-environment rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330), [wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31441772215), [tap no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455), [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31444142085), and final clean credential inventory pass without republishing `v0.1.0` |
 | MCPD-009 | Add explicit, budgeted, seed-reproducible `check` scenarios and result-schema validation when M2 evidence justifies active testing | M3 | Proposed | `MCPD-008A` and the M2 adoption checkpoint | Selected-tool consent, deterministic generation, crash, silent failure, and output mismatch journeys |
 | MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy when M2 evidence justifies remote diagnosis | M3 | Proposed | `MCPD-009` | Local HTTP fixtures prove headers, redirects, auth redaction, TLS/error, timeout, and response limits |
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools when M2 evidence justifies generated pressure | M3 | Proposed | `MCPD-010` | Schema-derived cases are deterministic, limited, reproducible, and cannot widen target scope |
@@ -723,8 +736,8 @@ complete dependency policy and be visible in the pull request.
 | GitHub artifact and build-provenance Actions | `MCPD-008` — selected 2026-08-10 | Adopted release tooling | Current active official GitHub Actions are pinned by full commit SHA; short-lived workflow artifacts assemble the exact payload, while GitHub attestations bind each published byte to the tag workflow and commit without a stored signing secret |
 | Syft `1.50.0` through `anchore/sbom-action` `0.24.0` | `MCPD-008` — selected 2026-08-10 | Adopted release tooling | Current active Apache-2.0 Anchore tooling produces target SPDX 2.3 JSON for the two represented GNU/Linux archives; generation runs only in disposable hosted release jobs and the output contract is checked independently |
 | `Homebrew/actions/setup-homebrew` `2026.08.03.2` | `MCPD-008` — selected 2026-08-10 | Adopted release tooling | The current official Homebrew action is pinned by full commit SHA and used only to style, audit, source-build, test, and smoke the exact formula on represented native hosts |
-| [`rust-lang/crates-io-auth-action` `v1.0.5`](https://github.com/rust-lang/crates-io-auth-action/releases/tag/v1.0.5) at `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `MCPD-008A` — selected 2026-08-10 | Adopted implementation; live binding pending | The official Rust project Action is active, unarchived, dual MIT/Apache-2.0, Node 24 bundled, released from a verified commit, masks its 30-minute token, and revokes it in its post step; it is full-SHA-pinned only in nonpublishing authorization checks and the immutable-first Cargo job, with no new Cargo dependency or stored secret |
-| GitHub-native Homebrew tap update authority | `MCPD-008A` | Adopted implementation; hosted workflow pending | The separate tap owns a manual rehearsal/publish workflow; its read-only job authenticates the annotated immutable upstream source, provenance, checksums, package hash, and formula without executing upstream code, while only an approved publish-mode job receives the tap's short-lived `contents: write` `GITHUB_TOKEN` and may copy `Formula/mcp-doctor.rb`; the live tap `release` environment requires review and only admits `main`, and no cross-repository PAT or source-repository tap write exists |
+| [`rust-lang/crates-io-auth-action` `v1.0.5`](https://github.com/rust-lang/crates-io-auth-action/releases/tag/v1.0.5) at `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `MCPD-008A` — selected 2026-08-10 | Adopted and live-verified | The official Rust project Action is active, unarchived, dual MIT/Apache-2.0, Node 24 bundled, released from a verified commit, masks its 30-minute token, and revokes it in its post step; it is full-SHA-pinned in the [verified authorized and rejected OIDC paths](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330), with no new Cargo dependency or stored secret |
+| GitHub-native Homebrew tap update authority | `MCPD-008A` | Adopted and live-verified | The separate tap owns a manual rehearsal/publish workflow; its read-only job authenticates the annotated immutable upstream source, provenance, checksums, package hash, and formula without executing upstream code, while only an approved publish-mode job receives the tap's short-lived `contents: write` `GITHUB_TOKEN` and may copy `Formula/mcp-doctor.rb`; the protected no-write [hosted rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455) passes, and no cross-repository PAT or source-repository tap write exists |
 | `proptest` or another property framework | `MCPD-009` / `MCPD-011` | Conditional | Adopt only if shrinking and generated invariant coverage materially improve deterministic authorized scenarios beyond bounded table-driven cases |
 | `cargo-fuzz` or another fuzz harness | `MCPD-010` / `MCPD-011` | Conditional diagnostic | Adopt only for an identified parser, framing, schema, or generator boundary with a finite corpus, timeout, artifact/redaction policy, and no external target |
 
@@ -859,8 +872,8 @@ evidence, and official proof.
 
 ## Open decisions
 
-No unresolved decision is needed by the current `MCPD-008` or planned
-`MCPD-008A`; the remaining entries belong to later milestones.
+No unresolved decision is needed by the completed M2 work; the remaining
+entries belong to later milestones.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
@@ -886,14 +899,14 @@ No unresolved decision is needed by the current `MCPD-008` or planned
 | RISK-08 | A passing report creates false confidence after skipped checks | High | Per-check performed/skipped state and non-ambiguous summary; any hidden skip blocks release | Mitigated for M1 by hosted human/JSON causal-skip and authorization journeys; new checks must preserve the invariant |
 | RISK-09 | Broad protocol, transport, and reporting scope delays a usable slice | High | M1 ends at passive `inspect`, M2 publishes it, and the adoption checkpoint gates all active and remote M3 scope; any M3 feature becoming an MVP prerequisite escalates | Mitigated by plan |
 | RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Mitigated for the first release: the preferred `mcp-doctor` crate identity is published under the exact EnjoyableWork source and metadata; future channel guidance must preserve the distinction |
-| RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` by byte-identical Cargo and Homebrew handoffs plus the successful ten-job verifier; every future release remains blocked on `MCPD-008A` |
+| RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and the repeat-release path by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, and successful channel verification; every future release must retain the same immutable-byte gates |
 | RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `MCPD-013` requires an enforced public ruleset, drift verifier, rejected-path exercises, and a bounded emergency process; any unverified bypass or destructive path blocks M4 | Deferred with M4 |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Deferred with M4 |
-| RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release used bounded manual downstream handoffs and removed and revoked its one-time credential; every later release is blocked on `MCPD-008A`, and full assurance remains `MCPD-016` |
+| RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; the completed repeat-release rehearsal proves exact OIDC and tap authority plus a clean credential inventory at the merged commits, while future drift blocks publication and full assurance remains `MCPD-016` |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `MCPD-018` binds every claim to exact version, scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Deferred with M4 |
 | RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, real-server trials, and the M2 checkpoint record unclear findings, false findings, time to value, and repeat use before expansion | M1 report sufficiency passes locally and hosted; real M2 adoption, false-finding, and repeat-use evidence remain open |
-| RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages pass locally and hosted; M2 must recheck before release and future revisions reopen the risk |
+| RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages passed locally and hosted before M2 release; future protocol revisions reopen the risk |
 | RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated locally by the MCPD-003 policy refinement; complete live update and supply-chain verification remains `MCPD-016` |
 
 ## Readiness and completion gates
@@ -949,8 +962,9 @@ The first M2 publication is complete only when the exact passive-MVP version is
 immutable, installs and passes its smoke journey through every advertised
 channel, and opens the dated non-sensitive adoption checkpoint. M2 closes only
 when `MCPD-008A` also proves the nonpublishing, least-privilege path required
-before any later tag. Publication proves availability and artifact integrity;
-it does not by itself prove adoption or authorize M3.
+before any later tag. Those gates passed on 2026-08-10, with durable evidence
+linked from the ticket board. Publication proves availability and artifact
+integrity; it does not by itself prove adoption or authorize M3.
 
 ### M4 enterprise assurance
 

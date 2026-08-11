@@ -108,11 +108,11 @@ was removed locally and confirmed revoked server-side after publication.
 
 ## Releases after v0.1.0
 
-The manual crates.io and tap handoffs above are the bounded first-publication
-procedure, not the intended permanent release process. `MCPD-008A` owns the
-transition after the first crate exists. Until its acceptance evidence is
-recorded, do not assume that pushing another tag publishes either downstream
-channel, and do not create another public version.
+The manual crates.io and tap handoffs above were the bounded first-publication
+procedure, not the permanent release process. The completed `MCPD-008A` path
+below governs every later version. Do not repeat the manual token or formula
+copy procedure, and do not create another public version unless these controls
+remain verified.
 
 The retained subsequent-release contract is:
 
@@ -131,9 +131,10 @@ The retained subsequent-release contract is:
    Homebrew bytes with the canonical GitHub assets, installs them on every
    represented native host, and runs the passive smoke journey.
 
-`MCPD-008A` must pass a nonpublishing end-to-end rehearsal, including rejected
-authorization and byte-mismatch cases, before any version after `v0.1.0` is
-tagged. The first later release confirms the retained path against public
+`MCPD-008A` passed the required nonpublishing end-to-end rehearsal, including
+rejected authorization and byte-mismatch cases, before any version after
+`v0.1.0` was allowed. [PROJECT.md](../PROJECT.md) records the exact live
+evidence. The first later release confirms the retained path against public
 channels; it does not authorize weakening these gates.
 
 ### GitHub-controlled sequence
@@ -216,9 +217,10 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    generalized verifier remains credential-free and all existing public
    channel bytes and installed passive smokes still pass.
 
-Record all four successful run links, the exact environment-policy readback,
-and the trusted-publisher readback in `PROJECT.md`. A workflow file or local
-test alone is not completion evidence.
+`PROJECT.md` records the initial four successful run links, exact
+environment-policy readback, and trusted-publisher readback. Repeat and record
+this rehearsal after any workflow, environment, publisher, or authority change;
+a workflow file or local test alone is not completion evidence.
 
 ### Credential inventory gate
 
