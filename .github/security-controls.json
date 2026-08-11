@@ -1,0 +1,90 @@
+{
+  "schema_version": "mcp-doctor.github-security-controls/v1",
+  "api_version": "2026-03-10",
+  "repository": "EnjoyableWork/mcp-doctor",
+  "repository_visibility": "public",
+  "organization_plan": "free",
+  "default_branch": "main",
+  "security_policy": {
+    "path": "SECURITY.md",
+    "private_reporting_url": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
+    "supported_release_lines": [
+      "0.2.x"
+    ],
+    "unsupported_release_lines": [
+      "0.1.x"
+    ],
+    "acknowledgement_business_days": 3,
+    "initial_assessment_calendar_days": 7,
+    "update_calendar_days": 14,
+    "coordinated_disclosure_target_days": 90
+  },
+  "controls": {
+    "vulnerability_alerts": true,
+    "automated_security_fixes": true,
+    "dependabot_security_updates": "enabled",
+    "private_vulnerability_reporting": true,
+    "code_scanning_default_setup": {
+      "state": "configured",
+      "languages": [
+        "actions",
+        "rust"
+      ],
+      "query_suite": "default",
+      "runner_type": "standard",
+      "schedule": "weekly",
+      "threat_model": "remote"
+    },
+    "secret_scanning": "enabled",
+    "secret_scanning_push_protection": "enabled",
+    "secret_scanning_non_provider_patterns": "disabled",
+    "secret_scanning_validity_checks": "disabled"
+  },
+  "clean_baseline": {
+    "require_readable_dependency_graph": true,
+    "require_successful_default_branch_codeql_analyses": [
+      "actions",
+      "rust"
+    ],
+    "require_completed_default_secret_backfill": true,
+    "require_zero_open_dependabot_alerts": true,
+    "require_zero_open_code_scanning_alerts": true,
+    "require_zero_open_secret_scanning_alerts": true
+  },
+  "unavailable_features": [
+    {
+      "feature": "secret_scanning_validity_checks",
+      "reason": "requires GitHub Secret Protection on an eligible paid organization plan"
+    },
+    {
+      "feature": "secret_scanning_non_provider_and_generic_patterns",
+      "reason": "requires GitHub Secret Protection on an eligible paid organization plan"
+    },
+    {
+      "feature": "ai_generic_secret_detection",
+      "reason": "requires GitHub Secret Protection on an eligible paid organization plan"
+    },
+    {
+      "feature": "delegated_push_protection_bypass",
+      "reason": "requires GitHub Secret Protection and an eligible reviewer boundary; neither exists for this single-maintainer GitHub Free organization"
+    },
+    {
+      "feature": "enterprise_public_leak_monitoring",
+      "reason": "requires GitHub Enterprise Cloud and is outside this repository baseline"
+    }
+  ],
+  "excluded_evidence": [
+    {
+      "surface": "partner_only_public_repository_secret_alerts",
+      "reason": "provider-routed alerts are not visible to repository administrators and cannot support this baseline"
+    },
+    {
+      "surface": "mcp_doctor_product_security_scanner",
+      "reason": "repository code and secret scanning do not implement or prove a general MCP security scanner"
+    },
+    {
+      "surface": "complete_m4_assurance_baseline",
+      "reason": "MCPD-014 is only one scoped input to the later MCPD-018 assessment"
+    }
+  ]
+}

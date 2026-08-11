@@ -60,6 +60,7 @@ fn release_identity_and_toolchain_are_exact() {
         "version = \"0.2.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
+        "\"/.github/security-controls.json\"",
         "\"/.github/rulesets/**\"",
         "\"/.github/workflows/*.yml\"",
         "\"/schemas/**\"",
@@ -633,7 +634,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Done and `MCPD-014` is Ready |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Done and `MCPD-014` is In progress |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -729,7 +730,7 @@ fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence()
 
     for contract in [
         "| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done |",
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Ready |",
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
         "### MCPD-013 completion evidence",
         "`MCPD-013` completed on 2026-08-11",
         "2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794",
@@ -776,6 +777,215 @@ fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence()
     }
 
     assert!(!exercise.contains("Status: pending"));
+}
+
+#[test]
+fn security_policy_defines_private_reporting_support_and_coordination() {
+    let security = repository_file("SECURITY.md");
+
+    for contract in [
+        "## Security contact and private reporting",
+        "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
+        "This is the project's recognized security contact and confidential reporting\nroute.",
+        "acknowledge a private report within 3 business days",
+        "initial assessment or status within 7 calendar days",
+        "update at least every 14 calendar days",
+        "not a service-level agreement",
+        "public disclosure within 90 days of\nacknowledgement",
+        "GitHub Security Advisory",
+        "request a CVE through GitHub when warranted",
+        "does not operate\na bug-bounty program",
+        "| `0.2.x` | Supported |",
+        "| `0.1.x` | Unsupported |",
+        "| `main` | Development only; no release or backport guarantee |",
+        "## Safe research boundary",
+        "Test only systems you own or are explicitly authorized to assess.",
+    ] {
+        assert!(
+            security.contains(contract),
+            "SECURITY.md should preserve the disclosure contract: {contract}"
+        );
+    }
+
+    for stale_or_unsafe in [
+        "There is no supported public release yet",
+        "will eventually connect to remote MCP endpoints",
+        "guaranteed remediation",
+    ] {
+        assert!(
+            !security.contains(stale_or_unsafe),
+            "SECURITY.md must not retain {stale_or_unsafe}"
+        );
+    }
+}
+
+#[test]
+fn security_control_projection_matches_dec_037() {
+    let canonical = repository_file(".github/security-controls.json");
+    let canonical: serde_json::Value =
+        serde_json::from_str(&canonical).expect("security controls should be valid JSON");
+
+    assert_eq!(
+        canonical["schema_version"],
+        "mcp-doctor.github-security-controls/v1"
+    );
+    assert_eq!(canonical["api_version"], "2026-03-10");
+    assert_eq!(canonical["repository"], "EnjoyableWork/mcp-doctor");
+    assert_eq!(canonical["repository_visibility"], "public");
+    assert_eq!(canonical["organization_plan"], "free");
+    assert_eq!(canonical["default_branch"], "main");
+    assert_eq!(
+        canonical["security_policy"],
+        serde_json::json!({
+            "path": "SECURITY.md",
+            "private_reporting_url": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
+            "supported_release_lines": ["0.2.x"],
+            "unsupported_release_lines": ["0.1.x"],
+            "acknowledgement_business_days": 3,
+            "initial_assessment_calendar_days": 7,
+            "update_calendar_days": 14,
+            "coordinated_disclosure_target_days": 90
+        })
+    );
+    assert_eq!(
+        canonical["controls"],
+        serde_json::json!({
+            "vulnerability_alerts": true,
+            "automated_security_fixes": true,
+            "dependabot_security_updates": "enabled",
+            "private_vulnerability_reporting": true,
+            "code_scanning_default_setup": {
+                "state": "configured",
+                "languages": ["actions", "rust"],
+                "query_suite": "default",
+                "runner_type": "standard",
+                "schedule": "weekly",
+                "threat_model": "remote"
+            },
+            "secret_scanning": "enabled",
+            "secret_scanning_push_protection": "enabled",
+            "secret_scanning_non_provider_patterns": "disabled",
+            "secret_scanning_validity_checks": "disabled"
+        })
+    );
+    assert_eq!(
+        canonical["clean_baseline"],
+        serde_json::json!({
+            "require_readable_dependency_graph": true,
+            "require_successful_default_branch_codeql_analyses": ["actions", "rust"],
+            "require_completed_default_secret_backfill": true,
+            "require_zero_open_dependabot_alerts": true,
+            "require_zero_open_code_scanning_alerts": true,
+            "require_zero_open_secret_scanning_alerts": true
+        })
+    );
+
+    let unavailable = canonical["unavailable_features"]
+        .as_array()
+        .expect("unavailable features should be an array")
+        .iter()
+        .map(|entry| {
+            entry["feature"]
+                .as_str()
+                .expect("feature should be a string")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        unavailable,
+        [
+            "secret_scanning_validity_checks",
+            "secret_scanning_non_provider_and_generic_patterns",
+            "ai_generic_secret_detection",
+            "delegated_push_protection_bypass",
+            "enterprise_public_leak_monitoring",
+        ]
+    );
+
+    let excluded = canonical["excluded_evidence"]
+        .as_array()
+        .expect("excluded evidence should be an array")
+        .iter()
+        .map(|entry| {
+            entry["surface"]
+                .as_str()
+                .expect("surface should be a string")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        excluded,
+        [
+            "partner_only_public_repository_secret_alerts",
+            "mcp_doctor_product_security_scanner",
+            "complete_m4_assurance_baseline",
+        ]
+    );
+}
+
+#[test]
+fn security_control_verifier_is_authenticated_bounded_and_non_disclosing() {
+    let verifier = repository_file("scripts/verify-security-controls.sh");
+
+    for contract in [
+        "GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api",
+        "umask 077",
+        "mktemp -d",
+        "trap cleanup EXIT",
+        ">\"$destination\" 2>/dev/null",
+        "contents/SECURITY.md?ref=$default_branch",
+        "private-vulnerability-reporting",
+        "code-scanning/default-setup",
+        "code-scanning/analyses?ref=refs/heads/$default_branch&tool_name=CodeQL&per_page=100",
+        "dependabot/alerts?state=open&per_page=1",
+        "code-scanning/alerts?state=open&per_page=1",
+        "secret-scanning/alerts?state=open&hide_secret=true&per_page=1",
+        "secret-scanning/scan-history",
+        "dependency-graph/sbom",
+        ".commit_sha == $sha",
+        "all(.backfill_scans[]; .status == \"completed\")",
+        "date=%s canonical_sha256=%s result=FAIL",
+        "date=%s canonical_sha256=%s result=PASS",
+    ] {
+        assert!(
+            verifier.contains(contract),
+            "security verifier should preserve {contract}"
+        );
+    }
+    for forbidden in ["set -x", "--verbose", "jq '.'", "hide_secret=false"] {
+        assert!(
+            !verifier.contains(forbidden),
+            "security verifier must not contain {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn project_records_the_scoped_mcpd_014_contract_without_a_baseline_claim() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
+        "### Accepted vulnerability-disclosure and repository-security policy",
+        "`DEC-037` fixes the `MCPD-014` contract.",
+        "Support only the latest published minor line, currently `0.2.x`.",
+        "within 3 business days",
+        "within 7 calendar days",
+        "every 14 calendar days",
+        "within 90 days of acknowledgement",
+        "default query suite, standard runner, weekly schedule, and remote threat model",
+        "Enable secret scanning and push protection.",
+        "emits only UTC date, canonical SHA-256, and `PASS` or `FAIL`",
+        "Do not add CodeQL or secret scanning to the `DEC-035` required ruleset in this ticket.",
+        "pre-activation gap record, not a clean baseline or achieved assurance result",
+        "Provider-routed partner alerts for public repositories are not\nvisible to repository administrators",
+        "does not prove all OSPS Level 1 controls",
+        "| DEC-037 | Support the latest release line through private coordinated disclosure and every entitled repository-security control | Accepted |",
+        "In progress: `DEC-037`, `SECURITY.md`, the canonical projection, and the verifier",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should preserve the scoped MCPD-014 contract: {contract}"
+        );
+    }
 }
 
 #[test]
