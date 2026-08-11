@@ -104,10 +104,15 @@ normalize_ruleset() {
           parameters: {
             allowed_merge_methods: (.parameters.allowed_merge_methods | sort),
             dismiss_stale_reviews_on_push: .parameters.dismiss_stale_reviews_on_push,
+            dismissal_restriction: {
+              allowed_actors: (.parameters.dismissal_restriction.allowed_actors | sort_by(.type, .id)),
+              enabled: .parameters.dismissal_restriction.enabled
+            },
             require_code_owner_review: .parameters.require_code_owner_review,
             require_last_push_approval: .parameters.require_last_push_approval,
             required_approving_review_count: .parameters.required_approving_review_count,
-            required_review_thread_resolution: .parameters.required_review_thread_resolution
+            required_review_thread_resolution: .parameters.required_review_thread_resolution,
+            required_reviewers: (.parameters.required_reviewers | sort_by(.reviewer.type, .reviewer.id))
           }
         }
       elif .type == "required_status_checks" then
@@ -154,10 +159,15 @@ normalize_rule_list() {
           parameters: {
             allowed_merge_methods: (.parameters.allowed_merge_methods | sort),
             dismiss_stale_reviews_on_push: .parameters.dismiss_stale_reviews_on_push,
+            dismissal_restriction: {
+              allowed_actors: (.parameters.dismissal_restriction.allowed_actors | sort_by(.type, .id)),
+              enabled: .parameters.dismissal_restriction.enabled
+            },
             require_code_owner_review: .parameters.require_code_owner_review,
             require_last_push_approval: .parameters.require_last_push_approval,
             required_approving_review_count: .parameters.required_approving_review_count,
-            required_review_thread_resolution: .parameters.required_review_thread_resolution
+            required_review_thread_resolution: .parameters.required_review_thread_resolution,
+            required_reviewers: (.parameters.required_reviewers | sort_by(.reviewer.type, .reviewer.id))
           }
         }
       elif .type == "required_status_checks" then
@@ -201,10 +211,12 @@ validate_ruleset_shape() {
       exact_keys([
         "allowed_merge_methods",
         "dismiss_stale_reviews_on_push",
+        "dismissal_restriction",
         "require_code_owner_review",
         "require_last_push_approval",
         "required_approving_review_count",
-        "required_review_thread_resolution"
+        "required_review_thread_resolution",
+        "required_reviewers"
       ])
     ) and
     (
@@ -263,20 +275,8 @@ live_ruleset_projection="$work_dir/live-ruleset.json"
 canonical_rules_projection="$work_dir/canonical-rules.json"
 effective_rules_projection="$work_dir/effective-rules.json"
 
-jq -S '{default_branch, merge_settings}' "$canonical_path" >"$canonical_repo_projection"
-jq -S '{
-  default_branch,
-  merge_settings: {
-    allow_squash_merge,
-    allow_merge_commit,
-    allow_rebase_merge,
-    allow_auto_merge,
-    delete_branch_on_merge,
-    allow_update_branch,
-    squash_merge_commit_title,
-    squash_merge_commit_message
-  }
-}' "$repo_path" >"$live_repo_projection"
+jq -S '{default_branch}' "$canonical_path" >"$canonical_repo_projection"
+jq -S '{default_branch}' "$repo_path" >"$live_repo_projection"
 
 normalize_ruleset "$canonical_ruleset_source" "$canonical_ruleset_projection"
 normalize_ruleset "$ruleset_path" "$live_ruleset_projection"

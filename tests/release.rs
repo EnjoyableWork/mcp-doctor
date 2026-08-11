@@ -695,8 +695,8 @@ fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
         "`required_approving_review_count` to `0`",
         "`Required CI` and `Required release preflight`",
         "Both aggregate jobs use `needs` with `always()`",
-        "GitHub omits bypass actors from credential-free REST readback",
-        "authenticated owner check must verify the exact empty list",
+        "GitHub omits repository merge settings and bypass actors from credential-free REST readback",
+        "authenticated owner check must verify the exact canonical merge projection and empty bypass list",
         "a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default",
         "Enable squash merge only",
         "Keep auto-merge and merge queue disabled",
@@ -704,6 +704,9 @@ fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
         "temporarily add only the repository-administrator role with `pull_request` bypass mode",
         "Never disable the ruleset, grant `always` bypass, push directly, delete `main`, or force-push.",
         "Required commit signing stays off.",
+        "| DEC-036 | Refine the `DEC-035` verification boundary to match GitHub's live observable fields | Accepted |",
+        "Credential-free readback verifies `default_branch` plus the configured and effective public rules",
+        "exact canonical merge settings and empty hidden bypass list",
         "no ruleset or legacy branch protection on `main`",
         "resolving this policy does not activate M4 early",
     ] {
@@ -840,10 +843,15 @@ fn main_protection_canonical_config_matches_dec_035() {
         serde_json::json!({
             "allowed_merge_methods": ["squash"],
             "dismiss_stale_reviews_on_push": false,
+            "dismissal_restriction": {
+                "allowed_actors": [],
+                "enabled": false
+            },
             "require_code_owner_review": false,
             "require_last_push_approval": false,
             "required_approving_review_count": 0,
-            "required_review_thread_resolution": true
+            "required_review_thread_resolution": true,
+            "required_reviewers": []
         })
     );
 
@@ -931,11 +939,32 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
             "public verifier must not contain {forbidden}"
         );
     }
+    for authenticated_only_field in [
+        "allow_squash_merge",
+        "allow_merge_commit",
+        "allow_rebase_merge",
+        "delete_branch_on_merge",
+    ] {
+        assert!(
+            !public.contains(authenticated_only_field),
+            "public verifier must not claim unauthenticated access to {authenticated_only_field}"
+        );
+    }
 
     for contract in [
         "GH_PROMPT_DISABLED=1 GH_PAGER=cat gh api",
+        ">\"$repository_path\" 2>/dev/null",
         ">\"$rulesets_path\" 2>/dev/null",
         ">\"$ruleset_path\" 2>/dev/null",
+        "allow_squash_merge",
+        "allow_merge_commit",
+        "allow_rebase_merge",
+        "allow_auto_merge",
+        "delete_branch_on_merge",
+        "allow_update_branch",
+        "squash_merge_commit_title",
+        "squash_merge_commit_message",
+        "cmp -s \"$canonical_repository_projection\" \"$live_repository_projection\"",
         "jq -e '.bypass_actors == []'",
         "date=%s canonical_sha256=%s result=FAIL",
         "date=%s canonical_sha256=%s result=PASS",
