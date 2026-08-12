@@ -465,7 +465,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
 fn project_records_mcpd_016_completion() {
     let project = repository_file("PROJECT.md");
     for contract in [
-        "`MCPD-016` is Done and `MCPD-017` is Ready",
+        "`MCPD-016` is Done and `MCPD-017` is In progress",
         "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
         "`DEC-040` fixes the `MCPD-016` boundary.",
         ".github/supply-chain-controls.json",
@@ -502,7 +502,7 @@ fn project_records_mcpd_016_completion() {
         "closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)",
         "evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39)",
         "corrected a\n  transposed recorded identifier before the final claim",
-        "`MCPD-017` is Ready but has not begun",
+        "`MCPD-017` is now In progress under the activation-only",
         "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
     ] {
         assert!(

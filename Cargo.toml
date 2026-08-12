@@ -13,6 +13,7 @@ publish = ["crates-io"]
 include = [
     "/.github/community-license-controls.json",
     "/.github/dependabot.yml",
+    "/.github/organization-controls.json",
     "/.github/pull_request_template.md",
     "/.github/security-controls.json",
     "/.github/supply-chain-controls.json",

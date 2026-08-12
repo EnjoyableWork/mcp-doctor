@@ -7,12 +7,12 @@ decisions, risks, and release gates.
 | --- | --- |
 | Document state | Active |
 | Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and JUnit-compatible projection pass local, hosted, immutable-release, and represented installed-channel evidence |
-| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016` is Done and `MCPD-017` is Ready |
-| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; and dated `MCPD-016` evidence proves review-only grouped dependency proposals, selected full-SHA Actions, secretless read-only untrusted workflows, tracked-artifact rejection, and authenticated immutable GitHub Release, Cargo, and Homebrew bytes without republishing them |
-| Current focus | Begin `MCPD-017` only with explicit owner authority for any live organization mutation or private recovery confirmation; otherwise retain the completed repository and supply-chain controls |
+| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016` is Done and `MCPD-017` is In progress |
+| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence proves its supply-chain boundary; and `DEC-041` now fixes the organization-access policy without claiming that its pending live application, private recovery exercise, or final verifier has passed |
+| Current focus | Land the `DEC-041` activation contract, then obtain separate explicit owner authority before applying live organization, application, credential, deploy-key, or private recovery changes and binding verified exact-`main` evidence |
 | Public release | `mcp-doctor` `v0.2.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-12 |
-| Next review trigger | `MCPD-017` activation; any public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
+| Next review trigger | Any organization authentication, member, owner, billing-manager, invitation, base-permission, member-privilege, repository-creation, application, OAuth, personal-access-token, organization credential, in-scope repository credential, deploy-key, recovery, public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -1304,7 +1304,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done | `MCPD-013` | The accepted [security policy](SECURITY.md), [canonical control projection](.github/security-controls.json), and [non-disclosing verifier](scripts/verify-security-controls.sh) define the supported-version, response, disclosure, entitled-control, limitation, and clean-baseline contract; protected [PR 20](https://github.com/EnjoyableWork/mcp-doctor/pull/20), [PR 21](https://github.com/EnjoyableWork/mcp-doctor/pull/21), and final [closure PR 22](https://github.com/EnjoyableWork/mcp-doctor/pull/22), representative and exact-`main` CodeQL, both exact-`main` aggregate workflows, and the final scoped verifier pass provide the dated completion evidence below |
 | MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done | `MCPD-014` | The [canonical projection](.github/community-license-controls.json), [public guide](docs/project-scope.md), [credential-free verifier](scripts/verify-community-license.sh), [tap PR 3](https://github.com/EnjoyableWork/homebrew-tap/pull/3), protected [source PR 23](https://github.com/EnjoyableWork/mcp-doctor/pull/23), exact-`main` hosted gates, and the dated pass below prove recognized public workflows, complete repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence with explicit auxiliary-asset limitations |
 | MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Done | `MCPD-015` | Protected [activation PR 25](https://github.com/EnjoyableWork/mcp-doctor/pull/25), rejected [Cargo proposal 26](https://github.com/EnjoyableWork/mcp-doctor/pull/26), accepted [Action proposal 27](https://github.com/EnjoyableWork/mcp-doctor/pull/27), disposable fork [PR 29](https://github.com/EnjoyableWork/mcp-doctor/pull/29), [closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38), and [evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39) bind the exact-`main` CI, CodeQL, release preflight, live readbacks, artifact negatives, and authenticated operator result below without auto-merge, stored secrets, or changed published bytes |
-| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready | `MCPD-016` | Strong MFA, lowest-default access, deliberate grants and repository creation, scoped applications and automation, explicit owner-continuity decision, private recovery exercise, and a non-disclosing live verifier pass |
+| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | In progress | `MCPD-016` | `DEC-041`, the activation-only [canonical projection](.github/organization-controls.json), [authenticated verifier](scripts/verify-organization-controls.sh), and [credential-free negative rehearsal](scripts/rehearse-organization-controls.sh) fix and test the selected boundary; live member privileges, application scope, PAT policy, tap deploy-key removal, exact reviewed inventory, private recovery, and exact-main evidence remain explicit owner-gated completion work |
 | MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed | `MCPD-017` | Every selected OSPS Level 1 control has public evidence or exact applicability reasoning; the official assessment and badge are verified on exact `main`; exact M3 artifacts receive a correctly scoped SLSA Build L2 evaluation; and claim-review and removal triggers are documented |
 
 ## Dependency and testing-tool introduction plan
@@ -2117,8 +2117,64 @@ binds the exact fork identity found by the completion audit. Both may merge
 only after both required aggregates and CodeQL pass. PR 39's public timeline is
 the durable record for final exact-`main` CI, release preflight, CodeQL,
 protection, security, credential-free community/license, and supply-chain
-operator readbacks. `MCPD-017` is Ready but has not begun, and no
-organization-access or private-recovery claim is implied.
+operator readbacks. `MCPD-017` is now In progress under the activation-only
+`DEC-041` contract, and no achieved organization-access or private-recovery
+claim is implied.
+
+### Accepted organization access, credential, continuity, and recovery contract
+
+`DEC-041` resolves `OPEN-10` and fixes the `MCPD-017` boundary. The owner
+accepted choices `1B`, `2A`, and `3A` on 2026-08-12: retain one real owner
+rather than add a nominal privileged account; move organization administration
+and automation away from classic personal access tokens toward reviewed
+short-lived authority with at most 30-day exceptional fine-grained access; and
+exercise a real private recovery path every six months. The checked-in
+`.github/organization-controls.json` is the non-sensitive canonical projection,
+`scripts/verify-organization-controls.sh` is the authenticated exact-main
+verifier, and `scripts/rehearse-organization-controls.sh` proves its important
+failure and non-disclosure paths without a credential.
+
+| Choice | Accepted policy |
+| --- | --- |
+| Scope | Authentication, membership, member privileges, installed applications, personal-access-token policy, organization Actions credentials, ownership continuity, and recovery are organization-wide controls. Repository-specific credential assertions cover the `mcp-doctor` source repository and its `homebrew-tap` distribution repository. A separate repository's project-specific secret or variable is not silently relabeled as `mcp-doctor` assurance, but an organization-wide credential or application that can reach either in-scope repository remains in scope. Private repository names are never public evidence. |
+| Strong MFA | Keep organization 2FA required and permit only GitHub's documented [secure methods](https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-two-factor-authentication-for-your-organization/requiring-two-factor-authentication-in-your-organization). Require zero current members, outside collaborators, or billing managers with disabled or insecure 2FA. GitHub's API proves the organization requirement plus aggregate disabled/insecure member and outside-collaborator counts; because it does not expose the secure-method enforcement switch or billing-manager factor state, the owner separately confirms those UI-only aggregates without recording an identity or factor inventory. Any disabled enforcement or nonconforming account fails. |
+| Membership and repository authority | Keep exact base repository permission `none`; add membership only through an owner-reviewed manual grant; give the lowest role required for an identified task; and retain no non-owner direct administrator. With one owner selected, any added member, owner, outside collaborator, billing manager, or pending invitation is decision drift until deliberately reviewed. Non-owners cannot create repositories, Pages sites, or teams; invite outside collaborators; delete issues or repositories; change repository visibility; or fork private repositories. Organization owners remain capable of administration, so the policy is an auditable owner boundary rather than a claim of technical owner incapacity. |
+| Installed applications | Enable GitHub's [owner-only installation restriction](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/limiting-oauth-app-and-github-app-access-requests-and-installations); requests may be submitted but grant no authority until owner review. Every installation uses selected repositories, never automatic access to every current and future repository. A private review records the exact stable App identity, requested permissions, selected repositories, suspension state, need, owner decision, and normalized inventory SHA-256. The live inventory must match that private digest and the public aggregate approved count. A new App, permission, repository selection, all-repository grant, suspension, removal, or changed need fails for review. Neither public configuration nor output contains the digest, an App name, or a private repository name, so it cannot confirm guesses about the private inventory. |
+| Automation credentials | Normal automation uses only job-scoped `GITHUB_TOKEN`, OIDC, or one-hour GitHub App installation tokens. Under GitHub's [organization PAT policies](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/setting-a-personal-access-token-policy-for-your-organization), block classic PAT access to the organization. A fine-grained PAT is a manually approved exceptional interactive credential only: exact repositories, minimum permissions, at most 30 days, no unattended automation, and revocation when the task ends. An approved user-bound OAuth token may support interactive administration under the owner's strong MFA. Organization Actions/Dependabot secrets, variables, webhooks, and self-hosted runners remain empty. The source and tap retain no Actions, Codespaces, Dependabot, or environment secret, variable, deploy key, or webhook; this preserves the already accepted short-lived release route. Separate-project credentials require their own private project review and cannot reach the source or tap through an organization-wide grant. |
+| Owner continuity | Retain one active human owner and prohibit a shared, unattended, or nominal owner account. This deliberately accepts the residual availability risk identified by GitHub's [two-owner continuity guidance](https://docs.github.com/en/organizations/managing-peoples-access-to-your-organization-with-roles/maintaining-ownership-continuity-for-your-organization): the organization can become unavailable when that owner is unreachable. A genuinely trusted active second operator triggers a new decision rather than an automatic privilege grant. The exact aggregate owner count and accepted residual-risk assertion are rechecked without publishing identity. |
+| Recovery | Every six months, and after an owner or authentication-factor change, the owner privately exercises an independent organization-account recovery path; GitHub's [account-recovery policy](https://docs.github.com/en/site-policy/other-site-policies/github-account-recovery-policy) makes existing recovery methods the decisive boundary when 2FA access is lost. If single-use material is consumed, rotate it before recording success. Evidence contains only date, aggregate owner count, scope, and `PASS`; identities, factor inventory, and recovery material are prohibited. Missing, failed, future-dated, older-than-184-day, or merely preparedness-only evidence fails. The verifier consumes a mode-private aggregate owner attestation and deletes its temporary API projections on exit. |
+| Verification and maintenance | The canonical file stays in activation state and cannot pass until the reviewed aggregate App count and latest recovery date replace their explicit nulls; the exact App digest remains only in the private attestation. The live verifier binds a clean local exact `main`, uses direct GitHub API `2026-03-10` requests with no ambient proxy or trust override, enforces finite per-response, request-count, connect, request, total-time, repository, installation, collaborator, and environment limits, compares all API-observable values and in-scope credential counts, rejects a classic operator token, and requires a mode-private fresh confirmation for the current operator credential plus only the named UI/private limitations. It emits only UTC date, canonical SHA-256, source SHA, and `PASS` or `FAIL`. CI runs only synthetic fixtures: fixture output is explicitly labeled `mode=fixture` and bound to a non-main sentinel SHA, while insecure MFA, broad defaults or member privileges, all-repository or changed Apps, classic PAT use, organization secrets, a tap deploy key, and missing or stale recovery all fail without exposing the synthetic private identifier. Review every 90 days and after any listed control changes. |
+
+The 2026-08-12 read-only activation audit found meaningful existing strengths:
+organization 2FA is required; no current member or outside collaborator appeared
+in either the disabled-2FA or insecure-2FA filters; base repository permission is
+`none`; member repository creation is disabled; and there is one owner, no
+outside collaborator, no pending invitation, and no non-owner direct
+administrator. Organization and in-scope repository Actions and Dependabot
+secret inventories are empty, there is no organization runner or webhook, and
+the source repository has no in-scope stored credential.
+
+The same audit found completion blockers. Several future-member privileges
+remain enabled. Four installed Apps currently cover all repositories, three
+have write permissions, and the exact selected-repository inventory has not yet
+been owner-approved. The current operator credential is a classic PAT. The tap
+retains one write-capable deploy key even though its public publication workflow
+uses only the job-scoped `GITHUB_TOKEN` and contains no deploy-key reference.
+The secure-method switch, App-installation authority, OAuth restriction, token
+policies, billing-manager aggregate, and recovery operation require private UI
+confirmation. One environment secret on the separately classified public
+product and one variable on a private repository are outside the
+repository-specific `mcp-doctor` claim; neither is treated as permission to
+ignore any organization-wide reach.
+
+No live setting, installation, credential, key, or recovery path changed during
+decision activation. The canonical lifecycle, App identity, and recovery date
+therefore remain deliberately incomplete, the live verifier fails closed, and
+`MCPD-017` remains In progress. Applying a live change, deleting the tap key,
+changing the operator credential, or confirming private recovery requires a
+separate explicit owner authorization. This accepted policy is not an achieved
+OSPS result, complete M4 baseline, certification, regulatory-compliance claim,
+or assurance statement about a separate product.
 
 ### OSPS Level 1 planning control map
 
@@ -2213,29 +2269,24 @@ evidence, and official proof.
 | DEC-038 | Refine the `MCPD-014` clean baseline to GitHub Free's observable security surfaces | Accepted | 2026-08-11 | Require exact-main successful CodeQL categories for Actions and Rust plus empty repository-visible dependency, code, and value-hidden secret alert responses; name Advanced-Security-only secret-scan history and provider-only alerts as exclusions, because an enabled protection or empty visible-alert response cannot honestly attest an unavailable backfill-completion or provider-routed surface |
 | DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted | 2026-08-12 | Inventory every public organization repository; keep `mcp-doctor` community and defect policy canonical in its source repository; make `homebrew-tap` delegate the in-scope formula surface to it; require reachable HTTPS-only official channels plus exact MIT source, Cargo package, native archive, and formula evidence; retain the immutable SPDX `NOASSERTION` limitation; and fail a bounded credential-free verifier on drift without beginning `MCPD-016` supply-chain work |
 | DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted | 2026-08-12 | Group Cargo and Action version and security proposals without merge authority; require the complete dependency review and exact graph; allow only inventoried full-SHA Actions; keep pull-request code on secretless read-only hosted jobs; fetch standalone executables only by reviewed digest; reject generated executables and unreviewable binary source artifacts; and authenticate immutable `v0.2.0`, Cargo, and Homebrew equality without changing published bytes |
+| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted | 2026-08-12 | Retain one real human owner without adding a nominal privileged account; require manual least-privilege grants, owner-only selected-repository Apps, job tokens/OIDC/App installation tokens for normal automation, blocked classic PATs, and owner-approved exact-scope fine-grained PAT exceptions lasting at most 30 days; privately exercise independent recovery every six months and after owner or factor changes; and publish only aggregate non-sensitive verifier evidence |
 
 ## Open decisions
 
 `OPEN-04` through `OPEN-06` are accepted as `DEC-028` through `DEC-030`,
 `DEC-031` records the implemented `MCPD-011` generation boundary, `OPEN-07` is
-accepted as `DEC-032`, and `OPEN-08` and `OPEN-09` are accepted as `DEC-034`
-and `DEC-035`. `DEC-033` separately records the dynamic comparative evaluation
-method, and `DEC-036` refines only the live-verification boundary discovered
-during `MCPD-013`. `DEC-037` records the completed `MCPD-014` disclosure and
-security-control contract, and `DEC-038` narrows only its live verification to
-the surfaces GitHub actually exposes on the current plan rather than treating
-an unavailable history endpoint as a pass. `DEC-039` fixes the active
-community, repository, channel, and license boundary, while `DEC-040` fixes the
-active dependency, automation, artifact, and distribution supply-chain
-boundary. Neither later decision widens the completed security baseline or
-constitutes the complete M4 assessment.
-Resolution makes an owning future ticket ready once its predecessor passes; it
-does not claim that proposed behavior already exists. The remaining entry
-belongs to its listed later ticket.
+accepted as `DEC-032`, `OPEN-08` and `OPEN-09` are accepted as `DEC-034` and
+`DEC-035`, and `OPEN-10` is accepted as `DEC-041`. `DEC-033` separately records
+the dynamic comparative evaluation method. `DEC-036` and `DEC-038` refine live
+verification boundaries discovered during `MCPD-013` and `MCPD-014` without
+weakening their selected controls. `DEC-037`, `DEC-039`, and `DEC-040` record
+the completed disclosure/security, community/license, and supply-chain
+contracts. None of these decisions constitutes the complete M4 assessment or
+claims that pending `MCPD-017` live controls and private recovery evidence have
+passed.
 
-| ID | Decision needed | Needed by | Default if unresolved |
-| --- | --- | --- | --- |
-| OPEN-10 | Organization membership, application, automation-credential, owner-continuity, and private recovery boundary | `MCPD-017` | Lowest default access, deliberate grants, strong MFA, scoped automation, explicit residual-risk acceptance, and non-disclosing recovery evidence |
+There are no unresolved open decisions. A new material choice must receive a
+new `OPEN-*` identifier rather than silently changing an accepted decision.
 
 ## Risk register
 
@@ -2255,7 +2306,7 @@ belongs to its listed later ticket.
 | RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Mitigated for the 2026-08-11 `MCPD-013` scope by the active public ruleset, canonical merge settings, normal protected merge, rejected direct/deletion/non-fast-forward paths, closed emergency exercise, post-removal gates, credential-free projection pass, and non-disclosing empty-bypass pass. An administrator can still change repository policy; ruleset, required-context, merge-setting, administrator-boundary, or GitHub-capability drift reopens the risk and requires both verifiers and, where applicable, a new exercise |
 | RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Mitigated for the scoped 2026-08-11 `MCPD-014` surfaces by the recognized policy and private route, enabled entitled dependency and secret-prevention controls, representative and exact-`main` CodeQL, zero open repository-visible alerts, and non-disclosing pass. A public sensitive report, hidden finding, supported-line or policy drift, disabled or changed control, failed exact-`main` analysis, entitlement change, newly observable surface, or stale baseline reopens the risk; scan-history, provider-only, paid-feature, product-scanner, and complete-M4 evidence remain explicitly outside this result |
 | RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | Mitigated for the dated `MCPD-016` scope by live selected full-SHA enforcement, the closed Action inventory, digest-authenticated standalone tooling, a secretless read-only fork/write negative, tracked-artifact negatives, exact-main hosted gates, and authenticated immutable GitHub Release, Cargo, and Homebrew equality. Any selected-Action, permission, secret, workflow, tool, artifact, authority, attestation, release, package, tap, or formula drift reopens the risk and blocks publication. |
-| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
+| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `DEC-041` accepts the documented single-owner residual risk and fixes strong MFA, lowest access, application and credential scope, and private recovery requirements; `MCPD-017` remains blocked from completion until the live controls, reviewed App inventory, short-lived operator authority, tap deploy-key removal, and fresh private recovery exercise pass without sensitive disclosure | Policy accepted; activation implementation in progress |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `DEC-034` locks exact version and proof routes and makes drift a stop-and-decide gate; `MCPD-018` binds every claim to exact scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Policy resolved; proof remains deferred with M4 |
 | RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, maintainer trials, and voluntary feedback record unclear findings, false findings, time to value, and repeat use | M1 report sufficiency passes locally and hosted; the checkpoint closed with zero independent reports and no adoption claim, while future feedback may reprioritize later product work |
 | RISK-18 | Latest-only protocol support excludes too much of the reachable ecosystem for a useful first release | High | `DEC-024` requires a controlled official/independent matrix spanning at least two languages: complete selected current-revision success permits broad positioning, narrower credible reach requires readiness/migration positioning and a separate compatibility ticket, and no credible independent pass blocks completion without silently adding legacy behavior | Four selected current-revision servers across four languages passed locally and hosted before M2 release; future protocol revisions reopen the risk |

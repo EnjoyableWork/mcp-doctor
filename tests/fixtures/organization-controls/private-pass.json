@@ -1,0 +1,38 @@
+{
+  "schema_version": "mcp-doctor.github-organization-private-attestation/v1",
+  "organization": "EnjoyableWork",
+  "observed_on": "2000-01-01",
+  "application_inventory": {
+    "installation_count": 1,
+    "inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "reviewed": true
+  },
+  "assertions": {
+    "secure_two_factor_methods_enforced": true,
+    "billing_manager_count": 0,
+    "billing_managers_use_secure_two_factor_methods": true,
+    "github_app_installation_restricted_to_owners": true,
+    "app_access_requests_receive_owner_review": true,
+    "oauth_app_access_restrictions_enabled": true,
+    "classic_personal_access_token_access_blocked": true,
+    "fine_grained_personal_access_token_approval_required": true,
+    "fine_grained_personal_access_token_maximum_lifetime_days": 30,
+    "operator_credential_reviewed_for_current_verification": true,
+    "application_inventory_reviewed": true,
+    "repository_credential_inventory_reviewed": true,
+    "single_owner_residual_risk_accepted": true,
+    "no_shared_or_unattended_human_accounts": true,
+    "recovery_exercise_passed": true,
+    "recovery_material_rotated_if_consumed": true,
+    "identities_or_recovery_material_recorded": false
+  },
+  "recovery": {
+    "exercised_on": "2000-01-01",
+    "owner_count": 1,
+    "scope": "organization_account_recovery",
+    "result": "PASS",
+    "independent_path_succeeded": true,
+    "recovery_material_rotated_if_consumed": true,
+    "identities_or_recovery_material_recorded": false
+  }
+}

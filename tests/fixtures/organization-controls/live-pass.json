@@ -1,0 +1,83 @@
+{
+  "source_sha": "1111111111111111111111111111111111111111",
+  "organization": {
+    "login": "EnjoyableWork",
+    "two_factor_requirement_enabled": true,
+    "default_repository_permission": "none",
+    "member_privileges": {
+      "members_can_create_repositories": false,
+      "members_can_create_public_repositories": false,
+      "members_can_create_private_repositories": false,
+      "members_can_create_internal_repositories": false,
+      "members_can_create_pages": false,
+      "members_can_create_public_pages": false,
+      "members_can_create_private_pages": false,
+      "members_can_create_teams": false,
+      "members_can_delete_issues": false,
+      "members_can_delete_repositories": false,
+      "members_can_change_repo_visibility": false,
+      "members_can_invite_outside_collaborators": false,
+      "members_can_fork_private_repositories": false
+    }
+  },
+  "membership": {
+    "members": 1,
+    "owners": 1,
+    "outside_collaborators": 0,
+    "pending_invitations": 0,
+    "members_2fa_disabled": 0,
+    "members_2fa_insecure": 0,
+    "outside_2fa_disabled": 0,
+    "outside_2fa_insecure": 0,
+    "nonowner_direct_admin_identities": 0
+  },
+  "applications": {
+    "inventory": [
+      {
+        "app_id": 101,
+        "app_slug": "sentinel-private-application",
+        "permissions": {
+          "contents": "read",
+          "metadata": "read"
+        },
+        "repositories": [
+          "EnjoyableWork/mcp-doctor"
+        ],
+        "repository_selection": "selected",
+        "suspended": false
+      }
+    ]
+  },
+  "organization_credentials": {
+    "actions_secrets": 0,
+    "actions_variables": 0,
+    "dependabot_secrets": 0,
+    "webhooks": 0,
+    "self_hosted_runners": 0
+  },
+  "repositories": [
+    {
+      "repository": "EnjoyableWork/mcp-doctor",
+      "actions_secrets": 0,
+      "actions_variables": 0,
+      "codespaces_secrets": 0,
+      "dependabot_secrets": 0,
+      "environment_secrets": 0,
+      "deploy_keys": 0,
+      "write_deploy_keys": 0,
+      "webhooks": 0
+    },
+    {
+      "repository": "EnjoyableWork/homebrew-tap",
+      "actions_secrets": 0,
+      "actions_variables": 0,
+      "codespaces_secrets": 0,
+      "dependabot_secrets": 0,
+      "environment_secrets": 0,
+      "deploy_keys": 0,
+      "write_deploy_keys": 0,
+      "webhooks": 0
+    }
+  ],
+  "operator_credential_type": "oauth_app_token"
+}
