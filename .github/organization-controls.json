@@ -1,5 +1,5 @@
 {
-  "schema_version": "mcp-doctor.github-organization-controls/v1",
+  "schema_version": "mcp-doctor.github-organization-controls/v2",
   "lifecycle": "activation",
   "api_version": "2026-03-10",
   "reviewed_on": "2026-08-12",
@@ -53,8 +53,21 @@
       "members_can_delete_issues": false,
       "members_can_delete_repositories": false,
       "members_can_change_repo_visibility": false,
-      "members_can_invite_outside_collaborators": false,
       "members_can_fork_private_repositories": false
+    },
+    "outside_collaborator_invitations": {
+      "required_authority": "owners_only",
+      "native_restriction_availability": "github_enterprise_cloud_only",
+      "observed_organization_plan": "free",
+      "observed_members_can_invite_outside_collaborators": true,
+      "compensating_control": "all_repository_administrators_are_organization_owners",
+      "recheck_triggers": [
+        "organization_plan",
+        "members_can_invite_outside_collaborators",
+        "member_or_owner_count",
+        "outside_collaborator_or_pending_invitation_count",
+        "non_owner_direct_admin_identity_count"
+      ]
     }
   },
   "installed_applications": {

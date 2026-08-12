@@ -202,7 +202,7 @@ if ! jq -e '
     "scope",
     "verification"
   ] and
-  .schema_version == "mcp-doctor.github-organization-controls/v1" and
+  .schema_version == "mcp-doctor.github-organization-controls/v2" and
   (.lifecycle == "activation" or .lifecycle == "verified") and
   .api_version == "2026-03-10" and
   (.reviewed_on | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")) and
@@ -242,6 +242,7 @@ if ! jq -e '
   .authentication.factor_inventory_private == true and
   .access.exact_member_count == 1 and
   .access.exact_owner_count == 1 and
+  .access.exact_member_count == .access.exact_owner_count and
   .access.outside_collaborator_count == 0 and
   .access.pending_invitation_count == 0 and
   .access.default_repository_permission == "none" and
@@ -259,8 +260,21 @@ if ! jq -e '
     "members_can_delete_issues": false,
     "members_can_delete_repositories": false,
     "members_can_change_repo_visibility": false,
-    "members_can_invite_outside_collaborators": false,
     "members_can_fork_private_repositories": false
+  } and
+  .access.outside_collaborator_invitations == {
+    "required_authority": "owners_only",
+    "native_restriction_availability": "github_enterprise_cloud_only",
+    "observed_organization_plan": "free",
+    "observed_members_can_invite_outside_collaborators": true,
+    "compensating_control": "all_repository_administrators_are_organization_owners",
+    "recheck_triggers": [
+      "organization_plan",
+      "members_can_invite_outside_collaborators",
+      "member_or_owner_count",
+      "outside_collaborator_or_pending_invitation_count",
+      "non_owner_direct_admin_identity_count"
+    ]
   } and
   (.installed_applications | keys) == [
     "access_requests",
@@ -1007,6 +1021,7 @@ else
         source_sha: $source_sha,
         organization: {
           login: $organization[0].login,
+          plan: $organization[0].plan.name,
           two_factor_requirement_enabled:
             $organization[0].two_factor_requirement_enabled,
           default_repository_permission:
@@ -1024,9 +1039,12 @@ else
               members_can_delete_issues,
               members_can_delete_repositories,
               members_can_change_repo_visibility,
-              members_can_invite_outside_collaborators,
               members_can_fork_private_repositories
-            })
+            }),
+          outside_collaborator_invitations: {
+            observed_members_can_invite_outside_collaborators:
+              $organization[0].members_can_invite_outside_collaborators
+          }
         },
         membership: {
           members: ($members[0] | length),
@@ -1072,11 +1090,17 @@ if ! jq -e \
   --arg approved_inventory_sha "${organization_approved_application_inventory_sha}" '
     (.source_sha | test("^[0-9a-f]{40}$")) and
     .organization.login == $canonical[0].organization and
+    .organization.plan ==
+      $canonical[0].access.outside_collaborator_invitations.observed_organization_plan and
     .organization.two_factor_requirement_enabled ==
       $canonical[0].authentication.organization_two_factor_authentication_required and
     .organization.default_repository_permission ==
       $canonical[0].access.default_repository_permission and
     .organization.member_privileges == $canonical[0].access.member_privileges and
+    .organization.outside_collaborator_invitations == {
+      "observed_members_can_invite_outside_collaborators":
+        $canonical[0].access.outside_collaborator_invitations.observed_members_can_invite_outside_collaborators
+    } and
     .membership == {
       "members": $canonical[0].access.exact_member_count,
       "owners": $canonical[0].access.exact_owner_count,

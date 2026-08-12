@@ -2,6 +2,7 @@
   "source_sha": "1111111111111111111111111111111111111111",
   "organization": {
     "login": "EnjoyableWork",
+    "plan": "free",
     "two_factor_requirement_enabled": true,
     "default_repository_permission": "none",
     "member_privileges": {
@@ -16,8 +17,10 @@
       "members_can_delete_issues": false,
       "members_can_delete_repositories": false,
       "members_can_change_repo_visibility": false,
-      "members_can_invite_outside_collaborators": false,
       "members_can_fork_private_repositories": false
+    },
+    "outside_collaborator_invitations": {
+      "observed_members_can_invite_outside_collaborators": true
     }
   },
   "membership": {

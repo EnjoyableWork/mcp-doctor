@@ -24,7 +24,7 @@ fn canonical_projection_preserves_the_accepted_activation_boundary() {
 
     assert_eq!(
         controls["schema_version"],
-        "mcp-doctor.github-organization-controls/v1"
+        "mcp-doctor.github-organization-controls/v2"
     );
     assert_eq!(controls["lifecycle"], "activation");
     assert_eq!(controls["api_version"], "2026-03-10");
@@ -58,15 +58,33 @@ fn canonical_projection_preserves_the_accepted_activation_boundary() {
     assert_eq!(access["default_repository_permission"], "none");
     assert_eq!(access["manual_permission_assignment_required"], true);
     assert_eq!(access["non_owner_direct_admin_identity_count"], 0);
+    assert_eq!(access["exact_member_count"], access["exact_owner_count"]);
     let member_privileges = access["member_privileges"]
         .as_object()
         .expect("member privileges should be an object");
-    assert_eq!(member_privileges.len(), 13);
+    assert_eq!(member_privileges.len(), 12);
     assert!(
         member_privileges
             .values()
             .all(|value| value == &json!(false)),
-        "every non-owner member privilege must remain disabled"
+        "every GitHub Free-configurable non-owner member privilege must remain disabled"
+    );
+    assert_eq!(
+        access["outside_collaborator_invitations"],
+        json!({
+            "required_authority": "owners_only",
+            "native_restriction_availability": "github_enterprise_cloud_only",
+            "observed_organization_plan": "free",
+            "observed_members_can_invite_outside_collaborators": true,
+            "compensating_control": "all_repository_administrators_are_organization_owners",
+            "recheck_triggers": [
+                "organization_plan",
+                "members_can_invite_outside_collaborators",
+                "member_or_owner_count",
+                "outside_collaborator_or_pending_invitation_count",
+                "non_owner_direct_admin_identity_count"
+            ]
+        })
     );
 
     let applications = &controls["installed_applications"];
@@ -182,7 +200,7 @@ fn canonical_projection_preserves_the_accepted_activation_boundary() {
 }
 
 #[test]
-fn project_resolves_open_10_without_claiming_live_completion() {
+fn project_records_open_10_and_open_11_without_claiming_live_completion() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
@@ -190,20 +208,24 @@ fn project_resolves_open_10_without_claiming_live_completion() {
         "### Accepted organization access, credential, continuity, and recovery contract",
         "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
         "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",
+        "| DEC-042 | Resolve `OPEN-11` when GitHub Free cannot restrict outside-collaborator invitations to owners | Accepted |",
         "`OPEN-10` is accepted as `DEC-041`",
+        "`OPEN-11` is accepted as",
         "There are no unresolved open decisions.",
-        "No live setting, installation, credential, key, or recovery path changed during",
+        "The owner then explicitly authorized the staged live activation.",
+        "The remaining outside-collaborator invitation field is the GitHub",
         "`MCPD-017` remains In progress",
         "| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency",
-        "Policy accepted; activation implementation in progress",
+        "remaining activation is in progress",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve the OPEN-10 resolution: {contract}"
+            "PROJECT.md should preserve the OPEN-10 and OPEN-11 resolutions: {contract}"
         );
     }
     for stale_or_premature in [
         "| OPEN-10 |",
+        "| OPEN-11 |",
         "`MCPD-017` is Ready but has not begun",
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready |",
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Done |",
@@ -240,6 +262,8 @@ fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
         "orgs/${organization_name}/members?filter=2fa_insecure",
         "orgs/${organization_name}/installations?per_page=100",
         "approved_inventory_location",
+        "outside_collaborator_invitations",
+        "observed_organization_plan",
         "operator_credential_reviewed_for_current_verification",
         "classic_personal_access_token",
         "result=FAIL",
@@ -269,6 +293,9 @@ fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
         "an insecure MFA member",
         "a broad default repository permission",
         "a broad member privilege",
+        "an organization plan change",
+        "an outside-collaborator invitation setting change",
+        "a non-owner repository administrator",
         "an all-repository application",
         "application inventory drift",
         "a classic personal access token",
