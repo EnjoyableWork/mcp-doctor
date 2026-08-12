@@ -179,7 +179,7 @@
         "classification": "software_archive",
         "license_evidence": {
           "kind": "embedded_file",
-          "member": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu/LICENSE"
+          "member": "LICENSE"
         }
       },
       {
@@ -200,7 +200,7 @@
         "classification": "software_archive",
         "license_evidence": {
           "kind": "embedded_file",
-          "member": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu/LICENSE"
+          "member": "LICENSE"
         }
       },
       {
