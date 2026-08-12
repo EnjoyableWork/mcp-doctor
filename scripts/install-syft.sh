@@ -260,14 +260,15 @@ LICENSE
 README.md
 syft'
 syft_observed_entries="$(
-  env -u GZIP -u TAR_OPTIONS LC_ALL=C tar -tzf "$syft_download"
+  env -u GZIP -u TAR_OPTIONS COPYFILE_DISABLE=1 LC_ALL=C \
+    tar -tzf "$syft_download"
 )"
 if [[ "$syft_observed_entries" != "$syft_expected_entries" ]]; then
   printf 'Syft archive layout is not the reviewed layout\n' >&2
   exit 1
 fi
 
-env -u GZIP -u TAR_OPTIONS LC_ALL=C \
+env -u GZIP -u TAR_OPTIONS COPYFILE_DISABLE=1 LC_ALL=C \
   tar -xzf "$syft_download" -C "$syft_temp_root" syft
 if ! syft_version_output="$(
   env -i \

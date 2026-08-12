@@ -444,6 +444,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "--max-filesize \"$syft_bytes\"",
         "000 | 200 | 408 | 429 | 500 | 502 | 503 | 504",
         "env -u GZIP -u TAR_OPTIONS",
+        "COPYFILE_DISABLE=1",
         "Syft archive digest does not match the reviewed value",
         "Syft archive layout is not the reviewed layout",
         "installed Syft did not report the reviewed version and platform",
@@ -603,6 +604,7 @@ fn syft_acquisition_and_generation_fail_closed_offline() {
         String::from_utf8_lossy(&output.stdout)
             .contains("Syft acquisition and SBOM generation rehearsals passed offline.")
     );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("Syft rehearsal case failed:"));
 }
 
 #[test]

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 if [[ $# -ne 0 ]]; then
   printf 'usage: %s\n' "$0" >&2
@@ -8,6 +8,21 @@ if [[ $# -ne 0 ]]; then
 fi
 
 syft_rehearsal_script_directory="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+syft_rehearsal_case=setup
+
+syft_rehearsal_error() {
+  local syft_rehearsal_status=$?
+  local syft_rehearsal_line=$1
+
+  trap - ERR
+  printf 'Syft rehearsal case failed: case=%s line=%s status=%s\n' \
+    "$syft_rehearsal_case" \
+    "$syft_rehearsal_line" \
+    "$syft_rehearsal_status" >&2
+  exit "$syft_rehearsal_status"
+}
+trap 'syft_rehearsal_error "$LINENO"' ERR
+
 syft_rehearsal_temp_parent=${TMPDIR:-/tmp}
 syft_rehearsal_root="$(
   mktemp -d "${syft_rehearsal_temp_parent%/}/mcp-doctor-syft-rehearsal.XXXXXX"
@@ -86,12 +101,12 @@ syft_rehearsal_make_archive() {
   chmod 0755 "$syft_rehearsal_payload/syft"
 
   if [[ "$syft_rehearsal_layout" == valid ]]; then
-    tar -czf "$syft_rehearsal_archive" \
+    COPYFILE_DISABLE=1 tar -czf "$syft_rehearsal_archive" \
       -C "$syft_rehearsal_payload" \
       CHANGELOG.md LICENSE README.md syft
   else
     printf 'unexpected\n' >"$syft_rehearsal_payload/UNEXPECTED"
-    tar -czf "$syft_rehearsal_archive" \
+    COPYFILE_DISABLE=1 tar -czf "$syft_rehearsal_archive" \
       -C "$syft_rehearsal_payload" \
       CHANGELOG.md LICENSE README.md syft UNEXPECTED
   fi
@@ -107,9 +122,9 @@ syft_rehearsal_failed_scan="$syft_rehearsal_assets/failed-scan.tar.gz"
 syft_rehearsal_oversized_scan="$syft_rehearsal_assets/oversized-scan.tar.gz"
 syft_rehearsal_make_archive "$syft_rehearsal_x64" 1.51.0 linux/amd64
 syft_rehearsal_make_archive "$syft_rehearsal_arm64" 1.51.0 linux/arm64
-cp -- "$syft_rehearsal_x64" "$syft_rehearsal_wrong_digest"
+cp "$syft_rehearsal_x64" "$syft_rehearsal_wrong_digest"
 printf 'X' | dd \
-  of="$syft_rehearsal_wrong_digest" bs=1 seek=0 conv=notrunc status=none
+  of="$syft_rehearsal_wrong_digest" bs=1 seek=0 conv=notrunc 2>/dev/null
 syft_rehearsal_make_archive \
   "$syft_rehearsal_wrong_layout" 1.51.0 linux/amd64 invalid
 syft_rehearsal_make_archive \
@@ -313,6 +328,8 @@ syft_rehearsal_run_installer() {
   local syft_rehearsal_curl_state="$syft_rehearsal_root/curl-$syft_rehearsal_name"
   local syft_rehearsal_sleep_state="$syft_rehearsal_root/sleep-$syft_rehearsal_name"
 
+  syft_rehearsal_case="$syft_rehearsal_name"
+
   env \
     FAKE_CURL_ARCHIVE="$syft_rehearsal_archive" \
     FAKE_CURL_SCENARIO="$syft_rehearsal_scenario" \
@@ -439,8 +456,9 @@ test "$(syft_rehearsal_read_count "$syft_rehearsal_root/curl-unsupported-archite
 syft_rehearsal_release_archive="$syft_rehearsal_root/release.tar.gz"
 syft_rehearsal_sbom="$syft_rehearsal_root/release.spdx.json"
 printf 'synthetic release bytes\n' >"$syft_rehearsal_root/release"
-tar -czf "$syft_rehearsal_release_archive" \
+COPYFILE_DISABLE=1 tar -czf "$syft_rehearsal_release_archive" \
   -C "$syft_rehearsal_root" release
+syft_rehearsal_case=generation-success
 env \
   FAKE_CURL_ARCHIVE="$syft_rehearsal_x64" \
   FAKE_CURL_SCENARIO=success \
@@ -462,6 +480,7 @@ jq -e '
 
 syft_rehearsal_write_controls \
   "$syft_rehearsal_failed_scan" "$syft_rehearsal_arm64"
+syft_rehearsal_case=generation-failure
 syft_rehearsal_failed_sbom="$syft_rehearsal_root/failed.spdx.json"
 syft_rehearsal_failed_stderr="$syft_rehearsal_root/failed.stderr"
 if env \
@@ -493,6 +512,7 @@ fi
 
 syft_rehearsal_write_controls \
   "$syft_rehearsal_oversized_scan" "$syft_rehearsal_arm64"
+syft_rehearsal_case=generation-oversized
 syft_rehearsal_oversized_sbom="$syft_rehearsal_root/oversized.spdx.json"
 if env \
   FAKE_CURL_ARCHIVE="$syft_rehearsal_oversized_scan" \
@@ -516,6 +536,7 @@ test ! -e "$syft_rehearsal_oversized_sbom"
 
 syft_rehearsal_empty_input="$syft_rehearsal_root/empty-release.tar.gz"
 syft_rehearsal_empty_output="$syft_rehearsal_root/empty.spdx.json"
+syft_rehearsal_case=generation-empty-input
 : >"$syft_rehearsal_empty_input"
 if PATH="$syft_rehearsal_fake_bin:$PATH" \
   "$syft_rehearsal_repository/scripts/generate-release-sbom.sh" \
