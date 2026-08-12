@@ -322,6 +322,9 @@ jobs:
 
       - name: Set up current stable Homebrew
         uses: Homebrew/actions/setup-homebrew@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+        with:
+          token: ""
+          brew-gh-api-token: ""
 
       - name: Install the published formula and exercise passive diagnosis
         run: |

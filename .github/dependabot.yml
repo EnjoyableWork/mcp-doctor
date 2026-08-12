@@ -9,7 +9,12 @@ updates:
       time: "09:00"
       timezone: America/Toronto
     groups:
-      cargo-dependencies:
+      cargo-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      cargo-security-updates:
+        applies-to: security-updates
         patterns:
           - "*"
     open-pull-requests-limit: 5
@@ -25,7 +30,12 @@ updates:
       time: "09:30"
       timezone: America/Toronto
     groups:
-      github-actions:
+      github-actions-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      github-actions-security-updates:
+        applies-to: security-updates
         patterns:
           - "*"
     open-pull-requests-limit: 5

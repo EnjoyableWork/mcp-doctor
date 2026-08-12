@@ -8,11 +8,18 @@
 /generated-release-channels/
 *.crate
 *.dmg
+*.dll
 *.exe
+*.jar
+*.lib
 *.msi
+*.o
+*.obj
 *.pdb
 *.pkg
+*.so
 *.tar.gz
+*.wasm
 *.zip
 
 # Local environment files and logs

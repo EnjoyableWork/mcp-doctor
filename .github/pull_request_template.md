@@ -19,6 +19,15 @@ surfaces. State any relevant boundary that remains unverified.
 
 List the exact commands, tests, fixtures, and manual checks run.
 
+## Dependency and automation review
+
+If this changes a Rust dependency, standalone CI tool, or GitHub Action, list
+the old and new exact identities and record the release notes, upstream
+maintenance and ownership/provenance check, selected-feature and transitive
+graph diff, licenses and advisories, unsafe/build-script surface, Rust and
+platform impact, and affected behavioral evidence. Write `Not applicable`
+when none of those trust-boundary inputs changes.
+
 ## Checklist
 
 - [ ] This pull request addresses one accepted outcome and preserves unrelated work.
@@ -30,4 +39,5 @@ List the exact commands, tests, fixtures, and manual checks run.
 - [ ] Examples and fixtures are synthetic and no secret, private endpoint, user data, raw tool result, or unreviewed log is included.
 - [ ] Suspected vulnerabilities use private reporting rather than this pull request.
 - [ ] I updated public and delivery documentation for changed behavior or claims.
+- [ ] Every changed dependency, CI tool, or Action remains exact, reviewed, and non-auto-merged; otherwise this item is not applicable.
 - [ ] I have the right to submit this contribution under the MIT License and agree to the Code of Conduct.
