@@ -1315,6 +1315,8 @@ fn project_records_mcpd_015_completion_without_supply_chain_claims() {
         "31564866091/job/94016103246",
         "date=2026-08-12 canonical_sha256=ae1898c2f6af70578d3c61810377ce57b6ee5f694b0e5db8e7bcd015de67daa9 source_sha=6f1bed224aa27c468b64c19b99288122e401a96a result=PASS",
         "It used\nno GitHub credential, proxy, ambient curl configuration, cookie, or `.netrc`",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/24",
+        "its public timeline\nis the durable record for the final exact-`main` verifier",
         "This closure makes `MCPD-016` Ready but does not begin",
         "| DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted |",
         "| RISK-20 | Users cannot find a real project route or receive incompatible license terms",

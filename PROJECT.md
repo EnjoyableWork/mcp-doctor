@@ -1915,6 +1915,12 @@ manifest, crates.io metadata and byte identity, and SPDX `CC0-1.0` plus
 no GitHub credential, proxy, ambient curl configuration, cookie, or `.netrc`
 source and retained no downloaded evidence after the bounded run.
 
+Final protected [closure PR 24](https://github.com/EnjoyableWork/mcp-doctor/pull/24)
+publishes this status and evidence through the normal no-bypass path. It may
+merge only after both required aggregates pass; after merge, its public timeline
+is the durable record for the final exact-`main` verifier, CodeQL, CI,
+release-preflight, and protection readback.
+
 This closure makes `MCPD-016` Ready but does not begin its dependency,
 automation, artifact, authentication, or distribution-supply-chain changes.
 
