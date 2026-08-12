@@ -196,6 +196,29 @@ rehearsal_expect_failure 'a broad member privilege' \
   "${rehearsal_canonical}" "${rehearsal_bad_member_privilege}" \
   "${rehearsal_private}" 1111111111111111111111111111111111111111
 
+rehearsal_changed_plan="$(
+  rehearsal_mutate_live changed-plan '.organization.plan = "enterprise"'
+)"
+rehearsal_expect_failure 'an organization plan change' \
+  "${rehearsal_canonical}" "${rehearsal_changed_plan}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_changed_invitation_setting="$(
+  rehearsal_mutate_live changed-invitation-setting \
+    '.organization.outside_collaborator_invitations.observed_members_can_invite_outside_collaborators = false'
+)"
+rehearsal_expect_failure 'an outside-collaborator invitation setting change' \
+  "${rehearsal_canonical}" "${rehearsal_changed_invitation_setting}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_nonowner_admin="$(
+  rehearsal_mutate_live nonowner-admin \
+    '.membership.nonowner_direct_admin_identities = 1'
+)"
+rehearsal_expect_failure 'a non-owner repository administrator' \
+  "${rehearsal_canonical}" "${rehearsal_nonowner_admin}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
 rehearsal_bad_app_scope="$(
   rehearsal_mutate_live bad-app-scope \
     '.applications.inventory[0].repository_selection = "all"'
