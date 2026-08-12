@@ -12,7 +12,10 @@ categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
     "/.github/community-license-controls.json",
+    "/.github/dependabot.yml",
+    "/.github/pull_request_template.md",
     "/.github/security-controls.json",
+    "/.github/supply-chain-controls.json",
     "/.github/rulesets/**",
     "/.github/workflows/*.yml",
     "/schemas/**",

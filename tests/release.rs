@@ -635,7 +635,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-015` is Done and `MCPD-016` is Ready |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-015` is Done and `MCPD-016` is In progress |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -1283,11 +1283,11 @@ fn community_license_verifier_is_credential_free_bounded_and_exact() {
 }
 
 #[test]
-fn project_records_mcpd_015_completion_without_supply_chain_claims() {
+fn project_preserves_mcpd_015_completion_during_mcpd_016_activation() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-015` is Done and `MCPD-016` is Ready",
+        "`MCPD-015` is Done and `MCPD-016` is In progress",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
@@ -1331,7 +1331,6 @@ fn project_records_mcpd_015_completion_without_supply_chain_claims() {
         "`MCPD-015` is In progress",
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
         "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed |",
-        "`MCPD-016` is In progress",
         "`MCPD-016` completed on",
     ] {
         assert!(

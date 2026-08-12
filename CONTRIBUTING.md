@@ -50,6 +50,13 @@ cargo deny --all-features --locked check
   maintenance, provenance, exact-version, feature, transitive-graph, and update
   review in [AGENTS.md](AGENTS.md) and record the decision in
   [PROJECT.md](PROJECT.md).
+- Treat every Dependabot pull request as a proposal. Do not enable auto-merge.
+  For each Rust dependency, standalone CI tool, or GitHub Action change, record
+  the old and new exact identities plus release notes, upstream maintenance and
+  ownership/provenance, selected features and graph changes, licenses and
+  advisories, unsafe or build-script changes, Rust/platform impact, and focused
+  behavior evidence in the pull request. A grouped proposal may be split or
+  rejected when one member obscures causality or fails review.
 - Use synthetic fixtures. Default tests must not call a real MCP server or
   production endpoint.
 - Keep errors and assertions structural so failures cannot print untrusted
@@ -65,8 +72,10 @@ verification performed, protocol revisions affected, and any unverified native
 or release gate. Resolve review conversations and keep the branch current with
 the protected default branch before merge.
 
-Do not commit generated binaries, archives, packages, credentials, or copied
-production evidence. Release artifacts are generated and attested outside the
+Do not commit generated executables, binary libraries, archives, packages,
+credentials, or copied production evidence. Reviewable source scripts remain
+source, even when their executable bit is required. Release and testing-tool
+artifacts are generated or fetched with an exact reviewed digest outside the
 source tree.
 
 ## Licensing

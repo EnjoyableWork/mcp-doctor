@@ -25,10 +25,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Reject generated executables and unreviewable binary artifacts
+        run: ./scripts/verify-source-artifacts.sh --worktree
+
+      - name: Resolve the exact locked dependency and feature graph
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --format-version 1 >/dev/null
+          cargo tree \
+            --workspace \
+            --all-features \
+            --locked \
+            --edges features \
+            --no-dedupe >/dev/null
+          cargo test --locked --test dependency_policy
+
+      - name: Install the reviewed cargo-deny executable by exact digest
+        run: ./scripts/install-cargo-deny.sh "$RUNNER_TEMP/mcp-doctor-tools"
+
       - name: Check advisories, licenses, bans, and sources
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1; cargo-deny 0.20.2
-        with:
-          arguments: --all-features --locked
+        run: >-
+          "$RUNNER_TEMP/mcp-doctor-tools/cargo-deny"
+          --all-features --locked check
 
   unix-quality:
     name: ${{ matrix.name }} — format, Clippy, and test
