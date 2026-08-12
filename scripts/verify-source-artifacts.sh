@@ -11,7 +11,7 @@ artifact_script_directory="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 artifact_repository_root="$(dirname -- "$artifact_script_directory")"
 artifact_source=${1:---worktree}
 
-for artifact_command in cmp git iconv od sed tr; do
+for artifact_command in cmp curl git iconv od sed tr; do
   if ! command -v "$artifact_command" >/dev/null 2>&1; then
     printf 'required source-artifact command is unavailable: %s\n' \
       "$artifact_command" >&2
@@ -26,6 +26,58 @@ if [[ "$artifact_source" != --worktree ]]; then
     exit 2
   fi
 fi
+
+artifact_exercise_fork_write_negative() {
+  if [[ "${GITHUB_ACTIONS-}" != true ]] ||
+    [[ "${GITHUB_EVENT_NAME-}" != pull_request ]] ||
+    [[ "${GITHUB_REPOSITORY-}" != EnjoyableWork/mcp-doctor ]]; then
+    return 0
+  fi
+
+  if [[ -n "${GITHUB_TOKEN-}" ]] || [[ -n "${GH_TOKEN-}" ]] ||
+    [[ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN-}" ]] ||
+    [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL-}" ]]; then
+    printf 'fork exercise found repository or OIDC authority in untrusted code\n' >&2
+    return 1
+  fi
+  if git config --local --get-regexp '^http\..*\.extraheader$' \
+    >/dev/null 2>&1; then
+    printf 'fork exercise found persisted checkout authorization\n' >&2
+    return 1
+  fi
+
+  local exercise_status
+  exercise_status="$(
+    env \
+      -u ALL_PROXY -u all_proxy \
+      -u HTTP_PROXY -u http_proxy \
+      -u HTTPS_PROXY -u https_proxy \
+      -u NO_PROXY -u no_proxy \
+      curl --disable --silent --show-error \
+        --proto '=https' \
+        --proto-redir '=https' \
+        --proxy '' \
+        --connect-timeout 10 \
+        --max-time 20 \
+        --max-redirs 0 \
+        --output /dev/null \
+        --write-out '%{http_code}' \
+        --request POST \
+        --header 'Accept: application/vnd.github+json' \
+        --header 'Content-Type: application/json' \
+        --header 'User-Agent: mcp-doctor-fork-write-negative/0.1' \
+        --data '{"ref":"refs/heads/mcpd-016-fork-write-negative-must-not-exist","sha":"0000000000000000000000000000000000000000"}' \
+        https://api.github.com/repos/EnjoyableWork/mcp-doctor/git/refs
+  )"
+  if [[ "$exercise_status" != 401 ]] && [[ "$exercise_status" != 404 ]]; then
+    printf 'fork exercise did not receive the expected unauthenticated write rejection\n' >&2
+    return 1
+  fi
+
+  printf 'MCPD-016 fork write-negative passed: no repository/OIDC token, no persisted checkout authorization, and repository write rejected.\n'
+}
+
+artifact_exercise_fork_write_negative
 
 umask 077
 artifact_temp_parent=${TMPDIR:-/tmp}
