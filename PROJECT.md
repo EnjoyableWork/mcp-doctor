@@ -7,12 +7,12 @@ decisions, risks, and release gates.
 | --- | --- |
 | Document state | Active |
 | Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and JUnit-compatible projection pass local, hosted, immutable-release, and represented installed-channel evidence |
-| Current milestone | M4 — enterprise assurance and adoption; `MCPD-013` is Done and `MCPD-014` is In progress |
-| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; and the `MCPD-014` policy plus entitled dependency, CodeQL, secret-prevention, and private-reporting controls are live while their exact GitHub Free readback boundary and closure evidence are finalized |
-| Current focus | Land the `DEC-038` observable-baseline correction, prove CodeQL on a representative protected pull request and exact `main`, and publish the non-disclosing `MCPD-014` closure evidence without treating repository scanning as an implemented `mcp-doctor` product scanner or claiming complete M4 assurance |
+| Current milestone | M4 — enterprise assurance and adoption; `MCPD-014` is Done and `MCPD-015` is Ready |
+| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; and the scoped `MCPD-014` disclosure policy, entitled repository-security controls, representative-pull-request evidence, and exact-`main` non-disclosing baseline pass while unavailable and unobservable GitHub Free surfaces remain explicit limitations |
+| Current focus | Keep the completed `MCPD-014` controls and limitations current, then activate `MCPD-015` to verify public contribution, community, repository-inventory, official-channel, and licensing contracts without beginning the later supply-chain or complete-assurance work |
 | Public release | `mcp-doctor` `v0.2.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-11 |
-| Next review trigger | `MCPD-014` representative-pull-request or final exact-`main` readback; any security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
+| Next review trigger | `MCPD-015` activation or evidence review; any security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, dependency, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -1301,8 +1301,8 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done | `MCPD-010` | The [bounded generator](src/contract/generate.rs), [`break` application](src/break_command.rs), [nine disposable local journeys](tests/break.rs), and [exact-authority HTTP/TLS journey](tests/http.rs) prove versioned known-seed reproduction, schema-valid structural inputs, every generation and active-input bound, sequential continuation, redaction, exact tool/effect/target gates before activity, no schema retrieval or unauthorized connection, and resistant-process-tree cleanup without a new dependency |
 | MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done | `MCPD-011` | The committed [`mcp-doctor.report/v1` schema](schemas/mcp-doctor.report.v1.schema.json), compatibility fixtures, and local/remote built-binary journeys validate stable JSON; the bounded [JUnit projection](src/contract/report.rs) and [pinned Jenkins/GitLab imports](tests/junit/README.md) preserve safe findings, skips, outcome, and exit without target re-execution; the complete locked local gate, exact-commit [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649356) and [preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31528649333), [immutable publication](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31529740214), authenticated Cargo and [tap](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31530330361) handoffs, and [ten-job installed-channel verification](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31530466930) pass for exact `v0.2.0` commit `b0805a8f685e46814e358de368e2a270c21704af` |
 | MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done | `MCPD-012` | The [canonical ruleset](.github/rulesets/main.json), [public](scripts/verify-main-protection-public.sh) and [administrative](scripts/verify-main-protection-admin.sh) verifiers, [bootstrap PR 16](https://github.com/EnjoyableWork/mcp-doctor/pull/16), normal protected [PR 17](https://github.com/EnjoyableWork/mcp-doctor/pull/17), rejected destructive-path exercises, the closed [emergency record](docs/assurance/mcpd-013-emergency-exercise.md) with [PR 18](https://github.com/EnjoyableWork/mcp-doctor/pull/18), and final protected [closure PR 19](https://github.com/EnjoyableWork/mcp-doctor/pull/19) prove the selected approval, aggregate-check, merge, bypass, signing, deletion, and non-fast-forward policy; public and non-disclosing evidence boundaries remain explicit |
-| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress | `MCPD-013` | The accepted [security policy](SECURITY.md), [canonical control projection](.github/security-controls.json), and [non-disclosing verifier](scripts/verify-security-controls.sh) define the supported-version, response, disclosure, entitled-control, limitation, and clean-baseline contract; the policy and controls are live, while the observable-baseline correction, representative protected pull request, final exact-`main` readback, and durable closure evidence remain acceptance gates |
-| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed | `MCPD-014` | Public workflows and recognized community files, complete in-scope repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence pass a credential-free verifier |
+| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done | `MCPD-013` | The accepted [security policy](SECURITY.md), [canonical control projection](.github/security-controls.json), and [non-disclosing verifier](scripts/verify-security-controls.sh) define the supported-version, response, disclosure, entitled-control, limitation, and clean-baseline contract; protected [PR 20](https://github.com/EnjoyableWork/mcp-doctor/pull/20), [PR 21](https://github.com/EnjoyableWork/mcp-doctor/pull/21), and final [closure PR 22](https://github.com/EnjoyableWork/mcp-doctor/pull/22), representative and exact-`main` CodeQL, both exact-`main` aggregate workflows, and the final scoped verifier pass provide the dated completion evidence below |
+| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready | `MCPD-014` | Public workflows and recognized community files, complete in-scope repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence pass a credential-free verifier |
 | MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed | `MCPD-015` | Reviewed non-auto-merged dependency update proposals preserve exact direct requirements and pass maintenance/provenance/graph checks; full-SHA action inventory, fork and permission policy, tracked-artifact rejection, authenticated distribution verification, negative exercises, and operator audit pass against exact `main` and the immutable release |
 | MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Proposed | `MCPD-016` | Strong MFA, lowest-default access, deliberate grants and repository creation, scoped applications and automation, explicit owner-continuity decision, private recovery exercise, and a non-disclosing live verifier pass |
 | MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed | `MCPD-017` | Every selected OSPS Level 1 control has public evidence or exact applicability reasoning; the official assessment and badge are verified on exact `main`; exact M3 artifacts receive a correctly scoped SLSA Build L2 evaluation; and claim-review and removal triggers are documented |
@@ -1636,7 +1636,7 @@ fail closed rather than being misrepresented as public evidence.
 | Scope and enforcement | Check in the normalized canonical ruleset as `.github/rulesets/main.json`; activate one public repository ruleset for only `refs/heads/main`; require a pull request, linear history, strict required status checks, and resolved conversations; block deletion and non-fast-forward updates. The pull-request rule, not a push allowlist, prevents direct commits. Under `DEC-036`, a credential-free verifier compares the publicly visible default branch plus configured and effective live rules with the canonical file. GitHub omits repository merge settings and bypass actors from credential-free REST readback, so a separate authenticated owner check must verify the exact canonical merge projection and empty bypass list and publish only its date, canonical hash, and pass/fail result. |
 | Approval count | Set `required_approving_review_count` to `0`. Do not enable code-owner, stale-approval, or last-push approval requirements while the only maintainer cannot supply an independent approval. Never describe this as peer review. A second active independent maintainer plus a successfully rehearsed normal path triggers a separate policy revision toward one approval; it does not change the count automatically. |
 | Required checks | Add exact GitHub-Actions-bound contexts `Required CI` and `Required release preflight`, with strict branch-up-to-date enforcement. `Required CI` depends on dependency policy plus GNU/Linux x64, macOS ARM64, and Windows x64 format, Clippy, and test jobs. `Required release preflight` depends on deterministic source/formula generation, macOS ARM64, GNU/Linux ARM64/x64, Windows x64, and exact non-publishing payload verification. Both aggregate jobs use `needs` with `always()` and fail unless every intended dependency succeeded, so a failed, cancelled, or skipped dependency cannot turn green. Limit ordinary branch `push` triggers to `main` so a same-repository branch push cannot produce a duplicate required context alongside its pull-request run. |
-| Future security gates | Dependency policy is already inside `Required CI`. Code scanning and secret prevention are not current required gates because they are not configured, and a future `mcp-doctor` MCP security scanner is product behavior rather than a repository check by default. `MCPD-014` may add an exact code-scanning rule or separately named security context only after the analysis exists, passes on `main` and representative pull requests, handles contributors safely, and receives an accepted ruleset update. |
+| Future security gates | Dependency policy is already inside `Required CI`. `MCPD-014` configured CodeQL and secret prevention and proved CodeQL on a representative protected pull request and exact `main`, but neither is a `DEC-035` required gate because that ticket did not accept a new ruleset context or contributor-handling contract. A later exact code-scanning rule or separately named security context requires its own accepted ruleset update. A future `mcp-doctor` MCP security scanner remains product behavior rather than a repository check by default. |
 | Merge method | Enable squash merge only, require linear history, and disable merge commits and rebase merges. Use the pull-request title and body for the squash commit; the existing Conventional Commits policy governs the title. Enable contributor branch-update suggestions and deletion of the head branch after merge. Keep auto-merge and merge queue disabled until measured need justifies either. |
 | Standing bypass | Keep `bypass_actors` empty, including for repository administrators, GitHub Apps, and Dependabot. Because this field is hidden from public unauthenticated readback, verify it administratively at activation, after every emergency, and at each assurance review; expose no actor inventory. Administrators can still edit repository rules, so the canonical config, public projection, bounded private readback, and emergency record are the honest controls; no text may claim that GitHub makes the owner technically unable to change policy. |
 | Emergency administration | When a material incident cannot wait for the normal gates, use a dedicated pull request and temporarily add only the repository-administrator role with `pull_request` bypass mode. Record a non-sensitive incident ID, reason, exact commit, rules bypassed, canonical pre-change hash, start time, and rollback owner. Never disable the ruleset, grant `always` bypass, push directly, delete `main`, or force-push. Remove the actor immediately after the one merge, re-run the credential-free public-projection verifier, authenticated empty-bypass readback, and all gates on the merged commit, and publish a non-sensitive closure record; security-sensitive detail remains private. Any additional administrator or changed GitHub capability blocks use until this actor boundary is re-decided. |
@@ -1648,8 +1648,8 @@ prove one normal protected pull request, safe rejected direct-update, deletion,
 and force-push paths after confirming the active target, and the temporary
 pull-request-only bypass add/remove lifecycle without leaving a standing
 exception. Public evidence must distinguish independently reproducible fields
-from the self-attested non-disclosing bypass result. Security controls remain
-`MCPD-014`; resolving this policy does not activate M4 early.
+from the self-attested non-disclosing bypass result. Security controls are
+owned by `MCPD-014`; resolving this policy did not activate them early.
 
 ### MCPD-013 completion evidence
 
@@ -1724,7 +1724,7 @@ request.
 | Entitled secret prevention | Enable secret scanning and push protection, require the repository-visible alert endpoint to be reachable with secret values hidden, and require no open repository-visible alert before the baseline passes. GitHub [documents that enablement scans the repository's full Git history](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/detect-secret-leaks/enable-secret-scanning), but its scan-history readback requires Advanced Security and is unavailable on this GitHub Free repository; the baseline therefore does not attest backfill completion. Values and finding details never enter public evidence. |
 | Private reporting | Enable private vulnerability reporting and verify both the API setting and the recognized root policy path. A future advisory remains private until coordinated publication. |
 | Non-disclosing baseline | `scripts/verify-security-controls.sh` performs authenticated, bounded readback against the canonical projection, exact default-branch CodeQL commit, readable dependency graph, and empty repository-visible open-alert responses. It writes API bodies only to a mode-`0700` temporary directory, suppresses API errors, removes the directory on exit, and emits only UTC date, canonical SHA-256, and `PASS` or `FAIL`. A failure is investigated privately and blocks ticket completion. |
-| Merge-gate boundary | Do not add CodeQL or secret scanning to the `DEC-035` required ruleset in this ticket. Default setup must first prove both `main` and a representative protected pull request without weakening contributor handling; `Required CI` already includes locked dependency policy. Any later required security context needs a separate accepted ruleset update. |
+| Merge-gate boundary | Do not add CodeQL or secret scanning to the `DEC-035` required ruleset in this ticket. Default setup passed both exact `main` and a representative protected pull request, but this does not establish a required-context or contributor-handling contract; `Required CI` already includes locked dependency policy. Any later required security context needs a separate accepted ruleset update. |
 
 The initial authenticated read-only review on 2026-08-11 found the organization
 on GitHub Free. Vulnerability alerts and automated security fixes were already
@@ -1749,8 +1749,7 @@ schedule, and remote threat model. A local status-only diagnostic also passed
 the policy path, private route, dependency graph and controls, exact-commit
 analyses, and empty repository-visible dependency, code, and value-hidden
 secret alert responses without printing any alert body. This is activation
-evidence; the protected canonical correction, representative pull request, and
-final non-disclosing verifier pass remain required before completion.
+evidence rather than the final baseline by itself.
 
 The scoped GitHub Free baseline cannot verify or enable Secret Protection
 validity checks, non-provider and generic patterns, AI generic-secret
@@ -1769,6 +1768,56 @@ This work contributes only the `OSPS-BR-07.01` and `OSPS-VM-02.01` rows assigned
 to `MCPD-014`. It does not prove all OSPS Level 1 controls, BadgeApp status,
 SLSA, independent certification, regulatory compliance, a complete M4
 baseline, or a security warranty.
+
+### MCPD-014 completion evidence
+
+`MCPD-014` completed on 2026-08-11 with canonical security-control SHA-256
+`d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a`.
+This is a dated, scoped repository-security baseline, not a product
+security-scanner, complete-M4, framework-conformance, certification,
+regulatory-compliance, or warranty claim.
+
+The protected and independently inspectable evidence is:
+
+- bootstrap [PR 20](https://github.com/EnjoyableWork/mcp-doctor/pull/20)
+  introduced the policy, canonical projection, verifier, and regression tests,
+  then squash-merged as exact `main`
+  `7097b683fc6619447b31db0b55db12467626e446` without bypass after both
+  required aggregates passed;
+- the initial exact-`main`
+  [CodeQL run 31545582099](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31545582099)
+  passed GitHub Actions and Rust after activation;
+- protected correction [PR 21](https://github.com/EnjoyableWork/mcp-doctor/pull/21)
+  aligned the verifier with GitHub's observed CodeQL category and GitHub Free
+  secret-scan-history surfaces. Its representative
+  [CodeQL run 31546161736](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31546161736),
+  [Required CI run 31546164626](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31546164626),
+  and [Required release preflight 31546164631](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31546164631)
+  passed before the normal no-bypass squash merge; and
+- on resulting exact `main`
+  `7f777b32e88356cea8f0212ec9bfa61a7373907b`, fresh
+  [CodeQL run 31547028561](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31547028561)
+  passed GitHub Actions and Rust, while
+  [Required CI run 31547028549](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31547028549)
+  and [Required release preflight 31547028600](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31547028600)
+  passed their complete matrices.
+
+After those exact-commit analyses completed, the unchanged authenticated
+verifier emitted only
+`date=2026-08-11 canonical_sha256=d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a result=PASS`.
+That pass read back the recognized policy path, private reporting, dependency
+controls and SPDX dependency graph, canonical CodeQL setup and exact-commit
+analyses, enabled secret prevention, and zero open repository-visible
+dependency, code, and value-hidden secret alert responses. No alert body,
+count payload, secret value, credential source, or finding detail was retained
+as public evidence. The unavailable scan-history, provider-only alert, paid
+feature, future product-scanner, and complete-M4 exclusions above remain part
+of the result rather than being treated as passes.
+
+Final protected [closure PR 22](https://github.com/EnjoyableWork/mcp-doctor/pull/22)
+publishes this completed status through the normal no-bypass path. The PR is
+also the durable record for fresh exact-`main` CodeQL, aggregate-workflow,
+security-control, and branch-protection readback after its merge.
 
 ### OSPS Level 1 planning control map
 
@@ -1869,14 +1918,15 @@ evidence, and official proof.
 accepted as `DEC-032`, and `OPEN-08` and `OPEN-09` are accepted as `DEC-034`
 and `DEC-035`. `DEC-033` separately records the dynamic comparative evaluation
 method, and `DEC-036` refines only the live-verification boundary discovered
-during `MCPD-013`. `DEC-037` records the active `MCPD-014` disclosure and
+during `MCPD-013`. `DEC-037` records the completed `MCPD-014` disclosure and
 security-control contract, and `DEC-038` narrows only its live verification to
 the surfaces GitHub actually exposes on the current plan rather than treating
-an unavailable history endpoint as a pass. Neither decision claims that the
-pending protected closure and final exact-`main` baseline have passed.
-Resolution makes an owning future ticket ready once its predecessor passes; it
-does not claim that proposed behavior or live controls already exist. The
-remaining entry belongs to its listed later ticket.
+an unavailable history endpoint as a pass. The dated scoped baseline has
+passed; neither decision claims complete M4 assurance or turns an unavailable
+or unobservable surface into evidence. Resolution makes an owning future
+ticket ready once its predecessor passes; it does not claim that proposed
+behavior already exists. The remaining entry belongs to its listed later
+ticket.
 
 | ID | Decision needed | Needed by | Default if unresolved |
 | --- | --- | --- | --- |
@@ -1898,7 +1948,7 @@ remaining entry belongs to its listed later ticket.
 | RISK-10 | The public identity is unavailable, ambiguous, or confused with an existing command before publication | High | `DEC-008` retains the product and executable under EnjoyableWork, accepts the cross-ecosystem collision, defines a Cargo-package fallback, and requires exact official-channel guidance plus an immediate pre-publication registry recheck | Mitigated for the first release: the preferred `mcp-doctor` crate identity is published under the exact EnjoyableWork source and metadata; future channel guidance must preserve the distinction |
 | RISK-11 | A release channel installs bytes not represented by the immutable release | Critical | `MCPD-008` proves exact package/formula equality, checksums, attestations, and native installed smokes for the first release; `MCPD-008A` makes those checks preconditions for every later downstream write; any mismatch requires a new version | Mitigated for `v0.1.0` and `v0.2.0` by byte-identical Cargo and Homebrew handoffs, rejected mismatch cases, authenticated assets, and successful native channel verification; every future release must retain the same immutable-byte gates |
 | RISK-12 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | `DEC-035` fixes the zero-approval PR, strict aggregate-check, squash-only, no-standing-bypass, deletion/force-push, public-projection drift verification, authenticated hidden-state readback, and bounded emergency contract; any unverified bypass or destructive path blocks M4 | Mitigated for the 2026-08-11 `MCPD-013` scope by the active public ruleset, canonical merge settings, normal protected merge, rejected direct/deletion/non-fast-forward paths, closed emergency exercise, post-removal gates, credential-free projection pass, and non-disclosing empty-bypass pass. An administrator can still change repository policy; ruleset, required-context, merge-setting, administrator-boundary, or GitHub-capability drift reopens the risk and requires both verifiers and, where applicable, a new exercise |
-| RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | In progress: the policy, private route, dependency controls, CodeQL, secret scanning, and push protection are live under `DEC-037`; `DEC-038` records the unavailable scan-history and provider-only limits, while protected representative-PR evidence and the final exact-`main` non-disclosing pass remain required before the risk can be marked mitigated |
+| RISK-13 | A contributor publicly exposes a vulnerability, credential, or unsafe diagnostic because reporting and prevention controls are incomplete | High | `MCPD-014` verifies private reporting, safe guidance, entitled scanning and prevention controls, limitations, and a non-disclosing baseline; any public sensitive report or hidden finding blocks M4 | Mitigated for the scoped 2026-08-11 `MCPD-014` surfaces by the recognized policy and private route, enabled entitled dependency and secret-prevention controls, representative and exact-`main` CodeQL, zero open repository-visible alerts, and non-disclosing pass. A public sensitive report, hidden finding, supported-line or policy drift, disabled or changed control, failed exact-`main` analysis, entitlement change, newly observable surface, or stale baseline reopens the risk; scan-history, provider-only, paid-feature, product-scanner, and complete-M4 evidence remain explicitly outside this result |
 | RISK-14 | Mutable automation, privileged untrusted code, or unauthenticated distribution compromises the project or its releases | Critical | `MCPD-008A` limits repeat publication to reviewed full-SHA automation, OIDC or narrowly scoped short-lived authority, immutable-byte preconditions, and negative authorization tests; `MCPD-016` later audits the complete CI and distribution boundary; any drift or credential exposure blocks publication and M4 | The first release removed and revoked its one-time credential; `v0.2.0` then exercised the exact OIDC and tap authorities with authenticated immutable-byte handoffs and a clean credential inventory, while future drift blocks publication and full assurance remains `MCPD-016` |
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `MCPD-017` verifies strong MFA, lowest access, application and credential scope, owner continuity, and private recovery evidence; unresolved access or recovery assumptions block M4 | Deferred with M4 |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `DEC-034` locks exact version and proof routes and makes drift a stop-and-decide gate; `MCPD-018` binds every claim to exact scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Policy resolved; proof remains deferred with M4 |
