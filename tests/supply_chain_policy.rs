@@ -500,6 +500,8 @@ fn project_records_mcpd_016_completion() {
         "verified 111 reviewable regular UTF-8 source files",
         "without changing a published byte",
         "closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)",
+        "evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39)",
+        "corrected a\n  transposed recorded identifier before the final claim",
         "`MCPD-017` is Ready but has not begun",
         "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
     ] {

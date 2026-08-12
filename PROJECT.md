@@ -1303,7 +1303,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done | `MCPD-012` | The [canonical ruleset](.github/rulesets/main.json), [public](scripts/verify-main-protection-public.sh) and [administrative](scripts/verify-main-protection-admin.sh) verifiers, [bootstrap PR 16](https://github.com/EnjoyableWork/mcp-doctor/pull/16), normal protected [PR 17](https://github.com/EnjoyableWork/mcp-doctor/pull/17), rejected destructive-path exercises, the closed [emergency record](docs/assurance/mcpd-013-emergency-exercise.md) with [PR 18](https://github.com/EnjoyableWork/mcp-doctor/pull/18), and final protected [closure PR 19](https://github.com/EnjoyableWork/mcp-doctor/pull/19) prove the selected approval, aggregate-check, merge, bypass, signing, deletion, and non-fast-forward policy; public and non-disclosing evidence boundaries remain explicit |
 | MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done | `MCPD-013` | The accepted [security policy](SECURITY.md), [canonical control projection](.github/security-controls.json), and [non-disclosing verifier](scripts/verify-security-controls.sh) define the supported-version, response, disclosure, entitled-control, limitation, and clean-baseline contract; protected [PR 20](https://github.com/EnjoyableWork/mcp-doctor/pull/20), [PR 21](https://github.com/EnjoyableWork/mcp-doctor/pull/21), and final [closure PR 22](https://github.com/EnjoyableWork/mcp-doctor/pull/22), representative and exact-`main` CodeQL, both exact-`main` aggregate workflows, and the final scoped verifier pass provide the dated completion evidence below |
 | MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done | `MCPD-014` | The [canonical projection](.github/community-license-controls.json), [public guide](docs/project-scope.md), [credential-free verifier](scripts/verify-community-license.sh), [tap PR 3](https://github.com/EnjoyableWork/homebrew-tap/pull/3), protected [source PR 23](https://github.com/EnjoyableWork/mcp-doctor/pull/23), exact-`main` hosted gates, and the dated pass below prove recognized public workflows, complete repository inventory, HTTPS-only official channels, and exact source, package, archive, and formula license evidence with explicit auxiliary-asset limitations |
-| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Done | `MCPD-015` | Protected [activation PR 25](https://github.com/EnjoyableWork/mcp-doctor/pull/25), rejected [Cargo proposal 26](https://github.com/EnjoyableWork/mcp-doctor/pull/26), accepted [Action proposal 27](https://github.com/EnjoyableWork/mcp-doctor/pull/27), disposable fork [PR 29](https://github.com/EnjoyableWork/mcp-doctor/pull/29), and final [closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38) bind the exact-`main` CI, CodeQL, release preflight, live readbacks, artifact negatives, and authenticated operator result below without auto-merge, stored secrets, or changed published bytes |
+| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Done | `MCPD-015` | Protected [activation PR 25](https://github.com/EnjoyableWork/mcp-doctor/pull/25), rejected [Cargo proposal 26](https://github.com/EnjoyableWork/mcp-doctor/pull/26), accepted [Action proposal 27](https://github.com/EnjoyableWork/mcp-doctor/pull/27), disposable fork [PR 29](https://github.com/EnjoyableWork/mcp-doctor/pull/29), [closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38), and [evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39) bind the exact-`main` CI, CodeQL, release preflight, live readbacks, artifact negatives, and authenticated operator result below without auto-merge, stored secrets, or changed published bytes |
 | MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready | `MCPD-016` | Strong MFA, lowest-default access, deliberate grants and repository creation, scoped applications and automation, explicit owner-continuity decision, private recovery exercise, and a non-disclosing live verifier pass |
 | MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed | `MCPD-017` | Every selected OSPS Level 1 control has public evidence or exact applicability reasoning; the official assessment and badge are verified on exact `main`; exact M3 artifacts receive a correctly scoped SLSA Build L2 evaluation; and claim-review and removal triggers are documented |
 
@@ -2079,7 +2079,10 @@ The protected and independently reviewable evidence is:
   closed unmerged and its exercise branch was removed. The personal fork retains
   only a mirror of `main` because available authority could not delete the fork;
   it has no organization setting, secret, or merge authority and is not used as
-  security evidence beyond the closed run;
+  security evidence beyond the closed run. The closure audit compared the
+  immutable run head with the PR commit record and protected
+  [PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39) corrected a
+  transposed recorded identifier before the final claim;
 - the source gate verified 111 reviewable regular UTF-8 source files and no
   generated executable or binary artifact. The disposable rehearsal separately
   rejected an ELF executable, NUL-bearing content, invalid UTF-8, and an
@@ -2107,13 +2110,15 @@ The protected and independently reviewable evidence is:
   immutable release and all attestations, byte-identical crates.io package, and
   byte-identical tap formula without changing a published byte.
 
-Final protected [closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)
-carries the current three-repository community rebaseline and this status. It
-may merge only after both required aggregates and CodeQL pass; after merge, its
-public timeline is the durable record for final exact-`main` CI, release
-preflight, CodeQL, protection, security, credential-free community/license,
-and supply-chain operator readbacks. `MCPD-017` is Ready but has not begun, and
-no organization-access or private-recovery claim is implied.
+Protected [closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)
+carries the current three-repository community rebaseline and this status;
+protected [evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39)
+binds the exact fork identity found by the completion audit. Both may merge
+only after both required aggregates and CodeQL pass. PR 39's public timeline is
+the durable record for final exact-`main` CI, release preflight, CodeQL,
+protection, security, credential-free community/license, and supply-chain
+operator readbacks. `MCPD-017` is Ready but has not begun, and no
+organization-access or private-recovery claim is implied.
 
 ### OSPS Level 1 planning control map
 
