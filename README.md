@@ -306,8 +306,11 @@ deterministic, bounded, and hide secrets.
 ## Contributing
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), ask
-for help through [SUPPORT.md](SUPPORT.md), and report suspected vulnerabilities
-privately as described in [SECURITY.md](SECURITY.md).
+for help through [SUPPORT.md](SUPPORT.md), follow the
+[Code of Conduct](CODE_OF_CONDUCT.md), and report suspected vulnerabilities
+privately as described in [SECURITY.md](SECURITY.md). The
+[project scope](docs/project-scope.md) identifies every `mcp-doctor` repository
+and official distribution or community channel.
 
 ## License
 
