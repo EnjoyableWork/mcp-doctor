@@ -6,24 +6,6 @@
   "project_repository": "EnjoyableWork/mcp-doctor",
   "public_repository_inventory": [
     {
-      "repository": "EnjoyableWork/courtside-mcp",
-      "classification": "separate_project",
-      "role": "Independent EnjoyableWork product; not an mcp-doctor codebase or distribution channel",
-      "default_branch": "main",
-      "license": "AGPL-3.0",
-      "archived": false,
-      "fork": false
-    },
-    {
-      "repository": "EnjoyableWork/enjoyable-mcp",
-      "classification": "separate_project",
-      "role": "Independent EnjoyableWork product; not an mcp-doctor codebase or distribution channel",
-      "default_branch": "main",
-      "license": "AGPL-3.0",
-      "archived": false,
-      "fork": false
-    },
-    {
       "repository": "EnjoyableWork/homebrew-tap",
       "classification": "in_scope_distribution",
       "role": "Supporting distribution codebase; only mcp-doctor policy links, license, formula, and release handoff are in scope",
@@ -233,12 +215,12 @@
     {
       "surface": "separate_organization_projects",
       "state": "inventory_only",
-      "reason": "courtside-mcp, enjoyable-mcp, and mcp-sync are classified to prevent hidden scope but require their own project-specific community and license assessments."
+      "reason": "mcp-sync is classified to prevent hidden scope but requires its own project-specific community and license assessment."
     },
     {
       "surface": "supply_chain_and_complete_assurance",
       "state": "not_claimed",
-      "reason": "MCPD-015 verifies public community, repository, channel, and license evidence only; MCPD-016 and MCPD-018 own later supply-chain and complete-assurance work."
+      "reason": "MCPD-015 verifies public community, repository, channel, and license evidence only; completed MCPD-016 separately authenticates the supply chain, while MCPD-018 owns complete-assurance work."
     }
   ],
   "mapped_controls": [
