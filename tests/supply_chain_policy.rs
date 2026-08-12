@@ -475,9 +475,16 @@ fn project_records_mcpd_016_activation_without_a_premature_result() {
         "The former full-SHA `cargo-deny-action` still fetched a mutable release executable",
         "There are no binary exceptions.",
         "Authenticate only canonical immutable `v0.2.0`",
-        "No Dependabot proposal exists yet",
+        "At that pre-activation point, no",
+        "Dependabot proposal existed for this repository",
+        "pull/26#issuecomment-5268391783",
+        "pull/27#issuecomment-5268400437",
+        "pull/29",
+        "40234363e8a1764498b524bc86c39afff0584355",
         "Several Node Actions execute generated JavaScript bundles",
-        "a real grouped dependency proposal and a fork read/write negative",
+        "both grouped proposals above",
+        "proved read-only",
+        "and a rejected write before closing unmerged",
         "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
     ] {
         assert!(
