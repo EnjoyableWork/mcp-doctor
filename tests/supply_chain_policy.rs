@@ -432,6 +432,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "syft_max_attempts=3",
         "syft_attempt_max_seconds=20",
         "syft_retry_delay_seconds=1",
+        "($tools[0] as $tool |",
         "x86_64-unknown-linux-gnu",
         "aarch64-unknown-linux-gnu",
         "408 | 429 | 500 | 502 | 503 | 504",

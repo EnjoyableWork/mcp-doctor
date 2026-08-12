@@ -56,24 +56,25 @@ fi
 if ! jq -e '
   [.standalone_tools[] | select(.name == "syft")] as $tools |
   ($tools | length) == 1 and
-  $tools[0] as $tool |
-  $tool.version == "1.51.0" and
-  $tool.repository == "anchore/syft" and
-  $tool.tag == "v1.51.0" and
-  $tool.release_immutable == true and
-  $tool.latest_release_required == true and
-  ($tool.assets | length) == 2 and
-  ($tool.assets | map(.target) | sort) == [
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu"
-  ] and
-  all($tool.assets[];
-    ((.archive == "syft_\($tool.version)_linux_amd64.tar.gz" and
-        .target == "x86_64-unknown-linux-gnu") or
-     (.archive == "syft_\($tool.version)_linux_arm64.tar.gz" and
-        .target == "aarch64-unknown-linux-gnu")) and
-    (.bytes | type == "number" and . > 0 and . <= 35000000) and
-    (.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+  ($tools[0] as $tool |
+    $tool.version == "1.51.0" and
+    $tool.repository == "anchore/syft" and
+    $tool.tag == "v1.51.0" and
+    $tool.release_immutable == true and
+    $tool.latest_release_required == true and
+    ($tool.assets | length) == 2 and
+    ($tool.assets | map(.target) | sort) == [
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu"
+    ] and
+    all($tool.assets[];
+      ((.archive == "syft_\($tool.version)_linux_amd64.tar.gz" and
+          .target == "x86_64-unknown-linux-gnu") or
+       (.archive == "syft_\($tool.version)_linux_arm64.tar.gz" and
+          .target == "aarch64-unknown-linux-gnu")) and
+      (.bytes | type == "number" and . > 0 and . <= 35000000) and
+      (.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+    )
   )
 ' "$syft_canonical" >/dev/null 2>&1; then
   printf 'canonical Syft control inventory is invalid\n' >&2
