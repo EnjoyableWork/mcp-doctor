@@ -353,6 +353,7 @@
     "asset_manifest": ".github/community-license-controls.json#release_license_contract.assets",
     "attestation_signer_workflow": "EnjoyableWork/mcp-doctor/.github/workflows/release.yml",
     "cargo_package": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate",
+    "homebrew_source": "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate",
     "homebrew_repository": "EnjoyableWork/homebrew-tap",
     "homebrew_commit": "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
     "homebrew_formula": "Formula/mcp-doctor.rb",

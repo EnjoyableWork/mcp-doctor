@@ -116,6 +116,8 @@ if ! jq -e '
   .distribution_authentication.version == "0.2.0" and
   .distribution_authentication.tag == "v0.2.0" and
   .distribution_authentication.immutable == true and
+  .distribution_authentication.homebrew_source ==
+    "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate" and
   .mapped_controls == [
     "OSPS-BR-01.01",
     "OSPS-BR-01.03",
@@ -510,8 +512,11 @@ supply_package_sha="$(
     '.release_license_contract.assets[] | select(.name == $name) | .sha256' \
     "$supply_community"
 )" || supply_failure
+supply_homebrew_source="$(
+  jq -er '.distribution_authentication.homebrew_source' "$supply_canonical"
+)" || supply_failure
 if ! grep -F \
-  "url \"https://static.crates.io/crates/mcp-doctor/mcp-doctor-$supply_release_version.crate\"" \
+  "url \"$supply_homebrew_source\"" \
   "$supply_formula" >/dev/null ||
   ! grep -F "sha256 \"$supply_package_sha\"" "$supply_formula" >/dev/null ||
   ! grep -F 'license "MIT"' "$supply_formula" >/dev/null; then

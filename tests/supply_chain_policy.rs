@@ -393,6 +393,16 @@ fn direct_dependency_versions_features_and_scopes_require_reviewed_inventory() {
 
 #[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
+    let controls = controls();
+    assert_eq!(
+        controls["distribution_authentication"]["cargo_package"],
+        "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate"
+    );
+    assert_eq!(
+        controls["distribution_authentication"]["homebrew_source"],
+        "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate"
+    );
+
     let installer = repository_file("scripts/install-cargo-deny.sh");
     for contract in [
         "deny_version=0.20.2",
@@ -433,7 +443,8 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "gh attestation verify",
         "--signer-workflow",
         "--source-digest",
-        "static.crates.io",
+        ".distribution_authentication.cargo_package",
+        "homebrew_source",
         "homebrew_formula_sha256",
         "result=PASS",
     ] {
