@@ -12,10 +12,12 @@ rehearsal_canonical_source="${rehearsal_repository_root}/.github/organization-co
 rehearsal_live_source="${rehearsal_repository_root}/tests/fixtures/organization-controls/live-pass.json"
 rehearsal_private_source="${rehearsal_repository_root}/tests/fixtures/organization-controls/private-pass.json"
 rehearsal_sentinel="sentinel-private-application"
+rehearsal_reference_date="2030-01-01"
 
-for rehearsal_command in awk chmod cp date jq mktemp rm rg tr wc; do
+for rehearsal_command in awk chmod cp grep jq mktemp rm sed tr wc; do
   if ! command -v "${rehearsal_command}" >/dev/null 2>&1; then
-    printf 'required organization-control rehearsal command is unavailable\n' >&2
+    printf 'required organization-control rehearsal command is unavailable: %s\n' \
+      "${rehearsal_command}" >&2
     exit 2
   fi
 done
@@ -48,7 +50,6 @@ rehearsal_cleanup() {
 }
 trap rehearsal_cleanup EXIT
 
-rehearsal_today="$(date -u +%F)"
 rehearsal_live="${rehearsal_work_directory}/live.json"
 rehearsal_private="${rehearsal_work_directory}/private.json"
 rehearsal_canonical="${rehearsal_work_directory}/canonical.json"
@@ -59,14 +60,14 @@ jq -S '.applications.inventory | sort_by(.app_id)' \
   "${rehearsal_live}" >"${rehearsal_inventory}"
 rehearsal_inventory_sha="$(rehearsal_sha256_file "${rehearsal_inventory}")"
 jq \
-  --arg date "${rehearsal_today}" \
+  --arg date "${rehearsal_reference_date}" \
   --arg inventory_sha "${rehearsal_inventory_sha}" '
     .observed_on = $date |
     .application_inventory.inventory_sha256 = $inventory_sha |
     .recovery.exercised_on = $date
   ' "${rehearsal_private_source}" >"${rehearsal_private}"
 jq \
-  --arg date "${rehearsal_today}" \
+  --arg date "${rehearsal_reference_date}" \
   '
     .lifecycle = "verified" |
     .reviewed_on = $date |
@@ -87,13 +88,14 @@ rehearsal_run() {
     --canonical "${rehearsal_selected_canonical}" \
     --private-attestation "${rehearsal_selected_private}" \
     --fixture "${rehearsal_selected_live}" \
+    --verification-date "${rehearsal_reference_date}" \
     >"${rehearsal_output}" 2>"${rehearsal_error}"
 }
 
 rehearsal_require_no_disclosure() {
-  if rg -F "${rehearsal_sentinel}" "${rehearsal_output}" "${rehearsal_error}" \
+  if grep -Fq "${rehearsal_sentinel}" "${rehearsal_output}" "${rehearsal_error}" \
     >/dev/null 2>&1 ||
-    rg -F "${rehearsal_inventory_sha}" "${rehearsal_output}" "${rehearsal_error}" \
+    grep -Fq "${rehearsal_inventory_sha}" "${rehearsal_output}" "${rehearsal_error}" \
       >/dev/null 2>&1; then
     printf 'organization-control verifier disclosed private fixture content\n' >&2
     exit 1
@@ -113,7 +115,7 @@ rehearsal_expect_failure() {
   local rehearsal_stderr_bytes
 
   rehearsal_expected_hash="$(rehearsal_sha256_file "${rehearsal_selected_canonical}")"
-  rehearsal_expected="mode=fixture date=${rehearsal_today} canonical_sha256=${rehearsal_expected_hash} source_sha=${rehearsal_expected_source} result=FAIL"
+  rehearsal_expected="mode=fixture date=${rehearsal_reference_date} canonical_sha256=${rehearsal_expected_hash} source_sha=${rehearsal_expected_source} result=FAIL"
   if rehearsal_run \
     "${rehearsal_selected_canonical}" \
     "${rehearsal_selected_live}" \
@@ -148,7 +150,7 @@ rehearsal_expect_failure \
   unresolved
 
 rehearsal_pass_hash="$(rehearsal_sha256_file "${rehearsal_canonical}")"
-rehearsal_expected_pass="mode=fixture date=${rehearsal_today} canonical_sha256=${rehearsal_pass_hash} source_sha=1111111111111111111111111111111111111111 result=PASS"
+rehearsal_expected_pass="mode=fixture date=${rehearsal_reference_date} canonical_sha256=${rehearsal_pass_hash} source_sha=1111111111111111111111111111111111111111 result=PASS"
 if ! rehearsal_run "${rehearsal_canonical}" "${rehearsal_live}" "${rehearsal_private}" ||
   [[ "$(tr -d '\r' <"${rehearsal_output}")" != "${rehearsal_expected_pass}" ]] ||
   [[ -s "${rehearsal_error}" ]]; then

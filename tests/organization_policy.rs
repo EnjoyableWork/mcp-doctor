@@ -223,6 +223,7 @@ fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
 
     for contract in [
         "--private-attestation",
+        "--verification-date",
         "MCP_DOCTOR_ORGANIZATION_FIXTURE",
         "mode=fixture",
         "organization_regular_bounded_file",
@@ -243,6 +244,7 @@ fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
         "classic_personal_access_token",
         "result=FAIL",
         "result=PASS",
+        "organization_verification_date_override",
     ] {
         assert!(
             verifier.contains(contract),
@@ -284,8 +286,81 @@ fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
         );
     }
     assert!(rehearsal.contains("rehearsal_require_no_disclosure"));
+    assert!(rehearsal.contains("rehearsal_reference_date=\"2030-01-01\""));
+    assert!(rehearsal.contains("grep -Fq"));
+    assert!(rehearsal.contains("--verification-date \"${rehearsal_reference_date}\""));
+    assert!(!rehearsal.contains(&["rehearsal", "_today"].concat()));
+    assert!(!rehearsal.contains(&["rg", " -F"].concat()));
     assert!(workflow.contains("Rehearse non-disclosing organization-control verification"));
     assert!(workflow.contains("./scripts/rehearse-organization-controls.sh"));
+}
+
+#[test]
+#[cfg_attr(
+    windows,
+    ignore = "organization-control rehearsal executes through Bash"
+)]
+fn fixture_date_is_explicit_and_live_verification_cannot_override_clock() {
+    let repository = repository_root();
+    let verifier = "scripts/verify-organization-controls.sh";
+    let private_fixture = "tests/fixtures/organization-controls/private-pass.json";
+    let live_fixture = "tests/fixtures/organization-controls/live-pass.json";
+
+    let live_override = Command::new("bash")
+        .arg(verifier)
+        .args([
+            "--private-attestation",
+            private_fixture,
+            "--verification-date",
+            "2030-01-01",
+        ])
+        .current_dir(&repository)
+        .output()
+        .expect("live override rejection should execute");
+    assert_eq!(live_override.status.code(), Some(2));
+    assert!(live_override.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&live_override.stderr).starts_with("usage: "));
+
+    let missing_fixture_date = Command::new("bash")
+        .arg(verifier)
+        .args([
+            "--canonical",
+            ".github/organization-controls.json",
+            "--private-attestation",
+            private_fixture,
+            "--fixture",
+            live_fixture,
+        ])
+        .env("MCP_DOCTOR_ORGANIZATION_FIXTURE", "1")
+        .current_dir(&repository)
+        .output()
+        .expect("missing fixture date rejection should execute");
+    assert_eq!(missing_fixture_date.status.code(), Some(2));
+    assert!(missing_fixture_date.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&missing_fixture_date.stderr).starts_with("usage: "));
+
+    let invalid_fixture_date = Command::new("bash")
+        .arg(verifier)
+        .args([
+            "--canonical",
+            ".github/organization-controls.json",
+            "--private-attestation",
+            private_fixture,
+            "--fixture",
+            live_fixture,
+            "--verification-date",
+            "2030-02-30",
+        ])
+        .env("MCP_DOCTOR_ORGANIZATION_FIXTURE", "1")
+        .current_dir(repository)
+        .output()
+        .expect("invalid fixture date rejection should execute");
+    assert_eq!(invalid_fixture_date.status.code(), Some(2));
+    assert!(invalid_fixture_date.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&invalid_fixture_date.stderr),
+        "organization-control verification date is invalid\n"
+    );
 }
 
 #[test]

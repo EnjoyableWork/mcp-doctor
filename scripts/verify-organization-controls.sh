@@ -12,9 +12,11 @@ organization_canonical_overridden=false
 organization_private_attestation=""
 organization_fixture_path=""
 organization_verification_mode="live"
+organization_verification_date_override=""
 
 organization_usage() {
-  printf 'usage: %s --private-attestation FILE [--canonical FILE] [--fixture FILE]\n' "$0" >&2
+  printf '%s\n' \
+    "usage: $0 --private-attestation FILE [--canonical FILE] [--fixture FILE --verification-date YYYY-MM-DD]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -44,6 +46,14 @@ while [[ $# -gt 0 ]]; do
       organization_fixture_path="$2"
       shift 2
       ;;
+    --verification-date)
+      if [[ $# -lt 2 ]]; then
+        organization_usage
+        exit 2
+      fi
+      organization_verification_date_override="$2"
+      shift 2
+      ;;
     *)
       organization_usage
       exit 2
@@ -59,6 +69,16 @@ if [[ "${organization_canonical_overridden}" == true ]] &&
   organization_usage
   exit 2
 fi
+if [[ "${organization_verification_mode}" == "fixture" ]] &&
+  [[ -z "${organization_verification_date_override}" ]]; then
+  organization_usage
+  exit 2
+fi
+if [[ "${organization_verification_mode}" != "fixture" ]] &&
+  [[ -n "${organization_verification_date_override}" ]]; then
+  organization_usage
+  exit 2
+fi
 
 if [[ -z "${organization_private_attestation}" ]]; then
   organization_usage
@@ -67,15 +87,19 @@ fi
 
 for organization_command in awk chmod cp date env git jq mktemp rm sed sort stat tr wc; do
   if ! command -v "${organization_command}" >/dev/null 2>&1; then
-    printf 'required organization-control verifier command is unavailable\n' >&2
+    printf 'required organization-control verifier command is unavailable: %s\n' \
+      "${organization_command}" >&2
     exit 2
   fi
 done
 if [[ -z "${organization_fixture_path}" ]]; then
-  if ! command -v curl >/dev/null 2>&1 || ! command -v gh >/dev/null 2>&1; then
-    printf 'required organization-control verifier command is unavailable\n' >&2
-    exit 2
-  fi
+  for organization_command in curl gh; do
+    if ! command -v "${organization_command}" >/dev/null 2>&1; then
+      printf 'required organization-control verifier command is unavailable: %s\n' \
+        "${organization_command}" >&2
+      exit 2
+    fi
+  done
 fi
 
 organization_sha256_file() {
@@ -89,6 +113,34 @@ organization_sha256_file() {
     printf 'a SHA-256 implementation is required\n' >&2
     return 2
   fi
+}
+
+organization_date_epoch() {
+  local organization_date_value="$1"
+  local organization_parsed_date
+  local organization_parsed_epoch
+  local organization_parsed_value
+
+  if organization_parsed_value="$(
+    date -u -d "${organization_date_value}T00:00:00Z" '+%F %s' 2>/dev/null
+  )"; then
+    :
+  elif organization_parsed_value="$(
+    date -j -u -f '%Y-%m-%dT%H:%M:%SZ' \
+      "${organization_date_value}T00:00:00Z" '+%F %s' 2>/dev/null
+  )"; then
+    :
+  else
+    return 1
+  fi
+
+  organization_parsed_date="${organization_parsed_value%% *}"
+  organization_parsed_epoch="${organization_parsed_value##* }"
+  if [[ "${organization_parsed_date}" != "${organization_date_value}" ]] ||
+    [[ ! "${organization_parsed_epoch}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  printf '%s\n' "${organization_parsed_epoch}"
 }
 
 organization_regular_bounded_file() {
@@ -404,7 +456,16 @@ if ! jq -e '
 fi
 
 organization_canonical_hash="$(organization_sha256_file "${organization_canonical_path}")"
-organization_verification_date="$(date -u +%F)"
+if [[ "${organization_verification_mode}" == "fixture" ]]; then
+  organization_verification_date="${organization_verification_date_override}"
+else
+  organization_verification_date="$(date -u +%F)"
+fi
+if [[ ! "${organization_verification_date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+  ! organization_date_epoch "${organization_verification_date}" >/dev/null; then
+  printf 'organization-control verification date is invalid\n' >&2
+  exit 2
+fi
 organization_source_sha="unresolved"
 
 organization_report_failure() {
@@ -448,20 +509,6 @@ if ! organization_regular_bounded_file "${organization_private_attestation}" 655
   ! organization_private_file_mode_is_restricted "${organization_private_attestation}"; then
   organization_report_failure
 fi
-
-organization_date_epoch() {
-  local organization_date_value="$1"
-
-  if date -u -d "${organization_date_value}T00:00:00Z" +%s >/dev/null 2>&1; then
-    date -u -d "${organization_date_value}T00:00:00Z" +%s
-  elif date -j -u -f '%Y-%m-%dT%H:%M:%SZ' \
-    "${organization_date_value}T00:00:00Z" +%s >/dev/null 2>&1; then
-    date -j -u -f '%Y-%m-%dT%H:%M:%SZ' \
-      "${organization_date_value}T00:00:00Z" +%s
-  else
-    return 1
-  fi
-}
 
 organization_attestation_observed_on="$(
   jq -er '.observed_on' "${organization_private_attestation}" 2>/dev/null
