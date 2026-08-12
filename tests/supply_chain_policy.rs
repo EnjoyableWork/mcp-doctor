@@ -433,7 +433,8 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "gh attestation verify",
         "--signer-workflow",
         "--source-digest",
-        "static.crates.io",
+        ".distribution_authentication.cargo_package",
+        "homebrew_source",
         "homebrew_formula_sha256",
         "result=PASS",
     ] {
