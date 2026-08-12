@@ -28,6 +28,9 @@ jobs:
       - name: Reject generated executables and unreviewable binary artifacts
         run: ./scripts/verify-source-artifacts.sh --worktree
 
+      - name: Rehearse non-disclosing organization-control verification
+        run: ./scripts/rehearse-organization-controls.sh
+
       - name: Resolve the exact locked dependency and feature graph
         run: |
           set -euo pipefail

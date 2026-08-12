@@ -1,0 +1,224 @@
+{
+  "schema_version": "mcp-doctor.github-organization-controls/v1",
+  "lifecycle": "activation",
+  "api_version": "2026-03-10",
+  "reviewed_on": "2026-08-12",
+  "organization": "EnjoyableWork",
+  "scope": {
+    "project_repository": "EnjoyableWork/mcp-doctor",
+    "distribution_repository": "EnjoyableWork/homebrew-tap",
+    "organization_wide_controls": [
+      "authentication",
+      "membership",
+      "member_privileges",
+      "installed_applications",
+      "personal_access_token_policy",
+      "organization_actions_credentials",
+      "ownership_continuity",
+      "recovery"
+    ],
+    "repository_credential_scope": [
+      "EnjoyableWork/mcp-doctor",
+      "EnjoyableWork/homebrew-tap"
+    ],
+    "separate_repository_credentials": "outside_mcp_doctor_assurance",
+    "private_repository_names_public": false
+  },
+  "authentication": {
+    "organization_two_factor_authentication_required": true,
+    "secure_two_factor_methods_required": true,
+    "members_with_two_factor_authentication_disabled": 0,
+    "members_with_insecure_two_factor_authentication": 0,
+    "outside_collaborators_with_two_factor_authentication_disabled": 0,
+    "outside_collaborators_with_insecure_two_factor_authentication": 0,
+    "factor_inventory_private": true
+  },
+  "access": {
+    "exact_member_count": 1,
+    "exact_owner_count": 1,
+    "outside_collaborator_count": 0,
+    "pending_invitation_count": 0,
+    "default_repository_permission": "none",
+    "manual_permission_assignment_required": true,
+    "non_owner_direct_admin_identity_count": 0,
+    "member_privileges": {
+      "members_can_create_repositories": false,
+      "members_can_create_public_repositories": false,
+      "members_can_create_private_repositories": false,
+      "members_can_create_internal_repositories": false,
+      "members_can_create_pages": false,
+      "members_can_create_public_pages": false,
+      "members_can_create_private_pages": false,
+      "members_can_create_teams": false,
+      "members_can_delete_issues": false,
+      "members_can_delete_repositories": false,
+      "members_can_change_repo_visibility": false,
+      "members_can_invite_outside_collaborators": false,
+      "members_can_fork_private_repositories": false
+    }
+  },
+  "installed_applications": {
+    "installation_authority": "owners_only",
+    "access_requests": "owner_review_required",
+    "repository_selection": "selected_only",
+    "all_repository_access_allowed": false,
+    "approved_installation_count": null,
+    "approved_inventory_location": "private_attestation",
+    "approved_inventory_public": false,
+    "inventory_fields": [
+      "app_id",
+      "app_slug",
+      "permissions",
+      "repositories",
+      "repository_selection",
+      "suspended"
+    ],
+    "review_interval_days": 90,
+    "new_or_changed_installation_requires_review": true
+  },
+  "automation_credentials": {
+    "normal_automation_credentials": [
+      "github_actions_job_token",
+      "github_oidc",
+      "github_app_installation_token"
+    ],
+    "classic_personal_access_token_access": "blocked",
+    "fine_grained_personal_access_tokens": {
+      "access": "exception_only",
+      "approval": "owner_required",
+      "maximum_lifetime_days": 30,
+      "repository_selection": "exact",
+      "permissions": "minimum",
+      "automation_use": "prohibited"
+    },
+    "interactive_administration_credentials": [
+      "approved_oauth_app_token",
+      "exceptional_fine_grained_personal_access_token"
+    ],
+    "organization": {
+      "actions_secrets": 0,
+      "actions_variables": 0,
+      "dependabot_secrets": 0,
+      "webhooks": 0,
+      "self_hosted_runners": 0
+    },
+    "repositories": [
+      {
+        "repository": "EnjoyableWork/mcp-doctor",
+        "actions_secrets": 0,
+        "actions_variables": 0,
+        "codespaces_secrets": 0,
+        "dependabot_secrets": 0,
+        "environment_secrets": 0,
+        "deploy_keys": 0,
+        "write_deploy_keys": 0,
+        "webhooks": 0
+      },
+      {
+        "repository": "EnjoyableWork/homebrew-tap",
+        "actions_secrets": 0,
+        "actions_variables": 0,
+        "codespaces_secrets": 0,
+        "dependabot_secrets": 0,
+        "environment_secrets": 0,
+        "deploy_keys": 0,
+        "write_deploy_keys": 0,
+        "webhooks": 0
+      }
+    ],
+    "separate_project_repository_credentials": {
+      "state": "outside_project_assurance",
+      "must_not_access_in_scope_repositories": true,
+      "organization_wide_credentials_remain_in_scope": true,
+      "project_specific_assurance_not_claimed": true
+    }
+  },
+  "ownership_continuity": {
+    "model": "single_owner_with_explicit_residual_risk",
+    "shared_accounts_allowed": false,
+    "residual_risk_accepted": true,
+    "second_owner_policy": "redecide_when_a_trusted_active_operator_is_available",
+    "nominal_owner_prohibited": true
+  },
+  "recovery": {
+    "exercise": "real_private_independent_recovery_path",
+    "cadence_months": 6,
+    "maximum_age_days": 184,
+    "after_owner_or_authentication_factor_change": true,
+    "latest_exercise_on": null,
+    "required_result": "PASS",
+    "public_evidence_fields": [
+      "date",
+      "owner_count",
+      "scope",
+      "result"
+    ],
+    "prohibited_public_evidence": [
+      "identities",
+      "authentication_factor_inventory",
+      "recovery_material"
+    ]
+  },
+  "private_attestation": {
+    "schema_version": "mcp-doctor.github-organization-private-attestation/v1",
+    "maximum_age_days": 31,
+    "required_assertions": [
+      "secure_two_factor_methods_enforced",
+      "billing_manager_count",
+      "billing_managers_use_secure_two_factor_methods",
+      "github_app_installation_restricted_to_owners",
+      "app_access_requests_receive_owner_review",
+      "oauth_app_access_restrictions_enabled",
+      "classic_personal_access_token_access_blocked",
+      "fine_grained_personal_access_token_approval_required",
+      "fine_grained_personal_access_token_maximum_lifetime_days",
+      "operator_credential_reviewed_for_current_verification",
+      "application_inventory_reviewed",
+      "repository_credential_inventory_reviewed",
+      "single_owner_residual_risk_accepted",
+      "no_shared_or_unattended_human_accounts",
+      "recovery_exercise_passed",
+      "recovery_material_rotated_if_consumed",
+      "identities_or_recovery_material_recorded"
+    ]
+  },
+  "verification": {
+    "script": "scripts/verify-organization-controls.sh",
+    "rehearsal": "scripts/rehearse-organization-controls.sh",
+    "source_ref": "main",
+    "private_attestation_required": true,
+    "limits": {
+      "maximum_api_requests": 128,
+      "maximum_total_seconds": 900,
+      "maximum_connect_seconds": 10,
+      "maximum_request_seconds": 30,
+      "maximum_response_bytes": 4194304,
+      "maximum_organization_repositories": 32,
+      "maximum_installations": 16,
+      "maximum_repositories_per_installation": 32,
+      "maximum_direct_collaborators_per_repository": 99,
+      "maximum_environments_per_repository": 16
+    },
+    "public_output_fields": [
+      "date",
+      "canonical_sha256",
+      "source_sha",
+      "result"
+    ],
+    "api_limitations": [
+      "secure_two_factor_method_enforcement_setting",
+      "billing_manager_membership_and_two_factor_state",
+      "github_app_installation_authority_setting",
+      "app_access_request_setting",
+      "application_need_and_owner_decision",
+      "oauth_app_access_restriction_setting",
+      "personal_access_token_policy_settings",
+      "operator_credential_need_and_lifetime",
+      "private_recovery_execution"
+    ]
+  },
+  "mapped_controls": [
+    "OSPS-AC-01.01",
+    "OSPS-AC-02.01"
+  ]
+}
