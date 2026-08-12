@@ -635,7 +635,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-014` is Done and `MCPD-015` is In progress |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-015` is Done and `MCPD-016` is Ready |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -971,7 +971,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
 
     for contract in [
         "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
         "### Accepted vulnerability-disclosure and repository-security policy",
         "`DEC-037` fixes the `MCPD-014` contract.",
         "Support only the latest published minor line, currently `0.2.x`.",
@@ -1020,6 +1020,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
         "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed |",
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
     ] {
         assert!(
             !project.contains(stale_status),
@@ -1282,11 +1283,11 @@ fn community_license_verifier_is_credential_free_bounded_and_exact() {
 }
 
 #[test]
-fn project_records_the_active_mcpd_015_boundary_without_supply_chain_claims() {
+fn project_records_mcpd_015_completion_without_supply_chain_claims() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-015` is In progress",
+        "`MCPD-015` is Done and `MCPD-016` is Ready",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
@@ -1299,22 +1300,43 @@ fn project_records_the_active_mcpd_015_boundary_without_supply_chain_claims() {
         "The 2026-08-12 pre-activation review found five public organization",
         "the conduct policy pointed to a nonexistent public maintainer\ncontact",
         "It does not claim the full baseline",
+        "### MCPD-015 completion evidence",
+        "`MCPD-015` completed on 2026-08-12",
+        "ae1898c2f6af70578d3c61810377ce57b6ee5f694b0e5db8e7bcd015de67daa9",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/23",
+        "ca26052da9de610da91fe206fb0be1862f4c37e9",
+        "31564150762/job/94013030028",
+        "31564150768/job/94014462121",
+        "31564148438",
+        "6f1bed224aa27c468b64c19b99288122e401a96a",
+        "passed 175 tests",
+        "31564865655",
+        "31564866151/job/94015001184",
+        "31564866091/job/94016103246",
+        "date=2026-08-12 canonical_sha256=ae1898c2f6af70578d3c61810377ce57b6ee5f694b0e5db8e7bcd015de67daa9 source_sha=6f1bed224aa27c468b64c19b99288122e401a96a result=PASS",
+        "It used\nno GitHub credential, proxy, ambient curl configuration, cookie, or `.netrc`",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/24",
+        "its public timeline\nis the durable record for the final exact-`main` verifier",
+        "This closure makes `MCPD-016` Ready but does not begin",
         "| DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted |",
         "| RISK-20 | Users cannot find a real project route or receive incompatible license terms",
+        "Mitigated for the dated 2026-08-12 `MCPD-015` scope",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve active MCPD-015 contract: {contract}"
+            "PROJECT.md should preserve completed MCPD-015 contract: {contract}"
         );
     }
-    for premature_claim in [
-        "`MCPD-015` completed on",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
-        "`MCPD-016` is Ready",
+    for stale_or_premature_claim in [
+        "`MCPD-015` is In progress",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
+        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed |",
+        "`MCPD-016` is In progress",
+        "`MCPD-016` completed on",
     ] {
         assert!(
-            !project.contains(premature_claim),
-            "PROJECT.md must not make premature MCPD-015 claim: {premature_claim}"
+            !project.contains(stale_or_premature_claim),
+            "PROJECT.md must not retain {stale_or_premature_claim}"
         );
     }
 }
