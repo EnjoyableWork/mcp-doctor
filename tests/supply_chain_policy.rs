@@ -495,7 +495,7 @@ fn project_records_mcpd_016_completion() {
         "31612642595/job/94168634038",
         "31612642612/job/94171302909",
         "31612643730",
-        "4ba3f51a8f2ae443ec3f41c154556aa33ff56e0c",
+        "4ba3f5121c3810c1e9dc7bd4bc0ee492afb4de93",
         "31609790299/job/94157892254",
         "verified 111 reviewable regular UTF-8 source files",
         "without changing a published byte",

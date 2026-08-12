@@ -2070,7 +2070,7 @@ The protected and independently reviewable evidence is:
   before a normal protected squash merge as
   [`5cdc032`](https://github.com/EnjoyableWork/mcp-doctor/commit/5cdc032336ca5e9cc2dba3c0052eff36be0fc83c);
 - disposable fork [PR 29](https://github.com/EnjoyableWork/mcp-doctor/pull/29)
-  at exact fork commit `4ba3f51a8f2ae443ec3f41c154556aa33ff56e0c`
+  at exact fork commit `4ba3f5121c3810c1e9dc7bd4bc0ee492afb4de93`
   passed [read-only CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31609790299).
   Its [dependency job](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31609790299/job/94157892254)
   proved only read metadata/content authority, no repository or OIDC token
