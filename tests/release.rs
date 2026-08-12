@@ -635,7 +635,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-015` is Done and `MCPD-016` is In progress |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016` is Done and `MCPD-017` is Ready |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -1047,7 +1047,7 @@ fn community_license_projection_matches_dec_039() {
     let inventory = canonical["public_repository_inventory"]
         .as_array()
         .expect("repository inventory should be an array");
-    assert_eq!(inventory.len(), 5);
+    assert_eq!(inventory.len(), 3);
     let inventory_contract = inventory
         .iter()
         .map(|entry| {
@@ -1067,16 +1067,6 @@ fn community_license_projection_matches_dec_039() {
     assert_eq!(
         inventory_contract,
         [
-            (
-                "EnjoyableWork/courtside-mcp",
-                "separate_project",
-                "AGPL-3.0"
-            ),
-            (
-                "EnjoyableWork/enjoyable-mcp",
-                "separate_project",
-                "AGPL-3.0"
-            ),
             ("EnjoyableWork/homebrew-tap", "in_scope_distribution", "MIT"),
             ("EnjoyableWork/mcp-doctor", "in_scope_primary", "MIT"),
             ("EnjoyableWork/mcp-sync", "separate_project", "MIT"),
@@ -1283,11 +1273,11 @@ fn community_license_verifier_is_credential_free_bounded_and_exact() {
 }
 
 #[test]
-fn project_preserves_mcpd_015_completion_during_mcpd_016_activation() {
+fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-015` is Done and `MCPD-016` is In progress",
+        "`MCPD-016` is Done and `MCPD-017` is Ready",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
@@ -1318,9 +1308,13 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_activation() {
         "https://github.com/EnjoyableWork/mcp-doctor/pull/24",
         "its public timeline\nis the durable record for the final exact-`main` verifier",
         "This closure makes `MCPD-016` Ready but does not begin",
+        "detected real inventory drift",
+        "three live public repositories—`mcp-doctor`,\n`homebrew-tap`, and the separate `mcp-sync` project",
+        "08f301494c59e2a28746029b2a471d43d6ceb1331d5a380ae08176e1eb4a20d8",
+        "does not\nrewrite the historical five-repository completion pass",
         "| DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted |",
         "| RISK-20 | Users cannot find a real project route or receive incompatible license terms",
-        "Mitigated for the dated 2026-08-12 `MCPD-015` scope",
+        "Mitigated for the current three-repository `MCPD-015` scope revalidated on 2026-08-12",
     ] {
         assert!(
             project.contains(contract),
@@ -1331,7 +1325,8 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_activation() {
         "`MCPD-015` is In progress",
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
         "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed |",
-        "`MCPD-016` completed on",
+        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | In progress |",
+        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Proposed |",
     ] {
         assert!(
             !project.contains(stale_or_premature_claim),

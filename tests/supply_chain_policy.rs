@@ -462,10 +462,10 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
 }
 
 #[test]
-fn project_records_mcpd_016_activation_without_a_premature_result() {
+fn project_records_mcpd_016_completion() {
     let project = repository_file("PROJECT.md");
     for contract in [
-        "`MCPD-015` is Done and `MCPD-016` is In progress",
+        "`MCPD-016` is Done and `MCPD-017` is Ready",
         "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
         "`DEC-040` fixes the `MCPD-016` boundary.",
         ".github/supply-chain-controls.json",
@@ -485,6 +485,22 @@ fn project_records_mcpd_016_activation_without_a_premature_result() {
         "both grouped proposals above",
         "proved read-only",
         "and a rejected write before closing unmerged",
+        "### MCPD-016 completion evidence",
+        "`MCPD-016` completed on 2026-08-12",
+        "ea63855124cae11a0230aabc982c5c722b2154876133b7437e2c72a0a1b69ef5",
+        "d11e8378999c057a74a18a83767179d220897897",
+        "5cdc032336ca5e9cc2dba3c0052eff36be0fc83c",
+        "31611427951",
+        "31611427635",
+        "31612642595/job/94168634038",
+        "31612642612/job/94171302909",
+        "31612643730",
+        "4ba3f51a8f2ae443ec3f41c154556aa33ff56e0c",
+        "31609790299/job/94157892254",
+        "verified 111 reviewable regular UTF-8 source files",
+        "without changing a published byte",
+        "closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)",
+        "`MCPD-017` is Ready but has not begun",
         "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
     ] {
         assert!(
@@ -492,13 +508,14 @@ fn project_records_mcpd_016_activation_without_a_premature_result() {
             "PROJECT.md should preserve {contract}"
         );
     }
-    for premature in [
-        "`MCPD-016` completed on",
-        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Done |",
+    for stale in [
+        "`MCPD-016` is In progress",
+        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | In progress |",
+        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Proposed |",
     ] {
         assert!(
-            !project.contains(premature),
-            "PROJECT.md must not claim {premature}"
+            !project.contains(stale),
+            "PROJECT.md must not retain {stale}"
         );
     }
 }

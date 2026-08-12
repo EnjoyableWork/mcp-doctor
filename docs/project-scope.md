@@ -15,12 +15,10 @@ and `scripts/verify-community-license.sh` checks it without credentials.
 | [`EnjoyableWork/homebrew-tap`](https://github.com/EnjoyableWork/homebrew-tap) | Supporting Homebrew distribution codebase | Active; only the `mcp-doctor` policy links, repository license, formula, and release handoff are in scope |
 
 The complete public EnjoyableWork inventory also contains
-[`courtside-mcp`](https://github.com/EnjoyableWork/courtside-mcp),
-[`enjoyable-mcp`](https://github.com/EnjoyableWork/enjoyable-mcp), and
-[`mcp-sync`](https://github.com/EnjoyableWork/mcp-sync). They are active,
-separate products rather than `mcp-doctor` codebases or distribution channels.
-Classifying them here prevents hidden repository scope; it does not assess or
-extend `mcp-doctor` policies to those projects. A new or unclassified public
+[`mcp-sync`](https://github.com/EnjoyableWork/mcp-sync). It is an active,
+separate product rather than an `mcp-doctor` codebase or distribution channel.
+Classifying it here prevents hidden repository scope; it does not assess or
+extend `mcp-doctor` policies to that project. A new or unclassified public
 organization repository makes the verifier fail for review.
 
 ## Community and defect routes
@@ -77,6 +75,7 @@ They are therefore not used as proof of the software's MIT license. The exact
 package metadata and embedded license files provide that proof. `SHA256SUMS`
 is release metadata accompanying the same licensed release set.
 
-This scoped evidence does not authenticate the supply chain, complete an OSPS
-assessment, certify the project, or change immutable release bytes. Those
-separate claims remain gated by later tickets in [PROJECT.md](../PROJECT.md).
+This scoped evidence does not authenticate the supply chain by itself, complete
+an OSPS assessment, certify the project, or change immutable release bytes.
+`MCPD-016` separately authenticates the bounded supply-chain scope; complete
+assurance remains gated by later tickets in [PROJECT.md](../PROJECT.md).

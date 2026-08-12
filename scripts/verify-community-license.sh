@@ -69,13 +69,11 @@ if ! jq -e '
   .api_version == "2026-03-10" and
   .organization == "EnjoyableWork" and
   .project_repository == "EnjoyableWork/mcp-doctor" and
-  (.public_repository_inventory | length) == 5 and
-  ([.public_repository_inventory[].repository] | unique | length) == 5 and
+  (.public_repository_inventory | length) == 3 and
+  ([.public_repository_inventory[].repository] | unique | length) == 3 and
   ([.public_repository_inventory[].classification] | sort) == [
     "in_scope_distribution",
     "in_scope_primary",
-    "separate_project",
-    "separate_project",
     "separate_project"
   ] and
   (.public_repository_inventory | map({
@@ -86,22 +84,6 @@ if ! jq -e '
     archived,
     fork
   }) | sort_by(.repository)) == [
-    {
-      "repository": "EnjoyableWork/courtside-mcp",
-      "classification": "separate_project",
-      "default_branch": "main",
-      "license": "AGPL-3.0",
-      "archived": false,
-      "fork": false
-    },
-    {
-      "repository": "EnjoyableWork/enjoyable-mcp",
-      "classification": "separate_project",
-      "default_branch": "main",
-      "license": "AGPL-3.0",
-      "archived": false,
-      "fork": false
-    },
     {
       "repository": "EnjoyableWork/homebrew-tap",
       "classification": "in_scope_distribution",
@@ -485,8 +467,6 @@ done
 for community_expected_text in \
   'EnjoyableWork/mcp-doctor' \
   'EnjoyableWork/homebrew-tap' \
-  'courtside-mcp' \
-  'enjoyable-mcp' \
   'mcp-sync' \
   'private repository' \
   'NOASSERTION' \
