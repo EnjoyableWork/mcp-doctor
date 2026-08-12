@@ -1,0 +1,255 @@
+{
+  "schema_version": "mcp-doctor.github-community-license-controls/v1",
+  "reviewed_on": "2026-08-12",
+  "api_version": "2026-03-10",
+  "organization": "EnjoyableWork",
+  "project_repository": "EnjoyableWork/mcp-doctor",
+  "public_repository_inventory": [
+    {
+      "repository": "EnjoyableWork/courtside-mcp",
+      "classification": "separate_project",
+      "role": "Independent EnjoyableWork product; not an mcp-doctor codebase or distribution channel",
+      "default_branch": "main",
+      "license": "AGPL-3.0",
+      "archived": false,
+      "fork": false
+    },
+    {
+      "repository": "EnjoyableWork/enjoyable-mcp",
+      "classification": "separate_project",
+      "role": "Independent EnjoyableWork product; not an mcp-doctor codebase or distribution channel",
+      "default_branch": "main",
+      "license": "AGPL-3.0",
+      "archived": false,
+      "fork": false
+    },
+    {
+      "repository": "EnjoyableWork/homebrew-tap",
+      "classification": "in_scope_distribution",
+      "role": "Supporting distribution codebase; only mcp-doctor policy links, license, formula, and release handoff are in scope",
+      "default_branch": "main",
+      "license": "MIT",
+      "archived": false,
+      "fork": false
+    },
+    {
+      "repository": "EnjoyableWork/mcp-doctor",
+      "classification": "in_scope_primary",
+      "role": "Product source, community policy, public discussion, defect intake, and canonical release",
+      "default_branch": "main",
+      "license": "MIT",
+      "archived": false,
+      "fork": false
+    },
+    {
+      "repository": "EnjoyableWork/mcp-sync",
+      "classification": "separate_project",
+      "role": "Independent EnjoyableWork product; not an mcp-doctor codebase or distribution channel",
+      "default_branch": "main",
+      "license": "MIT",
+      "archived": false,
+      "fork": false
+    }
+  ],
+  "community_contract": {
+    "policy_repository": "EnjoyableWork/mcp-doctor",
+    "default_branch": "main",
+    "public_discussion_uri": "https://github.com/EnjoyableWork/mcp-doctor/issues",
+    "issue_intake_uri": "https://github.com/EnjoyableWork/mcp-doctor/issues/new/choose",
+    "private_vulnerability_uri": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
+    "content_reports_enabled": true,
+    "blank_issues_enabled": false,
+    "required_files": [
+      ".github/community-license-controls.json",
+      ".github/ISSUE_TEMPLATE/01-bug-report.yml",
+      ".github/ISSUE_TEMPLATE/02-feature-request.yml",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/pull_request_template.md",
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "Cargo.toml",
+      "LICENSE",
+      "PROJECT.md",
+      "README.md",
+      "SECURITY.md",
+      "SUPPORT.md",
+      "docs/project-scope.md",
+      "scripts/verify-community-license.sh"
+    ],
+    "github_recognized_files": [
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "LICENSE",
+      ".github/pull_request_template.md",
+      "README.md"
+    ],
+    "issue_forms": [
+      ".github/ISSUE_TEMPLATE/01-bug-report.yml",
+      ".github/ISSUE_TEMPLATE/02-feature-request.yml"
+    ],
+    "inbound_license": "MIT",
+    "outbound_license": "MIT",
+    "contributor_license_agreement": "not_required",
+    "developer_certificate_of_origin": "optional"
+  },
+  "official_channels": [
+    {
+      "channel": "source",
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor"
+    },
+    {
+      "channel": "public_discussion_and_defects",
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor/issues"
+    },
+    {
+      "channel": "private_vulnerability_reporting",
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new"
+    },
+    {
+      "channel": "canonical_release",
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0"
+    },
+    {
+      "channel": "cargo_package",
+      "uri": "https://crates.io/crates/mcp-doctor/0.2.0"
+    },
+    {
+      "channel": "homebrew_formula",
+      "uri": "https://github.com/EnjoyableWork/homebrew-tap/blob/main/Formula/mcp-doctor.rb"
+    },
+    {
+      "channel": "third_party_documentation_mirror",
+      "uri": "https://docs.rs/crate/mcp-doctor/latest"
+    }
+  ],
+  "source_license": {
+    "spdx_expression": "MIT",
+    "license_path": "LICENSE",
+    "license_sha256": "32a82b79c71a3a633dc51fcb306f0d4768551aaff7c8862f67a5997a5f75faea",
+    "manifest_path": "Cargo.toml"
+  },
+  "tap_contract": {
+    "repository": "EnjoyableWork/homebrew-tap",
+    "default_branch": "main",
+    "reviewed_commit": "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
+    "readme_path": "README.md",
+    "readme_sha256": "beb65cf10033b2827c13cebd55d4f0467b0ef9f21be73d1b0a426f6df7fe4462",
+    "license_path": "LICENSE",
+    "license_sha256": "32a82b79c71a3a633dc51fcb306f0d4768551aaff7c8862f67a5997a5f75faea",
+    "formula_path": "Formula/mcp-doctor.rb",
+    "formula_sha256": "453e81299394302969aeaf2f9ec2a1d36a56328c0370413ede69dda071f12025",
+    "formula_license": "MIT"
+  },
+  "release_license_contract": {
+    "version": "0.2.0",
+    "tag": "v0.2.0",
+    "tag_object": "ae2de3609312a85203a1d3502ea111d6a5299159",
+    "source_commit": "b0805a8f685e46814e358de368e2a270c21704af",
+    "published_at": "2026-08-11T19:53:02Z",
+    "spdx_expression": "MIT",
+    "github_release_uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0",
+    "cargo_api_uri": "https://crates.io/api/v1/crates/mcp-doctor/0.2.0",
+    "cargo_download_uri": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate",
+    "assets": [
+      {
+        "name": "mcp-doctor-0.2.0.crate",
+        "bytes": 288071,
+        "sha256": "11b080bb9105008efc2065f79ae65cd1c052e3356e0dbf2cb2eea1b138b91b64",
+        "classification": "software_package",
+        "license_evidence": {
+          "kind": "embedded_file",
+          "member": "mcp-doctor-0.2.0/LICENSE"
+        }
+      },
+      {
+        "name": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu.spdx.json",
+        "bytes": 511408,
+        "sha256": "90006a4ca295a480165a684386581cc103de3d1dac42805906f2b544b4e1d260",
+        "classification": "sbom_document",
+        "license_evidence": {
+          "kind": "spdx_document_data_license",
+          "expression": "CC0-1.0",
+          "project_package_assertion": "NOASSERTION"
+        }
+      },
+      {
+        "name": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu.tar.gz",
+        "bytes": 4608258,
+        "sha256": "e8b17bbbd37315e773b7022d24f5ea3b0bb8be4887d8aa8cd75710350e815f25",
+        "classification": "software_archive",
+        "license_evidence": {
+          "kind": "embedded_file",
+          "member": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu/LICENSE"
+        }
+      },
+      {
+        "name": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu.spdx.json",
+        "bytes": 511153,
+        "sha256": "841f5d64de80a9218ebab14eb23c84c4c74d659bbd6226896c7568ed3e7c2152",
+        "classification": "sbom_document",
+        "license_evidence": {
+          "kind": "spdx_document_data_license",
+          "expression": "CC0-1.0",
+          "project_package_assertion": "NOASSERTION"
+        }
+      },
+      {
+        "name": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu.tar.gz",
+        "bytes": 4680753,
+        "sha256": "8b5c7ec5328d5afb747eca3b08495eb9d5d9cd5a8556b81c7528935adf98514d",
+        "classification": "software_archive",
+        "license_evidence": {
+          "kind": "embedded_file",
+          "member": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu/LICENSE"
+        }
+      },
+      {
+        "name": "mcp-doctor.rb",
+        "bytes": 1844,
+        "sha256": "453e81299394302969aeaf2f9ec2a1d36a56328c0370413ede69dda071f12025",
+        "classification": "package_formula",
+        "license_evidence": {
+          "kind": "formula_declaration_and_tap_license",
+          "expression": "MIT"
+        }
+      },
+      {
+        "name": "SHA256SUMS",
+        "bytes": 641,
+        "sha256": "157920438fc85b8c800df9719f84022f01954332d5872427a737de4aa994a16f",
+        "classification": "release_metadata",
+        "license_evidence": {
+          "kind": "accompanies_licensed_release_set"
+        }
+      }
+    ]
+  },
+  "limitations": [
+    {
+      "surface": "sbom_project_package_license",
+      "state": "not_used_as_mit_evidence",
+      "reason": "The immutable v0.2.0 SPDX documents use CC0-1.0 for the document and NOASSERTION for the root package; exact embedded LICENSE files and package metadata provide the software-license evidence."
+    },
+    {
+      "surface": "separate_organization_projects",
+      "state": "inventory_only",
+      "reason": "courtside-mcp, enjoyable-mcp, and mcp-sync are classified to prevent hidden scope but require their own project-specific community and license assessments."
+    },
+    {
+      "surface": "supply_chain_and_complete_assurance",
+      "state": "not_claimed",
+      "reason": "MCPD-015 verifies public community, repository, channel, and license evidence only; MCPD-016 and MCPD-018 own later supply-chain and complete-assurance work."
+    }
+  ],
+  "mapped_controls": [
+    "OSPS-BR-03.01",
+    "OSPS-DO-02.01",
+    "OSPS-GV-02.01",
+    "OSPS-GV-03.01",
+    "OSPS-LE-02.01",
+    "OSPS-LE-02.02",
+    "OSPS-LE-03.01",
+    "OSPS-LE-03.02",
+    "OSPS-QA-04.01"
+  ]
+}

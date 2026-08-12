@@ -60,6 +60,7 @@ fn release_identity_and_toolchain_are_exact() {
         "version = \"0.2.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
+        "\"/.github/community-license-controls.json\"",
         "\"/.github/security-controls.json\"",
         "\"/.github/rulesets/**\"",
         "\"/.github/workflows/*.yml\"",
@@ -634,7 +635,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-014` is Done and `MCPD-015` is Ready |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-014` is Done and `MCPD-015` is In progress |",
         "| Public release | `mcp-doctor` `v0.2.0`",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -970,7 +971,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
 
     for contract in [
         "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
         "### Accepted vulnerability-disclosure and repository-security policy",
         "`DEC-037` fixes the `MCPD-014` contract.",
         "Support only the latest published minor line, currently `0.2.x`.",
@@ -1018,10 +1019,302 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
         "`MCPD-014` is In progress",
         "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed |",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready |",
     ] {
         assert!(
             !project.contains(stale_status),
             "PROJECT.md must not retain stale MCPD-014 status: {stale_status}"
+        );
+    }
+}
+
+#[test]
+fn community_license_projection_matches_dec_039() {
+    let canonical = repository_file(".github/community-license-controls.json");
+    let canonical: serde_json::Value = serde_json::from_str(&canonical)
+        .expect("community and license controls should be valid JSON");
+
+    assert_eq!(
+        canonical["schema_version"],
+        "mcp-doctor.github-community-license-controls/v1"
+    );
+    assert_eq!(canonical["reviewed_on"], "2026-08-12");
+    assert_eq!(canonical["api_version"], "2026-03-10");
+    assert_eq!(canonical["organization"], "EnjoyableWork");
+    assert_eq!(canonical["project_repository"], "EnjoyableWork/mcp-doctor");
+
+    let inventory = canonical["public_repository_inventory"]
+        .as_array()
+        .expect("repository inventory should be an array");
+    assert_eq!(inventory.len(), 5);
+    let inventory_contract = inventory
+        .iter()
+        .map(|entry| {
+            (
+                entry["repository"]
+                    .as_str()
+                    .expect("repository should be a string"),
+                entry["classification"]
+                    .as_str()
+                    .expect("classification should be a string"),
+                entry["license"]
+                    .as_str()
+                    .expect("license should be a string"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        inventory_contract,
+        [
+            (
+                "EnjoyableWork/courtside-mcp",
+                "separate_project",
+                "AGPL-3.0"
+            ),
+            (
+                "EnjoyableWork/enjoyable-mcp",
+                "separate_project",
+                "AGPL-3.0"
+            ),
+            ("EnjoyableWork/homebrew-tap", "in_scope_distribution", "MIT"),
+            ("EnjoyableWork/mcp-doctor", "in_scope_primary", "MIT"),
+            ("EnjoyableWork/mcp-sync", "separate_project", "MIT"),
+        ]
+    );
+
+    assert_eq!(
+        canonical["community_contract"]["public_discussion_uri"],
+        "https://github.com/EnjoyableWork/mcp-doctor/issues"
+    );
+    assert_eq!(
+        canonical["community_contract"]["issue_intake_uri"],
+        "https://github.com/EnjoyableWork/mcp-doctor/issues/new/choose"
+    );
+    assert_eq!(
+        canonical["community_contract"]["private_vulnerability_uri"],
+        "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new"
+    );
+    assert_eq!(
+        canonical["community_contract"]["content_reports_enabled"],
+        true
+    );
+    assert_eq!(
+        canonical["community_contract"]["blank_issues_enabled"],
+        false
+    );
+    assert_eq!(canonical["community_contract"]["inbound_license"], "MIT");
+    assert_eq!(canonical["community_contract"]["outbound_license"], "MIT");
+
+    let official_channels = canonical["official_channels"]
+        .as_array()
+        .expect("official channels should be an array");
+    assert_eq!(official_channels.len(), 7);
+    assert!(official_channels.iter().all(|entry| {
+        entry["uri"]
+            .as_str()
+            .is_some_and(|uri| uri.starts_with("https://") && !uri.contains('@'))
+    }));
+
+    assert_eq!(canonical["source_license"]["spdx_expression"], "MIT");
+    assert_eq!(
+        canonical["source_license"]["license_sha256"],
+        "32a82b79c71a3a633dc51fcb306f0d4768551aaff7c8862f67a5997a5f75faea"
+    );
+    assert_eq!(
+        canonical["tap_contract"]["reviewed_commit"],
+        "8d5421abed22e46b43de35f0876bc65edcd6e0d6"
+    );
+    assert_eq!(
+        canonical["release_license_contract"]["source_commit"],
+        "b0805a8f685e46814e358de368e2a270c21704af"
+    );
+    assert_eq!(
+        canonical["release_license_contract"]["spdx_expression"],
+        "MIT"
+    );
+
+    let assets = canonical["release_license_contract"]["assets"]
+        .as_array()
+        .expect("release assets should be an array");
+    assert_eq!(assets.len(), 7);
+    assert!(assets.iter().all(|asset| {
+        asset["bytes"].as_u64().is_some_and(|bytes| bytes > 0)
+            && asset["sha256"]
+                .as_str()
+                .is_some_and(|digest| digest.len() == 64)
+    }));
+    assert_eq!(
+        canonical["limitations"][0]["surface"],
+        "sbom_project_package_license"
+    );
+    assert_eq!(
+        canonical["limitations"][0]["state"],
+        "not_used_as_mit_evidence"
+    );
+    assert_eq!(
+        canonical["mapped_controls"],
+        serde_json::json!([
+            "OSPS-BR-03.01",
+            "OSPS-DO-02.01",
+            "OSPS-GV-02.01",
+            "OSPS-GV-03.01",
+            "OSPS-LE-02.01",
+            "OSPS-LE-02.02",
+            "OSPS-LE-03.01",
+            "OSPS-LE-03.02",
+            "OSPS-QA-04.01"
+        ])
+    );
+}
+
+#[test]
+fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private() {
+    let conduct = repository_file("CODE_OF_CONDUCT.md");
+    let contributing = repository_file("CONTRIBUTING.md");
+    let support = repository_file("SUPPORT.md");
+    let readme = repository_file("README.md");
+    let scope = repository_file("docs/project-scope.md");
+    let bug_form = repository_file(".github/ISSUE_TEMPLATE/01-bug-report.yml");
+
+    for contract in [
+        "private **Report content** action",
+        "Repository content reporting is enabled",
+        "https://support.github.com/contact/report-abuse",
+        "[SECURITY.md](SECURITY.md)",
+    ] {
+        assert!(
+            conduct.contains(contract),
+            "conduct policy should preserve {contract}"
+        );
+    }
+    for contract in [
+        "same inbound and outbound terms",
+        "requires neither a\nContributor License Agreement",
+        "right to license",
+    ] {
+        assert!(
+            contributing.contains(contract),
+            "contribution policy should preserve {contract}"
+        );
+    }
+    for contract in [
+        "current public release is `0.2.0`",
+        "issues/new?template=01-bug-report.yml",
+        "issues/new?template=02-feature-request.yml",
+        "Suspected vulnerabilities and accidentally exposed secrets",
+    ] {
+        assert!(
+            support.contains(contract),
+            "support guide should preserve {contract}"
+        );
+    }
+    assert!(!support.contains("project is pre-release"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.2.0 or commit SHA"));
+    assert!(readme.contains("[project scope](docs/project-scope.md)"));
+    for contract in [
+        "## In-scope repositories",
+        "## Community and defect routes",
+        "## Official channels",
+        "## License evidence",
+        "A new or unclassified public\norganization repository makes the verifier fail",
+        "The two immutable SPDX documents use `CC0-1.0`",
+        "They are therefore not used as proof of the software's MIT license.",
+        "does not authenticate the supply chain",
+    ] {
+        assert!(
+            scope.contains(contract),
+            "scope guide should preserve {contract}"
+        );
+    }
+}
+
+#[test]
+fn community_license_verifier_is_credential_free_bounded_and_exact() {
+    let verifier = repository_file("scripts/verify-community-license.sh");
+
+    for contract in [
+        "--source-ref main|40-hex-commit",
+        "env \\",
+        "-u GITHUB_TOKEN",
+        "-u GH_TOKEN",
+        "curl --disable",
+        "--proto '=https'",
+        "--proto-redir '=https'",
+        "--proxy ''",
+        "--max-filesize",
+        "--connect-timeout 10",
+        "umask 077",
+        "mktemp -d",
+        "trap community_cleanup EXIT",
+        "orgs/${community_organization}/repos?type=public&per_page=100",
+        "community/profile",
+        "raw.githubusercontent.com",
+        "content_reports_enabled == true",
+        "releases/tags/${community_tag}",
+        ".immutable == true",
+        "git/ref/tags/${community_tag}",
+        "static.crates.io",
+        "version.license == \"MIT\"",
+        "tar -xOzf",
+        ".dataLicense == \"CC0-1.0\"",
+        ".licenseDeclared == \"NOASSERTION\"",
+        "grep -Fx '  license \"MIT\"'",
+        "date=%s canonical_sha256=%s source_sha=%s result=FAIL",
+        "date=%s canonical_sha256=%s source_sha=%s result=PASS",
+    ] {
+        assert!(
+            verifier.contains(contract),
+            "community and license verifier should preserve {contract}"
+        );
+    }
+    for forbidden in [
+        "set -x",
+        "Authorization: Bearer",
+        "curl --netrc",
+        "gh api",
+        "http://",
+    ] {
+        assert!(
+            !verifier.contains(forbidden),
+            "credential-free verifier must not contain {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn project_records_the_active_mcpd_015_boundary_without_supply_chain_claims() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "`MCPD-015` is In progress",
+        "### Accepted community, repository, channel, and license contract",
+        "`DEC-039` fixes the `MCPD-015` boundary.",
+        "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
+        "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
+        "GitHub Issues is the single public project discussion mechanism.",
+        "Use GitHub's private repository **Report content** action",
+        "same inbound and outbound OSI-approved MIT terms",
+        "The immutable SPDX documents use `CC0-1.0`",
+        "They are not used as MIT evidence",
+        "The 2026-08-12 pre-activation review found five public organization",
+        "the conduct policy pointed to a nonexistent public maintainer\ncontact",
+        "It does not claim the full baseline",
+        "| DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted |",
+        "| RISK-20 | Users cannot find a real project route or receive incompatible license terms",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should preserve active MCPD-015 contract: {contract}"
+        );
+    }
+    for premature_claim in [
+        "`MCPD-015` completed on",
+        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
+        "`MCPD-016` is Ready",
+    ] {
+        assert!(
+            !project.contains(premature_claim),
+            "PROJECT.md must not make premature MCPD-015 claim: {premature_claim}"
         );
     }
 }
@@ -1287,8 +1580,16 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn repository_does_not_reference_the_scaffolding_project() {
+fn repository_only_references_the_scaffolding_project_in_the_explicit_inventory() {
     let forbidden = ["mcp", "sync"].join("-");
+    let allowed_inventory_files = [
+        ".github/community-license-controls.json",
+        "PROJECT.md",
+        "docs/project-scope.md",
+        "scripts/verify-community-license.sh",
+        "tests/release.rs",
+    ]
+    .map(|relative| repository_root().join(relative));
     let roots = [
         "README.md",
         "PROJECT.md",
@@ -1302,17 +1603,27 @@ fn repository_does_not_reference_the_scaffolding_project() {
     ];
 
     for root in roots {
-        inspect_text_path(&repository_root().join(root), &forbidden);
+        inspect_text_path(
+            &repository_root().join(root),
+            &forbidden,
+            &allowed_inventory_files,
+        );
     }
 }
 
-fn inspect_text_path(path: &Path, forbidden: &str) {
+fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[PathBuf]) {
+    if allowed_inventory_files
+        .iter()
+        .any(|allowed| allowed == path)
+    {
+        return;
+    }
     if path.is_dir() {
         for entry in fs::read_dir(path)
             .unwrap_or_else(|error| panic!("could not read {}: {error}", path.display()))
         {
             let entry = entry.expect("repository directory entry should be readable");
-            inspect_text_path(&entry.path(), forbidden);
+            inspect_text_path(&entry.path(), forbidden, allowed_inventory_files);
         }
         return;
     }

@@ -29,8 +29,11 @@ behavior is unsafe or persistently disruptive. Enforcement should protect the
 affected people, minimize unnecessary disclosure, and remain proportionate to
 the behavior and its impact.
 
-For immediate threats or platform-wide abuse, use GitHub's safety and abuse
-reporting tools. For a project conduct concern, contact a repository maintainer
-through a non-public contact method shown on their GitHub profile. Do not use a
-public issue to disclose another person's private information. Security reports
-use the separate private route in [SECURITY.md](SECURITY.md).
+For a project conduct concern attached to an issue, pull request, discussion,
+or comment, use GitHub's private **Report content** action from that content.
+Repository content reporting is enabled, so the report goes privately to the
+maintainers for review. If that action is unavailable, or for immediate threats
+or platform-wide abuse, use [GitHub Support's safety and abuse reporting
+tools](https://support.github.com/contact/report-abuse). Do not use a public
+issue to disclose another person's private information. Security reports use
+the separate private route in [SECURITY.md](SECURITY.md).

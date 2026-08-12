@@ -3,16 +3,20 @@
 ## Usage and development questions
 
 Review [README.md](README.md), [PROJECT.md](PROJECT.md), and existing issues
-before opening a new question. The project is pre-release; only behavior proved
-by code and tests should be treated as available.
+before opening a new question. The current public release is `0.2.0`; only
+behavior proved by code, tests, and release evidence should be treated as
+available.
 
-For a reproducible bug, use the structured bug-report form. Include the
-`mcp-doctor` version or commit, operating system and architecture, transport,
-MCP revision, exact safe-to-share command shape, expected result, and redacted
-actual outcome.
+For a reproducible bug, use the structured
+[bug-report form](https://github.com/EnjoyableWork/mcp-doctor/issues/new?template=01-bug-report.yml).
+Include the `mcp-doctor` version or commit, operating system and architecture,
+transport, MCP revision, exact safe-to-share command shape, expected result,
+and redacted actual outcome.
 
-For a new diagnostic or workflow, use the feature-request form and describe
-the user problem, safety implications, and evidence that would prove success.
+For a new diagnostic or workflow, use the
+[feature-request form](https://github.com/EnjoyableWork/mcp-doctor/issues/new?template=02-feature-request.yml)
+and describe the user problem, safety implications, and evidence that would
+prove success.
 
 ## Keep reports safe
 
