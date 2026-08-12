@@ -293,16 +293,10 @@ jobs:
           printf 'archive=%s\n' "$archive_name" >>"$GITHUB_OUTPUT"
 
       - name: Generate the target SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          github-token: ""
-          file: release-assets/${{ steps.package.outputs.archive }}
-          format: spdx-json
-          output-file: release-assets/mcp-doctor-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
-          syft-version: v1.50.0
-          dependency-snapshot: false
-          upload-artifact: false
-          upload-release-assets: false
+        env:
+          SBOM_INPUT: release-assets/${{ steps.package.outputs.archive }}
+          SBOM_OUTPUT: release-assets/mcp-doctor-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+        run: scripts/generate-release-sbom.sh "$SBOM_INPUT" "$SBOM_OUTPUT"
 
       - name: Validate the target SPDX SBOM
         env:

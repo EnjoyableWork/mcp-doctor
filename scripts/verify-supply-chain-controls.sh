@@ -91,7 +91,7 @@ if ! jq -e '
     .stored_secrets == false and
     .privileged_assets == false
   ) and
-  (.actions | length) == 8 and
+  (.actions | length) == 7 and
   all(.actions[];
     (.selection == "direct" or .selection == "nested") and
     (.uses | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$")) and
@@ -107,9 +107,38 @@ if ! jq -e '
     "actions/checkout",
     "actions/download-artifact",
     "actions/upload-artifact",
-    "anchore/sbom-action",
     "rust-lang/crates-io-auth-action"
   ] and
+  (.standalone_tools | length) == 2 and
+  (.standalone_tools | map(.name) | sort) == ["cargo-deny", "syft"] and
+  all(.standalone_tools[];
+    (.version | type == "string" and length > 0) and
+    (.repository | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")) and
+    (.tag | type == "string" and length > 0) and
+    (.tag_object | test("^[0-9a-f]{40}$")) and
+    (.tag_verified | type == "boolean") and
+    (.source_commit | test("^[0-9a-f]{40}$")) and
+    (.source_commit_verified | type == "boolean") and
+    (.release_immutable | type == "boolean") and
+    (.latest_release_required | type == "boolean") and
+    (.assets | length > 0) and
+    all(.assets[];
+      (.target | type == "string" and length > 0) and
+      (.archive | type == "string" and length > 0) and
+      (.bytes | type == "number" and . > 0) and
+      (.sha256 | test("^[0-9a-f]{64}$"))
+    )
+  ) and
+  ([.standalone_tools[] | select(.name == "syft")][0] as $syft |
+    $syft.version == "1.51.0" and
+    $syft.repository == "anchore/syft" and
+    $syft.tag == "v1.51.0" and
+    $syft.release_immutable == true and
+    $syft.latest_release_required == true and
+    ($syft.assets | map(.target) | sort) == [
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu"
+    ]) and
   .source_artifact_policy.binary_exceptions == [] and
   .source_artifact_policy.text_encoding == "UTF-8" and
   .source_artifact_policy.disallowed_ascii_controls == true and
@@ -370,44 +399,121 @@ done < <(
     "$supply_canonical"
 )
 
-supply_tool_repository="$(jq -er '.standalone_tools[0].repository' "$supply_canonical")" || supply_failure
-supply_tool_tag="$(jq -er '.standalone_tools[0].tag' "$supply_canonical")" || supply_failure
-supply_tool_tag_object="$(jq -er '.standalone_tools[0].tag_object' "$supply_canonical")" || supply_failure
-supply_tool_source="$(jq -er '.standalone_tools[0].source_commit' "$supply_canonical")" || supply_failure
-supply_tool_archive="$(jq -er '.standalone_tools[0].archive' "$supply_canonical")" || supply_failure
-supply_tool_sha="$(jq -er '.standalone_tools[0].sha256' "$supply_canonical")" || supply_failure
-supply_tool_repo_json="$supply_temp_root/tool-repository.json"
-supply_tool_ref_json="$supply_temp_root/tool-ref.json"
-supply_tool_tag_json="$supply_temp_root/tool-tag.json"
-supply_tool_commit_json="$supply_temp_root/tool-commit.json"
-supply_tool_release_json="$supply_temp_root/tool-release.json"
-if ! supply_api_get "repos/$supply_tool_repository" "$supply_tool_repo_json" ||
-  ! supply_api_get "repos/$supply_tool_repository/git/ref/tags/$supply_tool_tag" \
-  "$supply_tool_ref_json" ||
-  ! supply_api_get "repos/$supply_tool_repository/git/tags/$supply_tool_tag_object" \
-  "$supply_tool_tag_json" ||
-  ! supply_api_get "repos/$supply_tool_repository/commits/$supply_tool_source" \
-  "$supply_tool_commit_json" ||
-  ! supply_api_get "repos/$supply_tool_repository/releases/tags/$supply_tool_tag" \
-  "$supply_tool_release_json" ||
-  ! jq -e '.archived == false and .visibility == "public"' \
-  "$supply_tool_repo_json" >/dev/null 2>&1 ||
-  ! jq -e --arg object "$supply_tool_tag_object" '
-    .object.type == "tag" and .object.sha == $object
-  ' "$supply_tool_ref_json" >/dev/null 2>&1 ||
-  ! jq -e --arg source "$supply_tool_source" '
-    .object.type == "commit" and .object.sha == $source
-  ' "$supply_tool_tag_json" >/dev/null 2>&1 ||
-  ! jq -e --arg source "$supply_tool_source" '.sha == $source' \
-  "$supply_tool_commit_json" >/dev/null 2>&1 ||
-  ! jq -e --arg name "$supply_tool_archive" --arg digest "sha256:$supply_tool_sha" '
-    .tag_name == "0.20.2" and .immutable == false and
-    any(.assets[];
-      .name == $name and .digest == $digest and .state == "uploaded"
-    )
-  ' "$supply_tool_release_json" >/dev/null 2>&1; then
-  supply_failure
-fi
+while IFS=$'\t' read -r \
+  supply_tool_name supply_tool_repository supply_tool_tag \
+  supply_tool_tag_object supply_tool_tag_verified supply_tool_source \
+  supply_tool_source_verified supply_tool_immutable \
+  supply_tool_latest_required; do
+  supply_tool_repo_json="$supply_temp_root/$supply_tool_name-repository.json"
+  supply_tool_ref_json="$supply_temp_root/$supply_tool_name-ref.json"
+  supply_tool_tag_json="$supply_temp_root/$supply_tool_name-tag.json"
+  supply_tool_commit_json="$supply_temp_root/$supply_tool_name-commit.json"
+  supply_tool_release_json="$supply_temp_root/$supply_tool_name-release.json"
+  if ! supply_api_get "repos/$supply_tool_repository" "$supply_tool_repo_json" ||
+    ! supply_api_get "repos/$supply_tool_repository/git/ref/tags/$supply_tool_tag" \
+    "$supply_tool_ref_json" ||
+    ! supply_api_get "repos/$supply_tool_repository/git/tags/$supply_tool_tag_object" \
+    "$supply_tool_tag_json" ||
+    ! supply_api_get "repos/$supply_tool_repository/commits/$supply_tool_source" \
+    "$supply_tool_commit_json" ||
+    ! supply_api_get "repos/$supply_tool_repository/releases/tags/$supply_tool_tag" \
+    "$supply_tool_release_json" ||
+    ! jq -e '.archived == false and .disabled == false and .visibility == "public"' \
+    "$supply_tool_repo_json" >/dev/null 2>&1 ||
+    ! jq -e --arg object "$supply_tool_tag_object" '
+      .object.type == "tag" and .object.sha == $object
+    ' "$supply_tool_ref_json" >/dev/null 2>&1 ||
+    ! jq -e \
+      --arg source "$supply_tool_source" \
+      --argjson verified "$supply_tool_tag_verified" '
+        .object.type == "commit" and
+        .object.sha == $source and
+        .verification.verified == $verified
+    ' "$supply_tool_tag_json" >/dev/null 2>&1 ||
+    ! jq -e \
+      --arg source "$supply_tool_source" \
+      --argjson verified "$supply_tool_source_verified" '
+        .sha == $source and .commit.verification.verified == $verified
+      ' "$supply_tool_commit_json" >/dev/null 2>&1 ||
+    ! jq -e \
+      --arg tag "$supply_tool_tag" \
+      --argjson immutable "$supply_tool_immutable" '
+        .tag_name == $tag and
+        .draft == false and
+        .prerelease == false and
+        .immutable == $immutable
+      ' "$supply_tool_release_json" >/dev/null 2>&1; then
+    supply_failure
+  fi
+
+  if [[ "$supply_tool_latest_required" == true ]]; then
+    supply_tool_latest_json="$supply_temp_root/$supply_tool_name-latest.json"
+    if ! supply_api_get \
+      "repos/$supply_tool_repository/releases/latest" \
+      "$supply_tool_latest_json" ||
+      ! jq -e --arg tag "$supply_tool_tag" \
+        '.tag_name == $tag and .draft == false and .prerelease == false' \
+        "$supply_tool_latest_json" >/dev/null 2>&1; then
+      supply_failure
+    fi
+  fi
+
+  while IFS=$'\t' read -r \
+    supply_tool_archive supply_tool_bytes supply_tool_sha; do
+    if ! jq -e \
+      --arg name "$supply_tool_archive" \
+      --argjson bytes "$supply_tool_bytes" \
+      --arg digest "sha256:$supply_tool_sha" '
+        any(.assets[];
+          .name == $name and
+          .size == $bytes and
+          .digest == $digest and
+          .state == "uploaded"
+        )
+      ' "$supply_tool_release_json" >/dev/null 2>&1; then
+      supply_failure
+    fi
+  done < <(
+    jq -r --arg name "$supply_tool_name" '
+      .standalone_tools[] | select(.name == $name) |
+      .assets[] | [.archive, .bytes, .sha256] | @tsv
+    ' "$supply_canonical"
+  )
+
+  while IFS=$'\t' read -r supply_tool_license_path supply_tool_license_hash; do
+    supply_tool_license_json="$supply_temp_root/$supply_tool_name-license.json"
+    supply_tool_license_file="$supply_temp_root/$supply_tool_name-license"
+    if ! supply_api_get \
+      "repos/$supply_tool_repository/contents/$supply_tool_license_path?ref=$supply_tool_source" \
+      "$supply_tool_license_json" ||
+      ! jq -er '.content' "$supply_tool_license_json" | tr -d '\n' | \
+        base64 --decode >"$supply_tool_license_file" 2>/dev/null ||
+      [[ "$(supply_hash "$supply_tool_license_file")" != \
+        "$supply_tool_license_hash" ]]; then
+      supply_failure
+    fi
+  done < <(
+    jq -r --arg name "$supply_tool_name" '
+      .standalone_tools[] | select(.name == $name) |
+      .license_files[]? | [.path, .sha256] | @tsv
+    ' "$supply_canonical"
+  )
+done < <(
+  jq -r '
+    .standalone_tools[] |
+    [
+      .name,
+      .repository,
+      .tag,
+      .tag_object,
+      (.tag_verified | tostring),
+      .source_commit,
+      (.source_commit_verified | tostring),
+      (.release_immutable | tostring),
+      (.latest_release_required | tostring)
+    ] | @tsv
+  ' "$supply_canonical"
+)
 
 supply_release_tag="$(jq -er '.distribution_authentication.tag' "$supply_canonical")" || supply_failure
 supply_release_version="$(jq -er '.distribution_authentication.version' "$supply_canonical")" || supply_failure
