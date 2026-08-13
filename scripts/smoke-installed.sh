@@ -29,6 +29,8 @@ smoke_root_prefix="${smoke_temp_parent%/}/mcp-doctor-release-smoke."
 smoke_root=$(mktemp -d "${smoke_root_prefix}XXXXXX")
 smoke_home="${smoke_root}/home"
 smoke_report="${smoke_root}/report.json"
+smoke_json_artifact="${smoke_root}/report-artifact.json"
+smoke_junit_artifact="${smoke_root}/report-artifact.xml"
 smoke_snapshot="${smoke_root}/contract.json"
 smoke_diff="${smoke_root}/diff.json"
 smoke_stderr="${smoke_root}/stderr.txt"
@@ -69,6 +71,8 @@ if [[ "${version_output}" != "mcp-doctor ${smoke_version}" ]]; then
 fi
 
 if ! run_mcp_doctor inspect --format json \
+  --json-report "${smoke_json_artifact}" \
+  --junit-report "${smoke_junit_artifact}" \
   --snapshot "${smoke_snapshot}" \
   --allow-sensitive-snapshot "${smoke_snapshot}" \
   -- "${smoke_fixture}" catalog-valid \
@@ -99,6 +103,25 @@ jq -e '
     (.state == "skipped" and .skip_reason == "not_authorized" and
      (has("blocked_by") | not))] | all)
 ' "${smoke_report}" >/dev/null
+
+if ! cmp -s -- "${smoke_report}" "${smoke_json_artifact}"; then
+  echo "installed diagnostic JSON artifact diverged from the stdout projection" >&2
+  exit 1
+fi
+if [[ ! -f "${smoke_junit_artifact}" || -L "${smoke_junit_artifact}" ]]; then
+  echo "installed diagnostic did not create a regular JUnit artifact" >&2
+  exit 1
+fi
+for smoke_junit_evidence in \
+  '<testsuites name="mcp-doctor"' \
+  'name="runtime.tools"' \
+  'report_outcome=passed' \
+  'exit_code=0'; do
+  if ! grep -F -- "${smoke_junit_evidence}" "${smoke_junit_artifact}" >/dev/null; then
+    echo "installed diagnostic JUnit artifact omitted required evidence" >&2
+    exit 1
+  fi
+done
 
 jq -e '
   .schema_version == "mcp-doctor.contract-snapshot/v1alpha1" and

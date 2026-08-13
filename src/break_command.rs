@@ -1,8 +1,8 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    ActiveConversation, ActiveScenario, RenderedDiagnostic, ReportFormat, ReportTransport,
-    http_diagnostic, m1_http_limit_profile, m1_stdio_limit_profile, render_authorization_failure,
+    ActiveConversation, ActiveScenario, Diagnostic, ReportTransport, http_diagnostic,
+    m1_http_limit_profile, m1_stdio_limit_profile, render_authorization_failure,
     render_generation_configuration_failure, stdio_diagnostic,
 };
 use crate::transport::http::{
@@ -17,13 +17,12 @@ pub(crate) struct BreakOptions<'a> {
     pub(crate) allow_side_effects: bool,
     pub(crate) cases: usize,
     pub(crate) seed: u64,
-    pub(crate) format: ReportFormat,
 }
 
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     options: BreakOptions<'_>,
-) -> Result<RenderedDiagnostic, TargetError> {
+) -> Result<Diagnostic, TargetError> {
     let mut scenario = match ActiveScenario::generated(
         options.tool,
         options.side_effecting,
@@ -36,7 +35,6 @@ pub(crate) async fn run_stdio(
                 failure,
                 options.cases,
                 ReportTransport::Stdio,
-                options.format,
             ));
         }
     };
@@ -45,7 +43,6 @@ pub(crate) async fn run_stdio(
             &scenario,
             failure,
             ReportTransport::Stdio,
-            options.format,
         ));
     }
     scenario.discard_target_environment_names();
@@ -72,13 +69,10 @@ pub(crate) async fn run_stdio(
         result.failure(),
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
-    Ok(conversation.into_diagnostic(diagnostic, options.format))
+    Ok(conversation.into_diagnostic(diagnostic))
 }
 
-pub(crate) async fn run_http(
-    remote: RemoteOptions,
-    options: BreakOptions<'_>,
-) -> RenderedDiagnostic {
+pub(crate) async fn run_http(remote: RemoteOptions, options: BreakOptions<'_>) -> Diagnostic {
     let mut scenario = match ActiveScenario::generated(
         options.tool,
         options.side_effecting,
@@ -91,17 +85,11 @@ pub(crate) async fn run_http(
                 failure,
                 options.cases,
                 ReportTransport::Http,
-                options.format,
             );
         }
     };
     if let Err(failure) = scenario.authorize(options.allowed_tool, options.allow_side_effects) {
-        return render_authorization_failure(
-            &scenario,
-            failure,
-            ReportTransport::Http,
-            options.format,
-        );
+        return render_authorization_failure(&scenario, failure, ReportTransport::Http);
     }
     scenario.discard_target_environment_names();
 
@@ -109,22 +97,20 @@ pub(crate) async fn run_http(
     let target = match HttpTarget::prepare(remote, http_limits(), &SystemResolver).await {
         Ok(target) => target,
         Err(failure) => {
-            return conversation
-                .into_http_diagnostic(http_diagnostic(Some(failure), None), options.format);
+            return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
         }
     };
     let transport = match HttpTransport::new(target) {
         Ok(transport) => transport,
         Err(failure) => {
-            return conversation
-                .into_http_diagnostic(http_diagnostic(Some(failure), Some(true)), options.format);
+            return conversation.into_http_diagnostic(http_diagnostic(Some(failure), Some(true)));
         }
     };
     let result = transport.probe(&mut conversation).await;
-    conversation.into_http_diagnostic(
-        http_diagnostic(result.failure(), Some(result.tls_applicable())),
-        options.format,
-    )
+    conversation.into_http_diagnostic(http_diagnostic(
+        result.failure(),
+        Some(result.tls_applicable()),
+    ))
 }
 
 fn http_limits() -> HttpLimits {

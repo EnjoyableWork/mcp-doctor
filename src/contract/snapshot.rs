@@ -257,6 +257,10 @@ pub(crate) struct SnapshotDestination {
 }
 
 impl SnapshotDestination {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub(crate) fn persist(&self, bytes: &[u8]) -> Result<(), SnapshotDestinationError> {
         let values = DiagnosticLimits::M1_DEFAULTS.values();
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > values.aggregate_output_bytes {

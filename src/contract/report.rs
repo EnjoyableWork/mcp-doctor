@@ -13,6 +13,7 @@ use super::protocol::{KnownRevision, SupportedRevision};
 use super::redaction::REDACTION_MARKER;
 
 pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
+const AGGREGATE_REPORT_BYTES: u64 = 8_388_608;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ReportFormat {
@@ -22,8 +23,60 @@ pub(crate) enum ReportFormat {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ReportArtifactFormat {
+    Json,
+    Junit,
+}
+
+impl ReportArtifactFormat {
+    const fn report_format(self) -> ReportFormat {
+        match self {
+            Self::Json => ReportFormat::Json,
+            Self::Junit => ReportFormat::Junit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct ReportRequest {
+    stdout: ReportFormat,
+    json_artifact: bool,
+    junit_artifact: bool,
+}
+
+impl ReportRequest {
+    pub(crate) const fn new(
+        stdout: ReportFormat,
+        json_artifact: bool,
+        junit_artifact: bool,
+    ) -> Self {
+        Self {
+            stdout,
+            json_artifact,
+            junit_artifact,
+        }
+    }
+
+    pub(crate) const fn stdout_only(stdout: ReportFormat) -> Self {
+        Self::new(stdout, false, false)
+    }
+}
+
+pub(crate) struct RenderedReportArtifact {
+    pub(crate) format: ReportArtifactFormat,
+    pub(crate) output: String,
+}
+
+pub(crate) struct RenderedReports {
+    pub(crate) stdout: String,
+    pub(crate) artifacts: Vec<RenderedReportArtifact>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) enum ReportRenderError {
     SizeLimitExceeded { maximum: u64 },
+    AggregateSizeLimitExceeded { maximum: u64 },
+    RenderFailed,
 }
 
 impl fmt::Display for ReportRenderError {
@@ -33,6 +86,13 @@ impl fmt::Display for ReportRenderError {
                 formatter,
                 "diagnostic report exceeded the configured {maximum}-byte output limit"
             ),
+            Self::AggregateSizeLimitExceeded { maximum } => write!(
+                formatter,
+                "requested diagnostic reports exceeded the configured {maximum}-byte aggregate output limit"
+            ),
+            Self::RenderFailed => {
+                formatter.write_str("requested diagnostic reports could not be rendered safely")
+            }
         }
     }
 }
@@ -518,6 +578,66 @@ pub(super) fn render_report(
         ReportFormat::Json => JsonReporter::render(report),
         ReportFormat::Junit => JunitReporter::render(report),
     }
+}
+
+pub(super) fn render_reports(
+    report: &DiagnosticReport,
+    request: ReportRequest,
+) -> Result<RenderedReports, ReportRenderError> {
+    render_reports_with_limit(report, request, AGGREGATE_REPORT_BYTES)
+}
+
+fn render_reports_with_limit(
+    report: &DiagnosticReport,
+    request: ReportRequest,
+    aggregate_maximum: u64,
+) -> Result<RenderedReports, ReportRenderError> {
+    if internal_test_render_failure() {
+        return Err(ReportRenderError::RenderFailed);
+    }
+
+    let stdout = render_report(report, request.stdout)?;
+    let mut aggregate_bytes = u64::try_from(stdout.len()).unwrap_or(u64::MAX);
+    if aggregate_bytes > aggregate_maximum {
+        return Err(ReportRenderError::AggregateSizeLimitExceeded {
+            maximum: aggregate_maximum,
+        });
+    }
+    let mut artifacts = Vec::with_capacity(2);
+    for (requested, format) in [
+        (request.json_artifact, ReportArtifactFormat::Json),
+        (request.junit_artifact, ReportArtifactFormat::Junit),
+    ] {
+        if !requested {
+            continue;
+        }
+        let output = render_report(report, format.report_format())?;
+        aggregate_bytes = aggregate_bytes
+            .checked_add(u64::try_from(output.len()).unwrap_or(u64::MAX))
+            .ok_or(ReportRenderError::AggregateSizeLimitExceeded {
+                maximum: aggregate_maximum,
+            })?;
+        if aggregate_bytes > aggregate_maximum {
+            return Err(ReportRenderError::AggregateSizeLimitExceeded {
+                maximum: aggregate_maximum,
+            });
+        }
+        artifacts.push(RenderedReportArtifact { format, output });
+    }
+
+    Ok(RenderedReports { stdout, artifacts })
+}
+
+#[cfg(feature = "internal-test-fixtures")]
+fn internal_test_render_failure() -> bool {
+    std::env::var_os("MCP_DOCTOR_TEST_MODE").as_deref() == Some(std::ffi::OsStr::new("1"))
+        && std::env::var_os("MCP_DOCTOR_INTERNAL_TEST_REPORT_RENDER_FAILURE").as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+}
+
+#[cfg(not(feature = "internal-test-fixtures"))]
+const fn internal_test_render_failure() -> bool {
+    false
 }
 
 pub(super) struct HumanReporter;
@@ -1712,7 +1832,8 @@ impl JsonEvidence {
 mod tests {
     use super::{
         BoundedOutput, DiagnosticReport, ExitStatus, HumanReporter, JsonReporter, JunitReporter,
-        OverallOutcome, ReportContractError, ReportRenderError, write_xml_escaped,
+        OverallOutcome, ReportArtifactFormat, ReportContractError, ReportFormat, ReportRenderError,
+        ReportRequest, render_reports, render_reports_with_limit, write_xml_escaped,
     };
     use crate::contract::limits::{DiagnosticLimits, LimitKind, LimitValues, LimitViolation};
     use crate::contract::model::{
@@ -1870,6 +1991,42 @@ mod tests {
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
         assert_stable_report(&json_value);
         assert_common_junit_document(&junit, 3, 1, 1);
+    }
+
+    #[test]
+    fn one_report_fans_out_in_fixed_order_under_one_aggregate_bound() {
+        let report = synthetic_failed_report();
+        let request = ReportRequest::new(ReportFormat::Human, true, true);
+        let rendered = render_reports(&report, request)
+            .expect("the synthetic report projections should fit their bounds");
+
+        assert_eq!(
+            rendered.stdout,
+            include_str!("../../tests/fixtures/contracts/failed-report.txt")
+        );
+        assert_eq!(rendered.artifacts.len(), 2);
+        assert_eq!(rendered.artifacts[0].format, ReportArtifactFormat::Json);
+        assert_eq!(
+            rendered.artifacts[0].output,
+            include_str!("../../tests/fixtures/contracts/failed-report.json")
+        );
+        assert_eq!(rendered.artifacts[1].format, ReportArtifactFormat::Junit);
+        assert_eq!(
+            rendered.artifacts[1].output,
+            include_str!("../../tests/fixtures/contracts/failed-report.junit.xml")
+        );
+
+        let aggregate_bytes = rendered
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.output.len())
+            .sum::<usize>()
+            .saturating_add(rendered.stdout.len());
+        let maximum = u64::try_from(aggregate_bytes - 1).expect("fixture length should fit");
+        assert_eq!(
+            render_reports_with_limit(&report, request, maximum).err(),
+            Some(ReportRenderError::AggregateSizeLimitExceeded { maximum })
+        );
     }
 
     #[test]

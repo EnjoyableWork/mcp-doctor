@@ -1,6 +1,6 @@
 use std::env;
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode};
@@ -34,6 +34,7 @@ fn main() -> ExitCode {
         Some("early-exit") => early_exit(),
         Some("resistant-child") => resistant_child(&remaining),
         Some("catalog-valid") => catalog_valid(),
+        Some("report-single-run") => report_single_run(&remaining),
         Some("protocol-unsupported") => protocol_unsupported(),
         Some("layered-protocol-failure") => layered_protocol_failure(),
         Some("catalog-invalid") => catalog_invalid(),
@@ -62,6 +63,7 @@ fn main() -> ExitCode {
         Some("legacy-oversized") => legacy_oversized(),
         Some("active-success") => active_success(),
         Some("active-one-success") => active_one_success(),
+        Some("active-report-single-run") => active_report_single_run(&remaining),
         Some("active-output-instance-depth") => active_output_instance_depth(),
         Some("active-output-evaluation-limit") => active_output_evaluation_limit(),
         Some("active-mismatch-continue") => active_mismatch_continue(&remaining),
@@ -81,6 +83,7 @@ fn main() -> ExitCode {
         Some("active-resistant-child") => active_resistant_child(&remaining),
         Some("active-started-marker") => active_started_marker(&remaining),
         Some("break-success") => break_success(&remaining),
+        Some("break-report-single-run") => break_report_single_run(&remaining),
         Some("break-tool-error") => break_tool_error(&remaining),
         Some("break-impossible") => break_impossible(),
         Some("break-schema-external") => break_schema_external(),
@@ -277,6 +280,13 @@ fn catalog_valid() -> ExitCode {
     write_fixture_result(6, include_str!("catalogs/valid-resource-templates.json"));
     assert_eof(&mut input);
     ExitCode::SUCCESS
+}
+
+fn report_single_run(arguments: &[OsString]) -> ExitCode {
+    if !claim_single_run(arguments.first()) {
+        return ExitCode::from(2);
+    }
+    catalog_valid()
 }
 
 fn protocol_unsupported() -> ExitCode {
@@ -806,6 +816,13 @@ fn active_one_success() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn active_report_single_run(arguments: &[OsString]) -> ExitCode {
+    if !claim_single_run(arguments.first()) {
+        return ExitCode::from(2);
+    }
+    active_one_success()
+}
+
 fn active_output_instance_depth() -> ExitCode {
     let mut structured = json!({"value": true});
     for _ in 0..70 {
@@ -1242,6 +1259,25 @@ fn break_success(arguments: &[OsString]) -> ExitCode {
     )
     .expect("the generated observation marker should be writable");
     ExitCode::SUCCESS
+}
+
+fn break_report_single_run(arguments: &[OsString]) -> ExitCode {
+    if !claim_single_run(arguments.first()) {
+        return ExitCode::from(2);
+    }
+    break_success(arguments.get(1..).unwrap_or_default())
+}
+
+fn claim_single_run(marker: Option<&OsString>) -> bool {
+    let Some(marker) = marker.map(PathBuf::from) else {
+        return false;
+    };
+    let Ok(mut file) = OpenOptions::new().write(true).create_new(true).open(marker) else {
+        return false;
+    };
+    file.write_all(b"one target run")
+        .and_then(|()| file.sync_all())
+        .is_ok()
 }
 
 fn break_tool_error(arguments: &[OsString]) -> ExitCode {

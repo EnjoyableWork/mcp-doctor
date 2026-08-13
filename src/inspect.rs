@@ -3,10 +3,10 @@ use std::ffi::OsString;
 use std::fmt;
 
 use crate::contract::{
-    PassiveCatalogConversation, ProtocolRevision, RenderedDiagnostic, ReportFormat,
-    SnapshotDestinationError, capture_contract_snapshot, http_diagnostic,
-    http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
-    render_catalog_diagnostic, render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
+    Diagnostic, PassiveCatalogConversation, ProtocolRevision, SnapshotDestinationError,
+    capture_contract_snapshot, http_diagnostic, http_diagnostic_with_cleanup,
+    m1_http_limit_profile, m1_stdio_limit_profile, render_catalog_diagnostic,
+    render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
     render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
     stdio_diagnostic,
 };
@@ -16,7 +16,7 @@ use crate::transport::http::{
 use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
 pub(crate) struct InspectOutput {
-    pub(crate) diagnostic: RenderedDiagnostic,
+    pub(crate) diagnostic: Diagnostic,
     pub(crate) snapshot: Option<Vec<u8>>,
 }
 
@@ -51,7 +51,6 @@ impl From<SnapshotDestinationError> for InspectError {
 
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
-    format: ReportFormat,
     revision: ProtocolRevision,
     capture_snapshot: bool,
 ) -> Result<InspectOutput, InspectError> {
@@ -81,12 +80,11 @@ pub(crate) async fn run_stdio(
     let diagnostic = stdio_diagnostic(result.failure(), cleanup_failed);
     if result.failure().is_some() {
         Ok(InspectOutput {
-            diagnostic: render_stdio_diagnostic_for_revision(diagnostic, format, revision),
+            diagnostic: render_stdio_diagnostic_for_revision(diagnostic, revision),
             snapshot: None,
         })
     } else {
-        let diagnostic =
-            render_catalog_diagnostic(diagnostic, &conversation, result.responses(), format);
+        let diagnostic = render_catalog_diagnostic(diagnostic, &conversation, result.responses());
         let snapshot = capture_if_complete(capture_snapshot, !cleanup_failed, result.responses())?;
         Ok(InspectOutput {
             diagnostic,
@@ -97,7 +95,6 @@ pub(crate) async fn run_stdio(
 
 pub(crate) async fn run_http(
     options: RemoteOptions,
-    format: ReportFormat,
     revision: ProtocolRevision,
     capture_snapshot: bool,
 ) -> Result<InspectOutput, SnapshotDestinationError> {
@@ -131,7 +128,6 @@ pub(crate) async fn run_http(
             return Ok(InspectOutput {
                 diagnostic: render_http_diagnostic_for_revision(
                     http_diagnostic(Some(failure), None),
-                    format,
                     revision,
                 ),
                 snapshot: None,
@@ -148,7 +144,6 @@ pub(crate) async fn run_http(
             return Ok(InspectOutput {
                 diagnostic: render_http_diagnostic_for_revision(
                     http_diagnostic(Some(failure), Some(true)),
-                    format,
                     revision,
                 ),
                 snapshot: None,
@@ -167,7 +162,6 @@ pub(crate) async fn run_http(
         Ok(InspectOutput {
             diagnostic: render_http_diagnostic_for_revision_with_negotiated(
                 diagnostic,
-                format,
                 revision,
                 conversation.negotiated_revision(),
             ),
@@ -175,7 +169,7 @@ pub(crate) async fn run_http(
         })
     } else {
         let diagnostic =
-            render_http_catalog_diagnostic(diagnostic, &conversation, result.responses(), format);
+            render_http_catalog_diagnostic(diagnostic, &conversation, result.responses());
         let snapshot = capture_if_complete(capture_snapshot, !cleanup_failed, result.responses())?;
         Ok(InspectOutput {
             diagnostic,

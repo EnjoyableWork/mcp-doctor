@@ -25,7 +25,7 @@ use model::{
 };
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
-use report::{DiagnosticReport, ExitStatus, render_report};
+use report::{DiagnosticReport, ExitStatus, render_reports};
 
 pub(crate) use active::{
     ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, ScenarioFailure,
@@ -34,7 +34,9 @@ pub(crate) use active::{
 };
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use protocol::SupportedRevision as ProtocolRevision;
-pub(crate) use report::ReportFormat;
+pub(crate) use report::{
+    RenderedReportArtifact, ReportArtifactFormat, ReportFormat, ReportRequest,
+};
 pub(crate) use snapshot::{
     DiffFormat, RenderedContractDiff, SnapshotDestination, SnapshotDestinationError,
     capture_contract_snapshot, prepare_snapshot_destination, render_contract_diff,
@@ -243,23 +245,31 @@ fn map_stdio_failure(failure: StdioFailure) -> StdioPrimaryFailure {
 
 pub(crate) struct RenderedDiagnostic {
     pub(crate) output: String,
+    pub(crate) artifacts: Vec<RenderedReportArtifact>,
     pub(crate) exit: std::process::ExitCode,
     pub(crate) error: Option<String>,
 }
 
-impl RenderedDiagnostic {
-    pub(in crate::contract) fn from_report(
-        report: &DiagnosticReport,
-        format: ReportFormat,
-    ) -> Self {
-        match render_report(report, format) {
-            Ok(output) => Self {
-                output,
-                exit: report.exit_status().into(),
+pub(crate) struct Diagnostic {
+    report: DiagnosticReport,
+}
+
+impl Diagnostic {
+    fn from_report(report: DiagnosticReport) -> Self {
+        Self { report }
+    }
+
+    pub(crate) fn render(self, request: ReportRequest) -> RenderedDiagnostic {
+        match render_reports(&self.report, request) {
+            Ok(reports) => RenderedDiagnostic {
+                output: reports.stdout,
+                artifacts: reports.artifacts,
+                exit: self.report.exit_status().into(),
                 error: None,
             },
-            Err(error) => Self {
+            Err(error) => RenderedDiagnostic {
                 output: String::new(),
+                artifacts: Vec::new(),
                 exit: ExitStatus::InternalError.into(),
                 error: Some(error.to_string()),
             },
@@ -303,27 +313,22 @@ pub(crate) const fn http_diagnostic_with_cleanup(
     }
 }
 
-pub(crate) fn render_http_diagnostic(
-    diagnostic: HttpDiagnostic,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
-    render_http_diagnostic_for_revision(diagnostic, format, SupportedRevision::CURRENT)
+pub(crate) fn render_http_diagnostic(diagnostic: HttpDiagnostic) -> Diagnostic {
+    render_http_diagnostic_for_revision(diagnostic, SupportedRevision::CURRENT)
 }
 
 pub(crate) fn render_http_diagnostic_for_revision(
     diagnostic: HttpDiagnostic,
-    format: ReportFormat,
     revision: SupportedRevision,
-) -> RenderedDiagnostic {
-    render_http_diagnostic_for_revision_with_negotiated(diagnostic, format, revision, None)
+) -> Diagnostic {
+    render_http_diagnostic_for_revision_with_negotiated(diagnostic, revision, None)
 }
 
 pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
     diagnostic: HttpDiagnostic,
-    format: ReportFormat,
     revision: SupportedRevision,
     negotiated_revision: Option<protocol::KnownRevision>,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let checks = http_checks_for_revision(diagnostic, revision);
     let failed = diagnostic.failure.is_some();
     let mut checks = checks;
@@ -361,15 +366,14 @@ pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
             ),
         ]);
     }
-    render_checks_for_revision(checks, format, revision, negotiated_revision)
+    render_checks_for_revision(checks, revision, negotiated_revision)
 }
 
 pub(crate) fn render_http_catalog_diagnostic(
     diagnostic: HttpDiagnostic,
     conversation: &PassiveCatalogConversation,
     responses: &[ProbeResponse],
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let revision = conversation.revision();
     let mut checks = http_checks_for_revision(diagnostic, revision);
     let reserved_findings = checks
@@ -382,7 +386,7 @@ pub(crate) fn render_http_catalog_diagnostic(
         responses,
         reserved_findings,
     ));
-    render_checks_for_revision(checks, format, revision, conversation.negotiated_revision())
+    render_checks_for_revision(checks, revision, conversation.negotiated_revision())
 }
 
 pub(in crate::contract) fn http_checks(diagnostic: HttpDiagnostic) -> Vec<CheckResult> {
@@ -721,18 +725,14 @@ fn protocol_skips(reason: SkipReason, runtime_requirement: Requirement) -> Vec<C
     ]
 }
 
-pub(crate) fn render_stdio_diagnostic(
-    diagnostic: StdioDiagnostic,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
-    render_stdio_diagnostic_for_revision(diagnostic, format, SupportedRevision::CURRENT)
+pub(crate) fn render_stdio_diagnostic(diagnostic: StdioDiagnostic) -> Diagnostic {
+    render_stdio_diagnostic_for_revision(diagnostic, SupportedRevision::CURRENT)
 }
 
 pub(crate) fn render_stdio_diagnostic_for_revision(
     diagnostic: StdioDiagnostic,
-    format: ReportFormat,
     revision: SupportedRevision,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let findings = stdio_findings_for_revision(diagnostic, revision);
 
     render_checks_for_revision(
@@ -764,7 +764,6 @@ pub(crate) fn render_stdio_diagnostic_for_revision(
                 SkipReason::NotAuthorized,
             ),
         ],
-        format,
         revision,
         None,
     )
@@ -774,8 +773,7 @@ pub(crate) fn render_catalog_diagnostic(
     diagnostic: StdioDiagnostic,
     conversation: &PassiveCatalogConversation,
     responses: &[ProbeResponse],
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let revision = conversation.revision();
     let transport_findings = stdio_findings_for_revision(diagnostic, revision);
     let reserved_findings = transport_findings.len();
@@ -789,7 +787,7 @@ pub(crate) fn render_catalog_diagnostic(
         responses,
         reserved_findings,
     ));
-    render_checks_for_revision(checks, format, revision, conversation.negotiated_revision())
+    render_checks_for_revision(checks, revision, conversation.negotiated_revision())
 }
 
 fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
@@ -844,23 +842,22 @@ fn stdio_findings_for_revision(
     findings
 }
 
-fn render_checks(checks: Vec<CheckResult>, format: ReportFormat) -> RenderedDiagnostic {
-    render_checks_for_revision(checks, format, SupportedRevision::CURRENT, None)
+fn render_checks(checks: Vec<CheckResult>) -> Diagnostic {
+    render_checks_for_revision(checks, SupportedRevision::CURRENT, None)
 }
 
 fn render_checks_for_revision(
     checks: Vec<CheckResult>,
-    format: ReportFormat,
     revision: SupportedRevision,
     negotiated_revision: Option<protocol::KnownRevision>,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let mut report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
         .expect("the STDIO application must construct a valid diagnostic report");
     if let Some(negotiated_revision) = negotiated_revision {
         report = report.with_negotiated_revision(negotiated_revision);
     }
 
-    RenderedDiagnostic::from_report(&report, format)
+    Diagnostic::from_report(report)
 }
 
 fn stdio_location(stream: StdioStream) -> Location {
@@ -896,23 +893,21 @@ pub(super) fn success_exit() -> std::process::ExitCode {
 #[cfg(test)]
 mod transport_contract_tests {
     use super::{
-        ReportFormat, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure, http_diagnostic,
-        render_http_diagnostic, render_stdio_diagnostic,
+        ReportFormat, ReportRequest, StdioDiagnostic, StdioLimitKind, StdioPrimaryFailure,
+        http_diagnostic, render_http_diagnostic, render_stdio_diagnostic,
     };
     use crate::transport::http::HttpFailure;
 
     #[test]
     fn transport_and_cleanup_failures_remain_distinct_in_one_safe_report() {
-        let rendered = render_stdio_diagnostic(
-            StdioDiagnostic {
-                primary: Some(StdioPrimaryFailure::InvalidMessage {
-                    byte_count: 37,
-                    index: 2,
-                }),
-                cleanup_failed: true,
-            },
-            ReportFormat::Human,
-        );
+        let rendered = render_stdio_diagnostic(StdioDiagnostic {
+            primary: Some(StdioPrimaryFailure::InvalidMessage {
+                byte_count: 37,
+                index: 2,
+            }),
+            cleanup_failed: true,
+        })
+        .render(ReportRequest::stdout_only(ReportFormat::Human));
 
         assert!(rendered.output.contains("MCP-TRANSPORT-003"));
         assert!(rendered.output.contains("process.stdout.message[2]"));
@@ -927,17 +922,15 @@ mod transport_contract_tests {
 
     #[test]
     fn transport_limits_use_the_canonical_kind_and_structural_location() {
-        let rendered = render_stdio_diagnostic(
-            StdioDiagnostic {
-                primary: Some(StdioPrimaryFailure::Limit {
-                    kind: StdioLimitKind::StderrBytes,
-                    observed: 1_048_577,
-                    maximum: 1_048_576,
-                }),
-                cleanup_failed: false,
-            },
-            ReportFormat::Human,
-        );
+        let rendered = render_stdio_diagnostic(StdioDiagnostic {
+            primary: Some(StdioPrimaryFailure::Limit {
+                kind: StdioLimitKind::StderrBytes,
+                observed: 1_048_577,
+                maximum: 1_048_576,
+            }),
+            cleanup_failed: false,
+        })
+        .render(ReportRequest::stdout_only(ReportFormat::Human));
 
         assert!(rendered.output.contains("MCP-LIMIT-001"));
         assert!(rendered.output.contains("process.stderr"));
@@ -951,10 +944,9 @@ mod transport_contract_tests {
 
     #[test]
     fn a_pre_response_connection_failure_never_claims_tls_verification() {
-        let rendered = render_http_diagnostic(
-            http_diagnostic(Some(HttpFailure::Request), Some(true)),
-            ReportFormat::Human,
-        );
+        let rendered =
+            render_http_diagnostic(http_diagnostic(Some(HttpFailure::Request), Some(true)))
+                .render(ReportRequest::stdout_only(ReportFormat::Human));
 
         assert!(
             rendered

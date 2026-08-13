@@ -3,10 +3,11 @@ mod check;
 mod contract;
 mod diff;
 mod inspect;
+mod report_artifacts;
 mod transport;
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
@@ -40,9 +41,8 @@ enum Command {
         .args(["endpoint", "target"])
 ))]
 struct InspectArgs {
-    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-    format: OutputFormat,
+    #[command(flatten)]
+    report: ReportArgs,
 
     /// Exact MCP revision to inspect; legacy revisions are passive and opt-in only.
     #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
@@ -103,9 +103,8 @@ struct CheckArgs {
     #[arg(long)]
     allow_side_effects: bool,
 
-    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-    format: OutputFormat,
+    #[command(flatten)]
+    report: ReportArgs,
 
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
@@ -151,9 +150,8 @@ struct BreakArgs {
     #[arg(long, value_name = "U64")]
     seed: u64,
 
-    /// Report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-    format: OutputFormat,
+    #[command(flatten)]
+    report: ReportArgs,
 
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
@@ -165,6 +163,21 @@ struct BreakArgs {
     /// Server executable followed by its literal arguments after `--`.
     #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
     target: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+struct ReportArgs {
+    /// Stdout report format. JSON uses stable mcp-doctor.report/v1; JUnit uses a conservative common subset.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    format: OutputFormat,
+
+    /// Write stable mcp-doctor.report/v1 JSON to one explicit new file.
+    #[arg(long, value_name = "PATH")]
+    json_report: Option<PathBuf>,
+
+    /// Write the JUnit projection to one explicit new file.
+    #[arg(long, value_name = "PATH")]
+    junit_report: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Default)]
@@ -259,6 +272,31 @@ impl From<OutputFormat> for contract::ReportFormat {
     }
 }
 
+impl ReportArgs {
+    fn prepare(
+        &self,
+        reserved_paths: &[&Path],
+    ) -> Result<
+        (
+            contract::ReportRequest,
+            report_artifacts::ReportArtifactDestinations,
+        ),
+        report_artifacts::ReportArtifactError,
+    > {
+        let destinations = report_artifacts::ReportArtifactDestinations::prepare(
+            self.json_report.clone(),
+            self.junit_report.clone(),
+            reserved_paths,
+        )?;
+        let request = contract::ReportRequest::new(
+            self.format.into(),
+            destinations.requests_json(),
+            destinations.requests_junit(),
+        );
+        Ok((request, destinations))
+    }
+}
+
 impl From<DiffOutputFormat> for contract::DiffFormat {
     fn from(format: DiffOutputFormat) -> Self {
         match format {
@@ -268,29 +306,65 @@ impl From<DiffOutputFormat> for contract::DiffFormat {
     }
 }
 
-fn emit_diagnostic(diagnostic: contract::RenderedDiagnostic) -> ExitCode {
-    print!("{}", diagnostic.output);
-    if let Some(error) = diagnostic.error {
+fn emit_diagnostic(
+    diagnostic: contract::Diagnostic,
+    request: contract::ReportRequest,
+    destinations: report_artifacts::ReportArtifactDestinations,
+) -> ExitCode {
+    let rendered = diagnostic.render(request);
+    let exit = rendered.exit;
+    let output = rendered.output;
+    if let Some(error) = rendered.error {
+        print!("{output}");
         eprintln!("error: {error}");
+        if let Err(cleanup) = destinations.cancel() {
+            eprintln!("error: {cleanup}");
+        }
+        return exit;
     }
-    diagnostic.exit
+
+    let persistence = destinations.persist(rendered.artifacts);
+    print!("{output}");
+    match persistence {
+        Ok(()) => exit,
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(4)
+        }
+    }
+}
+
+fn emit_invocation_error(
+    error: &dyn std::fmt::Display,
+    destinations: report_artifacts::ReportArtifactDestinations,
+) -> ExitCode {
+    eprintln!("error: {error}");
+    if let Err(cleanup) = destinations.cancel() {
+        eprintln!("error: {cleanup}");
+        ExitCode::from(4)
+    } else {
+        ExitCode::from(2)
+    }
 }
 
 fn emit_inspect(
     output: inspect::InspectOutput,
     destination: Option<contract::SnapshotDestination>,
+    request: contract::ReportRequest,
+    report_destinations: report_artifacts::ReportArtifactDestinations,
 ) -> ExitCode {
     if let Some(snapshot) = output.snapshot {
         let Some(destination) = destination else {
-            eprintln!("error: a contract snapshot was produced without an authorized destination");
-            return ExitCode::from(2);
+            return emit_invocation_error(
+                &"a contract snapshot was produced without an authorized destination",
+                report_destinations,
+            );
         };
         if let Err(error) = destination.persist(&snapshot) {
-            eprintln!("error: {error}");
-            return ExitCode::from(2);
+            return emit_invocation_error(&error, report_destinations);
         }
     }
-    emit_diagnostic(output.diagnostic)
+    emit_diagnostic(output.diagnostic, request, report_destinations)
 }
 
 fn emit_contract_diff(diff: contract::RenderedContractDiff) -> ExitCode {
@@ -318,36 +392,40 @@ async fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
+            let reserved_paths = destination
+                .as_ref()
+                .map(contract::SnapshotDestination::path)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let (report_request, report_destinations) =
+                match arguments.report.prepare(&reserved_paths) {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
+            drop(reserved_paths);
             let capture_snapshot = destination.is_some();
             if let Some(endpoint) = arguments.endpoint {
                 match inspect::run_http(
                     arguments.remote.into_options(endpoint),
-                    arguments.format.into(),
                     revision,
                     capture_snapshot,
                 )
                 .await
                 {
-                    Ok(output) => emit_inspect(output, destination),
-                    Err(error) => {
-                        eprintln!("error: {error}");
-                        ExitCode::from(2)
+                    Ok(output) => {
+                        emit_inspect(output, destination, report_request, report_destinations)
                     }
+                    Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             } else {
-                match inspect::run_stdio(
-                    arguments.target,
-                    arguments.format.into(),
-                    revision,
-                    capture_snapshot,
-                )
-                .await
-                {
-                    Ok(output) => emit_inspect(output, destination),
-                    Err(error) => {
-                        eprintln!("error: {error}");
-                        ExitCode::from(2)
+                match inspect::run_stdio(arguments.target, revision, capture_snapshot).await {
+                    Ok(output) => {
+                        emit_inspect(output, destination, report_request, report_destinations)
                     }
+                    Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             }
         }
@@ -357,31 +435,35 @@ async fn main() -> ExitCode {
             arguments.format.into(),
         )),
         Some(Command::Check(arguments)) => {
+            let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(2);
+                }
+            };
             if let Some(endpoint) = arguments.endpoint {
                 let diagnostic = check::run_http(
                     arguments.remote.into_options(endpoint),
                     &arguments.scenario,
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
-                    arguments.format.into(),
                 )
                 .await;
-                emit_diagnostic(diagnostic)
+                emit_diagnostic(diagnostic, report_request, report_destinations)
             } else {
                 match check::run_stdio(
                     arguments.target,
                     &arguments.scenario,
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
-                    arguments.format.into(),
                 )
                 .await
                 {
-                    Ok(diagnostic) => emit_diagnostic(diagnostic),
-                    Err(error) => {
-                        eprintln!("error: {error}");
-                        ExitCode::from(2)
+                    Ok(diagnostic) => {
+                        emit_diagnostic(diagnostic, report_request, report_destinations)
                     }
+                    Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             }
         }
@@ -393,11 +475,18 @@ async fn main() -> ExitCode {
                 allow_side_effects,
                 cases,
                 seed,
-                format,
+                report,
                 endpoint,
                 remote,
                 target,
             } = arguments;
+            let (report_request, report_destinations) = match report.prepare(&[]) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(2);
+                }
+            };
             let options = break_command::BreakOptions {
                 tool,
                 allowed_tool: &allow_tool,
@@ -405,19 +494,17 @@ async fn main() -> ExitCode {
                 allow_side_effects,
                 cases,
                 seed,
-                format: format.into(),
             };
             if let Some(endpoint) = endpoint {
                 let diagnostic =
                     break_command::run_http(remote.into_options(endpoint), options).await;
-                emit_diagnostic(diagnostic)
+                emit_diagnostic(diagnostic, report_request, report_destinations)
             } else {
                 match break_command::run_stdio(target, options).await {
-                    Ok(diagnostic) => emit_diagnostic(diagnostic),
-                    Err(error) => {
-                        eprintln!("error: {error}");
-                        ExitCode::from(2)
+                    Ok(diagnostic) => {
+                        emit_diagnostic(diagnostic, report_request, report_destinations)
                     }
+                    Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             }
         }

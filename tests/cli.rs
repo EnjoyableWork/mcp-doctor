@@ -67,6 +67,8 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("--header-env <FIELD=NAME>"));
     assert!(stdout.contains("--tls-ca-file <PATH>"));
     assert!(stdout.contains("--format <FORMAT>"));
+    assert!(stdout.contains("--json-report <PATH>"));
+    assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
     assert!(stdout.contains("--snapshot <PATH>"));
     assert!(stdout.contains("--allow-sensitive-snapshot <EXACT-PATH>"));
@@ -98,6 +100,8 @@ fn diff_help_is_explicitly_local_and_has_only_human_or_json_output() {
         "--allow-credentials-to",
         "--allow-tool",
         "--tls-ca-file",
+        "--json-report",
+        "--junit-report",
     ] {
         assert!(
             !stdout.contains(prohibited),
@@ -189,6 +193,8 @@ fn check_help_documents_every_redundant_active_gate() {
     ));
     assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
+    assert!(stdout.contains("--json-report <PATH>"));
+    assert!(stdout.contains("--junit-report <PATH>"));
 }
 
 #[test]
@@ -235,6 +241,8 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--seed <U64>"));
     assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
+    assert!(stdout.contains("--json-report <PATH>"));
+    assert!(stdout.contains("--junit-report <PATH>"));
 }
 
 #[test]
