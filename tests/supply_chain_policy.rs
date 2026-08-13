@@ -612,7 +612,7 @@ fn syft_acquisition_and_generation_fail_closed_offline() {
 fn project_records_mcpd_016_completion() {
     let project = repository_file("PROJECT.md");
     for contract in [
-        "`MCPD-016A` is In progress and `MCPD-017` is temporarily Blocked on it",
+        "`MCPD-016A` is Done and `MCPD-017` is In progress",
         "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
         "`DEC-040` fixes the `MCPD-016` boundary.",
         ".github/supply-chain-controls.json",
@@ -661,7 +661,14 @@ fn project_records_mcpd_016_completion() {
         "6c0466811541ea03add5213a60a1562f0851e4c0b0ecfdee1a694a9455285900",
         "prebuilt tool retains a materially broader",
         "kernel-level network isolation",
-        "`MCPD-016A` remains In progress",
+        "`MCPD-016A` is Done",
+        "31648861587",
+        "31648864252",
+        "31648864241",
+        "31654117788",
+        "31654118100",
+        "31654118076",
+        "aa7aa82886b2e282c66c55263161ab6466eccd0632777500e4b5c45f736a6e25",
         "| DEC-043 | Replace indirect mutable Syft acquisition with exact immutable assets and transient-only bounded retries | Accepted |",
     ] {
         assert!(
