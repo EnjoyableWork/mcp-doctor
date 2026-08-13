@@ -99,7 +99,22 @@ fn json_report(output: &Output) -> serde_json::Value {
 fn explicit_legacy_stdio_revisions_initialize_once_and_remain_passive() {
     for revision in ["2025-11-25", "2025-06-18"] {
         let environment = TestEnvironment::new();
-        let output = legacy_inspect_command(&environment, revision, Some("json"), "legacy-success")
+        let json_path = environment.artifact_path("legacy-report.json");
+        let junit_path = environment.artifact_path("legacy-report.xml");
+        let output = environment
+            .command()
+            .arg("inspect")
+            .arg("--protocol-version")
+            .arg(revision)
+            .arg("--format")
+            .arg("json")
+            .arg("--json-report")
+            .arg(&json_path)
+            .arg("--junit-report")
+            .arg(&junit_path)
+            .arg("--")
+            .arg(fixture())
+            .arg("legacy-success")
             .output()
             .expect("mcp-doctor should inspect the selected legacy revision");
         let (stdout, stderr) = text(&output);
@@ -110,6 +125,15 @@ fn explicit_legacy_stdio_revisions_initialize_once_and_remain_passive() {
         assert_eq!(report["negotiated_protocol_revision"], revision);
         assert_eq!(report["outcome"], "passed");
         assert_eq!(report["summary"]["failed"], 0);
+        let artifact = parse_and_validate_report(
+            &std::fs::read(&json_path).expect("the legacy JSON artifact should exist"),
+        );
+        assert_eq!(artifact["protocol_revision"], revision);
+        assert_eq!(artifact["negotiated_protocol_revision"], revision);
+        let (junit_artifact, _) = parse_and_validate_junit(
+            &std::fs::read(&junit_path).expect("the legacy JUnit artifact should exist"),
+        );
+        assert!(junit_artifact.contains(&format!("protocol_revision={revision}")));
         assert!(!stdout.contains(CATALOG_SENTINEL));
 
         let human = legacy_inspect_command(&environment, revision, None, "legacy-success")

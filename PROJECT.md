@@ -8,11 +8,11 @@ decisions, risks, and release gates.
 | Document state | Active |
 | Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, stable schema-backed JSON, and JUnit-compatible projection pass local, hosted, immutable-release, and represented installed-channel evidence |
 | Current milestone | M4 — enterprise assurance and adoption; `MCPD-016A` is Done and `MCPD-017` is In progress |
-| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence and the completed `MCPD-016A` correction prove the current supply-chain boundary, including direct digest-authenticated Syft acquisition, the narrowed live Action allowlist, and first-attempt exact-head and exact-`main` gates; `DEC-041` and `DEC-042` fix the organization-access policy; and owner-authorized `MCPD-017` activation has applied the supported member, App, OAuth, PAT, short-lived verifier, secure-2FA, credential-inventory, deploy-key, and private-recovery controls, with closure still withheld until the protected change merges and the non-disclosing verifier passes on exact `main` |
-| Current focus | Review and merge the `MCPD-017` closure, run the authenticated verifier on clean exact `main`, revoke the temporary verifier credential, and record the resulting public aggregate evidence |
+| Overall status | M0 through M3 are Done; immutable `v0.1.0` and `v0.2.0` channels remain verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence and the completed `MCPD-016A` correction prove the current supply-chain boundary, including direct digest-authenticated Syft acquisition, the narrowed live Action allowlist, and first-attempt exact-head and exact-`main` gates; `DEC-041` and `DEC-042` fix the organization-access policy; owner-authorized `MCPD-017` activation has applied the supported member, App, OAuth, PAT, short-lived verifier, secure-2FA, credential-inventory, deploy-key, and private-recovery controls, with closure still withheld until the protected change merges and the non-disclosing verifier passes on exact `main`; and optional `MCPD-021` is In progress to resolve GitHub issue #44 without changing that M4 gate |
+| Current focus | Complete the `MCPD-017` exact-`main` closure independently while optional `MCPD-021` implements one-run JSON and JUnit artifact fan-out for GitHub issue #44; the optional work cannot delay, redefine, or become a prerequisite for `MCPD-017` or `MCPD-018` |
 | Public release | `mcp-doctor` `v0.2.0` — immutable GitHub Release, crates.io, and `EnjoyableWork/tap/mcp-doctor` verified |
 | Last reviewed | 2026-08-13 |
-| Next review trigger | Any organization authentication, member, owner, billing-manager, invitation, base-permission, member-privilege, repository-creation, application, OAuth, personal-access-token, organization credential, in-scope repository credential, deploy-key, recovery, public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
+| Next review trigger | Any organization authentication, member, owner, billing-manager, invitation, base-permission, member-privilege, repository-creation, application, OAuth, personal-access-token, organization credential, in-scope repository credential, deploy-key, recovery, public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, report destination or projection fan-out, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
 
@@ -106,6 +106,13 @@ does not change the M4 order, release boundary, ordinary diagnostic reports, or
 immutable M3 artifacts. Contract snapshots are an explicitly acknowledged
 sensitive artifact, and their offline comparison cannot become a prerequisite
 for `MCPD-017` or `MCPD-018`.
+
+`MCPD-021` is an optional reporting-workflow ticket running alongside M4. It
+depends on the completed stable reporter boundary in `MCPD-012`, preserves the
+existing stdout and diagnostic contracts, and projects one immutable redacted
+result into explicit JSON and JUnit files without repeating target activity.
+It cannot delay, redefine, or become a prerequisite for `MCPD-017` or
+`MCPD-018`.
 
 ## Product outcome
 
@@ -1403,6 +1410,79 @@ equivalent diff on every represented source/archive/Cargo/Homebrew path. The
 complete locked local gate, package contents, and hosted required checks must
 pass before `MCPD-020` is Done; publication is not part of this ticket.
 
+### MCPD-021 accepted multi-report artifact plan
+
+[GitHub issue #44](https://github.com/EnjoyableWork/mcp-doctor/issues/44)
+owns one optional reporting workflow. CI consumers need stable JSON for
+automation and JUnit for native test rendering, but running a target twice is
+not equivalent evidence and can repeat authorized tool calls, observe changed
+state, consume more process or network work, or produce a different diagnosis.
+This ticket therefore fans out one immutable redacted `DiagnosticReport`; it
+does not add a diagnostic, reporter, target suite, CI-provider integration,
+report merge, or upload feature.
+
+#### CLI and result boundary
+
+- Existing `inspect`, `check`, and `break` invocations retain `--format
+  human|json|junit` as the byte-compatible stdout selector. Each additionally
+  accepts at most one `--json-report PATH` and one `--junit-report PATH`; no
+  destination is inferred from a repository, workspace, environment, or CI
+  provider. `diff` and contract snapshots remain separate artifact contracts.
+- Every requested report is rendered only after the command has constructed
+  its one typed diagnostic result. The target starts, initializes, discovers,
+  connects, and executes each authorized case exactly as often as the
+  equivalent stdout-only invocation. Reporter selection grants no execution,
+  network, credential, discovery, or tool authority.
+- Passing, failed, and incomplete diagnostics write every requested artifact
+  when all rendering and persistence succeeds. The diagnostic exit remains the
+  process exit in that case. A render, destination, write, sync, publication,
+  or cleanup failure returns internal/reporter exit `4` and can never be
+  hidden behind diagnostic success, failure, or incompleteness.
+- The stable JSON schema, JUnit projection, finding codes and severities,
+  primary and independent diagnosis, causal skips, performed/skipped state,
+  outcome, exit metadata, redaction, and per-report four-MiB bound remain
+  unchanged. At most the stdout projection plus the two file projections may
+  exist, and their combined rendered bytes are additionally capped at eight
+  MiB.
+
+#### Destination and persistence boundary
+
+- Before process launch, DNS, connection, credential resolution, discovery, or
+  tool execution, every requested destination must name a new file in an
+  existing directory. Existing regular files, non-regular entries, missing or
+  invalid parents, duplicate paths, actual filesystem aliases, and conflicts
+  with an `inspect` contract-snapshot destination fail with invocation exit
+  `2`. There is no overwrite or force option.
+- Preparation creates only bounded, exclusive same-directory stage files, with
+  owner-only mode on Unix and destination-directory ACL inheritance elsewhere.
+  Rendering completes in memory before any report destination appears.
+  Each complete synchronized stage is published with a no-clobber same-filesystem
+  operation; if any requested publication fails, every output created by the
+  invocation is removed. Ordinary failure cleans every owned stage and output,
+  and a cleanup failure remains a safe visible error without rendering a path.
+- Destination paths, stage names, file contents, and operating-system errors
+  never enter human, JSON, or JUnit diagnostic content. Files contain only the
+  existing redacted reporter bytes; raw traffic, stderr, endpoints, headers,
+  credentials, environment data, arguments, results, and server-provided
+  values excluded by the reporter contract remain excluded.
+
+#### Finite implementation and acceptance evidence
+
+The implementation reuses the standard library and existing reporters and adds
+no dependency. Deterministic unit tests cover reporter ordering, per-report and
+aggregate bounds, render failure, destination preparation, alias detection,
+exclusive publication, rollback, and cleanup. Built-binary STDIO, disposable
+HTTP, and reviewed active journeys prove one conversation or process and no
+replayed `tools/call`, while passing, failed, and incomplete cases prove JSON
+and JUnit parity plus exit precedence. Negative cases cover existing,
+duplicate, aliased, missing-parent, non-regular, unwritable, write-failing, and
+cleanup-failing destinations without leaking paths or starting a target.
+Existing stdout-only goldens remain byte-identical, and POSIX and PowerShell
+installed smokes exercise both artifacts. The complete locked local gate,
+`cargo deny`, package and installed-source checks, protected exact-head and
+exact-`main` required checks, protected merge, and issue closure are required
+before `MCPD-021` is Done; no publication is part of this ticket.
+
 ## Target architecture
 
 ```text
@@ -1443,6 +1523,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-09 | Evidence-backed enterprise assurance baseline | M4 | Proposed | Verified repository, organization, community, licensing, and supply-chain controls; complete OSPS Level 1 crosswalk; official self-certification proof; and exact-artifact SLSA evaluation |
 | D-10 | Explicit passive legacy-revision diagnostics | Optional compatibility | Done | [PR 47](https://github.com/EnjoyableWork/mcp-doctor/pull/47) and its exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31674282783) prove revision-specific synthetic STDIO and Streamable HTTP behavior for both selected legacy revisions across human, JSON, and JUnit reports; broad real-server wording remains gated on the controlled two-language matrix and represented installed-channel journeys |
 | D-11 | Explicit current-revision contract snapshots and offline diffs | Optional developer workflow | Done | [PR 49](https://github.com/EnjoyableWork/mcp-doctor/pull/49), the [typed artifact and diff implementation](src/contract/snapshot.rs), [snapshot schema](schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json), [diff schema](schemas/mcp-doctor.contract-diff.v1alpha1.schema.json), [bounded built-binary journeys](tests/snapshot.rs), HTTP credential-exclusion journey, goldens, README contract, and POSIX/PowerShell installed smokes implement `DEC-045`; the complete local gate, dirty-tree package/install round trip, exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939630), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939599) pass without a dependency change |
+| D-12 | One-run stable JSON and JUnit report artifacts | Optional reporting workflow | In progress | GitHub issue [#44](https://github.com/EnjoyableWork/mcp-doctor/issues/44), `MCPD-021`, and `DEC-046` fix the one-result fan-out, explicit destination, no-overwrite, aggregate-bound, rollback, reporter-exit, parity, and no-replay contract; protected merge, exact-`main` evidence, and issue closure remain completion gates |
 
 ## Ticket board
 
@@ -1470,6 +1551,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed | `MCPD-017` | Every selected OSPS Level 1 control has public evidence or exact applicability reasoning; the official assessment and badge are verified on exact `main`; exact M3 artifacts receive a correctly scoped SLSA Build L2 evaluation; and claim-review and removal triggers are documented |
 | MCPD-019 | Add explicit passive `inspect` diagnostics for MCP `2025-11-25` and `2025-06-18` over STDIO and Streamable HTTP | Optional compatibility | Done | `MCPD-012` | `DEC-044`, [PR 47](https://github.com/EnjoyableWork/mcp-doctor/pull/47), and exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31674282783) prove exact opt-in selection, selected/negotiated reporter parity, revision-specific bounded lifecycle and catalog behavior, positive and negative built-binary journeys for both revisions and transports, and the complete locked gate without a dependency change; broad real-server wording remains withheld until the controlled official/independent two-language and represented installed-channel evidence passes |
 | MCPD-020 | Add exact-opt-in sensitive contract snapshots and deterministic offline diffs for passive MCP `2026-07-28` inspection | Optional developer workflow | Done | `MCPD-012` | `DEC-045`; [PR 49](https://github.com/EnjoyableWork/mcp-doctor/pull/49), typed snapshot and diff models, checked-in schemas and goldens, 9 focused built-binary snapshot/diff journeys, the credentialed same-conversation HTTP journey, malformed/limit/correlation/overwrite/offline-isolation negatives, secret-exclusion sentinels, POSIX and PowerShell installed smokes, the complete disposable locked gate, `cargo-deny`, source-artifact review, deterministic package verification, a packaged-source install round trip, exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939630), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939599) pass without a dependency change |
+| MCPD-021 | Emit stable JSON and JUnit artifacts from one diagnostic run | Optional reporting workflow | In progress | `MCPD-012` | `DEC-046`; issue [#44](https://github.com/EnjoyableWork/mcp-doctor/issues/44) closes only after one typed result safely produces the byte-compatible stdout report plus explicit bounded JSON and JUnit files with pre-activity destination rejection, no overwrite, no target or tool replay, reporter parity, failure rollback, exit precedence, deterministic STDIO/HTTP/active and installed-platform evidence, protected merge, and passing exact-`main` required checks |
 
 ## Dependency and testing-tool introduction plan
 
@@ -1708,6 +1790,7 @@ Use the matching objective when beginning an eligible main-story ticket:
 | MCPD-018 | Complete `MCPD-018` under `DEC-034`: confirm that the activation-locked OSPS `v2026.02.19`, BadgeApp baseline series `v2026.02.19`, and SLSA `v1.2` proof routes remain current and available or stop for a superseding decision; publish the two dated and scoped crosswalks; complete the official baseline-1 self-assessment only after every applicable control passes; verify its public record, JSON, badge, and exact-`main` evidence; and verify every canonical M3 GitHub Release asset against Build L2 using its exact digest and constrained signed provenance. Define annual and event-driven review and removal triggers. Never imply independent certification, regulatory compliance, higher OSPS levels, channel-wide or future-artifact SLSA coverage, or paid platform signing. |
 | MCPD-019 | Complete `MCPD-019` without delaying M4: add explicit `inspect --protocol-version` support for MCP `2025-11-25` and `2025-06-18` while retaining `2026-07-28` as the default and sole active revision. Implement each selected revision's exact passive lifecycle and capability-gated catalog contract over bounded STDIO and Streamable HTTP; preserve one initialized notification, session affinity, protocol headers, finite request-scoped SSE, causal session diagnostics, independent teardown findings, redaction, cleanup, and no retry or fallback. Finish the implementation when synthetic built-binary and reporter-parity evidence plus the complete locked gate pass; withhold broad real-server wording until controlled official and independent cases across two languages and represented installed channels also pass. |
 | MCPD-020 | Complete `MCPD-020` without delaying M4: add exact-path, affirmatively acknowledged `mcp-doctor.contract-snapshot/v1alpha1` creation to a completed bounded passive MCP `2026-07-28` STDIO or Streamable HTTP conversation whose cleanup succeeds, including when a bounded local schema shape retained by the artifact makes the ordinary report fail, plus deterministic file-only human and `mcp-doctor.contract-diff/v1alpha1` comparison. Preserve ordinary report redaction, artifact sensitivity warnings, exclusive bounded file creation, artifact-local ordinal correlation, documented conservative compatibility rules, causal performed/skipped evidence, and zero diff-time process, network, retrieval, or tool activity. Add no dependency, no overwrite mode, no digest/token, no score, no general schema-implication claim, and no publication. Finish when schemas, goldens, exhaustive negative and secret-exclusion journeys, represented installed round trips, packaging, the complete locked gate, and hosted required checks pass. |
+| MCPD-021 | Resolve GitHub issue #44 without delaying M4: preserve byte-compatible `--format` stdout behavior while adding explicit `--json-report PATH` and `--junit-report PATH` destinations to `inspect`, `check`, and `break`. Construct one immutable redacted `DiagnosticReport`, render every requested projection from it under the existing four-MiB per-report and new eight-MiB aggregate bounds, and perform no second process, connection, discovery request, credential resolution, generated case, or `tools/call`. Validate new-file destinations and snapshot conflicts before activity; reject existing, non-regular, missing-parent, duplicate, aliased, or unwritable targets; use exclusive same-directory stages with Unix owner-only mode and platform ACL inheritance elsewhere, publish without overwrite only after every render and write succeeds, roll back every owned output on failure, surface cleanup failure with exit `4`, and never render paths or operating-system values. Preserve stable JSON/JUnit semantics, diagnostic exit when all files succeed, and reporter failure precedence. Add no dependency, reporter, upload, CI-provider integration, merge feature, or immutable-release change. Finish only after deterministic unit, STDIO, HTTP, reviewed active, failure, redaction, byte-compatibility, POSIX and PowerShell installed-smoke, package, locked local, protected exact-head and exact-`main` evidence pass, the protected fix merges, issue #44 closes, and durable completion evidence is recorded. |
 
 ## M4 enterprise assurance boundary
 
@@ -2600,6 +2683,7 @@ evidence, and official proof.
 | DEC-043 | Replace indirect mutable Syft acquisition with exact immutable assets and transient-only bounded retries | Accepted | 2026-08-12 | Remove `anchore/sbom-action`; replace the superseded `1.50.0` selection with current security-remediating Syft `1.51.0`; acquire only its GNU/Linux ARM64/x64 assets by exact immutable URL, size, SHA-256, four-entry layout, version, and platform; make no more than three 20-second attempts separated by one second only for curl `6`, `7`, `18`, `28`, `52`, `55`, `56`, or `92`, or HTTP `408`, `429`, `500`, `502`, `503`, or `504`; delete partial bytes; never retry trust, integrity, execution, generation, validation, build, test, publication, job, or workflow failure; preserve SPDX and release scope; and require first-attempt exact-head and exact-`main` evidence |
 | DEC-044 | Resolve `OPEN-12` with explicit revision-selected passive legacy adapters | Accepted | 2026-08-13 | Supersede the latest-only part of `DEC-013` and `DEC-024` only for `inspect`: keep MCP `2026-07-28` as the default and sole `check`/`break` revision; permit exact `--protocol-version 2025-11-25` or `2025-06-18` selections with no discovery, negotiation fallback, retry, or downgrade; send each revision's initialize and exactly one initialized notification, then only capability-advertised tool, prompt, resource, and resource-template list operations, never the potentially value-bearing retained-task list; use revision-specific envelopes and pagination; fully validate omitted-dialect `2025-11-25` schemas as locally bounded JSON Schema 2020-12, while an omitted `2025-06-18` dialect receives bounded structural/reference checks and an explicit ambiguity warning rather than guessed semantics, with exact Draft 2020-12 declarations enabling full validation; never retrieve an external reference; and require exact selected/negotiated reporting. For legacy Streamable HTTP, omit the protocol header only on initialize, require it thereafter, retain and verify an optional bounded visible-ASCII session identifier, accept the bounded `2025-11-25` empty SSE priming event, complete a matching SSE response without waiting for EOF, diagnose session loss causally without reinitializing, and attempt one shutdown-grace-bounded DELETE teardown; successful, unsupported, and already-absent termination close safely, while every other teardown failure remains an independent safety finding. Stable report `v1` gains compatible optional revision fields; broad legacy positioning waits for the controlled official/independent two-language and installed-channel evidence. |
 | DEC-045 | Resolve `OPEN-13` with exact-opt-in sensitive current-revision snapshots and conservative offline comparison | Accepted | 2026-08-13 | Permit snapshot creation only after a bounded passive MCP `2026-07-28` discovery and complete catalog conversation finish and cleanup succeeds, including when a bounded local schema shape retained by the artifact makes the ordinary report fail, and require exact matching output and acknowledgement paths; write one new bounded regular file from that same conversation with owner-only Unix mode and never overwrite; retain normalized capabilities, catalog identities, required inputs, protocol-defined tool hints, bounded local schema structure, and artifact-local ordinal correlation while excluding descriptions/defaults, transport/runtime/credential/log data, and all ordinary-report identifiers; compare two independently bounded local artifacts with deterministic human or schema-backed JSON, stable addition/removal/capability/required-input/narrowing/widening/review codes and causal performed/skipped state; reject unsupported versions, external references, malformed correlation, or exhausted bounds without echoing values; and add no target activity, retrieval, dependency, digest/token, score, general implication claim, or publication path |
+| DEC-046 | Resolve issue #44 with explicit one-result JSON and JUnit artifact fan-out | Accepted | 2026-08-13 | Keep `--format` as the byte-compatible stdout selector and add only `--json-report PATH` and `--junit-report PATH` to `inspect`, `check`, and `break`; preflight new-file destinations and actual aliases before any target, network, credential, discovery, or tool activity; construct one immutable redacted result; render stdout and at most two file projections under unchanged four-MiB individual and eight-MiB combined bounds; persist complete exclusive same-directory stages, with Unix owner-only mode and platform ACL inheritance elsewhere, through no-clobber publication with all-output rollback and visible cleanup failure; preserve diagnostic exit only when every requested output succeeds; and add no rerun, retry, concurrency, overwrite, arbitrary format/path parser, new reporter, CI-provider integration, upload, report merge, dependency, or immutable release change |
 
 ## Open decisions
 
@@ -2646,6 +2730,7 @@ new `OPEN-*` identifier rather than silently changing an accepted decision.
 | RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated for the dated `MCPD-016` dependency scope and tightened by `MCPD-016A`: explicit grouped version and security proposals remain review-only; exact direct-requirement, feature-graph, source, license, advisory, duplicate, Action, and standalone-tool inventories fail closed; and superseded Syft `1.50.0` moves from an Action-controlled mutable installer to exact immutable, security-remediating `1.51.0` asset identities. Future dependency, Action, tool, asset, or acquisition-policy drift requires the same review. |
 | RISK-20 | Users cannot find a real project route or receive incompatible license terms because repository, community, channel, or artifact scope drifts | High | `DEC-039` inventories every public organization repository, centralizes reachable community and defect routes, explicitly delegates the tap, and verifies HTTPS official channels plus exact source, package, archive, and formula license evidence without credentials; any new unclassified repository, unavailable route, stale policy, license mismatch, or unexplained asset blocks M4 | Mitigated for the current three-repository `MCPD-015` scope revalidated on 2026-08-12. The credential-free five-repository completion pass remains historical; when `courtside-mcp` and `enjoyable-mcp` disappeared from the organization inventory, the verifier failed closed and the MCPD-016 closure rebaselined the canonical inventory before restoring a pass. Any later repository, route, channel, license, release-set, package, formula, or GitHub/crates.io drift reopens the risk; the immutable SPDX limitation and later complete-assurance work remain explicit. |
 | RISK-21 | A contract snapshot discloses sensitive advertised data, an offline diff contacts a target, or a compatibility label overstates what a structural comparison proves | High | `DEC-045` requires an exact-path sensitivity acknowledgement, same-conversation completed passive creation, exclusive bounded regular-file creation with owner-only Unix mode, a fixed include/exclude boundary, value-free diff findings, artifact-local ordinal correlation, local-only inputs, no retrieval or activity, and conservative documented classifications with review-required fallback; any ordinary-report identifier, excluded sentinel, overwrite, network/process attempt, unbounded artifact, invalid correlation acceptance, or unsupported compatibility claim blocks completion | Mitigated for the `MCPD-020` scope by the source implementation, focused/built-binary and HTTP secret-exclusion journeys, offline trap, installed scripts, package round trip, complete local gates, and exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939630) plus [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31708939599); any snapshot boundary, acknowledgement, overwrite, ordinal, offline-isolation, bound, or compatibility-classification drift reopens the risk |
+| RISK-22 | Multiple requested reports replay target activity, diverge in diagnosis, overwrite files, leave misleading partial artifacts, or hide reporter failure behind a diagnostic exit | High | `DEC-046` and `MCPD-021` require one typed result, fixed JSON/JUnit file flags, pre-activity destination and alias rejection, exclusive same-directory staging with Unix owner-only mode and platform ACL inheritance elsewhere, no-clobber all-output publication, rollback and visible cleanup failure, unchanged per-report bounds, an eight-MiB aggregate rendered-output bound, reporter-failure exit `4`, byte-compatible stdout-only behavior, and deterministic STDIO/HTTP/active counter evidence; any repeated process, request, discovery, credential resolution, or `tools/call`, divergent primary/skip/outcome/exit metadata, overwritten file, leaked path, unbounded render, residue after ordinary failure, or false-success exit blocks completion | Open — GitHub issue [#44](https://github.com/EnjoyableWork/mcp-doctor/issues/44) and `MCPD-021` are In progress; protected merge, exact-`main` checks, and issue closure remain required |
 
 ## Readiness and completion gates
 

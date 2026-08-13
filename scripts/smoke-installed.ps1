@@ -22,6 +22,8 @@ $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 )
 $smokeHome = Join-Path $smokeRoot 'home'
 $smokeSnapshot = Join-Path $smokeRoot 'contract.json'
+$smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
+$smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
 
 function Invoke-McpDoctor {
     param(
@@ -79,6 +81,8 @@ try {
 
     $reportOutput = Invoke-McpDoctor `
         'inspect' '--format' 'json' `
+        '--json-report' $smokeJsonArtifact `
+        '--junit-report' $smokeJunitArtifact `
         '--snapshot' $smokeSnapshot `
         '--allow-sensitive-snapshot' $smokeSnapshot `
         '--' $resolvedFixture 'catalog-valid'
@@ -107,6 +111,34 @@ try {
         if ($check.state -ne 'performed' -or $check.outcome -ne 'passed') {
             throw 'Installed passive diagnostic did not pass every required check.'
         }
+    }
+
+    if (-not (Test-Path -LiteralPath $smokeJsonArtifact -PathType Leaf)) {
+        throw 'Installed diagnostic did not create the JSON report artifact.'
+    }
+    $artifactReport = Get-Content -LiteralPath $smokeJsonArtifact -Raw | ConvertFrom-Json
+    if (
+        $artifactReport.schema_version -ne $report.schema_version -or
+        $artifactReport.outcome -ne $report.outcome -or
+        $artifactReport.exit_code -ne $report.exit_code -or
+        @($artifactReport.checks).Count -ne @($report.checks).Count
+    ) {
+        throw 'Installed diagnostic JSON artifact diverged from stdout.'
+    }
+    if (-not (Test-Path -LiteralPath $smokeJunitArtifact -PathType Leaf)) {
+        throw 'Installed diagnostic did not create the JUnit report artifact.'
+    }
+    [xml]$junitArtifact = Get-Content -LiteralPath $smokeJunitArtifact -Raw
+    $junitRoot = $junitArtifact.DocumentElement
+    if (
+        $null -eq $junitRoot -or
+        $junitRoot.LocalName -ne 'testsuites' -or
+        $junitRoot.GetAttribute('name') -ne 'mcp-doctor' -or
+        [int]$junitRoot.GetAttribute('tests') -ne @($report.checks).Count -or
+        -not $junitRoot.InnerText.Contains('report_outcome=passed') -or
+        -not $junitRoot.InnerText.Contains('exit_code=0')
+    ) {
+        throw 'Installed diagnostic JUnit artifact omitted required evidence.'
     }
 
     $runtimeChecks = @($report.checks | Where-Object id -eq 'runtime.tools')

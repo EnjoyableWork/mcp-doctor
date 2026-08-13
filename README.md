@@ -139,6 +139,25 @@ The default report is made for people. Add `--format json` for the stable,
 schema-backed `mcp-doctor.report/v1` result, or `--format junit` for the same
 checks projected into conservative JUnit XML. Both keep secrets removed.
 
+Keep that stdout report while also writing both machine projections from the
+same diagnostic run with explicit new-file destinations:
+
+```bash
+mcp-doctor inspect \
+  --json-report artifacts/mcp-doctor.json \
+  --junit-report artifacts/mcp-doctor.xml \
+  -- node ./dist/server.js --stdio
+```
+
+`--json-report` and `--junit-report` also apply to `check` and `break`. Each
+parent directory must already exist, each destination must be distinct and not
+already exist, and `-` is not a file destination. `mcp-doctor` validates those
+conditions before target or network activity, runs the diagnostic once, and
+renders every requested report from one immutable redacted result. A failed or
+incomplete diagnostic still publishes both files when reporting succeeds and
+retains exit `1` or `3`; a render, write, publication, or cleanup failure cannot
+report success and exits `4`.
+
 ## Inspect. Check. Break. Diff.
 
 Choose how much activity the target allows:
@@ -363,23 +382,25 @@ installed-channel claim.
 
 ## Bring it into CI
 
-Run the same check in a pull request. Stable JSON plus the process exit is the
-portable automation contract:
+Run the same check in a pull request. The process exit remains the gate while
+stable JSON and JUnit files are produced from that one run:
 
 ```yaml
 - name: Diagnose MCP server
   run: >-
     mcp-doctor inspect
-    --format json
+    --json-report artifacts/mcp-doctor.json
+    --junit-report artifacts/mcp-doctor.xml
     --
     ./target/release/my-mcp-server --stdio
 ```
 
-A required check that fails returns a non-zero status. To publish a test report
-in a CI system that accepts JUnit, write `--format junit` to an artifact while
-still using the command's exit status as the gate. Each diagnostic check becomes
-one test case; failures and causal skips retain their safe evidence. Reports are
-deterministic, bounded, and hide secrets.
+A required check that fails returns a non-zero status. Upload or consume the
+explicit paths with the facilities of any CI system; `mcp-doctor` does not
+perform provider-specific uploads. Each JUnit diagnostic check becomes one test
+case, and JSON and JUnit retain the same outcome, primary diagnosis, causal
+skips, and safe evidence as stdout. Reports are deterministic, bounded, and
+hide secrets.
 
 ## Safe by default
 

@@ -840,6 +840,24 @@ fn assert_successful_inspection(output: &Output) {
     assert!(stdout.contains("PASS  protocol.envelope"));
 }
 
+fn assert_report_artifacts(json_path: &std::path::Path, junit_path: &std::path::Path) {
+    let json = fs::read(json_path).expect("the JSON report artifact should exist");
+    let junit = fs::read(junit_path).expect("the JUnit report artifact should exist");
+    let report = parse_and_validate_report(&json);
+    let (document, summary) = parse_and_validate_junit(&junit);
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert_eq!(
+        summary.tests,
+        report["checks"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or_default()
+    );
+    assert_eq!(summary.failures, 0);
+    assert!(document.contains("report_outcome=passed\nexit_code=0"));
+}
+
 fn legacy_success_exchanges(revision: &'static str) -> Vec<PlannedExchange> {
     vec![
         PlannedExchange::legacy_reply(
@@ -878,12 +896,15 @@ fn explicit_legacy_http_revisions_preserve_session_pagination_and_reporter_parit
                 FixtureServer::spawn(WireMode::Http, legacy_success_exchanges(revision), true);
             let endpoint = server.endpoint();
             let environment = TestEnvironment::new();
-            let output = run(&mut legacy_remote_command(
-                &environment,
-                &endpoint,
-                revision,
-                format,
-            ));
+            let json_path = environment.artifact_path("legacy-report.json");
+            let junit_path = environment.artifact_path("legacy-report.xml");
+            let mut command = legacy_remote_command(&environment, &endpoint, revision, format);
+            command
+                .arg("--json-report")
+                .arg(&json_path)
+                .arg("--junit-report")
+                .arg(&junit_path);
+            let output = run(&mut command);
             let outcome = server.finish();
             let (stdout, stderr) = text(&output);
             assert!(
@@ -894,6 +915,7 @@ fn explicit_legacy_http_revisions_preserve_session_pagination_and_reporter_parit
             assert_eq!(outcome.accepted_connections, 5);
             assert_eq!(outcome.valid_requests, 5);
             assert_eq!(outcome.unexpected_connections, 0);
+            assert_report_artifacts(&json_path, &junit_path);
             match format {
                 None => assert!(stdout.contains(&format!(
                     "protocol selection · selected {revision} · negotiated {revision}"
@@ -1354,6 +1376,34 @@ fn private_and_cleartext_authority_fail_before_any_connection() {
 }
 
 #[test]
+fn invalid_report_destination_fails_before_remote_resolution_or_connection() {
+    let listener =
+        TcpListener::bind(("127.0.0.1", 0)).expect("a disposable loopback listener should bind");
+    listener
+        .set_nonblocking(true)
+        .expect("the disposable listener should become nonblocking");
+    let endpoint = format!(
+        "http://127.0.0.1:{}/mcp",
+        listener.local_addr().unwrap().port()
+    );
+    let environment = TestEnvironment::new();
+    let existing = environment.artifact_path("existing-report.json");
+    fs::write(&existing, "unchanged").expect("the existing destination should be writable");
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--json-report").arg(&existing);
+    let output = run(&mut command);
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("already exists"), "{stderr}");
+    assert!(listener.accept().is_err(), "artifact preflight connected");
+    assert_eq!(fs::read_to_string(&existing).unwrap(), "unchanged");
+    assert!(!stderr.contains(&endpoint));
+    assert!(!stderr.contains(existing.to_string_lossy().as_ref()));
+}
+
+#[test]
 fn redirects_status_replays_and_proxy_environment_are_fail_closed() {
     let trap = TcpListener::bind(("127.0.0.1", 0))
         .expect("a disposable redirect and proxy trap should bind");
@@ -1444,7 +1494,7 @@ fn authentication_and_retryable_statuses_are_structural_and_never_replayed() {
 }
 
 #[test]
-fn passive_remote_inspection_never_calls_an_advertised_tool() {
+fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised_tool() {
     let server = FixtureServer::spawn(
         WireMode::Http,
         vec![
@@ -1458,7 +1508,14 @@ fn passive_remote_inspection_never_calls_an_advertised_tool() {
     );
     let endpoint = server.endpoint();
     let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("remote-report.json");
+    let junit_path = environment.artifact_path("remote-report.xml");
     let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path);
     let output = run(&mut command);
     let outcome = server.finish();
 
@@ -1466,6 +1523,7 @@ fn passive_remote_inspection_never_calls_an_advertised_tool() {
     assert_eq!(outcome.accepted_connections, 2);
     assert_eq!(outcome.valid_requests, 2);
     assert_eq!(outcome.unexpected_connections, 0);
+    assert_report_artifacts(&json_path, &junit_path);
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     assert_redacted(&output, &endpoint, &[TOOL]);
@@ -1911,12 +1969,18 @@ fn authorized_remote_check_maps_validated_arguments_to_mcp_fields() {
     let environment = TestEnvironment::new();
     let ca = ca_file(&environment);
     let scenario = write_scenario(&environment);
+    let json_path = environment.artifact_path("remote-check.json");
+    let junit_path = environment.artifact_path("remote-check.xml");
     let mut command = remote_command(&environment, "check", &endpoint);
     command
         .arg("--scenario")
         .arg(&scenario)
         .arg("--allow-tool")
         .arg(TOOL)
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
         .arg("--tls-ca-file")
         .arg(&ca);
     let output = run(&mut command);
@@ -1925,6 +1989,7 @@ fn authorized_remote_check_maps_validated_arguments_to_mcp_fields() {
     assert!(output.status.success());
     assert_eq!(outcome.accepted_connections, 3);
     assert_eq!(outcome.valid_requests, 3);
+    assert_report_artifacts(&json_path, &junit_path);
     let (stdout, stderr) = text(&output);
     assert!(stderr.is_empty());
     assert!(stdout.contains("PASS  runtime.tools.case[0]"));
@@ -1977,6 +2042,8 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
     let endpoint = server.endpoint();
     let environment = TestEnvironment::new();
     let ca = ca_file(&environment);
+    let json_path = environment.artifact_path("remote-break.json");
+    let junit_path = environment.artifact_path("remote-break.xml");
     let mut command = remote_command(&environment, "break", &endpoint);
     command
         .arg("--tool")
@@ -1989,6 +2056,10 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
         .arg("1")
         .arg("--seed")
         .arg("8080")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
         .arg("--tls-ca-file")
         .arg(&ca);
     let output = run(&mut command);
@@ -1998,6 +2069,7 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
     assert_eq!(outcome.accepted_connections, 3);
     assert_eq!(outcome.valid_requests, 3);
     assert_eq!(outcome.unexpected_connections, 0);
+    assert_report_artifacts(&json_path, &junit_path);
     let (stdout, stderr) = text(&output);
     assert!(stderr.is_empty());
     assert!(stdout.contains("PASS  generation.cases"));

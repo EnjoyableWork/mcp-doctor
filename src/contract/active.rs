@@ -19,10 +19,9 @@ use super::model::{
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
 use super::redaction::RedactedValue;
-use super::report::{DiagnosticReport, ExitStatus, ReportFormat};
+use super::report::{DiagnosticReport, ExitStatus};
 use super::{
-    HttpDiagnostic, RenderedDiagnostic, ReportTransport, StdioDiagnostic, http_checks,
-    stdio_findings,
+    Diagnostic, HttpDiagnostic, ReportTransport, StdioDiagnostic, http_checks, stdio_findings,
 };
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
@@ -514,8 +513,7 @@ impl ActiveScenario {
 pub(crate) fn render_scenario_failure(
     failure: ScenarioFailure,
     transport: ReportTransport,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     render_prestart_failure(
         failure,
         CheckId::ScenarioConfiguration,
@@ -523,7 +521,6 @@ pub(crate) fn render_scenario_failure(
         false,
         false,
         transport,
-        format,
     )
 }
 
@@ -531,8 +528,7 @@ pub(crate) fn render_resolved_scenario_failure(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
     transport: ReportTransport,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     render_prestart_failure(
         failure,
         scenario.configuration_check(),
@@ -540,7 +536,6 @@ pub(crate) fn render_resolved_scenario_failure(
         true,
         scenario.generates_cases(),
         transport,
-        format,
     )
 }
 
@@ -548,8 +543,7 @@ pub(crate) fn render_generation_configuration_failure(
     failure: ScenarioFailure,
     requested_cases: usize,
     transport: ReportTransport,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let maximum =
         usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
     let case_count = (requested_cases > 0 && requested_cases <= maximum).then_some(requested_cases);
@@ -560,7 +554,6 @@ pub(crate) fn render_generation_configuration_failure(
         false,
         true,
         transport,
-        format,
     )
 }
 
@@ -571,8 +564,7 @@ fn render_prestart_failure(
     authorization_passed: bool,
     generated: bool,
     transport: ReportTransport,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let mut checks = vec![CheckResult::performed(
         configuration_check,
         Requirement::Required,
@@ -646,15 +638,14 @@ fn render_prestart_failure(
     )
     .expect("a scenario configuration failure is a valid report")
     .with_exit_status(ExitStatus::InvocationError);
-    RenderedDiagnostic::from_report(&report, format)
+    Diagnostic::from_report(report)
 }
 
 pub(crate) fn render_authorization_failure(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
     transport: ReportTransport,
-    format: ReportFormat,
-) -> RenderedDiagnostic {
+) -> Diagnostic {
     let mut checks = vec![
         CheckResult::performed(
             scenario.configuration_check(),
@@ -714,7 +705,7 @@ pub(crate) fn render_authorization_failure(
     )
     .expect("an active authorization failure is a valid report")
     .with_exit_status(ExitStatus::InvocationError);
-    RenderedDiagnostic::from_report(&report, format)
+    Diagnostic::from_report(report)
 }
 
 fn prestart_transport_checks(transport: ReportTransport, reason: SkipReason) -> Vec<CheckResult> {
@@ -1646,11 +1637,7 @@ impl ActiveConversation {
         self.stage = Stage::Done;
     }
 
-    pub(crate) fn into_diagnostic(
-        self,
-        stdio: StdioDiagnostic,
-        format: ReportFormat,
-    ) -> RenderedDiagnostic {
+    pub(crate) fn into_diagnostic(self, stdio: StdioDiagnostic) -> Diagnostic {
         let failed = stdio.primary.is_some();
         let transport_findings = stdio_findings(stdio);
         self.into_transport_diagnostic(
@@ -1660,25 +1647,19 @@ impl ActiveConversation {
                 transport_findings,
             )],
             failed,
-            format,
         )
     }
 
-    pub(crate) fn into_http_diagnostic(
-        self,
-        http: HttpDiagnostic,
-        format: ReportFormat,
-    ) -> RenderedDiagnostic {
+    pub(crate) fn into_http_diagnostic(self, http: HttpDiagnostic) -> Diagnostic {
         let failed = http.failed();
-        self.into_transport_diagnostic(http_checks(http), failed, format)
+        self.into_transport_diagnostic(http_checks(http), failed)
     }
 
     fn into_transport_diagnostic(
         mut self,
         transport_checks: Vec<CheckResult>,
         transport_failed: bool,
-        format: ReportFormat,
-    ) -> RenderedDiagnostic {
+    ) -> Diagnostic {
         if transport_failed {
             if let Some(PendingRequest::Call(index)) = self.pending.take() {
                 self.case_states[index] = CaseState::Skipped(SkipReason::PrerequisiteFailed);
@@ -1759,7 +1740,7 @@ impl ActiveConversation {
             checks,
         )
         .expect("the active application must construct a valid diagnostic report");
-        RenderedDiagnostic::from_report(&report, format)
+        Diagnostic::from_report(report)
     }
 
     fn fit_report_finding_budget(&mut self, transport_findings: usize) {
