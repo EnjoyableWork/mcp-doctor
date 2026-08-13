@@ -51,6 +51,12 @@ fn main() -> ExitCode {
         Some("catalog-item-limit") => catalog_item_limit(),
         Some("report-finding-limit") => report_finding_limit(),
         Some("report-finding-exact") => report_finding_exact(),
+        Some("legacy-success") => legacy_success(),
+        Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
+        Some("legacy-mismatch") => legacy_mismatch(),
+        Some("legacy-malformed") => legacy_malformed(),
+        Some("legacy-timeout") => legacy_timeout(),
+        Some("legacy-oversized") => legacy_oversized(),
         Some("active-success") => active_success(),
         Some("active-one-success") => active_one_success(),
         Some("active-output-instance-depth") => active_output_instance_depth(),
@@ -288,6 +294,141 @@ fn protocol_unsupported() -> ExitCode {
     );
     assert_eof(&mut input);
     ExitCode::SUCCESS
+}
+
+fn legacy_success() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    let capabilities = if revision == "2025-11-25" {
+        json!({
+            "tools": {"listChanged": false},
+            "logging": {},
+            "experimental": {"synthetic": {}},
+            "tasks": {
+                "list": {},
+                "cancel": {},
+                "requests": {"tools": {"call": {}}}
+            }
+        })
+    } else {
+        json!({"tools": {"listChanged": false}})
+    };
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": capabilities,
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"},
+            "instructions": "synthetic instructions never rendered"
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    let input_schema = json!({
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "additionalProperties": false
+    });
+    let output_schema = json!({
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}}
+    });
+    write_result(
+        2,
+        json!({
+            "tools": [{
+                "name": "synthetic.passive",
+                "inputSchema": input_schema,
+                "outputSchema": output_schema
+            }],
+            "nextCursor": "synthetic-private-legacy-cursor-never-report-7f2c"
+        }),
+    );
+    read_legacy_request(
+        &mut input,
+        3,
+        "tools/list",
+        Some("synthetic-private-legacy-cursor-never-report-7f2c"),
+    );
+    write_result(3, json!({"tools": []}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_ambiguous_schema() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "tools": [{
+                "name": "synthetic.ambiguous-schema",
+                "inputSchema": {"type": "object"}
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_mismatch() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    let mismatched = if revision == "2025-11-25" {
+        "2025-06-18"
+    } else {
+        "2025-11-25"
+    };
+    write_result(
+        1,
+        json!({
+            "protocolVersion": mismatched,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_malformed() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let _ = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": {"private": REDACTION_SENTINEL},
+            "capabilities": {},
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_timeout() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let _ = read_initialize(&mut input);
+    wait_forever()
+}
+
+fn legacy_oversized() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let _ = read_initialize(&mut input);
+    let mut stdout = io::stdout().lock();
+    write_repeated(&mut stdout, b'x', MIB + 1);
+    stdout.flush().expect("STDOUT should flush");
+    wait_forever()
 }
 
 fn layered_protocol_failure() -> ExitCode {
@@ -1375,6 +1516,62 @@ fn read_request(
     );
     assert!(!request.contains("tools/call"));
     assert!(!request.contains("initialize"));
+}
+
+fn read_initialize(input: &mut impl BufRead) -> String {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the initialize request should be readable");
+    assert!(read > 0, "the initialize request should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("initialize should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], 1);
+    assert_eq!(value["method"], "initialize");
+    assert!(value["params"]["capabilities"].is_object());
+    assert_eq!(value["params"]["clientInfo"]["name"], "mcp-doctor");
+    let revision = value["params"]["protocolVersion"]
+        .as_str()
+        .expect("initialize must select a string revision");
+    assert!(matches!(revision, "2025-11-25" | "2025-06-18"));
+    assert!(!request.contains("server/discover"));
+    revision.to_owned()
+}
+
+fn read_initialized(input: &mut impl BufRead) {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the initialized notification should be readable");
+    assert!(read > 0, "the initialized notification should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("initialized should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["method"], "notifications/initialized");
+    assert!(value.get("id").is_none());
+    assert!(value.get("params").is_none());
+}
+
+fn read_legacy_request(
+    input: &mut impl BufRead,
+    expected_id: i64,
+    expected_method: &str,
+    expected_cursor: Option<&str>,
+) {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the legacy request should be readable");
+    assert!(read > 0, "the legacy request should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("legacy request should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], expected_id);
+    assert_eq!(value["method"], expected_method);
+    assert_eq!(
+        value["params"].get("cursor").and_then(Value::as_str),
+        expected_cursor
+    );
+    assert!(value["params"].get("_meta").is_none());
+    assert!(!request.contains("tools/call"));
 }
 
 fn write_success_response() {

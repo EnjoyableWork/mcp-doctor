@@ -1,9 +1,10 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    PassiveCatalogConversation, RenderedDiagnostic, ReportFormat, http_diagnostic,
-    m1_http_limit_profile, m1_stdio_limit_profile, render_catalog_diagnostic,
-    render_http_catalog_diagnostic, render_http_diagnostic, render_stdio_diagnostic,
+    PassiveCatalogConversation, ProtocolRevision, RenderedDiagnostic, ReportFormat,
+    http_diagnostic, http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
+    render_catalog_diagnostic, render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
+    render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
     stdio_diagnostic,
 };
 use crate::transport::http::{
@@ -14,6 +15,7 @@ use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetEr
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     format: ReportFormat,
+    revision: ProtocolRevision,
 ) -> Result<RenderedDiagnostic, TargetError> {
     let (executable, arguments) = target
         .split_first()
@@ -33,7 +35,7 @@ pub(crate) async fn run_stdio(
         aggregate_output_bytes: profile.aggregate_output_bytes,
         message_count: profile.message_count,
     });
-    let mut conversation = PassiveCatalogConversation::new();
+    let mut conversation = PassiveCatalogConversation::for_revision(revision);
     let result = transport.probe(&target, &mut conversation).await;
 
     debug_assert!(result.failure().is_some() || result.response().is_some());
@@ -42,7 +44,9 @@ pub(crate) async fn run_stdio(
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
     if result.failure().is_some() {
-        Ok(render_stdio_diagnostic(diagnostic, format))
+        Ok(render_stdio_diagnostic_for_revision(
+            diagnostic, format, revision,
+        ))
     } else {
         Ok(render_catalog_diagnostic(
             diagnostic,
@@ -53,13 +57,18 @@ pub(crate) async fn run_stdio(
     }
 }
 
-pub(crate) async fn run_http(options: RemoteOptions, format: ReportFormat) -> RenderedDiagnostic {
+pub(crate) async fn run_http(
+    options: RemoteOptions,
+    format: ReportFormat,
+    revision: ProtocolRevision,
+) -> RenderedDiagnostic {
     let profile = m1_http_limit_profile();
     let limits = HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,
         request_ms: profile.request_ms,
         response_ms: profile.response_ms,
+        shutdown_grace_ms: profile.shutdown_grace_ms,
         total_ms: profile.total_ms,
         endpoint_bytes: profile.endpoint_bytes,
         resolution_addresses: profile.resolution_addresses,
@@ -80,20 +89,41 @@ pub(crate) async fn run_http(options: RemoteOptions, format: ReportFormat) -> Re
     let target = match HttpTarget::prepare(options, limits, &SystemResolver).await {
         Ok(target) => target,
         Err(failure) => {
-            return render_http_diagnostic(http_diagnostic(Some(failure), None), format);
+            return render_http_diagnostic_for_revision(
+                http_diagnostic(Some(failure), None),
+                format,
+                revision,
+            );
         }
     };
-    let transport = match HttpTransport::new(target) {
+    let transport = match HttpTransport::new_for_protocol(
+        target,
+        revision.as_str(),
+        revision.uses_initialize(),
+    ) {
         Ok(transport) => transport,
         Err(failure) => {
-            return render_http_diagnostic(http_diagnostic(Some(failure), Some(true)), format);
+            return render_http_diagnostic_for_revision(
+                http_diagnostic(Some(failure), Some(true)),
+                format,
+                revision,
+            );
         }
     };
-    let mut conversation = PassiveCatalogConversation::new_http();
+    let mut conversation = PassiveCatalogConversation::new_http_for_revision(revision);
     let result = transport.probe(&mut conversation).await;
-    let diagnostic = http_diagnostic(result.failure(), Some(result.tls_applicable()));
+    let diagnostic = http_diagnostic_with_cleanup(
+        result.failure(),
+        Some(result.tls_applicable()),
+        result.session_cleanup_failed(),
+    );
     if result.failure().is_some() {
-        render_http_diagnostic(diagnostic, format)
+        render_http_diagnostic_for_revision_with_negotiated(
+            diagnostic,
+            format,
+            revision,
+            conversation.negotiated_revision(),
+        )
     } else {
         render_http_catalog_diagnostic(diagnostic, &conversation, result.responses(), format)
     }

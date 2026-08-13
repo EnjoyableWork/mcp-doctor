@@ -156,6 +156,7 @@ fn http_limits() -> HttpLimits {
         discovery_ms: profile.discovery_ms,
         request_ms: profile.request_ms,
         response_ms: profile.response_ms,
+        shutdown_grace_ms: profile.shutdown_grace_ms,
         total_ms: profile.total_ms,
         endpoint_bytes: profile.endpoint_bytes,
         resolution_addresses: profile.resolution_addresses,

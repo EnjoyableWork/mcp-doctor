@@ -27,6 +27,8 @@ const BEARER_VALUE: &str = "synthetic.bearer-token-4a91";
 const CUSTOM_SOURCE: &str = "MCP_DOCTOR_SYNTHETIC_ROUTE_4A91";
 const CUSTOM_FIELD: &str = "X-Synthetic-Route-4A91";
 const CUSTOM_VALUE: &str = "synthetic-route-value-4a91";
+const LEGACY_SESSION: &str = "synthetic-legacy-session-4a91";
+const LEGACY_CURSOR: &str = "synthetic-legacy-cursor-never-report-4a91";
 
 #[derive(Clone, Copy)]
 enum WireMode {
@@ -56,15 +58,98 @@ impl ExpectedRequest {
 }
 
 struct PlannedExchange {
-    expected: Option<ExpectedRequest>,
+    expected: Option<RequestExpectation>,
     response: Option<FixtureResponse>,
+    stall: bool,
+}
+
+enum RequestExpectation {
+    Current(ExpectedRequest),
+    Legacy(LegacyExpectedRequest),
+}
+
+#[derive(Clone, Copy)]
+struct LegacyExpectedRequest {
+    verb: &'static str,
+    method: Option<&'static str>,
+    revision: &'static str,
+    protocol_header: bool,
+    session: Option<&'static str>,
+    cursor: Option<&'static str>,
+}
+
+impl LegacyExpectedRequest {
+    const fn initialize(revision: &'static str) -> Self {
+        Self {
+            verb: "POST",
+            method: Some("initialize"),
+            revision,
+            protocol_header: false,
+            session: None,
+            cursor: None,
+        }
+    }
+
+    const fn initialized(revision: &'static str, session: Option<&'static str>) -> Self {
+        Self {
+            verb: "POST",
+            method: Some("notifications/initialized"),
+            revision,
+            protocol_header: true,
+            session,
+            cursor: None,
+        }
+    }
+
+    const fn list(
+        revision: &'static str,
+        session: Option<&'static str>,
+        cursor: Option<&'static str>,
+    ) -> Self {
+        Self {
+            verb: "POST",
+            method: Some("tools/list"),
+            revision,
+            protocol_header: true,
+            session,
+            cursor,
+        }
+    }
+
+    const fn delete(revision: &'static str, session: &'static str) -> Self {
+        Self {
+            verb: "DELETE",
+            method: None,
+            revision,
+            protocol_header: true,
+            session: Some(session),
+            cursor: None,
+        }
+    }
 }
 
 impl PlannedExchange {
     fn reply(expected: ExpectedRequest, response: FixtureResponse) -> Self {
         Self {
-            expected: Some(expected),
+            expected: Some(RequestExpectation::Current(expected)),
             response: Some(response),
+            stall: false,
+        }
+    }
+
+    fn legacy_reply(expected: LegacyExpectedRequest, response: FixtureResponse) -> Self {
+        Self {
+            expected: Some(RequestExpectation::Legacy(expected)),
+            response: Some(response),
+            stall: false,
+        }
+    }
+
+    fn legacy_stall(expected: LegacyExpectedRequest) -> Self {
+        Self {
+            expected: Some(RequestExpectation::Legacy(expected)),
+            response: None,
+            stall: true,
         }
     }
 
@@ -72,6 +157,7 @@ impl PlannedExchange {
         Self {
             expected: None,
             response: None,
+            stall: false,
         }
     }
 }
@@ -81,6 +167,7 @@ struct FixtureResponse {
     reason: &'static str,
     fields: Vec<(String, String)>,
     body: Vec<u8>,
+    hold_open: bool,
 }
 
 impl FixtureResponse {
@@ -90,6 +177,7 @@ impl FixtureResponse {
             reason: "OK",
             fields: vec![("Content-Type".to_owned(), "application/json".to_owned())],
             body: serde_json::to_vec(&value).expect("synthetic response should serialize"),
+            hold_open: false,
         }
     }
 
@@ -102,6 +190,7 @@ impl FixtureResponse {
                 "text/event-stream; charset=utf-8".to_owned(),
             )],
             body,
+            hold_open: false,
         }
     }
 
@@ -111,7 +200,29 @@ impl FixtureResponse {
             reason,
             fields: vec![("Content-Type".to_owned(), "application/json".to_owned())],
             body: Vec::new(),
+            hold_open: false,
         }
+    }
+
+    fn accepted() -> Self {
+        Self {
+            status: 202,
+            reason: "Accepted",
+            fields: Vec::new(),
+            body: Vec::new(),
+            hold_open: false,
+        }
+    }
+
+    fn with_session(mut self, session: &str) -> Self {
+        self.fields
+            .push(("Mcp-Session-Id".to_owned(), session.to_owned()));
+        self
+    }
+
+    fn holding_open(mut self) -> Self {
+        self.hold_open = true;
+        self
     }
 }
 
@@ -333,10 +444,18 @@ fn serve_exchange(
     if request.is_err() {
         outcome.request_failures += 1;
     }
-    if let (Some(expected), Ok(request)) = (exchange.expected, request.as_ref())
-        && request_matches(request, expected)
-    {
-        outcome.valid_requests += 1;
+    if let (Some(expected), Ok(request)) = (exchange.expected.as_ref(), request.as_ref()) {
+        let matches = match expected {
+            RequestExpectation::Current(expected) => request_matches(request, *expected),
+            RequestExpectation::Legacy(expected) => legacy_request_matches(request, *expected),
+        };
+        if matches {
+            outcome.valid_requests += 1;
+        }
+    }
+    if exchange.stall && request.is_ok() {
+        thread::sleep(Duration::from_secs(3));
+        return;
     }
     if let Some(response) = exchange.response {
         if request.is_err() {
@@ -347,6 +466,7 @@ fn serve_exchange(
 }
 
 struct FixtureRequest {
+    verb: String,
     request_target: String,
     fields: BTreeMap<String, Vec<String>>,
     body: Vec<u8>,
@@ -382,7 +502,8 @@ fn read_request(stream: &mut impl Read) -> io::Result<FixtureRequest> {
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing request line"))?;
     let mut request_line = request_line.split_whitespace();
-    if request_line.next() != Some("POST") || request_line.next_back() != Some("HTTP/1.1") {
+    let verb = request_line.next().unwrap_or_default().to_owned();
+    if !matches!(verb.as_str(), "POST" | "DELETE") || request_line.next_back() != Some("HTTP/1.1") {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "unexpected request line",
@@ -406,6 +527,7 @@ fn read_request(stream: &mut impl Read) -> io::Result<FixtureRequest> {
         .get("content-length")
         .and_then(|values| (values.len() == 1).then_some(&values[0]))
         .and_then(|value| value.parse::<usize>().ok())
+        .or_else(|| (verb == "DELETE").then_some(0))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing body length"))?;
     if header_end.saturating_add(content_length) > MAX_REQUEST_BYTES {
         return Err(io::Error::new(
@@ -424,6 +546,7 @@ fn read_request(stream: &mut impl Read) -> io::Result<FixtureRequest> {
         bytes.extend_from_slice(&buffer[..read]);
     }
     Ok(FixtureRequest {
+        verb,
         request_target,
         fields,
         body: bytes[header_end..header_end + content_length].to_vec(),
@@ -442,7 +565,8 @@ fn request_matches(request: &FixtureRequest, expected: ExpectedRequest) -> bool 
             .and_then(|values| (values.len() == 1).then_some(values[0].as_str()))
     };
     let expected_bearer = expected.bearer.map(|token| format!("Bearer {token}"));
-    request.request_target == "/mcp"
+    request.verb == "POST"
+        && request.request_target == "/mcp"
         && field("host").is_some()
         && field("content-type") == Some("application/json")
         && field("accept") == Some("application/json, text/event-stream")
@@ -476,7 +600,66 @@ fn request_matches(request: &FixtureRequest, expected: ExpectedRequest) -> bool 
         }
 }
 
+fn legacy_request_matches(request: &FixtureRequest, expected: LegacyExpectedRequest) -> bool {
+    let field = |name: &str| {
+        request
+            .fields
+            .get(name)
+            .and_then(|values| (values.len() == 1).then_some(values[0].as_str()))
+    };
+    if request.verb != expected.verb
+        || request.request_target != "/mcp"
+        || field("host").is_none()
+        || field("accept") != Some("application/json, text/event-stream")
+        || field("accept-encoding") != Some("identity")
+        || field("user-agent").is_none_or(|value| !value.starts_with("mcp-doctor/"))
+        || field("mcp-method").is_some()
+        || field("mcp-name").is_some()
+        || match expected.protocol_header {
+            true => field("mcp-protocol-version") != Some(expected.revision),
+            false => field("mcp-protocol-version").is_some(),
+        }
+        || field("mcp-session-id") != expected.session
+    {
+        return false;
+    }
+    let Some(method) = expected.method else {
+        return request.body.is_empty() && field("content-type").is_none();
+    };
+    if field("content-type") != Some("application/json") {
+        return false;
+    }
+    let Ok(body) = serde_json::from_slice::<Value>(&request.body) else {
+        return false;
+    };
+    if body.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+        || body.get("method").and_then(Value::as_str) != Some(method)
+        || request
+            .body
+            .windows("tools/call".len())
+            .any(|window| window == b"tools/call")
+    {
+        return false;
+    }
+    match method {
+        "initialize" => {
+            body.get("id").and_then(Value::as_i64) == Some(1)
+                && body["params"]["protocolVersion"] == expected.revision
+                && body["params"]["capabilities"].is_object()
+                && body["params"]["clientInfo"]["name"] == "mcp-doctor"
+        }
+        "notifications/initialized" => body.get("id").is_none() && body.get("params").is_none(),
+        "tools/list" => {
+            body.get("id").and_then(Value::as_i64).is_some()
+                && body["params"].get("_meta").is_none()
+                && body["params"].get("cursor").and_then(Value::as_str) == expected.cursor
+        }
+        _ => false,
+    }
+}
+
 fn write_response(stream: &mut impl Write, response: FixtureResponse) -> io::Result<()> {
+    let hold_open = response.hold_open;
     write!(
         stream,
         "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
@@ -489,7 +672,11 @@ fn write_response(stream: &mut impl Write, response: FixtureResponse) -> io::Res
     }
     stream.write_all(b"\r\n")?;
     stream.write_all(&response.body)?;
-    stream.flush()
+    stream.flush()?;
+    if hold_open {
+        thread::sleep(Duration::from_secs(2));
+    }
+    Ok(())
 }
 
 fn discovery_response(capabilities: Value) -> FixtureResponse {
@@ -538,6 +725,46 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
     }))
 }
 
+fn legacy_initialize_response(
+    revision: &str,
+    capabilities: Value,
+    session: Option<&str>,
+) -> FixtureResponse {
+    let response = FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "protocolVersion": revision,
+            "capabilities": capabilities,
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }
+    }));
+    match session {
+        Some(session) => response.with_session(session),
+        None => response,
+    }
+}
+
+fn legacy_tools_response(id: i64, next_cursor: Option<&str>) -> FixtureResponse {
+    let tools = if id == 2 {
+        vec![json!({
+            "name": "synthetic.legacy-passive",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {"query": {"type": "string"}}
+            }
+        })]
+    } else {
+        Vec::new()
+    };
+    let mut result = json!({"tools": tools});
+    if let Some(cursor) = next_cursor {
+        result["nextCursor"] = Value::String(cursor.to_owned());
+    }
+    FixtureResponse::json(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
 fn ca_file(environment: &TestEnvironment) -> PathBuf {
     let path = environment.artifact_path("synthetic-ca.pem");
     fs::write(&path, fixture_identity().ca_pem.as_bytes())
@@ -548,6 +775,28 @@ fn ca_file(environment: &TestEnvironment) -> PathBuf {
 fn remote_command(environment: &TestEnvironment, command: &str, endpoint: &str) -> Command {
     let mut process = environment.command();
     process.arg(command).arg(endpoint);
+    process.arg("--allow-private-network").arg(endpoint);
+    if endpoint.starts_with("http://") {
+        process.arg("--allow-cleartext-http").arg(endpoint);
+    }
+    process
+}
+
+fn legacy_remote_command(
+    environment: &TestEnvironment,
+    endpoint: &str,
+    revision: &str,
+    format: Option<&str>,
+) -> Command {
+    let mut process = environment.command();
+    process
+        .arg("inspect")
+        .arg("--protocol-version")
+        .arg(revision);
+    if let Some(format) = format {
+        process.arg("--format").arg(format);
+    }
+    process.arg(endpoint);
     process.arg("--allow-private-network").arg(endpoint);
     if endpoint.starts_with("http://") {
         process.arg("--allow-cleartext-http").arg(endpoint);
@@ -586,6 +835,431 @@ fn assert_successful_inspection(output: &Output) {
     assert!(stdout.contains("PASS  network.resolution"));
     assert!(stdout.contains("PASS  transport.http"));
     assert!(stdout.contains("PASS  protocol.envelope"));
+}
+
+fn legacy_success_exchanges(revision: &'static str) -> Vec<PlannedExchange> {
+    vec![
+        PlannedExchange::legacy_reply(
+            LegacyExpectedRequest::initialize(revision),
+            legacy_initialize_response(
+                revision,
+                json!({"tools": {"listChanged": false}}),
+                Some(LEGACY_SESSION),
+            ),
+        ),
+        PlannedExchange::legacy_reply(
+            LegacyExpectedRequest::initialized(revision, Some(LEGACY_SESSION)),
+            FixtureResponse::accepted(),
+        ),
+        PlannedExchange::legacy_reply(
+            LegacyExpectedRequest::list(revision, Some(LEGACY_SESSION), None),
+            legacy_tools_response(2, Some(LEGACY_CURSOR)),
+        ),
+        PlannedExchange::legacy_reply(
+            LegacyExpectedRequest::list(revision, Some(LEGACY_SESSION), Some(LEGACY_CURSOR)),
+            legacy_tools_response(3, None),
+        ),
+        PlannedExchange::legacy_reply(
+            LegacyExpectedRequest::delete(revision, LEGACY_SESSION),
+            FixtureResponse::status(200, "OK"),
+        ),
+    ]
+}
+
+#[test]
+fn explicit_legacy_http_revisions_preserve_session_pagination_and_reporter_parity() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        for format in [None, Some("json"), Some("junit")] {
+            let label = format.unwrap_or("human");
+            let server =
+                FixtureServer::spawn(WireMode::Http, legacy_success_exchanges(revision), true);
+            let endpoint = server.endpoint();
+            let environment = TestEnvironment::new();
+            let output = run(&mut legacy_remote_command(
+                &environment,
+                &endpoint,
+                revision,
+                format,
+            ));
+            let outcome = server.finish();
+            let (stdout, stderr) = text(&output);
+            assert!(
+                output.status.success(),
+                "{revision}/{label}: {stdout}\n{stderr}"
+            );
+            assert!(stderr.is_empty());
+            assert_eq!(outcome.accepted_connections, 5);
+            assert_eq!(outcome.valid_requests, 5);
+            assert_eq!(outcome.unexpected_connections, 0);
+            match format {
+                None => assert!(stdout.contains(&format!(
+                    "protocol selection · selected {revision} · negotiated {revision}"
+                ))),
+                Some("json") => {
+                    let report = parse_and_validate_report(&output.stdout);
+                    assert_eq!(report["protocol_revision"], revision);
+                    assert_eq!(report["negotiated_protocol_revision"], revision);
+                    assert_eq!(report["outcome"], "passed");
+                }
+                Some("junit") => {
+                    let (document, summary) = parse_and_validate_junit(&output.stdout);
+                    assert_eq!(summary.failures, 0);
+                    assert!(document.contains(&format!("protocol_revision={revision}")));
+                    assert!(document.contains(&format!("negotiated_protocol_revision={revision}")));
+                }
+                Some(unexpected) => panic!("unexpected report format: {unexpected}"),
+            }
+            assert_redacted(&output, &endpoint, &[LEGACY_SESSION, LEGACY_CURSOR]);
+        }
+    }
+}
+
+#[test]
+fn legacy_http_sse_completes_at_the_matching_response_without_waiting_for_eof() {
+    let revision = "2025-11-25";
+    let sse = FixtureResponse::sse(
+        concat!(
+            "id: synthetic-priming-event-never-report-4a91\n",
+            "data:\n\n",
+            "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[]}}\n\n"
+        )
+        .as_bytes()
+        .to_vec(),
+    )
+    .holding_open();
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize(revision),
+                legacy_initialize_response(revision, json!({"tools": {}}), None),
+            ),
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialized(revision, None),
+                FixtureResponse::accepted(),
+            ),
+            PlannedExchange::legacy_reply(LegacyExpectedRequest::list(revision, None, None), sse),
+        ],
+        false,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let started = Instant::now();
+    let output = run(&mut legacy_remote_command(
+        &environment,
+        &endpoint,
+        revision,
+        None,
+    ));
+    let elapsed = started.elapsed();
+    let outcome = server.finish();
+    assert_successful_inspection(&output);
+    assert!(
+        elapsed < Duration::from_millis(1_500),
+        "elapsed: {elapsed:?}"
+    );
+    assert_eq!(outcome.valid_requests, 3);
+    assert_redacted(
+        &output,
+        &endpoint,
+        &["synthetic-priming-event-never-report-4a91"],
+    );
+}
+
+#[test]
+fn legacy_http_revision_and_session_failures_are_causal_without_reinitialization() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let mismatched = if revision == "2025-11-25" {
+            "2025-06-18"
+        } else {
+            "2025-11-25"
+        };
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize(revision),
+                legacy_initialize_response(mismatched, json!({"tools": {}}), None),
+            )],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            Some("json"),
+        ));
+        let outcome = server.finish();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(outcome.accepted_connections, 1);
+        assert_eq!(outcome.valid_requests, 1);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_eq!(report["negotiated_protocol_revision"], mismatched);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            "MCP-PROTOCOL-005"
+        );
+    }
+
+    let revision = "2025-11-25";
+    const HEADER_REJECTION_SENTINEL: &str = "synthetic-header-error-never-report-4a91";
+    let invalid_session =
+        legacy_initialize_response(revision, json!({"tools": {}}), Some(LEGACY_SESSION))
+            .with_session("synthetic-duplicate-session-never-report-4a91");
+    let mut header_rejection = FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": {"code": -32020, "message": HEADER_REJECTION_SENTINEL}
+    }));
+    header_rejection.status = 400;
+    header_rejection.reason = "Bad Request";
+    let cases = [
+        (
+            "invalid-session",
+            vec![PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize(revision),
+                invalid_session,
+            )],
+            "invalid_session_id",
+            1,
+        ),
+        (
+            "missing",
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(revision, json!({"tools": {}}), None),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, None),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(revision, None, None),
+                    FixtureResponse::status(400, "Bad Request"),
+                ),
+            ],
+            "session_id_required",
+            3,
+        ),
+        (
+            "initialized",
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(
+                        revision,
+                        json!({"tools": {}}),
+                        Some(LEGACY_SESSION),
+                    ),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, Some(LEGACY_SESSION)),
+                    FixtureResponse::status(400, "Bad Request"),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::delete(revision, LEGACY_SESSION),
+                    FixtureResponse::status(200, "OK"),
+                ),
+            ],
+            "initialized_notification_rejected",
+            3,
+        ),
+        (
+            "protocol-header",
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(revision, json!({"tools": {}}), None),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, None),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(revision, None, None),
+                    header_rejection,
+                ),
+            ],
+            "protocol_version_header_rejected",
+            3,
+        ),
+    ];
+    for (name, exchanges, evidence, expected_requests) in cases {
+        let server = FixtureServer::spawn(WireMode::Http, exchanges, true);
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            None,
+        ));
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{name}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert!(stdout.contains(evidence), "{name}: {stdout}");
+        assert!(
+            stdout.contains("SKIP  protocol.envelope"),
+            "{name}: {stdout}"
+        );
+        assert_eq!(outcome.accepted_connections, expected_requests);
+        assert_eq!(outcome.valid_requests, expected_requests);
+        assert_eq!(outcome.unexpected_connections, 0);
+        assert_redacted(&output, &endpoint, &[LEGACY_SESSION]);
+        assert!(!stdout.contains(HEADER_REJECTION_SENTINEL));
+    }
+}
+
+#[test]
+fn legacy_http_changed_and_lost_sessions_stop_pagination_but_still_teardown() {
+    let revision = "2025-06-18";
+    for (name, page_two, cleanup, evidence, cleanup_fails) in [
+        (
+            "changed",
+            legacy_tools_response(3, None).with_session("synthetic-changed-session-4a91"),
+            FixtureResponse::status(200, "OK"),
+            "session_id_changed",
+            false,
+        ),
+        (
+            "lost",
+            FixtureResponse::status(404, "Not Found"),
+            FixtureResponse::status(500, "Internal Server Error"),
+            "session_lost",
+            true,
+        ),
+    ] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(
+                        revision,
+                        json!({"tools": {}}),
+                        Some(LEGACY_SESSION),
+                    ),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, Some(LEGACY_SESSION)),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(revision, Some(LEGACY_SESSION), None),
+                    legacy_tools_response(2, Some(LEGACY_CURSOR)),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(
+                        revision,
+                        Some(LEGACY_SESSION),
+                        Some(LEGACY_CURSOR),
+                    ),
+                    page_two,
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::delete(revision, LEGACY_SESSION),
+                    cleanup,
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            None,
+        ));
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{name}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert!(stdout.contains(evidence), "{name}: {stdout}");
+        assert_eq!(stdout.contains("MCP-SAFETY-002"), cleanup_fails, "{stdout}");
+        assert_eq!(outcome.accepted_connections, 5);
+        assert_eq!(outcome.valid_requests, 5);
+        assert_eq!(outcome.unexpected_connections, 0);
+        assert_redacted(
+            &output,
+            &endpoint,
+            &[
+                LEGACY_SESSION,
+                LEGACY_CURSOR,
+                "synthetic-changed-session-4a91",
+            ],
+        );
+    }
+}
+
+#[test]
+fn legacy_http_teardown_failure_remains_an_independent_safety_finding() {
+    let revision = "2025-11-25";
+    for stalled in [false, true] {
+        let cleanup = if stalled {
+            PlannedExchange::legacy_stall(LegacyExpectedRequest::delete(revision, LEGACY_SESSION))
+        } else {
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::delete(revision, LEGACY_SESSION),
+                FixtureResponse::status(500, "Internal Server Error"),
+            )
+        };
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(revision, json!({}), Some(LEGACY_SESSION)),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, Some(LEGACY_SESSION)),
+                    FixtureResponse::accepted(),
+                ),
+                cleanup,
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let started = Instant::now();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            Some("json"),
+        ));
+        let elapsed = started.elapsed();
+        let outcome = server.finish();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(outcome.accepted_connections, 3);
+        assert_eq!(outcome.valid_requests, 3);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_eq!(report["negotiated_protocol_revision"], revision);
+        assert!(
+            report["independent_findings"]
+                .as_array()
+                .is_some_and(|findings| {
+                    findings
+                        .iter()
+                        .any(|finding| finding["code"] == "MCP-SAFETY-002")
+                })
+        );
+        if stalled {
+            assert!(
+                elapsed < Duration::from_millis(2_750),
+                "teardown exceeded its shutdown grace: {elapsed:?}"
+            );
+        }
+        assert_redacted(&output, &endpoint, &[LEGACY_SESSION]);
+    }
 }
 
 fn write_scenario(environment: &TestEnvironment) -> PathBuf {
@@ -889,6 +1563,7 @@ fn request_and_response_resource_bounds_stop_at_the_first_excess() {
         reason: "OK",
         fields: vec![("Content-Type".to_owned(), "application/json".to_owned())],
         body: vec![b'x'; 1_048_577],
+        hold_open: false,
     };
     let mut events = Vec::new();
     for _ in 0..1_024 {

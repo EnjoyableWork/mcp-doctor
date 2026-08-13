@@ -41,6 +41,10 @@ struct InspectArgs {
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
+    /// Exact MCP revision to inspect; legacy revisions are passive and opt-in only.
+    #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
+    protocol_version: InspectProtocolVersion,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -186,6 +190,26 @@ enum OutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum InspectProtocolVersion {
+    #[value(name = "2026-07-28", alias = "current")]
+    Current,
+    #[value(name = "2025-11-25")]
+    V2025_11_25,
+    #[value(name = "2025-06-18")]
+    V2025_06_18,
+}
+
+impl From<InspectProtocolVersion> for contract::ProtocolRevision {
+    fn from(version: InspectProtocolVersion) -> Self {
+        match version {
+            InspectProtocolVersion::Current => Self::V2026_07_28,
+            InspectProtocolVersion::V2025_11_25 => Self::V2025_11_25,
+            InspectProtocolVersion::V2025_06_18 => Self::V2025_06_18,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 enum ToolEffects {
     #[value(name = "read_only")]
     ReadOnly,
@@ -216,15 +240,18 @@ async fn main() -> ExitCode {
     match Cli::parse().command {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
+            let revision = arguments.protocol_version.into();
             if let Some(endpoint) = arguments.endpoint {
                 let diagnostic = inspect::run_http(
                     arguments.remote.into_options(endpoint),
                     arguments.format.into(),
+                    revision,
                 )
                 .await;
                 emit_diagnostic(diagnostic)
             } else {
-                match inspect::run_stdio(arguments.target, arguments.format.into()).await {
+                match inspect::run_stdio(arguments.target, arguments.format.into(), revision).await
+                {
                     Ok(diagnostic) => emit_diagnostic(diagnostic),
                     Err(error) => {
                         eprintln!("error: {error}");
