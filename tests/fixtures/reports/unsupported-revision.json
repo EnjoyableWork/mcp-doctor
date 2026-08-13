@@ -102,10 +102,10 @@
           "protocol_revision": "2026-07-28",
           "location": "server.supportedVersions",
           "message": "The server does not advertise the required protocol revision.",
-          "impact": "Applying 2026-07-28 rules to another revision could produce a false diagnosis.",
+          "impact": "Applying rules for a different revision could produce a false diagnosis.",
           "expectation": "server/discover must advertise MCP protocol revision 2026-07-28.",
           "remediation": "Add MCP 2026-07-28 support and advertise it from server/discover.",
-          "reference": "MCP 2026-07-28 server/discover contract",
+          "reference": "selected MCP revision lifecycle contract",
           "evidence": {
             "kind": "revision_advertisement",
             "required": "2026-07-28",

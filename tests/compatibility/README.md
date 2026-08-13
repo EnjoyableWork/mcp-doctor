@@ -39,8 +39,15 @@ back to an older initialization flow.
 Under `DEC-024`, four passing selected cases across four languages—including
 two independent implementations—support the scoped phrase “broad
 current-revision compatibility.” That means the passive STDIO checks work for
-this reviewed matrix. It does not mean every MCP server works, older revisions
-work, HTTP works, tools were executed, or an official conformance suite passed.
+this reviewed matrix. It does not mean every MCP server works, HTTP works,
+tools were executed, or an official conformance suite passed.
+
+Explicit passive MCP `2025-11-25` and `2025-06-18` adapters are covered by the
+synthetic built-binary STDIO and Streamable HTTP journeys in
+[`tests/stdio.rs`](../stdio.rs) and [`tests/http.rs`](../http.rs). This dated
+real-server matrix does not test those adapters, so it supplies no broad legacy
+ecosystem or installed-channel claim. Legacy selection never serves as a
+fallback for any case in this matrix.
 
 ## Reproduce it
 

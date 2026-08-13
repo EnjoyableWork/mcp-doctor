@@ -76,6 +76,7 @@ impl CatalogKind {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum RequestKind {
+    Initialize,
     Discover,
     Catalog(CatalogKind),
 }
@@ -100,11 +101,14 @@ impl fmt::Debug for RequestRecord {
     }
 }
 
-/// Drives only capability-gated list requests. It never constructs `tools/call`,
-/// `prompts/get`, `resources/read`, or an initialization handshake.
+/// Drives the selected lifecycle and only capability-gated list requests. It
+/// never constructs `tools/call`, `prompts/get`, or `resources/read`.
 pub(crate) struct PassiveCatalogConversation {
+    revision: SupportedRevision,
     started: bool,
     stopped: bool,
+    initialized_sent: bool,
+    negotiated_revision: Option<super::protocol::KnownRevision>,
     next_id: i64,
     queue: VecDeque<CatalogKind>,
     records: Vec<RequestRecord>,
@@ -117,13 +121,23 @@ pub(crate) struct PassiveCatalogConversation {
 
 impl PassiveCatalogConversation {
     pub(crate) fn new() -> Self {
-        Self::with_catalog_limit(DiagnosticLimits::M1_DEFAULTS.values().catalog_items)
+        Self::for_revision(SupportedRevision::CURRENT)
     }
 
-    fn with_catalog_limit(maximum_items: u64) -> Self {
+    pub(crate) fn for_revision(revision: SupportedRevision) -> Self {
+        Self::with_catalog_limit(
+            revision,
+            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
+        )
+    }
+
+    fn with_catalog_limit(revision: SupportedRevision, maximum_items: u64) -> Self {
         Self {
+            revision,
             started: false,
             stopped: false,
+            initialized_sent: false,
+            negotiated_revision: None,
             next_id: 1,
             queue: VecDeque::new(),
             records: Vec::new(),
@@ -141,6 +155,20 @@ impl PassiveCatalogConversation {
         conversation
     }
 
+    pub(crate) fn new_http_for_revision(revision: SupportedRevision) -> Self {
+        let mut conversation = Self::for_revision(revision);
+        conversation.validate_http_headers = !revision.uses_initialize();
+        conversation
+    }
+
+    pub(crate) const fn revision(&self) -> SupportedRevision {
+        self.revision
+    }
+
+    pub(crate) const fn negotiated_revision(&self) -> Option<super::protocol::KnownRevision> {
+        self.negotiated_revision
+    }
+
     fn record_request(&mut self, kind: RequestKind, cursor: Option<String>) -> ProbeRequest {
         let id = self.next_id;
         self.next_id = self
@@ -148,7 +176,7 @@ impl PassiveCatalogConversation {
             .checked_add(1)
             .expect("the bounded message count keeps request ids representable");
         let page = match kind {
-            RequestKind::Discover => 0,
+            RequestKind::Initialize | RequestKind::Discover => 0,
             RequestKind::Catalog(catalog) => {
                 let page = self.pages.entry(catalog).or_default();
                 let current = *page;
@@ -156,7 +184,7 @@ impl PassiveCatalogConversation {
                 current
             }
         };
-        let bytes = encode_request(id, kind, cursor.as_deref());
+        let bytes = encode_request(id, kind, cursor.as_deref(), self.revision);
         self.records.push(RequestRecord {
             id,
             kind,
@@ -178,6 +206,7 @@ impl PassiveCatalogConversation {
         );
 
         match record.kind {
+            RequestKind::Initialize => unreachable!("initialize advances through its notification"),
             RequestKind::Discover => {
                 self.queue = advertised_catalogs(response).into();
                 self.queue
@@ -221,22 +250,72 @@ impl Conversation for PassiveCatalogConversation {
         if !self.started {
             assert!(previous.is_none(), "discovery is always the first exchange");
             self.started = true;
-            return Some(self.record_request(RequestKind::Discover, None));
+            let kind = if self.revision.uses_initialize() {
+                RequestKind::Initialize
+            } else {
+                RequestKind::Discover
+            };
+            return Some(self.record_request(kind, None));
         }
 
         let response = previous.expect("each later request follows a matching response");
+        if self.revision.uses_initialize()
+            && self
+                .records
+                .last()
+                .is_some_and(|record| record.kind == RequestKind::Initialize)
+        {
+            if !self.initialized_sent {
+                self.negotiated_revision = negotiated_revision(response);
+                let Some(catalogs) = legacy_advertised_catalogs(response, self.revision) else {
+                    self.stopped = true;
+                    return None;
+                };
+                self.queue = catalogs.into();
+                self.initialized_sent = true;
+                return Some(initialized_notification());
+            }
+            return self
+                .queue
+                .pop_front()
+                .map(|kind| self.record_request(RequestKind::Catalog(kind), None));
+        }
         self.advance_after(response)
             .map(|(kind, cursor)| self.record_request(kind, cursor))
     }
 }
 
-fn encode_request(id: i64, kind: RequestKind, cursor: Option<&str>) -> Vec<u8> {
+fn encode_request(
+    id: i64,
+    kind: RequestKind,
+    cursor: Option<&str>,
+    revision: SupportedRevision,
+) -> Vec<u8> {
+    if kind == RequestKind::Initialize {
+        return serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": revision.as_str(),
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "mcp-doctor",
+                    "version": env!("CARGO_PKG_VERSION"),
+                },
+            },
+        }))
+        .expect("the typed initialize request must serialize");
+    }
     let method = match kind {
+        RequestKind::Initialize => unreachable!("initialize was encoded above"),
         RequestKind::Discover => "server/discover",
         RequestKind::Catalog(kind) => kind.method(),
     };
     let mut params = Map::new();
-    params.insert("_meta".to_owned(), request_meta());
+    if !revision.uses_initialize() {
+        params.insert("_meta".to_owned(), request_meta());
+    }
     if let Some(cursor) = cursor {
         params.insert("cursor".to_owned(), Value::String(cursor.to_owned()));
     }
@@ -248,6 +327,63 @@ fn encode_request(id: i64, kind: RequestKind, cursor: Option<&str>) -> Vec<u8> {
         "params": params,
     }))
     .expect("the typed passive request must serialize")
+}
+
+fn initialized_notification() -> ProbeRequest {
+    let bytes = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    }))
+    .expect("the typed initialized notification must serialize");
+    ProbeRequest::notification(bytes)
+}
+
+fn negotiated_revision(response: &ProbeResponse) -> Option<super::protocol::KnownRevision> {
+    let value: Value = serde_json::from_slice(response.as_bytes()).ok()?;
+    let revision = value.get("result")?.get("protocolVersion")?.as_str()?;
+    super::protocol::KnownRevision::parse(revision)
+}
+
+fn legacy_advertised_catalogs(
+    response: &ProbeResponse,
+    revision: SupportedRevision,
+) -> Option<Vec<CatalogKind>> {
+    let value: Value = serde_json::from_slice(response.as_bytes()).ok()?;
+    let result = value.get("result")?.as_object()?;
+    if result.get("protocolVersion")?.as_str()? != revision.as_str() {
+        return None;
+    }
+    let capabilities = result.get("capabilities")?.as_object()?;
+    let server_info = result.get("serverInfo")?.as_object()?;
+    if !server_info.get("name").is_some_and(Value::is_string)
+        || !server_info.get("version").is_some_and(Value::is_string)
+        || result
+            .get("instructions")
+            .is_some_and(|instructions| !instructions.is_string())
+    {
+        return None;
+    }
+    let (capability_findings, _) = validate_legacy_capabilities(
+        result,
+        Location::root(LocationField::Server).field(LocationField::Result),
+        revision,
+    );
+    if capability_findings
+        .iter()
+        .any(|finding| finding.severity().is_failure())
+    {
+        return None;
+    }
+    Some(
+        CatalogKind::ALL
+            .into_iter()
+            .filter(|kind| {
+                capabilities
+                    .get(kind.capability())
+                    .is_some_and(Value::is_object)
+            })
+            .collect(),
+    )
 }
 
 pub(super) fn request_meta() -> Value {
@@ -1298,6 +1434,124 @@ pub(super) fn validate_discovery_capabilities(
     )
 }
 
+fn validate_legacy_capabilities(
+    result: &Map<String, Value>,
+    base: Location,
+    revision: SupportedRevision,
+) -> (Vec<Finding>, bool) {
+    let (findings, tools_advertised) = validate_discovery_capabilities(result, base.clone());
+    let mut findings = findings
+        .into_iter()
+        .map(|finding| finding.with_revision(revision))
+        .collect();
+    let Some(capabilities) = result.get("capabilities").and_then(Value::as_object) else {
+        return (findings, false);
+    };
+    let location = base.field(LocationField::Capabilities);
+    for (name, field) in [
+        ("logging", LocationField::Logging),
+        ("completions", LocationField::Completions),
+    ] {
+        optional_capability_object(
+            &mut findings,
+            revision,
+            capabilities.get(name),
+            location.clone().field(field),
+        );
+    }
+    if let Some(experimental) = optional_capability_object(
+        &mut findings,
+        revision,
+        capabilities.get("experimental"),
+        location.clone().field(LocationField::Experimental),
+    ) && let Some(invalid) = experimental.values().find(|value| !value.is_object())
+    {
+        findings.push(Finding::catalog_contract_invalid(
+            revision,
+            location
+                .clone()
+                .field(LocationField::Experimental)
+                .wildcard(),
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::Object,
+                observed: json_kind(Some(invalid)),
+            },
+        ));
+    }
+    if revision == SupportedRevision::V2025_11_25
+        && let Some(tasks) = optional_capability_object(
+            &mut findings,
+            revision,
+            capabilities.get("tasks"),
+            location.clone().field(LocationField::Tasks),
+        )
+    {
+        for (name, field) in [
+            ("list", LocationField::List),
+            ("cancel", LocationField::Cancel),
+        ] {
+            optional_capability_object(
+                &mut findings,
+                revision,
+                tasks.get(name),
+                location.clone().field(LocationField::Tasks).field(field),
+            );
+        }
+        if let Some(requests) = optional_capability_object(
+            &mut findings,
+            revision,
+            tasks.get("requests"),
+            location
+                .clone()
+                .field(LocationField::Tasks)
+                .field(LocationField::Requests),
+        ) && let Some(tools) = optional_capability_object(
+            &mut findings,
+            revision,
+            requests.get("tools"),
+            location
+                .clone()
+                .field(LocationField::Tasks)
+                .field(LocationField::Requests)
+                .field(LocationField::Tools),
+        ) {
+            optional_capability_object(
+                &mut findings,
+                revision,
+                tools.get("call"),
+                location
+                    .field(LocationField::Tasks)
+                    .field(LocationField::Requests)
+                    .field(LocationField::Tools)
+                    .field(LocationField::Call),
+            );
+        }
+    }
+    (findings, tools_advertised)
+}
+
+fn optional_capability_object<'a>(
+    findings: &mut Vec<Finding>,
+    revision: SupportedRevision,
+    value: Option<&'a Value>,
+    location: Location,
+) -> Option<&'a Map<String, Value>> {
+    let value = value?;
+    if let Some(object) = value.as_object() {
+        Some(object)
+    } else {
+        findings.push(Finding::catalog_contract_invalid(
+            revision,
+            location,
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::Object,
+                observed: json_kind(Some(value)),
+            },
+        ));
+        None
+    }
+}
+
 pub(super) fn validate_local_schema(schema: &Value, base: Location) -> Vec<Finding> {
     let mut analyzer = Analyzer::new(0, false);
     analyzer.analyze_schema(schema, base.clone());
@@ -1419,6 +1673,9 @@ pub(super) fn diagnose(
     responses: &[ProbeResponse],
     reserved_findings: usize,
 ) -> Vec<CheckResult> {
+    if conversation.revision.uses_initialize() {
+        return diagnose_legacy(conversation, responses, reserved_findings);
+    }
     let mut analyzer = Analyzer::new(reserved_findings, conversation.validate_http_headers);
     let Some(discovery) = responses.first() else {
         return analyzer.into_checks();
@@ -1435,6 +1692,860 @@ pub(super) fn diagnose(
         analyzer.analyze_catalog_page(record, response);
     }
     analyzer.into_checks()
+}
+
+struct LegacyAnalyzer {
+    revision_kind: SupportedRevision,
+    limits: DiagnosticLimits,
+    revision: Vec<Finding>,
+    envelope: Vec<Finding>,
+    catalog: Vec<Finding>,
+    schema: Vec<Finding>,
+    capacity: usize,
+    stored: usize,
+    overflow: bool,
+    initialize_valid: bool,
+    revision_checked: bool,
+    revision_supported: bool,
+    tools_advertised: bool,
+    tools_catalog_valid: bool,
+    catalog_limit_reached: bool,
+    observed_items: u64,
+    item_offsets: BTreeMap<CatalogKind, usize>,
+    identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
+    secondary_identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
+    cursors: BTreeMap<CatalogKind, BTreeSet<String>>,
+}
+
+impl LegacyAnalyzer {
+    fn new(revision: SupportedRevision, reserved_findings: usize) -> Self {
+        let limits = DiagnosticLimits::M1_DEFAULTS;
+        let maximum = usize::try_from(limits.values().report_findings).unwrap_or(usize::MAX);
+        Self {
+            revision_kind: revision,
+            limits,
+            revision: Vec::new(),
+            envelope: Vec::new(),
+            catalog: Vec::new(),
+            schema: Vec::new(),
+            capacity: maximum.saturating_sub(reserved_findings),
+            stored: 0,
+            overflow: false,
+            initialize_valid: false,
+            revision_checked: false,
+            revision_supported: false,
+            tools_advertised: false,
+            tools_catalog_valid: true,
+            catalog_limit_reached: false,
+            observed_items: 0,
+            item_offsets: BTreeMap::new(),
+            identifiers: BTreeMap::new(),
+            secondary_identifiers: BTreeMap::new(),
+            cursors: BTreeMap::new(),
+        }
+    }
+
+    fn push(&mut self, bucket: FindingBucket, finding: Finding) {
+        let destination = match bucket {
+            FindingBucket::Revision => &mut self.revision,
+            FindingBucket::Envelope => &mut self.envelope,
+            FindingBucket::Catalog => &mut self.catalog,
+            FindingBucket::Schema => &mut self.schema,
+        };
+        if destination.contains(&finding) {
+            return;
+        }
+        if self.stored < self.capacity {
+            destination.push(finding);
+            self.stored += 1;
+        } else {
+            self.overflow = true;
+        }
+    }
+
+    fn expected_shape(
+        &mut self,
+        bucket: FindingBucket,
+        location: Location,
+        expected: ExpectedShape,
+        observed: Option<&Value>,
+    ) {
+        let violation = RuleViolation::ExpectedShape {
+            expected,
+            observed: json_kind(observed),
+        };
+        let finding = if matches!(bucket, FindingBucket::Schema) {
+            Finding::schema_contract_invalid(self.revision_kind, location, violation)
+        } else {
+            Finding::catalog_contract_invalid(self.revision_kind, location, violation)
+        };
+        self.push(bucket, finding);
+    }
+
+    fn analyze_initialize(&mut self, response: &ProbeResponse) {
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted a JSON-RPC object");
+        let base = Location::root(LocationField::Server);
+        if object.contains_key("error") {
+            self.push(
+                FindingBucket::Envelope,
+                Finding::catalog_contract_invalid(
+                    self.revision_kind,
+                    base,
+                    RuleViolation::ServerErrorResponse,
+                ),
+            );
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            self.expected_shape(
+                FindingBucket::Envelope,
+                base.field(LocationField::Result),
+                ExpectedShape::Object,
+                object.get("result"),
+            );
+            return;
+        };
+
+        self.revision_checked = true;
+        let revision_location = base
+            .clone()
+            .field(LocationField::Result)
+            .field(LocationField::NegotiatedProtocolVersion);
+        match result.get("protocolVersion").and_then(Value::as_str) {
+            Some(revision) if revision == self.revision_kind.as_str() => {
+                self.revision_supported = true;
+                self.push(
+                    FindingBucket::Revision,
+                    Finding::revision_confirmed(self.revision_kind, revision_location),
+                );
+            }
+            Some(_) => self.push(
+                FindingBucket::Revision,
+                Finding::revision_mismatch(self.revision_kind, revision_location),
+            ),
+            None => self.push(
+                FindingBucket::Revision,
+                Finding::invalid_revision_value(
+                    self.revision_kind,
+                    revision_location,
+                    super::redaction::RedactedValue::new(
+                        result.get("protocolVersion").map_or(0, serialized_len),
+                    ),
+                ),
+            ),
+        }
+
+        let (capability_findings, tools_advertised) = validate_legacy_capabilities(
+            result,
+            base.clone().field(LocationField::Result),
+            self.revision_kind,
+        );
+        self.tools_advertised = tools_advertised;
+        for finding in capability_findings {
+            self.push(FindingBucket::Envelope, finding);
+        }
+
+        let server_info_location = base
+            .clone()
+            .field(LocationField::Result)
+            .field(LocationField::ServerInfo);
+        let Some(server_info) = result.get("serverInfo").and_then(Value::as_object) else {
+            self.expected_shape(
+                FindingBucket::Envelope,
+                server_info_location,
+                ExpectedShape::Object,
+                result.get("serverInfo"),
+            );
+            return;
+        };
+        for (name, field) in [
+            ("name", LocationField::Name),
+            ("version", LocationField::Version),
+        ] {
+            if !server_info.get(name).is_some_and(Value::is_string) {
+                self.expected_shape(
+                    FindingBucket::Envelope,
+                    server_info_location.clone().field(field),
+                    ExpectedShape::String,
+                    server_info.get(name),
+                );
+            }
+        }
+        if let Some(instructions) = result.get("instructions")
+            && !instructions.is_string()
+        {
+            self.expected_shape(
+                FindingBucket::Envelope,
+                base.field(LocationField::Result)
+                    .field(LocationField::Instructions),
+                ExpectedShape::String,
+                Some(instructions),
+            );
+        }
+        self.initialize_valid = self.revision_supported
+            && !self
+                .envelope
+                .iter()
+                .any(|finding| finding.severity().is_failure());
+    }
+
+    fn analyze_catalog_page(&mut self, record: &RequestRecord, response: &ProbeResponse) {
+        let RequestKind::Catalog(kind) = record.kind else {
+            return;
+        };
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted a JSON-RPC object");
+        let base = kind.location();
+        if object.contains_key("error") {
+            self.push(
+                FindingBucket::Catalog,
+                Finding::catalog_contract_invalid(
+                    self.revision_kind,
+                    base,
+                    RuleViolation::ServerErrorResponse,
+                ),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            self.expected_shape(
+                FindingBucket::Catalog,
+                base.clone().field(LocationField::Result),
+                ExpectedShape::Object,
+                object.get("result"),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        };
+        if let Some(cursor) = result.get("nextCursor") {
+            if let Some(cursor) = cursor.as_str() {
+                if !self
+                    .cursors
+                    .entry(kind)
+                    .or_default()
+                    .insert(cursor.to_owned())
+                {
+                    self.push(
+                        FindingBucket::Catalog,
+                        Finding::pagination_cursor_repeated(
+                            self.revision_kind,
+                            base.clone().field(LocationField::NextCursor),
+                        ),
+                    );
+                }
+            } else {
+                self.expected_shape(
+                    FindingBucket::Catalog,
+                    base.clone().field(LocationField::NextCursor),
+                    ExpectedShape::String,
+                    Some(cursor),
+                );
+            }
+        }
+        let Some(items) = result.get(kind.result_field()).and_then(Value::as_array) else {
+            self.expected_shape(
+                FindingBucket::Catalog,
+                base,
+                ExpectedShape::Array,
+                result.get(kind.result_field()),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        };
+        let offset = *self.item_offsets.get(&kind).unwrap_or(&0);
+        let page_items = u64::try_from(items.len()).unwrap_or(u64::MAX);
+        let previous = self.observed_items;
+        self.observed_items = self.observed_items.saturating_add(page_items);
+        let maximum = self.limits.values().catalog_items;
+        if self.observed_items > maximum {
+            self.catalog_limit_reached = true;
+            self.push(
+                FindingBucket::Catalog,
+                Finding::limit_exceeded(
+                    self.revision_kind,
+                    kind.location(),
+                    LimitViolation::new(LimitKind::CatalogItems, self.observed_items, maximum)
+                        .expect("the observed catalog count exceeds its maximum"),
+                ),
+            );
+        }
+        let remaining = usize::try_from(maximum.saturating_sub(previous)).unwrap_or(usize::MAX);
+        for (page_index, item) in items.iter().take(remaining).enumerate() {
+            self.analyze_item(kind, offset.saturating_add(page_index), item);
+        }
+        self.item_offsets
+            .insert(kind, offset.saturating_add(items.len()));
+    }
+
+    fn analyze_item(&mut self, kind: CatalogKind, index: usize, item: &Value) {
+        let base = kind.location().index(index);
+        let Some(object) = item.as_object() else {
+            self.expected_shape(
+                FindingBucket::Catalog,
+                base,
+                ExpectedShape::Object,
+                Some(item),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        };
+        match object.get("name").and_then(Value::as_str) {
+            Some(name) => {
+                if self
+                    .identifiers
+                    .entry(kind)
+                    .or_default()
+                    .insert(name.to_owned(), index)
+                    .is_some()
+                {
+                    self.push(
+                        FindingBucket::Catalog,
+                        Finding::duplicate_catalog_identifier(
+                            self.revision_kind,
+                            base.clone().field(LocationField::Name),
+                        ),
+                    );
+                }
+            }
+            None => self.expected_shape(
+                FindingBucket::Catalog,
+                base.clone().field(LocationField::Name),
+                ExpectedShape::String,
+                object.get("name"),
+            ),
+        }
+        match kind {
+            CatalogKind::Tools => self.analyze_tool(base, object),
+            CatalogKind::Prompts => self.analyze_prompt(base, object),
+            CatalogKind::Resources => {
+                self.analyze_secondary_identifier(kind, base, object, "uri", LocationField::Uri)
+            }
+            CatalogKind::ResourceTemplates => self.analyze_secondary_identifier(
+                kind,
+                base,
+                object,
+                "uriTemplate",
+                LocationField::UriTemplate,
+            ),
+        }
+    }
+
+    fn analyze_tool(&mut self, base: Location, tool: &Map<String, Value>) {
+        let Some(input_schema) = tool.get("inputSchema") else {
+            self.expected_shape(
+                FindingBucket::Schema,
+                base.field(LocationField::InputSchema),
+                ExpectedShape::Object,
+                None,
+            );
+            self.tools_catalog_valid = false;
+            return;
+        };
+        let input_location = base.clone().field(LocationField::InputSchema);
+        let Some(input_object) = input_schema.as_object() else {
+            self.expected_shape(
+                FindingBucket::Schema,
+                input_location,
+                ExpectedShape::Object,
+                Some(input_schema),
+            );
+            self.tools_catalog_valid = false;
+            return;
+        };
+        if input_object.get("type").and_then(Value::as_str) != Some("object") {
+            self.push(
+                FindingBucket::Schema,
+                Finding::schema_contract_invalid(
+                    self.revision_kind,
+                    input_location.clone().field(LocationField::Type),
+                    RuleViolation::ExpectedToolSchemaRootObject {
+                        observed: json_kind(input_object.get("type")),
+                    },
+                ),
+            );
+        }
+        self.analyze_legacy_schema(input_schema, input_location);
+        if let Some(output_schema) = tool.get("outputSchema") {
+            let output_location = base.field(LocationField::OutputSchema);
+            let Some(output_object) = output_schema.as_object() else {
+                self.expected_shape(
+                    FindingBucket::Schema,
+                    output_location,
+                    ExpectedShape::Object,
+                    Some(output_schema),
+                );
+                return;
+            };
+            if output_object.get("type").and_then(Value::as_str) != Some("object") {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::schema_contract_invalid(
+                        self.revision_kind,
+                        output_location.clone().field(LocationField::Type),
+                        RuleViolation::ExpectedToolSchemaRootObject {
+                            observed: json_kind(output_object.get("type")),
+                        },
+                    ),
+                );
+            }
+            self.analyze_legacy_schema(output_schema, output_location);
+        }
+    }
+
+    fn analyze_legacy_schema(&mut self, schema: &Value, location: Location) {
+        if self.revision_kind == SupportedRevision::V2025_06_18
+            && schema
+                .as_object()
+                .is_some_and(|object| !object.contains_key("$schema"))
+        {
+            self.push(
+                FindingBucket::Schema,
+                Finding::ambiguous_schema_dialect(
+                    self.revision_kind,
+                    location.clone().field(LocationField::Schema),
+                ),
+            );
+            self.analyze_legacy_schema_structure(schema, location);
+            return;
+        }
+        for finding in validate_local_schema(schema, location) {
+            self.push(
+                FindingBucket::Schema,
+                finding.with_revision(self.revision_kind),
+            );
+        }
+    }
+
+    fn analyze_legacy_schema_structure(&mut self, schema: &Value, base: Location) {
+        let values = self.limits.values();
+        let bytes = u64::try_from(serialized_len(schema)).unwrap_or(u64::MAX);
+        if bytes > values.schema_bytes {
+            self.push(
+                FindingBucket::Schema,
+                Finding::limit_exceeded(
+                    self.revision_kind,
+                    base,
+                    LimitViolation::new(LimitKind::SchemaBytes, bytes, values.schema_bytes)
+                        .expect("the legacy schema byte count exceeds its maximum"),
+                ),
+            );
+            return;
+        }
+        let object = schema
+            .as_object()
+            .expect("the legacy tool schema object shape was checked");
+        if object.get("type").and_then(Value::as_str) != Some("object") {
+            self.push(
+                FindingBucket::Schema,
+                Finding::schema_contract_invalid(
+                    self.revision_kind,
+                    base.clone().field(LocationField::Type),
+                    RuleViolation::ExpectedToolSchemaRootObject {
+                        observed: json_kind(object.get("type")),
+                    },
+                ),
+            );
+        }
+        if let Some(properties) = object.get("properties") {
+            if let Some(properties) = properties.as_object() {
+                if let Some(invalid) = properties.values().find(|value| !value.is_object()) {
+                    self.expected_shape(
+                        FindingBucket::Schema,
+                        base.clone().field(LocationField::Properties).wildcard(),
+                        ExpectedShape::Object,
+                        Some(invalid),
+                    );
+                }
+            } else {
+                self.expected_shape(
+                    FindingBucket::Schema,
+                    base.clone().field(LocationField::Properties),
+                    ExpectedShape::Object,
+                    Some(properties),
+                );
+            }
+        }
+        if let Some(required) = object.get("required") {
+            if let Some(required) = required.as_array() {
+                for (index, value) in required.iter().enumerate() {
+                    if !value.is_string() {
+                        self.expected_shape(
+                            FindingBucket::Schema,
+                            base.clone().field(LocationField::Required).index(index),
+                            ExpectedShape::String,
+                            Some(value),
+                        );
+                    }
+                }
+            } else {
+                self.expected_shape(
+                    FindingBucket::Schema,
+                    base.clone().field(LocationField::Required),
+                    ExpectedShape::Array,
+                    Some(required),
+                );
+            }
+        }
+
+        let mut stack = vec![(schema, 0_u64, base)];
+        let mut nodes = 0_u64;
+        let mut references = Vec::new();
+        while let Some((value, depth, location)) = stack.pop() {
+            nodes = nodes.saturating_add(1);
+            if nodes > values.schema_nodes {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(
+                        self.revision_kind,
+                        location,
+                        LimitViolation::new(LimitKind::SchemaNodes, nodes, values.schema_nodes)
+                            .expect("the legacy schema node count exceeds its maximum"),
+                    ),
+                );
+                return;
+            }
+            if nodes > values.schema_evaluation_steps {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(
+                        self.revision_kind,
+                        location,
+                        LimitViolation::new(
+                            LimitKind::SchemaEvaluationSteps,
+                            nodes,
+                            values.schema_evaluation_steps,
+                        )
+                        .expect("the legacy schema traversal exceeds its maximum"),
+                    ),
+                );
+                return;
+            }
+            if depth > values.schema_depth {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(
+                        self.revision_kind,
+                        location,
+                        LimitViolation::new(LimitKind::SchemaDepth, depth, values.schema_depth)
+                            .expect("the legacy schema depth exceeds its maximum"),
+                    ),
+                );
+                return;
+            }
+            match value {
+                Value::Object(object) => {
+                    for (key, child) in object {
+                        let child_location = schema_child_location(location.clone(), key);
+                        if matches!(key.as_str(), "$ref" | "$dynamicRef") {
+                            match child.as_str() {
+                                Some(reference) if !reference.starts_with('#') => self.push(
+                                    FindingBucket::Schema,
+                                    Finding::external_schema_reference_blocked(
+                                        self.revision_kind,
+                                        child_location.clone(),
+                                    ),
+                                ),
+                                Some(reference) => {
+                                    references.push((reference.to_owned(), child_location.clone()));
+                                }
+                                None => self.expected_shape(
+                                    FindingBucket::Schema,
+                                    child_location.clone(),
+                                    ExpectedShape::String,
+                                    Some(child),
+                                ),
+                            }
+                        }
+                        stack.push((child, depth.saturating_add(1), child_location));
+                    }
+                }
+                Value::Array(items) => {
+                    for (index, child) in items.iter().enumerate() {
+                        stack.push((
+                            child,
+                            depth.saturating_add(1),
+                            location.clone().index(index),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut work = nodes;
+        for (reference, location) in &references {
+            work = work.saturating_add(1);
+            if work > values.schema_evaluation_steps {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(
+                        self.revision_kind,
+                        location.clone(),
+                        LimitViolation::new(
+                            LimitKind::SchemaEvaluationSteps,
+                            work,
+                            values.schema_evaluation_steps,
+                        )
+                        .expect("the legacy schema reference work exceeds its maximum"),
+                    ),
+                );
+                return;
+            }
+            if resolve_local_reference(schema, reference).is_none() {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::schema_contract_invalid(
+                        self.revision_kind,
+                        location.clone(),
+                        RuleViolation::UnresolvedLocalReference,
+                    ),
+                );
+            }
+        }
+        if let Some((observed, location)) = reference_depth_violation(
+            schema,
+            &references,
+            values.schema_ref_depth,
+            &mut work,
+            values.schema_evaluation_steps,
+        ) {
+            let (kind, maximum) = if work > values.schema_evaluation_steps {
+                (
+                    LimitKind::SchemaEvaluationSteps,
+                    values.schema_evaluation_steps,
+                )
+            } else {
+                (LimitKind::SchemaRefDepth, values.schema_ref_depth)
+            };
+            self.push(
+                FindingBucket::Schema,
+                Finding::limit_exceeded(
+                    self.revision_kind,
+                    location,
+                    LimitViolation::new(kind, observed, maximum)
+                        .expect("the legacy schema reference bound was exceeded"),
+                ),
+            );
+        }
+    }
+
+    fn analyze_prompt(&mut self, base: Location, prompt: &Map<String, Value>) {
+        let Some(arguments) = prompt.get("arguments") else {
+            return;
+        };
+        let arguments_base = base.field(LocationField::Arguments);
+        let Some(arguments) = arguments.as_array() else {
+            self.expected_shape(
+                FindingBucket::Catalog,
+                arguments_base,
+                ExpectedShape::Array,
+                Some(arguments),
+            );
+            return;
+        };
+        let mut names = BTreeSet::new();
+        for (index, argument) in arguments.iter().enumerate() {
+            let location = arguments_base.clone().index(index);
+            let Some(argument) = argument.as_object() else {
+                self.expected_shape(
+                    FindingBucket::Catalog,
+                    location,
+                    ExpectedShape::Object,
+                    Some(argument),
+                );
+                continue;
+            };
+            match argument.get("name").and_then(Value::as_str) {
+                Some(name) if !names.insert(name.to_owned()) => self.push(
+                    FindingBucket::Catalog,
+                    Finding::duplicate_catalog_identifier(
+                        self.revision_kind,
+                        location.clone().field(LocationField::Name),
+                    ),
+                ),
+                Some(_) => {}
+                None => self.expected_shape(
+                    FindingBucket::Catalog,
+                    location.clone().field(LocationField::Name),
+                    ExpectedShape::String,
+                    argument.get("name"),
+                ),
+            }
+            if let Some(required) = argument.get("required")
+                && !required.is_boolean()
+            {
+                self.expected_shape(
+                    FindingBucket::Catalog,
+                    location.field(LocationField::Required),
+                    ExpectedShape::Boolean,
+                    Some(required),
+                );
+            }
+        }
+    }
+
+    fn analyze_secondary_identifier(
+        &mut self,
+        kind: CatalogKind,
+        base: Location,
+        object: &Map<String, Value>,
+        name: &str,
+        field: LocationField,
+    ) {
+        let location = base.field(field);
+        let Some(value) = object.get(name).and_then(Value::as_str) else {
+            self.expected_shape(
+                FindingBucket::Catalog,
+                location,
+                ExpectedShape::String,
+                object.get(name),
+            );
+            return;
+        };
+        if self
+            .secondary_identifiers
+            .entry(kind)
+            .or_default()
+            .insert(value.to_owned(), 0)
+            .is_some()
+        {
+            self.push(
+                FindingBucket::Catalog,
+                Finding::duplicate_catalog_identifier(self.revision_kind, location),
+            );
+        }
+    }
+
+    fn finish(mut self) -> Vec<CheckResult> {
+        if self.overflow && self.capacity > 0 {
+            let removed = self
+                .schema
+                .pop()
+                .or_else(|| self.catalog.pop())
+                .or_else(|| self.envelope.pop())
+                .or_else(|| self.revision.pop());
+            if removed.is_some() {
+                self.catalog.push(Finding::limit_exceeded(
+                    self.revision_kind,
+                    Location::root(LocationField::Server),
+                    LimitViolation::new(
+                        LimitKind::ReportFindings,
+                        self.limits.values().report_findings.saturating_add(1),
+                        self.limits.values().report_findings,
+                    )
+                    .expect("the finding count exceeds its maximum"),
+                ));
+            }
+        }
+        let envelope_failed = self
+            .envelope
+            .iter()
+            .any(|finding| finding.severity().is_failure());
+        let revision_failed = self
+            .revision
+            .iter()
+            .any(|finding| finding.severity().is_failure());
+        let downstream = if revision_failed {
+            SkipReason::UnsupportedRevision
+        } else {
+            SkipReason::PrerequisiteFailed
+        };
+        let revision = if self.revision_checked {
+            CheckResult::performed(
+                CheckId::ProtocolRevision,
+                Requirement::Required,
+                self.revision,
+            )
+        } else {
+            CheckResult::skipped(
+                CheckId::ProtocolRevision,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            )
+        };
+        let catalogs = if self.initialize_valid && !envelope_failed && !revision_failed {
+            CheckResult::performed(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                self.catalog,
+            )
+        } else {
+            CheckResult::skipped(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                downstream,
+            )
+        };
+        let schemas = if !self.initialize_valid || envelope_failed || revision_failed {
+            CheckResult::skipped(CheckId::SchemaContracts, Requirement::Required, downstream)
+        } else if self.catalog_limit_reached {
+            CheckResult::skipped(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                SkipReason::LimitReached,
+            )
+        } else if self.tools_advertised && !self.tools_catalog_valid {
+            CheckResult::skipped(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            )
+        } else {
+            CheckResult::performed(CheckId::SchemaContracts, Requirement::Required, self.schema)
+        };
+        vec![
+            revision,
+            CheckResult::performed(
+                CheckId::ProtocolEnvelope,
+                Requirement::Required,
+                self.envelope,
+            ),
+            catalogs,
+            schemas,
+            CheckResult::skipped(
+                CheckId::RuntimeTools,
+                Requirement::Optional,
+                SkipReason::NotAuthorized,
+            ),
+        ]
+    }
+}
+
+fn diagnose_legacy(
+    conversation: &PassiveCatalogConversation,
+    responses: &[ProbeResponse],
+    reserved_findings: usize,
+) -> Vec<CheckResult> {
+    let mut analyzer = LegacyAnalyzer::new(conversation.revision, reserved_findings);
+    let Some(initialize) = responses.first() else {
+        return analyzer.finish();
+    };
+    analyzer.analyze_initialize(initialize);
+    for (record, response) in conversation
+        .records
+        .iter()
+        .skip(1)
+        .zip(responses.iter().skip(1))
+    {
+        debug_assert_eq!(record.id, response.request_id());
+        analyzer.analyze_catalog_page(record, response);
+    }
+    analyzer.finish()
 }
 
 fn serialized_len(value: &Value) -> usize {
@@ -1706,6 +2817,7 @@ mod tests {
         percent_decode, resolve_local_reference, schema_child_location,
     };
     use crate::contract::model::{Location, LocationField};
+    use crate::contract::protocol::SupportedRevision;
 
     #[test]
     fn every_passive_request_has_modern_metadata_and_no_active_method() {
@@ -1719,7 +2831,12 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let bytes = encode_request(i64::try_from(index + 1).unwrap(), kind, None);
+            let bytes = encode_request(
+                i64::try_from(index + 1).unwrap(),
+                kind,
+                None,
+                SupportedRevision::CURRENT,
+            );
             let value: Value = serde_json::from_slice(&bytes).expect("request should be JSON");
             assert_eq!(value["jsonrpc"], "2.0");
             assert_eq!(

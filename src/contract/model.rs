@@ -160,14 +160,17 @@ pub(super) enum FindingCode {
     ProtocolRevisionConfirmed,
     UnsupportedProtocolRevision,
     InvalidProtocolRevisionValue,
+    ProtocolRevisionMismatch,
     DeprecatedProtocolFeature,
     LimitExceeded,
     CleanupFailed,
+    SessionCleanupFailed,
     CatalogContractInvalid,
     DuplicateCatalogIdentifier,
     PaginationCursorRepeated,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
+    AmbiguousSchemaDialect,
     ExternalSchemaReferenceBlocked,
     ScenarioInvalid,
     SecretReferenceInvalid,
@@ -204,14 +207,17 @@ impl FindingCode {
             Self::UnsupportedProtocolRevision => "MCP-PROTOCOL-002",
             Self::InvalidProtocolRevisionValue => "MCP-PROTOCOL-003",
             Self::DeprecatedProtocolFeature => "MCP-PROTOCOL-004",
+            Self::ProtocolRevisionMismatch => "MCP-PROTOCOL-005",
             Self::LimitExceeded => "MCP-LIMIT-001",
             Self::CleanupFailed => "MCP-SAFETY-001",
+            Self::SessionCleanupFailed => "MCP-SAFETY-002",
             Self::CatalogContractInvalid => "MCP-CATALOG-001",
             Self::DuplicateCatalogIdentifier => "MCP-CATALOG-002",
             Self::PaginationCursorRepeated => "MCP-CATALOG-003",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
+            Self::AmbiguousSchemaDialect => "MCP-SCHEMA-004",
             Self::ScenarioInvalid => "MCP-SCENARIO-001",
             Self::SecretReferenceInvalid => "MCP-SCENARIO-002",
             Self::ScenarioSchemaInvalid => "MCP-SCENARIO-003",
@@ -230,7 +236,7 @@ impl FindingCode {
     pub(super) const fn severity(self) -> Severity {
         match self {
             Self::ProtocolRevisionConfirmed => Severity::Info,
-            Self::DeprecatedProtocolFeature => Severity::Warning,
+            Self::DeprecatedProtocolFeature | Self::AmbiguousSchemaDialect => Severity::Warning,
             Self::ProcessStartFailed
             | Self::StdioIoFailed
             | Self::InvalidStdioMessage
@@ -247,6 +253,7 @@ impl FindingCode {
             | Self::HttpHeaderMappingInvalid
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
+            | Self::ProtocolRevisionMismatch
             | Self::LimitExceeded
             | Self::CatalogContractInvalid
             | Self::DuplicateCatalogIdentifier
@@ -266,7 +273,7 @@ impl FindingCode {
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
             | Self::ToolResultInvalid => Severity::Error,
-            Self::CleanupFailed => Severity::Critical,
+            Self::CleanupFailed | Self::SessionCleanupFailed => Severity::Critical,
         }
     }
 
@@ -305,11 +312,17 @@ impl FindingCode {
             Self::InvalidProtocolRevisionValue => {
                 "The protocol revision value is missing or has the wrong JSON type."
             }
+            Self::ProtocolRevisionMismatch => {
+                "The server negotiated a different protocol revision than the explicit selection."
+            }
             Self::DeprecatedProtocolFeature => {
                 "The server advertises a feature deprecated by this protocol revision."
             }
             Self::LimitExceeded => "A configured diagnostic safety limit was exceeded.",
             Self::CleanupFailed => "The managed target could not be fully cleaned up.",
+            Self::SessionCleanupFailed => {
+                "The remote MCP session could not be terminated within its cleanup bound."
+            }
             Self::CatalogContractInvalid => {
                 "An advertised MCP catalog does not match its protocol contract."
             }
@@ -322,6 +335,9 @@ impl FindingCode {
             Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
             Self::UnsupportedSchemaDialect => {
                 "A local schema uses an unsupported JSON Schema dialect."
+            }
+            Self::AmbiguousSchemaDialect => {
+                "The selected revision does not define a default JSON Schema dialect."
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "A schema requires prohibited external reference retrieval."
@@ -396,10 +412,13 @@ impl FindingCode {
                 "The advertised revision determines which protocol rules can be applied."
             }
             Self::UnsupportedProtocolRevision => {
-                "Applying 2026-07-28 rules to another revision could produce a false diagnosis."
+                "Applying rules for a different revision could produce a false diagnosis."
             }
             Self::InvalidProtocolRevisionValue => {
                 "A valid protocol rule set cannot be selected from this advertisement."
+            }
+            Self::ProtocolRevisionMismatch => {
+                "Continuing would silently downgrade, upgrade, or misapply protocol rules."
             }
             Self::DeprecatedProtocolFeature => {
                 "Deprecated behavior may stop working in a future protocol revision."
@@ -409,6 +428,9 @@ impl FindingCode {
             }
             Self::CleanupFailed => {
                 "A surviving process can keep consuming resources or running after inspection."
+            }
+            Self::SessionCleanupFailed => {
+                "A retained remote session can keep server-side state or resources alive after inspection."
             }
             Self::CatalogContractInvalid => {
                 "Clients cannot reliably discover or use a capability with this structure."
@@ -424,6 +446,9 @@ impl FindingCode {
             }
             Self::UnsupportedSchemaDialect => {
                 "Interpreting another dialect as Draft 2020-12 could produce incorrect results."
+            }
+            Self::AmbiguousSchemaDialect => {
+                "Dialect-specific keywords cannot be validated without guessing."
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "Resolving this contract would require network or file access that was not authorized."
@@ -498,7 +523,7 @@ impl FindingCode {
                 "Each planned MCP operation must complete once, directly, within its request and response deadlines."
             }
             Self::HttpResponseInvalid => {
-                "The endpoint must return one bounded application/json response or request-scoped SSE response."
+                "The endpoint must follow the selected revision's bounded JSON, request-scoped SSE, header, and session contract."
             }
             Self::RemoteAuthenticationRejected => {
                 "A pre-provisioned credential must be accepted without redirect, replay, or automatic OAuth discovery."
@@ -507,13 +532,16 @@ impl FindingCode {
                 "Custom and Mcp-Param fields must satisfy the current-revision token, type, encoding, uniqueness, and size rules."
             }
             Self::ProtocolRevisionConfirmed => {
-                "The server advertises MCP protocol revision 2026-07-28."
+                "The server confirms the exact MCP revision selected for this inspection."
             }
             Self::UnsupportedProtocolRevision => {
                 "server/discover must advertise MCP protocol revision 2026-07-28."
             }
             Self::InvalidProtocolRevisionValue => {
-                "supportedVersions must be an array of protocol revision strings."
+                "The selected lifecycle's revision field must have its required string or string-array shape."
+            }
+            Self::ProtocolRevisionMismatch => {
+                "InitializeResult.protocolVersion must exactly equal the explicitly selected revision."
             }
             Self::DeprecatedProtocolFeature => {
                 "Servers should avoid features deprecated by MCP 2026-07-28."
@@ -524,8 +552,11 @@ impl FindingCode {
             Self::CleanupFailed => {
                 "The managed process tree must terminate and be reaped before mcp-doctor returns."
             }
+            Self::SessionCleanupFailed => {
+                "A stateful legacy HTTP inspection must attempt one bounded DELETE and receive a successful, unsupported, or already-absent response."
+            }
             Self::CatalogContractInvalid => {
-                "Each advertised catalog response and item must match MCP 2026-07-28."
+                "Each advertised catalog response and item must match the selected MCP revision."
             }
             Self::DuplicateCatalogIdentifier => {
                 "Identifiers must be unique within their advertised catalog scope."
@@ -537,7 +568,10 @@ impl FindingCode {
                 "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects."
             }
             Self::UnsupportedSchemaDialect => {
-                "Local schemas must omit $schema or declare JSON Schema Draft 2020-12."
+                "Local schemas must resolve to JSON Schema Draft 2020-12 through the selected revision's default or an exact $schema declaration."
+            }
+            Self::AmbiguousSchemaDialect => {
+                "MCP 2025-06-18 schemas without $schema receive bounded structural checks only; no dialect-specific semantics are assumed."
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "mcp-doctor accepts only references contained in the local schema being checked."
@@ -613,7 +647,7 @@ impl FindingCode {
                 "Correct the direct endpoint or server lifecycle, then rerun the same single operation."
             }
             Self::HttpResponseInvalid => {
-                "Return a bounded identity-encoded current-revision JSON or request-scoped SSE response."
+                "Return the selected revision's bounded identity-encoded JSON, request-scoped SSE, header, and session behavior."
             }
             Self::RemoteAuthenticationRejected => {
                 "Provision the intended credential and rerun; mcp-doctor will not start an OAuth flow."
@@ -626,7 +660,10 @@ impl FindingCode {
                 "Add MCP 2026-07-28 support and advertise it from server/discover."
             }
             Self::InvalidProtocolRevisionValue => {
-                "Return supportedVersions as an array containing string revision identifiers."
+                "Correct the revision field at the reported structural location and rerun the same explicit selection."
+            }
+            Self::ProtocolRevisionMismatch => {
+                "Return the selected revision exactly, or rerun with an explicit supported selection; mcp-doctor will not fall back."
             }
             Self::DeprecatedProtocolFeature => "Remove or replace the deprecated capability.",
             Self::LimitExceeded => {
@@ -634,6 +671,9 @@ impl FindingCode {
             }
             Self::CleanupFailed => {
                 "Make the server and descendants exit when STDIN closes or termination is requested."
+            }
+            Self::SessionCleanupFailed => {
+                "Make session DELETE complete within the bound, or return 405 when termination is unsupported."
             }
             Self::CatalogContractInvalid => {
                 "Correct the value at the reported structural location, then rerun inspect."
@@ -648,7 +688,10 @@ impl FindingCode {
                 "Correct the schema at the reported structural location and validate it as Draft 2020-12."
             }
             Self::UnsupportedSchemaDialect => {
-                "Remove $schema to use the MCP default or declare the Draft 2020-12 schema URI."
+                "For MCP 2025-06-18, declare the Draft 2020-12 URI; otherwise remove an unsupported declaration only when the selected revision defines that default, or declare Draft 2020-12 explicitly."
+            }
+            Self::AmbiguousSchemaDialect => {
+                "Declare the exact Draft 2020-12 $schema URI to enable full local semantic validation."
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "Inline the referenced schema or move it into local $defs and use a fragment reference."
@@ -698,6 +741,9 @@ impl FindingCode {
             | Self::ServerExitedEarly
             | Self::LimitExceeded
             | Self::CleanupFailed => "mcp-doctor bounded local STDIO safety contract",
+            Self::SessionCleanupFailed => {
+                "selected MCP revision Streamable HTTP session lifecycle and mcp-doctor DEC-044"
+            }
             Self::RemoteTargetInvalid
             | Self::NetworkAuthorizationMissing
             | Self::ResolutionFailed
@@ -706,21 +752,27 @@ impl FindingCode {
             | Self::TlsVerificationFailed
             | Self::HttpExchangeFailed
             | Self::HttpResponseInvalid
-            | Self::RemoteAuthenticationRejected
-            | Self::HttpHeaderMappingInvalid => {
-                "MCP 2026-07-28 Streamable HTTP and mcp-doctor DEC-030"
+            | Self::RemoteAuthenticationRejected => {
+                "selected MCP revision Streamable HTTP and mcp-doctor DEC-030/DEC-044"
+            }
+            Self::HttpHeaderMappingInvalid => {
+                "MCP 2026-07-28 Streamable HTTP header mapping and mcp-doctor DEC-030"
             }
             Self::ProtocolRevisionConfirmed
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
-            | Self::DeprecatedProtocolFeature => "MCP 2026-07-28 server/discover contract",
+            | Self::ProtocolRevisionMismatch
+            | Self::DeprecatedProtocolFeature => "selected MCP revision lifecycle contract",
             Self::CatalogContractInvalid
             | Self::DuplicateCatalogIdentifier
-            | Self::PaginationCursorRepeated => "MCP 2026-07-28 catalog contracts",
+            | Self::PaginationCursorRepeated => "selected MCP revision catalog contracts",
             Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked => {
-                "MCP 2026-07-28 Tool contract and JSON Schema Draft 2020-12"
+                "selected MCP revision Tool contract and JSON Schema Draft 2020-12"
+            }
+            Self::AmbiguousSchemaDialect => {
+                "MCP 2025-06-18 Tool schema contract and mcp-doctor DEC-044"
             }
             Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
                 "mcp-doctor.scenario/v1alpha1 contract"
@@ -741,7 +793,7 @@ impl FindingCode {
     }
 
     pub(super) const fn is_independent_safety(self) -> bool {
-        matches!(self, Self::CleanupFailed)
+        matches!(self, Self::CleanupFailed | Self::SessionCleanupFailed)
     }
 }
 
@@ -762,13 +814,25 @@ pub(super) enum LocationField {
     Request,
     Meta,
     ProtocolVersion,
+    NegotiatedProtocolVersion,
     Server,
+    ServerInfo,
+    Version,
+    Instructions,
     SupportedVersions,
     Tools,
     Prompts,
     Resources,
     ResourceTemplates,
     Capabilities,
+    Logging,
+    Completions,
+    Experimental,
+    Tasks,
+    List,
+    Cancel,
+    Requests,
+    Call,
     Result,
     ResultType,
     TtlMs,
@@ -818,6 +882,7 @@ pub(super) enum LocationField {
     Body,
     Event,
     Credentials,
+    Session,
 }
 
 impl LocationField {
@@ -838,13 +903,25 @@ impl LocationField {
             Self::Request => "request",
             Self::Meta => "_meta",
             Self::ProtocolVersion => "io.modelcontextprotocol/protocolVersion",
+            Self::NegotiatedProtocolVersion => "protocolVersion",
             Self::Server => "server",
+            Self::ServerInfo => "serverInfo",
+            Self::Version => "version",
+            Self::Instructions => "instructions",
             Self::SupportedVersions => "supportedVersions",
             Self::Tools => "tools",
             Self::Prompts => "prompts",
             Self::Resources => "resources",
             Self::ResourceTemplates => "resourceTemplates",
             Self::Capabilities => "capabilities",
+            Self::Logging => "logging",
+            Self::Completions => "completions",
+            Self::Experimental => "experimental",
+            Self::Tasks => "tasks",
+            Self::List => "list",
+            Self::Cancel => "cancel",
+            Self::Requests => "requests",
+            Self::Call => "call",
             Self::Result => "result",
             Self::ResultType => "resultType",
             Self::TtlMs => "ttlMs",
@@ -894,6 +971,7 @@ impl LocationField {
             Self::Body => "body",
             Self::Event => "event",
             Self::Credentials => "credentials",
+            Self::Session => "session",
         }
     }
 }
@@ -1140,7 +1218,11 @@ pub(super) enum RuleViolation {
         observed: JsonKind,
     },
     ExpectedCurrentRevision,
+    ExpectedSelectedRevision,
     ExpectedInputSchemaRootObject {
+        observed: JsonKind,
+    },
+    ExpectedToolSchemaRootObject {
         observed: JsonKind,
     },
     ServerErrorResponse,
@@ -1210,6 +1292,18 @@ pub(super) enum RuleViolation {
     InvalidHttpHeaderAnnotation,
     InvalidMirroredHeaderValue,
     HeaderMismatch,
+    InvalidSession,
+    SessionChanged,
+    SessionRequired {
+        status: u16,
+    },
+    SessionLost {
+        status: u16,
+    },
+    InitializedRejected {
+        status: u16,
+    },
+    ProtocolVersionRejected,
 }
 
 impl RuleViolation {
@@ -1219,7 +1313,9 @@ impl RuleViolation {
             Self::ExpectedCompleteResult { .. } => "expected_complete_result",
             Self::ExpectedCacheScope { .. } => "expected_cache_scope",
             Self::ExpectedCurrentRevision => "expected_current_revision",
+            Self::ExpectedSelectedRevision => "expected_selected_revision",
             Self::ExpectedInputSchemaRootObject { .. } => "expected_input_schema_root_object",
+            Self::ExpectedToolSchemaRootObject { .. } => "expected_tool_schema_root_object",
             Self::ServerErrorResponse => "server_error_response",
             Self::DuplicateIdentifier => "duplicate_identifier",
             Self::RepeatedCursor => "repeated_cursor",
@@ -1271,6 +1367,12 @@ impl RuleViolation {
             Self::InvalidHttpHeaderAnnotation => "invalid_http_header_annotation",
             Self::InvalidMirroredHeaderValue => "invalid_mirrored_header_value",
             Self::HeaderMismatch => "header_mismatch",
+            Self::InvalidSession => "invalid_session_id",
+            Self::SessionChanged => "session_id_changed",
+            Self::SessionRequired { .. } => "session_id_required",
+            Self::SessionLost { .. } => "session_lost",
+            Self::InitializedRejected { .. } => "initialized_notification_rejected",
+            Self::ProtocolVersionRejected => "protocol_version_header_rejected",
         }
     }
 
@@ -1280,8 +1382,10 @@ impl RuleViolation {
             | Self::ExpectedCompleteResult { observed }
             | Self::ExpectedCacheScope { observed }
             | Self::ExpectedInputSchemaRootObject { observed }
+            | Self::ExpectedToolSchemaRootObject { observed }
             | Self::UnsupportedSchemaDialect { observed } => Some(observed),
             Self::ExpectedCurrentRevision
+            | Self::ExpectedSelectedRevision
             | Self::ServerErrorResponse
             | Self::DuplicateIdentifier
             | Self::RepeatedCursor
@@ -1330,6 +1434,12 @@ impl RuleViolation {
             | Self::InvalidHttpHeaderAnnotation
             | Self::InvalidMirroredHeaderValue
             | Self::HeaderMismatch => None,
+            Self::InvalidSession
+            | Self::SessionChanged
+            | Self::SessionRequired { .. }
+            | Self::SessionLost { .. }
+            | Self::InitializedRejected { .. }
+            | Self::ProtocolVersionRejected => None,
         }
     }
 
@@ -1355,7 +1465,10 @@ impl RuleViolation {
         match self {
             Self::RedirectRejected { status }
             | Self::AuthenticationRejected { status }
-            | Self::HttpStatusRejected { status } => Some(status),
+            | Self::HttpStatusRejected { status }
+            | Self::SessionRequired { status }
+            | Self::SessionLost { status }
+            | Self::InitializedRejected { status } => Some(status),
             _ => None,
         }
     }
@@ -1550,6 +1663,15 @@ impl Finding {
         )
     }
 
+    pub(super) fn revision_mismatch(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::ProtocolRevisionMismatch,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ExpectedSelectedRevision),
+        )
+    }
+
     pub(super) fn deprecated_protocol_feature(
         revision: SupportedRevision,
         location: Location,
@@ -1578,6 +1700,15 @@ impl Finding {
     pub(super) fn cleanup_failed(revision: SupportedRevision, location: Location) -> Self {
         Self::new(
             FindingCode::CleanupFailed,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn session_cleanup_failed(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::SessionCleanupFailed,
             revision,
             location,
             FindingEvidence::None,
@@ -1644,6 +1775,18 @@ impl Finding {
             revision,
             location,
             FindingEvidence::RuleViolation(RuleViolation::UnsupportedSchemaDialect { observed }),
+        )
+    }
+
+    pub(super) fn ambiguous_schema_dialect(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::AmbiguousSchemaDialect,
+            revision,
+            location,
+            FindingEvidence::None,
         )
     }
 
@@ -1807,6 +1950,11 @@ impl Finding {
 
     pub(super) const fn revision(&self) -> SupportedRevision {
         self.revision
+    }
+
+    pub(super) fn with_revision(mut self, revision: SupportedRevision) -> Self {
+        self.revision = revision;
+        self
     }
 
     pub(super) fn location(&self) -> &Location {
@@ -2006,10 +2154,20 @@ mod tests {
                 "MCP-PROTOCOL-004",
                 Severity::Warning,
             ),
+            (
+                FindingCode::ProtocolRevisionMismatch,
+                "MCP-PROTOCOL-005",
+                Severity::Error,
+            ),
             (FindingCode::LimitExceeded, "MCP-LIMIT-001", Severity::Error),
             (
                 FindingCode::CleanupFailed,
                 "MCP-SAFETY-001",
+                Severity::Critical,
+            ),
+            (
+                FindingCode::SessionCleanupFailed,
+                "MCP-SAFETY-002",
                 Severity::Critical,
             ),
             (
@@ -2041,6 +2199,11 @@ mod tests {
                 FindingCode::ExternalSchemaReferenceBlocked,
                 "MCP-SCHEMA-003",
                 Severity::Error,
+            ),
+            (
+                FindingCode::AmbiguousSchemaDialect,
+                "MCP-SCHEMA-004",
+                Severity::Warning,
             ),
             (
                 FindingCode::ScenarioInvalid,

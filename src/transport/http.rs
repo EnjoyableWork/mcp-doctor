@@ -1,4 +1,4 @@
-//! Bounded Streamable HTTP transport for MCP 2026-07-28.
+//! Bounded Streamable HTTP transport for explicitly selected MCP revisions.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -38,6 +38,7 @@ pub(crate) struct HttpLimits {
     pub(crate) discovery_ms: u64,
     pub(crate) request_ms: u64,
     pub(crate) response_ms: u64,
+    pub(crate) shutdown_grace_ms: u64,
     pub(crate) total_ms: u64,
     pub(crate) endpoint_bytes: u64,
     pub(crate) resolution_addresses: u64,
@@ -144,6 +145,12 @@ pub(crate) enum ResponseFailure {
     InvalidMessage,
     InvalidSse,
     HeaderMismatch,
+    InvalidSession,
+    SessionChanged,
+    SessionRequired { status: u16 },
+    SessionLost { status: u16 },
+    InitializedRejected { status: u16 },
+    ProtocolVersionRejected,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -243,6 +250,13 @@ trait Connector: Send + Sync {
         &'a self,
         request: ConnectorRequest,
     ) -> Pin<Box<dyn Future<Output = Result<ConnectorResponse, HttpFailure>> + Send + 'a>>;
+
+    fn delete<'a>(
+        &'a self,
+        _request: ConnectorRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<ConnectorResponse, HttpFailure>> + Send + 'a>> {
+        Box::pin(async { Err(HttpFailure::Request) })
+    }
 }
 
 struct ReqwestConnector {
@@ -264,6 +278,32 @@ impl Connector for ReqwestConnector {
                 .timeout(Duration::from_millis(request.response_ms))
                 .send();
             let response = send
+                .await
+                .map_err(|error| classify_send_error(error, https))?;
+            let status = response.status();
+            let headers = response.headers().clone();
+            let peer = response.remote_addr();
+            Ok(ConnectorResponse {
+                status,
+                headers,
+                peer,
+                body: Box::new(ReqwestBody { response }),
+            })
+        })
+    }
+
+    fn delete<'a>(
+        &'a self,
+        request: ConnectorRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<ConnectorResponse, HttpFailure>> + Send + 'a>> {
+        Box::pin(async move {
+            let https = request.endpoint.scheme() == "https";
+            let response = self
+                .client
+                .delete(request.endpoint)
+                .headers(request.headers)
+                .timeout(Duration::from_millis(request.response_ms))
+                .send()
                 .await
                 .map_err(|error| classify_send_error(error, https))?;
             let status = response.status();
@@ -1082,6 +1122,7 @@ pub(crate) struct HttpRun {
     responses: Vec<ProbeResponse>,
     failure: Option<HttpFailure>,
     tls_applicable: bool,
+    session_cleanup_failed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -1132,11 +1173,27 @@ impl HttpRun {
     pub(crate) const fn tls_applicable(&self) -> bool {
         self.tls_applicable
     }
+
+    pub(crate) const fn session_cleanup_failed(&self) -> bool {
+        self.session_cleanup_failed
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct SessionId(HeaderValue);
+
+impl fmt::Debug for SessionId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SessionId([REDACTED])")
+    }
 }
 
 pub(crate) struct HttpTransport {
     target: HttpTarget,
     connector: Box<dyn Connector>,
+    protocol_revision: &'static str,
+    initialize_handshake: bool,
+    session: Option<SessionId>,
 }
 
 impl fmt::Debug for HttpTransport {
@@ -1145,12 +1202,23 @@ impl fmt::Debug for HttpTransport {
             .debug_struct("HttpTransport")
             .field("target", &self.target)
             .field("connector", &"[REDACTED]")
+            .field("protocol_revision", &self.protocol_revision)
+            .field("initialize_handshake", &self.initialize_handshake)
+            .field("session_present", &self.session.is_some())
             .finish()
     }
 }
 
 impl HttpTransport {
     pub(crate) fn new(target: HttpTarget) -> Result<Self, HttpFailure> {
+        Self::new_for_protocol(target, PROTOCOL_REVISION, false)
+    }
+
+    pub(crate) fn new_for_protocol(
+        target: HttpTarget,
+        protocol_revision: &'static str,
+        initialize_handshake: bool,
+    ) -> Result<Self, HttpFailure> {
         install_ring_provider();
         let selected = connection_candidates(&target.addresses);
         let connect_timeout = remaining_connection_time(target.started, target.limits)?;
@@ -1177,37 +1245,38 @@ impl HttpTransport {
         Ok(Self {
             target,
             connector: Box::new(ReqwestConnector { client }),
+            protocol_revision,
+            initialize_handshake,
+            session: None,
         })
     }
 
     #[cfg(test)]
     fn with_connector(target: HttpTarget, connector: Box<dyn Connector>) -> Self {
-        Self { target, connector }
+        Self {
+            target,
+            connector,
+            protocol_revision: PROTOCOL_REVISION,
+            initialize_handshake: false,
+            session: None,
+        }
     }
 
-    pub(crate) async fn probe<C: Conversation>(self, conversation: &mut C) -> HttpRun {
+    pub(crate) async fn probe<C: Conversation>(mut self, conversation: &mut C) -> HttpRun {
         let total_deadline =
             self.target.started + Duration::from_millis(self.target.limits.total_ms);
         let mut responses = Vec::new();
         let mut response_budget = ResponseBudget::default();
-        loop {
+        let failure = loop {
             if Instant::now() > total_deadline {
-                return HttpRun {
-                    responses: Vec::new(),
-                    failure: Some(HttpFailure::timeout(
-                        HttpLimit::TotalTime,
-                        self.target.limits.total_ms,
-                    )),
-                    tls_applicable: self.target.endpoint.https,
-                };
+                break Some(HttpFailure::timeout(
+                    HttpLimit::TotalTime,
+                    self.target.limits.total_ms,
+                ));
             }
             let request = conversation.next_request(responses.last());
             let Some(request) = request else {
-                return HttpRun {
-                    responses,
-                    failure: None,
-                    tls_applicable: self.target.endpoint.https,
-                };
+                break None;
             };
             let stage_kind = if responses.is_empty() {
                 HttpLimit::DiscoveryTime
@@ -1232,30 +1301,33 @@ impl HttpTransport {
             match tokio::time::timeout_at(deadline, self.exchange(&request, &mut response_budget))
                 .await
             {
-                Ok(Ok(response)) => responses.push(response),
-                Ok(Err(failure)) => {
-                    return HttpRun {
-                        responses: Vec::new(),
-                        failure: Some(failure),
-                        tls_applicable: self.target.endpoint.https,
-                    };
-                }
-                Err(_) => {
-                    return HttpRun {
-                        responses: Vec::new(),
-                        failure: Some(HttpFailure::timeout(timeout_kind, timeout_maximum)),
-                        tls_applicable: self.target.endpoint.https,
-                    };
-                }
+                Ok(Ok(Some(response))) => responses.push(response),
+                Ok(Ok(None)) => {}
+                Ok(Err(failure)) => break Some(failure),
+                Err(_) => break Some(HttpFailure::timeout(timeout_kind, timeout_maximum)),
             }
+        };
+        let session_cleanup_failed = self
+            .teardown_session(total_deadline, &mut response_budget)
+            .await
+            .is_err();
+        HttpRun {
+            responses: if failure.is_some() {
+                Vec::new()
+            } else {
+                responses
+            },
+            failure,
+            tls_applicable: self.target.endpoint.https,
+            session_cleanup_failed,
         }
     }
 
     async fn exchange(
-        &self,
+        &mut self,
         request: &ProbeRequest,
         response_budget: &mut ResponseBudget,
-    ) -> Result<ProbeResponse, HttpFailure> {
+    ) -> Result<Option<ProbeResponse>, HttpFailure> {
         let request_bytes = u64::try_from(request.as_bytes().len()).unwrap_or(u64::MAX);
         if request_bytes > self.target.limits.message_bytes {
             return Err(HttpFailure::limit(
@@ -1290,37 +1362,45 @@ impl HttpTransport {
         {
             return Err(HttpFailure::PeerMismatch);
         }
-        self.response(request.id(), response, response_budget).await
+        self.response(request, response, response_budget).await
     }
 
     fn request_headers(&self, request: &ProbeRequest) -> Result<HeaderMap, HttpFailure> {
-        let method = HeaderValue::from_str(request.method())
-            .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
         let mut fields = vec![
             (CONTENT_TYPE, HeaderValue::from_static(JSON_MEDIA_TYPE)),
             (ACCEPT, HeaderValue::from_static(ACCEPT_VALUE)),
             (ACCEPT_ENCODING, HeaderValue::from_static("identity")),
             (USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE)),
-            (
-                HeaderName::from_static("mcp-protocol-version"),
-                HeaderValue::from_static(PROTOCOL_REVISION),
-            ),
-            (HeaderName::from_static("mcp-method"), method),
         ];
-        if let Some(name) = request.principal_name() {
+        let initialize = self.initialize_handshake && request.method() == "initialize";
+        if !initialize {
             fields.push((
-                HeaderName::from_static("mcp-name"),
-                HeaderValue::from_str(&encode_mcp_value(name))
-                    .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?,
+                HeaderName::from_static("mcp-protocol-version"),
+                HeaderValue::from_static(self.protocol_revision),
             ));
+            if let Some(session) = &self.session {
+                fields.push((HeaderName::from_static("mcp-session-id"), session.0.clone()));
+            }
         }
-        for field in request.mirrored_fields() {
-            let name = format!("mcp-param-{}", field.suffix());
-            let name = HeaderName::from_bytes(name.as_bytes())
+        if !self.initialize_handshake {
+            let method = HeaderValue::from_str(request.method())
                 .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
-            let value = HeaderValue::from_str(&encode_mcp_value(field.value()))
-                .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
-            fields.push((name, value));
+            fields.push((HeaderName::from_static("mcp-method"), method));
+            if let Some(name) = request.principal_name() {
+                fields.push((
+                    HeaderName::from_static("mcp-name"),
+                    HeaderValue::from_str(&encode_mcp_value(name))
+                        .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?,
+                ));
+            }
+            for field in request.mirrored_fields() {
+                let name = format!("mcp-param-{}", field.suffix());
+                let name = HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
+                let value = HeaderValue::from_str(&encode_mcp_value(field.value()))
+                    .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
+                fields.push((name, value));
+            }
         }
         fields.extend(self.target.credentials.fields.iter().cloned());
         validate_request_field_budget(
@@ -1337,12 +1417,13 @@ impl HttpTransport {
     }
 
     async fn response(
-        &self,
-        request_id: i64,
+        &mut self,
+        request: &ProbeRequest,
         mut response: ConnectorResponse,
         response_budget: &mut ResponseBudget,
-    ) -> Result<ProbeResponse, HttpFailure> {
+    ) -> Result<Option<ProbeResponse>, HttpFailure> {
         validate_response_field_budget(&response.headers, self.target.limits)?;
+        self.observe_session(&response.headers, request.method() == "initialize")?;
         let status = response.status;
         if status.is_redirection() {
             return Err(HttpFailure::Response(ResponseFailure::Redirect {
@@ -1352,6 +1433,44 @@ impl HttpTransport {
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
             return Err(HttpFailure::Response(ResponseFailure::Authentication {
                 status: status.as_u16(),
+            }));
+        }
+        if !request.expects_response() {
+            if status != StatusCode::ACCEPTED {
+                return Err(HttpFailure::Response(if self.initialize_handshake {
+                    ResponseFailure::InitializedRejected {
+                        status: status.as_u16(),
+                    }
+                } else {
+                    ResponseFailure::Status {
+                        status: status.as_u16(),
+                    }
+                }));
+            }
+            if has_non_identity_encoding(&response.headers) {
+                return Err(HttpFailure::Response(ResponseFailure::ContentEncoding));
+            }
+            let body = collect_body(
+                &mut response,
+                self.target.limits.message_bytes,
+                self.target.limits,
+                response_budget,
+            )
+            .await?;
+            if !body.is_empty() {
+                return Err(HttpFailure::Response(ResponseFailure::InvalidMessage));
+            }
+            return Ok(None);
+        }
+        if self.initialize_handshake && status == StatusCode::NOT_FOUND {
+            return Err(HttpFailure::Response(if self.session.is_some() {
+                ResponseFailure::SessionLost {
+                    status: status.as_u16(),
+                }
+            } else {
+                ResponseFailure::SessionRequired {
+                    status: status.as_u16(),
+                }
             }));
         }
         if status != StatusCode::OK {
@@ -1368,8 +1487,23 @@ impl HttpTransport {
             )
             .await?;
             response_budget.observe_message(self.target.limits)?;
-            if status == StatusCode::BAD_REQUEST && is_header_mismatch(&body, request_id) {
-                return Err(HttpFailure::Response(ResponseFailure::HeaderMismatch));
+            if status == StatusCode::BAD_REQUEST && is_header_mismatch(&body, request.id()) {
+                return Err(HttpFailure::Response(if self.initialize_handshake {
+                    ResponseFailure::ProtocolVersionRejected
+                } else {
+                    ResponseFailure::HeaderMismatch
+                }));
+            }
+            if self.initialize_handshake && status == StatusCode::BAD_REQUEST {
+                return Err(HttpFailure::Response(if self.session.is_some() {
+                    ResponseFailure::SessionLost {
+                        status: status.as_u16(),
+                    }
+                } else {
+                    ResponseFailure::SessionRequired {
+                        status: status.as_u16(),
+                    }
+                }));
             }
             return Err(HttpFailure::Response(ResponseFailure::Status {
                 status: status.as_u16(),
@@ -1390,23 +1524,153 @@ impl HttpTransport {
                 )
                 .await?;
                 response_budget.observe_message(self.target.limits)?;
-                validate_json_response(&bytes, request_id)?;
-                Ok(ProbeResponse::new(request_id, bytes))
+                validate_json_response(&bytes, request.id())?;
+                Ok(Some(ProbeResponse::new(request.id(), bytes)))
             }
             ResponseMediaType::Sse => {
-                let bytes = collect_body(
+                let response = collect_sse_response(
                     &mut response,
-                    self.target.limits.aggregate_output_bytes,
+                    request.id(),
+                    self.protocol_revision == "2025-11-25",
                     self.target.limits,
                     response_budget,
                 )
                 .await?;
-                let response =
-                    parse_sse_response(&bytes, request_id, self.target.limits, response_budget)?;
-                Ok(ProbeResponse::new(request_id, response))
+                Ok(Some(ProbeResponse::new(request.id(), response)))
             }
         }
     }
+
+    fn observe_session(
+        &mut self,
+        headers: &HeaderMap,
+        initialize: bool,
+    ) -> Result<(), HttpFailure> {
+        if !self.initialize_handshake {
+            return Ok(());
+        }
+        let observed = session_header(headers)?;
+        if initialize {
+            self.session = observed;
+            return Ok(());
+        }
+        if let Some(observed) = observed
+            && self.session.as_ref() != Some(&observed)
+        {
+            return Err(HttpFailure::Response(ResponseFailure::SessionChanged));
+        }
+        Ok(())
+    }
+
+    async fn teardown_session(
+        &self,
+        total_deadline: Instant,
+        response_budget: &mut ResponseBudget,
+    ) -> Result<(), HttpFailure> {
+        let Some(session) = &self.session else {
+            return Ok(());
+        };
+        let mut fields = vec![
+            (ACCEPT, HeaderValue::from_static(ACCEPT_VALUE)),
+            (ACCEPT_ENCODING, HeaderValue::from_static("identity")),
+            (USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE)),
+            (
+                HeaderName::from_static("mcp-protocol-version"),
+                HeaderValue::from_static(self.protocol_revision),
+            ),
+            (HeaderName::from_static("mcp-session-id"), session.0.clone()),
+        ];
+        fields.extend(self.target.credentials.fields.iter().cloned());
+        validate_request_field_budget(&fields, &self.target.endpoint, 0, self.target.limits)?;
+        let mut headers = HeaderMap::with_capacity(fields.len());
+        for (name, value) in fields {
+            headers.insert(name, value);
+        }
+        let cleanup_deadline = std::cmp::min(
+            total_deadline,
+            Instant::now() + Duration::from_millis(self.target.limits.shutdown_grace_ms),
+        );
+        let operation = async {
+            let mut response = self
+                .connector
+                .delete(ConnectorRequest {
+                    endpoint: self.target.endpoint.url.clone(),
+                    accepted_peers: self.target.addresses.clone(),
+                    headers,
+                    body: Vec::new(),
+                    response_ms: self.target.limits.shutdown_grace_ms,
+                })
+                .await?;
+            validate_peer(&self.target, response.peer)?;
+            validate_response_field_budget(&response.headers, self.target.limits)?;
+            if let Some(observed) = session_header(&response.headers)?
+                && observed != *session
+            {
+                return Err(HttpFailure::Response(ResponseFailure::SessionChanged));
+            }
+            if !response.status.is_success()
+                && !matches!(
+                    response.status,
+                    StatusCode::METHOD_NOT_ALLOWED | StatusCode::NOT_FOUND
+                )
+            {
+                return Err(HttpFailure::Response(ResponseFailure::Status {
+                    status: response.status.as_u16(),
+                }));
+            }
+            if has_non_identity_encoding(&response.headers) {
+                return Err(HttpFailure::Response(ResponseFailure::ContentEncoding));
+            }
+            let _ = collect_body(
+                &mut response,
+                self.target.limits.message_bytes,
+                self.target.limits,
+                response_budget,
+            )
+            .await?;
+            Ok(())
+        };
+        tokio::time::timeout_at(cleanup_deadline, operation)
+            .await
+            .map_err(|_| {
+                HttpFailure::timeout(
+                    HttpLimit::ResponseTime,
+                    self.target.limits.shutdown_grace_ms,
+                )
+            })?
+    }
+}
+
+fn session_header(headers: &HeaderMap) -> Result<Option<SessionId>, HttpFailure> {
+    let mut values = headers
+        .get_all(HeaderName::from_static("mcp-session-id"))
+        .iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some()
+        || value.as_bytes().is_empty()
+        || !value
+            .as_bytes()
+            .iter()
+            .all(|byte| (0x21..=0x7e).contains(byte))
+    {
+        return Err(HttpFailure::Response(ResponseFailure::InvalidSession));
+    }
+    Ok(Some(SessionId(value.clone())))
+}
+
+fn validate_peer(target: &HttpTarget, peer: Option<SocketAddr>) -> Result<(), HttpFailure> {
+    let peer = peer.ok_or(HttpFailure::PeerMismatch)?;
+    if peer.port() != target.endpoint.port
+        || !target
+            .addresses
+            .iter()
+            .any(|address| address.ip() == peer.ip())
+    {
+        return Err(HttpFailure::PeerMismatch);
+    }
+    Ok(())
 }
 
 fn has_non_identity_encoding(headers: &HeaderMap) -> bool {
@@ -1683,6 +1947,54 @@ async fn collect_body(
     Ok(body)
 }
 
+async fn collect_sse_response(
+    response: &mut ConnectorResponse,
+    request_id: i64,
+    allow_empty_priming_event: bool,
+    limits: HttpLimits,
+    response_budget: &mut ResponseBudget,
+) -> Result<Vec<u8>, HttpFailure> {
+    let mut body = Vec::new();
+    loop {
+        match response.body.next_chunk().await? {
+            Some(chunk) => {
+                response_budget.observe_output(chunk.len(), limits)?;
+                body.extend_from_slice(&chunk);
+                if let Some((response, message_count)) = parse_sse_events(
+                    &body,
+                    request_id,
+                    allow_empty_priming_event,
+                    limits,
+                    response_budget.message_count,
+                    false,
+                )? {
+                    for _ in 0..message_count {
+                        response_budget.observe_message(limits)?;
+                    }
+                    return Ok(response);
+                }
+            }
+            None => {
+                let Some((response, message_count)) = parse_sse_events(
+                    &body,
+                    request_id,
+                    allow_empty_priming_event,
+                    limits,
+                    response_budget.message_count,
+                    true,
+                )?
+                else {
+                    return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
+                };
+                for _ in 0..message_count {
+                    response_budget.observe_message(limits)?;
+                }
+                return Ok(response);
+            }
+        }
+    }
+}
+
 fn validate_json_response(bytes: &[u8], request_id: i64) -> Result<(), HttpFailure> {
     let value: Value = serde_json::from_slice(bytes)
         .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
@@ -1714,23 +2026,41 @@ fn is_header_mismatch(bytes: &[u8], request_id: i64) -> bool {
         })
 }
 
-fn parse_sse_response(
+fn parse_sse_events(
     bytes: &[u8],
     request_id: i64,
+    allow_empty_priming_event: bool,
     limits: HttpLimits,
-    response_budget: &mut ResponseBudget,
-) -> Result<Vec<u8>, HttpFailure> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
+    prior_messages: u64,
+    eof: bool,
+) -> Result<Option<(Vec<u8>, u64)>, HttpFailure> {
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) if !eof && error.error_len().is_none() => return Ok(None),
+        Err(_) => return Err(HttpFailure::Response(ResponseFailure::InvalidSse)),
+    };
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut event_bytes = 0_u64;
-    let mut data = Vec::<String>::new();
-    let mut final_response = None;
-
-    for line in normalized.split('\n').chain(std::iter::once("")) {
-        event_bytes = event_bytes
-            .saturating_add(u64::try_from(line.len()).unwrap_or(u64::MAX))
-            .saturating_add(1);
+    let mut start = 0;
+    let mut message_count = 0_u64;
+    loop {
+        let remaining = &normalized[start..];
+        let boundary = remaining.find("\n\n");
+        let event = match boundary {
+            Some(index) => &remaining[..index],
+            None if eof && !remaining.is_empty() => remaining,
+            None => {
+                let observed = u64::try_from(remaining.len()).unwrap_or(u64::MAX);
+                if observed > limits.message_bytes {
+                    return Err(HttpFailure::limit(
+                        HttpLimit::MessageBytes,
+                        observed,
+                        limits.message_bytes,
+                    ));
+                }
+                return Ok(None);
+            }
+        };
+        let event_bytes = u64::try_from(event.len()).unwrap_or(u64::MAX);
         if event_bytes > limits.message_bytes {
             return Err(HttpFailure::limit(
                 HttpLimit::MessageBytes,
@@ -1738,48 +2068,62 @@ fn parse_sse_response(
                 limits.message_bytes,
             ));
         }
-        if line.is_empty() {
-            if !data.is_empty() {
-                response_budget.observe_message(limits)?;
-                if final_response.is_some() {
+        let data = event
+            .split('\n')
+            .filter(|line| !line.starts_with(':'))
+            .filter_map(|line| {
+                let (field, value) = line.split_once(':').unwrap_or((line, ""));
+                (field == "data").then(|| value.strip_prefix(' ').unwrap_or(value))
+            })
+            .collect::<Vec<_>>();
+        if !data.is_empty() {
+            message_count = message_count.saturating_add(1);
+            let observed_messages = prior_messages.saturating_add(message_count);
+            if observed_messages > limits.message_count {
+                return Err(HttpFailure::limit(
+                    HttpLimit::MessageCount,
+                    observed_messages,
+                    limits.message_count,
+                ));
+            }
+            let priming_event = allow_empty_priming_event
+                && data.iter().all(|value| value.is_empty())
+                && event.lines().any(|line| {
+                    line.split_once(':').is_some_and(|(field, value)| {
+                        field == "id" && !value.strip_prefix(' ').unwrap_or(value).is_empty()
+                    })
+                });
+            if priming_event {
+                match boundary {
+                    Some(index) => start = start.saturating_add(index).saturating_add(2),
+                    None => return Ok(None),
+                }
+                continue;
+            }
+            let payload = data.join("\n");
+            let value: Value = serde_json::from_str(&payload)
+                .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
+            let object = value
+                .as_object()
+                .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
+            if object.get("method").is_some() {
+                if object.contains_key("id")
+                    || object.contains_key("result")
+                    || object.contains_key("error")
+                    || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+                {
                     return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
                 }
-                let payload = data.join("\n");
-                let value: Value = serde_json::from_str(&payload)
-                    .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
-                let object = value
-                    .as_object()
-                    .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
-                if object.get("method").is_some() {
-                    if object.contains_key("id")
-                        || object.contains_key("result")
-                        || object.contains_key("error")
-                        || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
-                    {
-                        return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
-                    }
-                } else {
-                    if final_response.is_some() {
-                        return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
-                    }
-                    validate_json_response(payload.as_bytes(), request_id)?;
-                    final_response = Some(payload.into_bytes());
-                }
+            } else {
+                validate_json_response(payload.as_bytes(), request_id)?;
+                return Ok(Some((payload.into_bytes(), message_count)));
             }
-            data.clear();
-            event_bytes = 0;
-            continue;
         }
-        if line.starts_with(':') {
-            continue;
-        }
-        let (field, value) = line.split_once(':').unwrap_or((line, ""));
-        if field == "data" {
-            data.push(value.strip_prefix(' ').unwrap_or(value).to_owned());
+        match boundary {
+            Some(index) => start = start.saturating_add(index).saturating_add(2),
+            None => return Ok(None),
         }
     }
-
-    final_response.ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))
 }
 
 pub(crate) fn mirrored_primitive(value: &Value) -> Result<Option<String>, ()> {
@@ -2028,6 +2372,7 @@ mod tests {
             discovery_ms: 1_000,
             request_ms: 1_000,
             response_ms: 1_000,
+            shutdown_grace_ms: 100,
             total_ms: 5_000,
             endpoint_bytes: 8_192,
             resolution_addresses: 16,
@@ -2932,10 +3277,8 @@ mod tests {
             Vec::new(),
         )
         .await;
-        assert_eq!(
-            run.failure(),
-            Some(HttpFailure::Response(ResponseFailure::InvalidSse))
-        );
+        assert_eq!(run.failure(), None);
+        assert_eq!(run.responses().len(), 1);
 
         let mut event_limits = limits();
         event_limits.message_count = 1;

@@ -9,7 +9,7 @@ use super::model::{
     CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence,
     GeneratedCaseReproduction, Location, Requirement, RuleViolation, Severity, StructuralInput,
 };
-use super::protocol::SupportedRevision;
+use super::protocol::{KnownRevision, SupportedRevision};
 use super::redaction::REDACTION_MARKER;
 
 pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
@@ -192,6 +192,7 @@ pub(super) struct ReportSummary {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(super) struct DiagnosticReport {
     revision: SupportedRevision,
+    negotiated_revision: Option<KnownRevision>,
     limits: DiagnosticLimits,
     checks: Vec<CheckResult>,
     primary_diagnosis: Option<Diagnosis>,
@@ -277,6 +278,7 @@ impl DiagnosticReport {
         let exit_status = outcome.exit_status();
         Ok(Self {
             revision,
+            negotiated_revision: None,
             limits,
             checks,
             primary_diagnosis,
@@ -292,8 +294,17 @@ impl DiagnosticReport {
         self
     }
 
+    pub(super) fn with_negotiated_revision(mut self, revision: KnownRevision) -> Self {
+        self.negotiated_revision = Some(revision);
+        self
+    }
+
     pub(super) const fn revision(&self) -> SupportedRevision {
         self.revision
+    }
+
+    pub(super) const fn negotiated_revision(&self) -> Option<KnownRevision> {
+        self.negotiated_revision
     }
 
     pub(super) const fn limits(&self) -> DiagnosticLimits {
@@ -524,6 +535,15 @@ impl HumanReporter {
             report.revision()
         )
         .expect("the bounded report writer records limit failures");
+        if let Some(negotiated) = report.negotiated_revision() {
+            writeln!(
+                output,
+                "protocol selection · selected {} · negotiated {}",
+                report.revision(),
+                negotiated.as_str()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
         output.push('\n');
 
         write_human_diagnosis(&mut output, report);
@@ -953,6 +973,9 @@ fn write_junit_metadata(
     write_xml_line(output, "schema_version", REPORT_SCHEMA_VERSION);
     write_xml_line(output, "schema_stability", "stable");
     write_xml_line(output, "protocol_revision", report.revision().as_str());
+    if let Some(negotiated) = report.negotiated_revision() {
+        write_xml_line(output, "negotiated_protocol_revision", negotiated.as_str());
+    }
     write_xml_line(output, "report_outcome", report.outcome().as_str());
     writeln!(output, "exit_code={}", report.exit_status().code())
         .expect("the bounded report writer records limit failures");
@@ -1309,6 +1332,8 @@ struct JsonReport {
     schema_version: &'static str,
     schema_stability: &'static str,
     protocol_revision: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    negotiated_protocol_revision: Option<&'static str>,
     primary_diagnosis: Option<JsonDiagnosis>,
     independent_findings: Vec<JsonIndependentFinding>,
     outcome: &'static str,
@@ -1324,6 +1349,7 @@ impl From<&DiagnosticReport> for JsonReport {
             schema_version: REPORT_SCHEMA_VERSION,
             schema_stability: "stable",
             protocol_revision: report.revision().as_str(),
+            negotiated_protocol_revision: report.negotiated_revision().map(KnownRevision::as_str),
             primary_diagnosis: report.primary_diagnosis().map(JsonDiagnosis::from),
             independent_findings: report
                 .independent_findings()
@@ -2031,7 +2057,7 @@ mod tests {
             assert!(rendered.contains("array"));
             assert!(rendered.contains("string"));
             assert!(rendered.contains("Correct the value"));
-            assert!(rendered.contains("MCP 2026-07-28 catalog contracts"));
+            assert!(rendered.contains("selected MCP revision catalog contracts"));
         }
     }
 
