@@ -24,6 +24,7 @@ $smokeHome = Join-Path $smokeRoot 'home'
 $smokeSnapshot = Join-Path $smokeRoot 'contract.json'
 $smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
 $smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
+$smokeAggregate = Join-Path $smokeRoot 'aggregate.json'
 
 function Invoke-McpDoctor {
     param(
@@ -127,6 +128,32 @@ try {
     }
     if (-not (Test-Path -LiteralPath $smokeJunitArtifact -PathType Leaf)) {
         throw 'Installed diagnostic did not create the JUnit report artifact.'
+    }
+
+    $aggregateOutput = Invoke-McpDoctor `
+        'aggregate' '--format' 'json' '--output' $smokeAggregate $smokeJsonArtifact
+    $aggregate = $aggregateOutput | ConvertFrom-Json
+    if (-not (Test-Path -LiteralPath $smokeAggregate -PathType Leaf)) {
+        throw 'Installed offline diagnostic aggregate did not create its artifact.'
+    }
+    $aggregateArtifact = Get-Content -LiteralPath $smokeAggregate -Raw | ConvertFrom-Json
+    if (
+        $aggregate.schema_version -ne 'mcp-doctor.aggregate/v1' -or
+        $aggregate.schema_stability -ne 'stable' -or
+        $aggregate.outcome -ne 'passed' -or
+        $aggregate.exit_code -ne 0 -or
+        $aggregate.summary.members -ne 1 -or
+        $aggregate.summary.passed -ne 1 -or
+        $aggregate.summary.failed -ne 0 -or
+        $aggregate.summary.incomplete -ne 0 -or
+        @($aggregate.members).Count -ne 1 -or
+        $aggregate.members[0].ordinal -ne 0 -or
+        $aggregate.members[0].report.schema_version -ne 'mcp-doctor.report/v1' -or
+        $aggregate.members[0].report.outcome -ne 'passed' -or
+        $aggregateArtifact.schema_version -ne $aggregate.schema_version -or
+        $aggregateArtifact.outcome -ne $aggregate.outcome
+    ) {
+        throw 'Installed offline diagnostic aggregate returned inconsistent evidence.'
     }
     [xml]$junitArtifact = Get-Content -LiteralPath $smokeJunitArtifact -Raw
     $junitRoot = $junitArtifact.DocumentElement

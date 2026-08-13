@@ -158,7 +158,7 @@ incomplete diagnostic still publishes both files when reporting succeeds and
 retains exit `1` or `3`; a render, write, publication, or cleanup failure cannot
 report success and exits `4`.
 
-## Inspect. Check. Break. Diff.
+## Inspect. Check. Break. Diff. Aggregate.
 
 Choose how much activity the target allows:
 
@@ -168,6 +168,7 @@ Choose how much activity the target allows:
 | **`check`** | Calls selected tools | Run known inputs from a scenario you wrote and check the results |
 | **`break`** | Tries generated edge cases | Search one selected tool for failures you can repeat |
 | **`diff`** | Reads two local files only | Compare explicitly captured advertised contracts without starting or contacting a target |
+| **`aggregate`** | Reads explicit local files only | Combine stable diagnostic reports conservatively without rerunning or contacting a target |
 
 ```bash
 # Passive: discover and validate without calling a tool
@@ -190,6 +191,11 @@ mcp-doctor break \
 
 # Offline: compare two deliberately retained contract artifacts
 mcp-doctor diff --format json before.contract.json after.contract.json
+
+# Offline: combine explicit stable reports into one required JSON artifact
+mcp-doctor aggregate \
+  --output matrix.aggregate.json \
+  reports/linux.json reports/macos.json reports/windows.json
 ```
 
 > [!CAUTION]
@@ -254,6 +260,45 @@ The artifact contracts are published with the source as
 [`mcp-doctor.contract-snapshot/v1alpha1`](schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json)
 and
 [`mcp-doctor.contract-diff/v1alpha1`](schemas/mcp-doctor.contract-diff.v1alpha1.schema.json).
+
+### Offline diagnostic aggregates
+
+Use `aggregate` when separate jobs or platforms have already produced stable,
+redacted `mcp-doctor.report/v1` JSON files. It accepts one through 32 explicit
+ordered regular files and writes one new `mcp-doctor.aggregate/v1` JSON
+artifact. Human stdout is the default; `--format json` makes stdout
+byte-identical to that required artifact.
+
+Members are identified only by zero-based input ordinal. Every known safe
+report field is retained, while compatible unknown optional properties are
+accepted and discarded instead of echoed. Each input must satisfy the embedded
+stable report schema and consistent summary, severity, outcome, exit,
+revision, primary-diagnosis, independent-finding, and causal-skip semantics.
+Any failed member fails the aggregate; otherwise any incomplete member makes it
+incomplete; only all-pass input passes. There is no waiver, score, baseline,
+deduplication, majority rule, or severity override.
+
+An all-pass aggregate exits `0`, any failed member exits `1`, and otherwise an
+incomplete member exits `3`. Invalid, unreadable, aliased, or over-limit input
+and unsafe destinations exit `2`; render, write, publication, or cleanup
+failure exits `4` and leaves no aggregate artifact.
+
+`aggregate` never starts a process, opens a connection, resolves DNS or
+credentials, retrieves a schema, discovers a target, or calls a tool. It does
+not scan directories, expand globs, infer CI artifacts, or follow paths found
+inside a report. Per-file, total-input, nesting, node, validation-work, check,
+finding, output, and operation-time limits are fixed in the artifact. Duplicate,
+canonical-alias, hard-link, symbolic-link, malformed, inconsistent, or
+over-limit inputs reject the whole invocation. The required destination must
+be a new file in an existing directory and is staged and published without
+overwrite.
+
+The stable aggregate contract is published with the source as
+[`mcp-doctor.aggregate/v1`](schemas/mcp-doctor.aggregate.v1.schema.json). Its
+member reports use the separate
+[`mcp-doctor.report/v1`](schemas/mcp-doctor.report.v1.schema.json) contract;
+offline validators should load both local schemas and must not retrieve either
+at runtime.
 
 ### Reviewed `check` scenarios
 
@@ -426,6 +471,9 @@ hide secrets.
 - Sensitive contract snapshots require an exact-path acknowledgement and a new
   output file. Offline diffs remain value-free and have no target or network
   surface.
+- Offline aggregates accept only explicit bounded stable reports, discard
+  unknown optional values, preserve failures conservatively, and have no
+  target, network, credential, retrieval, or tool surface.
 - Local server commands run directly, not through a shell. Before exiting,
   `mcp-doctor` closes every child process, stops it if needed, and waits for it
   to end.

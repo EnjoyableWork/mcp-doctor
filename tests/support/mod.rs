@@ -14,6 +14,9 @@ use std::process::Command;
 use tempfile::TempDir;
 
 const STABLE_REPORT_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.report.v1.schema.json");
+const STABLE_REPORT_SCHEMA_ID: &str = "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.report.v1.schema.json";
+const STABLE_AGGREGATE_SCHEMA: &str =
+    include_str!("../../schemas/mcp-doctor.aggregate.v1.schema.json");
 const CONTRACT_SNAPSHOT_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json");
 const CONTRACT_DIFF_SCHEMA: &str =
@@ -40,6 +43,36 @@ pub fn validate_report_value(report: serde_json::Value) -> serde_json::Value {
         "stable report schema rejected synthetic fields at {errors:?}"
     );
     report
+}
+
+pub fn parse_and_validate_aggregate(bytes: &[u8]) -> serde_json::Value {
+    let aggregate: serde_json::Value =
+        serde_json::from_slice(bytes).expect("machine output should be one JSON aggregate");
+    let aggregate_schema: serde_json::Value = serde_json::from_str(STABLE_AGGREGATE_SCHEMA)
+        .expect("the committed stable aggregate schema should be JSON");
+    let report_schema: serde_json::Value = serde_json::from_str(STABLE_REPORT_SCHEMA)
+        .expect("the committed stable report schema should be JSON");
+    let registry = jsonschema::Registry::new()
+        .add(
+            STABLE_REPORT_SCHEMA_ID,
+            jsonschema::Resource::from_contents(report_schema),
+        )
+        .expect("the stable report schema should register under its identifier")
+        .prepare()
+        .expect("the stable report schema registry should prepare without retrieval");
+    let validator = jsonschema::draft202012::options()
+        .with_registry(&registry)
+        .build(&aggregate_schema)
+        .expect("the committed aggregate schema should resolve only the local report schema");
+    let errors = validator
+        .iter_errors(&aggregate)
+        .map(|error| error.instance_path().to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        errors.is_empty(),
+        "stable aggregate schema rejected synthetic fields at {errors:?}"
+    );
+    aggregate
 }
 
 pub fn parse_and_validate_contract_snapshot(bytes: &[u8]) -> serde_json::Value {

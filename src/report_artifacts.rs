@@ -23,6 +23,7 @@ pub(crate) enum ReportArtifactError {
     Publish,
     Cleanup,
     RenderContract,
+    OperationLimit,
 }
 
 impl fmt::Display for ReportArtifactError {
@@ -45,6 +46,9 @@ impl fmt::Display for ReportArtifactError {
             Self::Publish => "requested report artifacts could not be published without overwrite",
             Self::Cleanup => "requested report artifact cleanup did not complete",
             Self::RenderContract => "rendered report artifacts did not match the requested formats",
+            Self::OperationLimit => {
+                "aggregate artifact publication exceeded its configured operation limit"
+            }
         })
     }
 }
@@ -142,8 +146,16 @@ impl ReportArtifactDestinations {
     }
 
     pub(crate) fn persist(
+        self,
+        artifacts: Vec<RenderedReportArtifact>,
+    ) -> Result<(), ReportArtifactError> {
+        self.persist_checked(artifacts, || true)
+    }
+
+    pub(crate) fn persist_checked(
         mut self,
         artifacts: Vec<RenderedReportArtifact>,
+        mut within_limit: impl FnMut() -> bool,
     ) -> Result<(), ReportArtifactError> {
         if artifacts.len() != self.destinations.len()
             || artifacts
@@ -159,35 +171,48 @@ impl ReportArtifactDestinations {
             self.rollback()?;
             return Err(ReportArtifactError::Write);
         }
+        self.require_within_limit(&mut within_limit)?;
 
-        for (artifact, destination) in artifacts.iter().zip(&mut self.destinations) {
-            let Some(stage) = destination.stage.as_mut() else {
-                self.rollback()?;
-                return Err(ReportArtifactError::RenderContract);
-            };
-            if stage
-                .write_all(artifact.output.as_bytes())
-                .and_then(|()| stage.sync_all())
-                .is_err()
+        for (index, artifact) in artifacts.iter().enumerate() {
             {
-                self.rollback()?;
-                return Err(ReportArtifactError::Write);
+                let destination = &mut self.destinations[index];
+                let Some(stage) = destination.stage.as_mut() else {
+                    self.rollback()?;
+                    return Err(ReportArtifactError::RenderContract);
+                };
+                if stage
+                    .write_all(artifact.output.as_bytes())
+                    .and_then(|()| stage.sync_all())
+                    .is_err()
+                {
+                    self.rollback()?;
+                    return Err(ReportArtifactError::Write);
+                }
             }
+            self.require_within_limit(&mut within_limit)?;
         }
 
-        for destination in &mut self.destinations {
-            if fs::hard_link(&destination.stage_path, &destination.path).is_err() {
-                self.rollback()?;
-                return Err(ReportArtifactError::Publish);
+        for index in 0..self.destinations.len() {
+            {
+                let destination = &mut self.destinations[index];
+                if fs::hard_link(&destination.stage_path, &destination.path).is_err() {
+                    self.rollback()?;
+                    return Err(ReportArtifactError::Publish);
+                }
+                destination.published = true;
             }
-            destination.published = true;
+            self.require_within_limit(&mut within_limit)?;
         }
 
-        for destination in &mut self.destinations {
-            if fs::remove_file(&destination.stage_path).is_err() {
-                self.rollback()?;
-                return Err(ReportArtifactError::Cleanup);
+        for index in 0..self.destinations.len() {
+            {
+                let destination = &mut self.destinations[index];
+                if fs::remove_file(&destination.stage_path).is_err() {
+                    self.rollback()?;
+                    return Err(ReportArtifactError::Cleanup);
+                }
             }
+            self.require_within_limit(&mut within_limit)?;
         }
         if internal_test_cleanup_failure() {
             self.rollback_without_hook()?;
@@ -198,6 +223,17 @@ impl ReportArtifactDestinations {
             destination.stage.take();
         }
         Ok(())
+    }
+
+    fn require_within_limit(
+        &mut self,
+        within_limit: &mut impl FnMut() -> bool,
+    ) -> Result<(), ReportArtifactError> {
+        if within_limit() {
+            return Ok(());
+        }
+        self.rollback()?;
+        Err(ReportArtifactError::OperationLimit)
     }
 
     pub(crate) fn cancel(mut self) -> Result<(), ReportArtifactError> {
@@ -423,6 +459,7 @@ fn internal_test_flag(name: &str) -> bool {
 mod tests {
     use super::{ReportArtifactDestinations, ReportArtifactError};
     use crate::contract::{RenderedReportArtifact, ReportArtifactFormat};
+    use std::cell::Cell;
     use std::fs;
     use tempfile::TempDir;
 
@@ -577,6 +614,27 @@ mod tests {
             fs::read_to_string(&junit).expect("the raced destination should remain"),
             "external"
         );
+        assert_no_stages(root.path());
+    }
+
+    #[test]
+    fn an_injected_publication_limit_rolls_back_without_sleeping_or_retrying() {
+        let root = TempDir::new().expect("a disposable root should be created");
+        let json = root.path().join("aggregate.json");
+        let destinations = ReportArtifactDestinations::prepare(Some(json.clone()), None, &[])
+            .expect("the aggregate destination should prepare");
+        let calls = Cell::new(0_u64);
+        let error = destinations
+            .persist_checked(vec![artifacts().remove(0)], || {
+                let next = calls.get().saturating_add(1);
+                calls.set(next);
+                next < 3
+            })
+            .expect_err("the injected publication limit should fail before commit");
+
+        assert_eq!(error, ReportArtifactError::OperationLimit);
+        assert_eq!(calls.get(), 3);
+        assert!(!json.exists(), "the owned output should roll back");
         assert_no_stages(root.path());
     }
 }
