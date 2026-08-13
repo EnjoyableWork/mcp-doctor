@@ -51,6 +51,9 @@ fn main() -> ExitCode {
         Some("catalog-item-limit") => catalog_item_limit(),
         Some("report-finding-limit") => report_finding_limit(),
         Some("report-finding-exact") => report_finding_exact(),
+        Some("snapshot-correlation") => snapshot_correlation(),
+        Some("snapshot-invalid-shape") => snapshot_invalid_shape(),
+        Some("snapshot-started-marker") => snapshot_started_marker(&remaining),
         Some("legacy-success") => legacy_success(),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
         Some("legacy-mismatch") => legacy_mismatch(),
@@ -526,6 +529,89 @@ fn schema_invalid() -> ExitCode {
         "tools/list",
         include_str!("catalogs/invalid-schemas.json"),
     )
+}
+
+fn snapshot_correlation() -> ExitCode {
+    const EXCLUDED: &str = "synthetic-snapshot-excluded-never-persist-36";
+
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {
+                "tools": {},
+                "syntheticExcludedExtension": {"value": EXCLUDED}
+            },
+            "instructions": EXCLUDED,
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    read_request(&mut input, 2, "tools/list", None);
+    let tools = (0..100)
+        .map(|ordinal| {
+            let identity = 99 - ordinal;
+            let required = if ordinal == 73 {
+                Value::String("synthetic_invalid_required_shape_36".to_owned())
+            } else {
+                Value::Array(Vec::new())
+            };
+            json!({
+                "name": format!("synthetic.tool.{identity:03}"),
+                "description": EXCLUDED,
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "synthetic_field": {
+                            "type": "string",
+                            "description": EXCLUDED,
+                            "default": EXCLUDED
+                        }
+                    },
+                    "required": required
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "syntheticExcludedMetadata": EXCLUDED,
+            "tools": tools
+        }),
+    );
+    ExitCode::SUCCESS
+}
+
+fn snapshot_invalid_shape() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.invalid-shape",
+                "description": "synthetic-invalid-shape-description-never-persist-36",
+                "inputSchema": 7
+            }]
+        }),
+    )
+}
+
+fn snapshot_started_marker(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    fs::write(marker, b"started").expect("the synthetic start marker should be writable");
+    catalog_valid()
 }
 
 fn schema_external(arguments: &[OsString]) -> ExitCode {

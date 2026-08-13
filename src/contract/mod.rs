@@ -12,6 +12,7 @@ mod model;
 mod protocol;
 mod redaction;
 mod report;
+mod snapshot;
 
 use crate::transport::ProbeResponse;
 use crate::transport::http::{
@@ -34,6 +35,10 @@ pub(crate) use active::{
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use protocol::SupportedRevision as ProtocolRevision;
 pub(crate) use report::ReportFormat;
+pub(crate) use snapshot::{
+    DiffFormat, RenderedContractDiff, SnapshotDestination, SnapshotDestinationError,
+    capture_contract_snapshot, prepare_snapshot_destination, render_contract_diff,
+};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ReportTransport {

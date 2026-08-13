@@ -14,6 +14,10 @@ use std::process::Command;
 use tempfile::TempDir;
 
 const STABLE_REPORT_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.report.v1.schema.json");
+const CONTRACT_SNAPSHOT_SCHEMA: &str =
+    include_str!("../../schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json");
+const CONTRACT_DIFF_SCHEMA: &str =
+    include_str!("../../schemas/mcp-doctor.contract-diff.v1alpha1.schema.json");
 
 pub fn parse_and_validate_report(bytes: &[u8]) -> serde_json::Value {
     let report: serde_json::Value =
@@ -36,6 +40,37 @@ pub fn validate_report_value(report: serde_json::Value) -> serde_json::Value {
         "stable report schema rejected synthetic fields at {errors:?}"
     );
     report
+}
+
+pub fn parse_and_validate_contract_snapshot(bytes: &[u8]) -> serde_json::Value {
+    parse_and_validate_schema(bytes, CONTRACT_SNAPSHOT_SCHEMA, "contract snapshot")
+}
+
+pub fn parse_and_validate_contract_diff(bytes: &[u8]) -> serde_json::Value {
+    parse_and_validate_schema(bytes, CONTRACT_DIFF_SCHEMA, "contract diff")
+}
+
+fn parse_and_validate_schema(
+    bytes: &[u8],
+    schema_document: &str,
+    artifact_name: &str,
+) -> serde_json::Value {
+    let artifact: serde_json::Value = serde_json::from_slice(bytes)
+        .unwrap_or_else(|_| panic!("{artifact_name} should be one JSON document"));
+    let schema: serde_json::Value = serde_json::from_str(schema_document)
+        .unwrap_or_else(|_| panic!("the committed {artifact_name} schema should be JSON"));
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .unwrap_or_else(|_| panic!("the committed {artifact_name} schema should be valid"));
+    let errors = validator
+        .iter_errors(&artifact)
+        .map(|error| error.instance_path().to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        errors.is_empty(),
+        "{artifact_name} schema rejected synthetic fields at {errors:?}"
+    );
+    artifact
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

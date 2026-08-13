@@ -1,6 +1,7 @@
 mod break_command;
 mod check;
 mod contract;
+mod diff;
 mod inspect;
 mod transport;
 
@@ -27,6 +28,8 @@ enum Command {
     Check(CheckArgs),
     /// Generate deterministic boundary cases for one explicitly authorized tool.
     Break(BreakArgs),
+    /// Compare two bounded contract snapshots without starting or contacting a target.
+    Diff(DiffArgs),
 }
 
 #[derive(Debug, Args)]
@@ -45,6 +48,14 @@ struct InspectArgs {
     #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
     protocol_version: InspectProtocolVersion,
 
+    /// Write a sensitive current-revision contract snapshot to one new file.
+    #[arg(long, value_name = "PATH")]
+    snapshot: Option<PathBuf>,
+
+    /// Acknowledge the same exact snapshot path and its sensitive advertised content.
+    #[arg(long, value_name = "EXACT-PATH")]
+    allow_sensitive_snapshot: Option<PathBuf>,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -55,6 +66,21 @@ struct InspectArgs {
     /// Server executable followed by its literal arguments after `--`.
     #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
     target: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+struct DiffArgs {
+    /// Diff format. JSON uses mcp-doctor.contract-diff/v1alpha1.
+    #[arg(long, value_enum, default_value_t = DiffOutputFormat::Human)]
+    format: DiffOutputFormat,
+
+    /// Earlier bounded local contract snapshot.
+    #[arg(value_name = "BEFORE")]
+    before: PathBuf,
+
+    /// Later bounded local contract snapshot.
+    #[arg(value_name = "AFTER")]
+    after: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -190,6 +216,12 @@ enum OutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum DiffOutputFormat {
+    Human,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 enum InspectProtocolVersion {
     #[value(name = "2026-07-28", alias = "current")]
     Current,
@@ -227,6 +259,15 @@ impl From<OutputFormat> for contract::ReportFormat {
     }
 }
 
+impl From<DiffOutputFormat> for contract::DiffFormat {
+    fn from(format: DiffOutputFormat) -> Self {
+        match format {
+            DiffOutputFormat::Human => Self::Human,
+            DiffOutputFormat::Json => Self::Json,
+        }
+    }
+}
+
 fn emit_diagnostic(diagnostic: contract::RenderedDiagnostic) -> ExitCode {
     print!("{}", diagnostic.output);
     if let Some(error) = diagnostic.error {
@@ -235,24 +276,74 @@ fn emit_diagnostic(diagnostic: contract::RenderedDiagnostic) -> ExitCode {
     diagnostic.exit
 }
 
+fn emit_inspect(
+    output: inspect::InspectOutput,
+    destination: Option<contract::SnapshotDestination>,
+) -> ExitCode {
+    if let Some(snapshot) = output.snapshot {
+        let Some(destination) = destination else {
+            eprintln!("error: a contract snapshot was produced without an authorized destination");
+            return ExitCode::from(2);
+        };
+        if let Err(error) = destination.persist(&snapshot) {
+            eprintln!("error: {error}");
+            return ExitCode::from(2);
+        }
+    }
+    emit_diagnostic(output.diagnostic)
+}
+
+fn emit_contract_diff(diff: contract::RenderedContractDiff) -> ExitCode {
+    print!("{}", diff.output);
+    if let Some(error) = diff.error {
+        eprintln!("error: {error}");
+    }
+    diff.exit
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     match Cli::parse().command {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
             let revision = arguments.protocol_version.into();
+            let destination = match contract::prepare_snapshot_destination(
+                arguments.snapshot,
+                arguments.allow_sensitive_snapshot,
+                revision,
+            ) {
+                Ok(destination) => destination,
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            let capture_snapshot = destination.is_some();
             if let Some(endpoint) = arguments.endpoint {
-                let diagnostic = inspect::run_http(
+                match inspect::run_http(
                     arguments.remote.into_options(endpoint),
                     arguments.format.into(),
                     revision,
+                    capture_snapshot,
                 )
-                .await;
-                emit_diagnostic(diagnostic)
-            } else {
-                match inspect::run_stdio(arguments.target, arguments.format.into(), revision).await
+                .await
                 {
-                    Ok(diagnostic) => emit_diagnostic(diagnostic),
+                    Ok(output) => emit_inspect(output, destination),
+                    Err(error) => {
+                        eprintln!("error: {error}");
+                        ExitCode::from(2)
+                    }
+                }
+            } else {
+                match inspect::run_stdio(
+                    arguments.target,
+                    arguments.format.into(),
+                    revision,
+                    capture_snapshot,
+                )
+                .await
+                {
+                    Ok(output) => emit_inspect(output, destination),
                     Err(error) => {
                         eprintln!("error: {error}");
                         ExitCode::from(2)
@@ -260,6 +351,11 @@ async fn main() -> ExitCode {
                 }
             }
         }
+        Some(Command::Diff(arguments)) => emit_contract_diff(diff::run(
+            &arguments.before,
+            &arguments.after,
+            arguments.format.into(),
+        )),
         Some(Command::Check(arguments)) => {
             if let Some(endpoint) = arguments.endpoint {
                 let diagnostic = check::run_http(

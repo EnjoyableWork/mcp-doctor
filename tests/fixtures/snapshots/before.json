@@ -1,0 +1,134 @@
+{
+  "schema_version": "mcp-doctor.contract-snapshot/v1alpha1",
+  "protocol_revision": "2026-07-28",
+  "capabilities": {
+    "tools": {
+      "advertised": true,
+      "list_changed": false
+    },
+    "prompts": {
+      "advertised": true,
+      "list_changed": false
+    },
+    "resources": {
+      "advertised": true,
+      "list_changed": false,
+      "subscribe": false
+    }
+  },
+  "catalogs": {
+    "tools": {
+      "contracts": [
+        {
+          "name": "synthetic.alpha",
+          "behavior_hints": {
+            "read_only": false,
+            "destructive": true,
+            "idempotent": false,
+            "open_world": true
+          },
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          }
+        },
+        {
+          "name": "synthetic.removed",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        },
+        {
+          "discovery_ordinal": 1,
+          "contract_index": 1
+        }
+      ]
+    },
+    "prompts": {
+      "contracts": [
+        {
+          "name": "synthetic.review",
+          "arguments": [
+            {
+              "name": "subject",
+              "required": true
+            },
+            {
+              "name": "tone",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "synthetic.prompt.removed",
+          "arguments": []
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        },
+        {
+          "discovery_ordinal": 1,
+          "contract_index": 1
+        }
+      ]
+    },
+    "resources": {
+      "contracts": [
+        {
+          "name": "Synthetic old resource",
+          "uri": "synthetic://old"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    },
+    "resource_templates": {
+      "contracts": [
+        {
+          "name": "Synthetic old template",
+          "uri_template": "synthetic://old/{id}"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+mcp-doctor contract diff
+protocol revision: 2026-07-28
+outcome: potentially_breaking
+checks:
+  artifact_validation: performed
+  normalization: performed
+  catalog_comparison: performed
+  schema_comparison: performed
+findings:
+  MCP-DIFF-001 [compatible] contract_added · tools · after[1]
+  MCP-DIFF-005 [potentially_breaking] required_input_added · tools · before[0] · after[0]
+  MCP-DIFF-007 [potentially_breaking] schema_constraint_narrowed · tools · before[0] · after[0]
+  MCP-DIFF-009 [review_required] output_schema_changed · tools · before[0] · after[0]
+  MCP-DIFF-010 [review_required] behavior_hint_changed · tools · before[0] · after[0]
+  MCP-DIFF-002 [potentially_breaking] contract_removed · tools · before[1]
+  MCP-DIFF-001 [compatible] contract_added · prompts · after[1]
+  MCP-DIFF-005 [potentially_breaking] required_input_added · prompts · before[0] · after[0]
+  MCP-DIFF-002 [potentially_breaking] contract_removed · prompts · before[1]
+  MCP-DIFF-001 [compatible] contract_added · resources · after[0]
+  MCP-DIFF-002 [potentially_breaking] contract_removed · resources · before[0]
+  MCP-DIFF-001 [compatible] contract_added · resource_templates · after[0]
+  MCP-DIFF-002 [potentially_breaking] contract_removed · resource_templates · before[0]
+  MCP-DIFF-003 [compatible] capability_enabled · capabilities
+summary: compatible=5 potentially_breaking=7 review_required=2 invalid=0 total=14

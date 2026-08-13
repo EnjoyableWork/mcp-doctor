@@ -29,6 +29,8 @@ smoke_root_prefix="${smoke_temp_parent%/}/mcp-doctor-release-smoke."
 smoke_root=$(mktemp -d "${smoke_root_prefix}XXXXXX")
 smoke_home="${smoke_root}/home"
 smoke_report="${smoke_root}/report.json"
+smoke_snapshot="${smoke_root}/contract.json"
+smoke_diff="${smoke_root}/diff.json"
 smoke_stderr="${smoke_root}/stderr.txt"
 smoke_path=${PATH:?PATH must locate the fixture platform loader}
 
@@ -66,7 +68,10 @@ if [[ "${version_output}" != "mcp-doctor ${smoke_version}" ]]; then
   exit 1
 fi
 
-if ! run_mcp_doctor inspect --format json -- "${smoke_fixture}" catalog-valid \
+if ! run_mcp_doctor inspect --format json \
+  --snapshot "${smoke_snapshot}" \
+  --allow-sensitive-snapshot "${smoke_snapshot}" \
+  -- "${smoke_fixture}" catalog-valid \
   >"${smoke_report}" 2>"${smoke_stderr}"; then
   echo "installed passive diagnostic smoke failed" >&2
   exit 1
@@ -94,3 +99,33 @@ jq -e '
     (.state == "skipped" and .skip_reason == "not_authorized" and
      (has("blocked_by") | not))] | all)
 ' "${smoke_report}" >/dev/null
+
+jq -e '
+  .schema_version == "mcp-doctor.contract-snapshot/v1alpha1" and
+  .protocol_revision == "2026-07-28" and
+  .capabilities.tools.advertised == true and
+  (.catalogs.tools.contracts | length) == 2 and
+  (.catalogs.tools.correlation | length) == 2 and
+  (.catalogs.prompts.contracts | length) == 1 and
+  (.catalogs.resources.contracts | length) == 1 and
+  (.catalogs.resource_templates.contracts | length) == 1
+' "${smoke_snapshot}" >/dev/null
+
+if ! run_mcp_doctor diff --format json "${smoke_snapshot}" "${smoke_snapshot}" \
+  >"${smoke_diff}" 2>"${smoke_stderr}"; then
+  echo "installed offline contract diff smoke failed" >&2
+  exit 1
+fi
+if [[ -s "${smoke_stderr}" ]]; then
+  echo "installed offline contract diff smoke wrote unexpected stderr" >&2
+  exit 1
+fi
+jq -e '
+  .schema_version == "mcp-doctor.contract-diff/v1alpha1" and
+  .protocol_revision == "2026-07-28" and
+  .outcome == "unchanged" and
+  .exit_code == 0 and
+  .summary.total == 0 and
+  (.findings | length) == 0 and
+  ([.checks[] | .state == "performed"] | all)
+' "${smoke_diff}" >/dev/null

@@ -1,0 +1,124 @@
+{
+  "protocol_revision": "2026-07-28",
+  "schema_version": "mcp-doctor.contract-snapshot/v1alpha1",
+  "capabilities": {
+    "resources": {
+      "advertised": true
+    },
+    "prompts": {
+      "advertised": true
+    },
+    "tools": {
+      "advertised": true
+    }
+  },
+  "catalogs": {
+    "resource_templates": {
+      "correlation": [
+        {
+          "contract_index": 0,
+          "discovery_ordinal": 0
+        }
+      ],
+      "contracts": [
+        {
+          "uri_template": "synthetic://old/{id}",
+          "name": "Synthetic old template"
+        }
+      ]
+    },
+    "resources": {
+      "correlation": [
+        {
+          "contract_index": 0,
+          "discovery_ordinal": 0
+        }
+      ],
+      "contracts": [
+        {
+          "uri": "synthetic://old",
+          "name": "Synthetic old resource"
+        }
+      ]
+    },
+    "prompts": {
+      "correlation": [
+        {
+          "contract_index": 1,
+          "discovery_ordinal": 0
+        },
+        {
+          "contract_index": 0,
+          "discovery_ordinal": 1
+        }
+      ],
+      "contracts": [
+        {
+          "arguments": [],
+          "name": "synthetic.prompt.removed"
+        },
+        {
+          "arguments": [
+            {
+              "required": false,
+              "name": "tone"
+            },
+            {
+              "required": true,
+              "name": "subject"
+            }
+          ],
+          "name": "synthetic.review"
+        }
+      ]
+    },
+    "tools": {
+      "correlation": [
+        {
+          "contract_index": 1,
+          "discovery_ordinal": 0
+        },
+        {
+          "contract_index": 0,
+          "discovery_ordinal": 1
+        }
+      ],
+      "contracts": [
+        {
+          "input_schema": {
+            "properties": {},
+            "type": "object"
+          },
+          "name": "synthetic.removed"
+        },
+        {
+          "output_schema": {
+            "required": [
+              "ok"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "input_schema": {
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "query": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "name": "synthetic.alpha"
+        }
+      ]
+    }
+  }
+}

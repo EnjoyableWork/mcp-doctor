@@ -20,7 +20,7 @@
   <a href="#the-promise">The promise</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#inspect-check-break">Inspect. Check. Break.</a> ·
+  <a href="#inspect-check-break-diff">Inspect. Check. Break. Diff.</a> ·
   <a href="#bring-it-into-ci">CI</a> ·
   <a href="#safe-by-default">Safety</a>
 </p>
@@ -139,7 +139,7 @@ The default report is made for people. Add `--format json` for the stable,
 schema-backed `mcp-doctor.report/v1` result, or `--format junit` for the same
 checks projected into conservative JUnit XML. Both keep secrets removed.
 
-## Inspect. Check. Break.
+## Inspect. Check. Break. Diff.
 
 Choose how much activity the target allows:
 
@@ -148,6 +148,7 @@ Choose how much activity the target allows:
 | **`inspect`** | Does not call tools | Connect, list what the server offers, and check its definitions and schemas |
 | **`check`** | Calls selected tools | Run known inputs from a scenario you wrote and check the results |
 | **`break`** | Tries generated edge cases | Search one selected tool for failures you can repeat |
+| **`diff`** | Reads two local files only | Compare explicitly captured advertised contracts without starting or contacting a target |
 
 ```bash
 # Passive: discover and validate without calling a tool
@@ -167,11 +168,73 @@ mcp-doctor break \
   --cases 50 \
   --seed 4242 \
   -- node ./dist/server.js --stdio
+
+# Offline: compare two deliberately retained contract artifacts
+mcp-doctor diff --format json before.contract.json after.contract.json
 ```
 
 > [!CAUTION]
 > `check` and `break` execute real tool calls. Use disposable data and a test
 > environment. Finding a tool does not give `mcp-doctor` permission to call it.
+
+### Contract snapshots and offline diffs
+
+Contract snapshots are separate, explicitly requested developer artifacts—not
+ordinary diagnostic reports. Create one only during passive MCP `2026-07-28`
+inspection by naming the same exact new path twice:
+
+```bash
+mcp-doctor inspect \
+  --snapshot build-a.contract.json \
+  --allow-sensitive-snapshot build-a.contract.json \
+  -- node ./dist/server.js --stdio
+```
+
+The redundant path is an acknowledgement that the artifact is sensitive. A
+snapshot contains normalized capability settings, tool and prompt names,
+advertised resource URIs and URI templates, prompt argument names, tool
+behavior hints, JSON Schema property names, and validation-bearing values such
+as `const`, `enum`, patterns, and bounds. Those fields may disclose proprietary
+API shape, internal naming, or allowed values. Store the file with the same
+care as source containing private interfaces, choose a retention period, and
+review it before sharing. `mcp-doctor` creates one new regular file with mode
+`0600` on Unix, never overwrites an existing path, and has no force option.
+
+Descriptions, titles, defaults, examples, comments, server identity,
+instructions, pagination and cache metadata, transport endpoints, DNS and peer
+data, credentials and their source names, request headers, arguments, runtime
+results, logs, and stderr are not retained. A snapshot requested with an
+ordinary report is assembled from that exact bounded discovery conversation;
+there is no second run or list request. A complete current-revision catalog can
+still be written when a bounded local schema shape retained by the artifact
+makes the report fail, so a redacted location such as `tools[73]` can be
+resolved through the artifact-local ordinal map. Transport, protocol,
+external-reference, resource-bound, unrepresentable or incomplete-catalog, and
+cleanup failures write no snapshot.
+
+Compare two artifacts without a target:
+
+```bash
+mcp-doctor diff before.contract.json after.contract.json
+mcp-doctor diff --format json before.contract.json after.contract.json
+```
+
+`diff` reads exactly two bounded regular files and never starts a process,
+opens a connection, retrieves a schema, or calls a tool. Catalog and set-like
+schema ordering are normalized, and each snapshot's ordinal map is validated
+but ignored for semantic matching. Human and
+`mcp-doctor.contract-diff/v1alpha1` JSON output use stable codes for additions,
+removals, capability changes, required inputs, and a finite set of syntactic
+narrowing or widening rules. Other schema and behavior-hint changes are
+`review_required`; `mcp-doctor` does not claim general JSON Schema implication,
+universal compatibility, protocol conformance, or a health score. Unchanged or
+documented-compatible diffs exit `0`, potentially breaking or review-required
+diffs exit `1`, and invalid, over-limit, or unreadable artifacts exit `2`.
+
+The artifact contracts are published with the source as
+[`mcp-doctor.contract-snapshot/v1alpha1`](schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json)
+and
+[`mcp-doctor.contract-diff/v1alpha1`](schemas/mcp-doctor.contract-diff.v1alpha1.schema.json).
 
 ### Reviewed `check` scenarios
 
@@ -339,6 +402,9 @@ deterministic, bounded, and hide secrets.
   visible.
 - Normal output hides headers, credentials, tool inputs, raw results, and server
   logs.
+- Sensitive contract snapshots require an exact-path acknowledgement and a new
+  output file. Offline diffs remain value-free and have no target or network
+  surface.
 - Local server commands run directly, not through a shell. Before exiting,
   `mcp-doctor` closes every child process, stops it if needed, and waits for it
   to end.
