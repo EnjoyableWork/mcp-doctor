@@ -651,6 +651,17 @@ fn project_and_readme_define_conservative_offline_report_aggregation() {
         "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity",
         "| DEC-047 | Resolve issue #45 with normalized conservative offline aggregation of stable reports",
         "| RISK-23 | An offline aggregate turns incomplete or failed evidence into a pass",
+        "| D-13 | Conservative bounded offline diagnostic-report aggregates | Optional offline evidence | Done |",
+        "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity | Optional offline evidence | Done |",
+        "`MCPD-022` completed on 2026-08-13",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/52",
+        "31736927318",
+        "31736927338",
+        "31737876282",
+        "31737876227",
+        "983919d0ffae417133f829b806e8f5a9e72082b7",
+        "completed closure of [issue #45]",
+        "Mitigated for the `MCPD-022` scope",
     ] {
         assert!(
             project.contains(contract),
