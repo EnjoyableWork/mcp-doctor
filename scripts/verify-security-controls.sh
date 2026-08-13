@@ -38,8 +38,8 @@ if ! jq -e '
   .security_policy.path == "SECURITY.md" and
   .security_policy.private_reporting_url ==
     "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new" and
-  .security_policy.supported_release_lines == ["0.2.x"] and
-  .security_policy.unsupported_release_lines == ["0.1.x"] and
+  .security_policy.supported_release_lines == ["0.3.x"] and
+  .security_policy.unsupported_release_lines == ["0.2.x and earlier"] and
   .controls.vulnerability_alerts == true and
   .controls.automated_security_fixes == true and
   .controls.dependabot_security_updates == "enabled" and

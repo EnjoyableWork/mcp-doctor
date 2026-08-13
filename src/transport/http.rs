@@ -55,6 +55,7 @@ pub(crate) struct HttpLimits {
     pub(crate) message_bytes: u64,
     pub(crate) aggregate_output_bytes: u64,
     pub(crate) message_count: u64,
+    pub(crate) protocol_revisions: u64,
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -151,6 +152,7 @@ pub(crate) enum ResponseFailure {
     SessionLost { status: u16 },
     InitializedRejected { status: u16 },
     ProtocolVersionRejected,
+    UnsupportedProtocolVersion,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -1479,6 +1481,10 @@ impl HttpTransport {
                     status: status.as_u16(),
                 }));
             }
+            let json_response = matches!(
+                response_media_type(&response.headers),
+                Ok(ResponseMediaType::Json)
+            );
             let body = collect_body(
                 &mut response,
                 self.target.limits.message_bytes,
@@ -1487,6 +1493,20 @@ impl HttpTransport {
             )
             .await?;
             response_budget.observe_message(self.target.limits)?;
+            if !self.initialize_handshake
+                && status == StatusCode::BAD_REQUEST
+                && json_response
+                && is_unsupported_protocol_version(
+                    &body,
+                    request.id(),
+                    self.protocol_revision,
+                    self.target.limits.protocol_revisions,
+                )
+            {
+                return Err(HttpFailure::Response(
+                    ResponseFailure::UnsupportedProtocolVersion,
+                ));
+            }
             if status == StatusCode::BAD_REQUEST && is_header_mismatch(&body, request.id()) {
                 return Err(HttpFailure::Response(if self.initialize_handshake {
                     ResponseFailure::ProtocolVersionRejected
@@ -2026,6 +2046,38 @@ fn is_header_mismatch(bytes: &[u8], request_id: i64) -> bool {
         })
 }
 
+fn is_unsupported_protocol_version(
+    bytes: &[u8],
+    request_id: i64,
+    requested_revision: &str,
+    maximum_revisions: u64,
+) -> bool {
+    serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .and_then(|value| {
+            let object = value.as_object()?;
+            let error = object.get("error")?.as_object()?;
+            let data = error.get("data")?.as_object()?;
+            let supported = data.get("supported")?.as_array()?;
+            let requested = data.get("requested")?.as_str()?;
+            Some(
+                object.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                    && object.get("id").and_then(Value::as_i64) == Some(request_id)
+                    && !object.contains_key("result")
+                    && !object.contains_key("method")
+                    && error.get("code").and_then(Value::as_i64) == Some(-32022)
+                    && error.get("message").is_some_and(Value::is_string)
+                    && requested == requested_revision
+                    && u64::try_from(supported.len()).unwrap_or(u64::MAX) <= maximum_revisions
+                    && supported.iter().all(Value::is_string)
+                    && !supported
+                        .iter()
+                        .any(|revision| revision.as_str() == Some(requested_revision)),
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn parse_sse_events(
     bytes: &[u8],
     request_id: i64,
@@ -2161,9 +2213,10 @@ mod tests {
         AddressClass, BodyFuture, Connector, ConnectorRequest, ConnectorResponse, HttpFailure,
         HttpLimit, HttpLimits, HttpTarget, HttpTransport, RemoteOptions, ResolutionFailure,
         Resolver, ResponseBody, ResponseFailure, TargetFailure, classify_address,
-        collect_resolver_addresses, connection_candidates, encode_mcp_value, parse_endpoint,
-        read_trust_file, remaining_connection_time, reserved_field, valid_bearer_token,
-        valid_custom_value, valid_token, validate_environment_name, validate_request_field_budget,
+        collect_resolver_addresses, connection_candidates, encode_mcp_value,
+        is_unsupported_protocol_version, parse_endpoint, read_trust_file,
+        remaining_connection_time, reserved_field, valid_bearer_token, valid_custom_value,
+        valid_token, validate_environment_name, validate_request_field_budget,
         validate_response_field_budget,
     };
 
@@ -2389,6 +2442,7 @@ mod tests {
             message_bytes: 1_048_576,
             aggregate_output_bytes: 8_388_608,
             message_count: 1_024,
+            protocol_revisions: 32,
         }
     }
 
@@ -3046,6 +3100,109 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
+    #[test]
+    fn unsupported_protocol_version_requires_the_exact_bounded_structured_signal() {
+        let valid = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "error": {
+                "code": -32022,
+                "message": "synthetic",
+                "data": {
+                    "supported": ["2025-11-25", "2025-06-18"],
+                    "requested": "2026-07-28"
+                }
+            }
+        });
+        assert!(is_unsupported_protocol_version(
+            &serde_json::to_vec(&valid).unwrap(),
+            7,
+            "2026-07-28",
+            32,
+        ));
+
+        for invalid in [
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 8,
+                "error": valid["error"].clone()
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "error": {
+                    "code": -32022,
+                    "message": "synthetic",
+                    "data": {
+                        "supported": ["2026-07-28"],
+                        "requested": "2026-07-28"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "error": {
+                    "code": -32022,
+                    "message": "synthetic",
+                    "data": {
+                        "supported": [7],
+                        "requested": "2026-07-28"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "error": {
+                    "code": -32022,
+                    "message": "synthetic",
+                    "data": {
+                        "supported": ["2025-11-25"],
+                        "requested": "2025-11-25"
+                    }
+                }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "error": {
+                    "code": -32022,
+                    "data": {
+                        "supported": ["2025-11-25"],
+                        "requested": "2026-07-28"
+                    }
+                }
+            }),
+        ] {
+            assert!(!is_unsupported_protocol_version(
+                &serde_json::to_vec(&invalid).unwrap(),
+                7,
+                "2026-07-28",
+                32,
+            ));
+        }
+
+        let too_many = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "error": {
+                "code": -32022,
+                "message": "synthetic",
+                "data": {
+                    "supported": vec!["2025-11-25"; 33],
+                    "requested": "2026-07-28"
+                }
+            }
+        });
+        assert!(!is_unsupported_protocol_version(
+            &serde_json::to_vec(&too_many).unwrap(),
+            7,
+            "2026-07-28",
+            32,
+        ));
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn response_status_framing_and_resource_bounds_are_typed() {
         for (status, expected) in [
@@ -3096,6 +3253,58 @@ mod tests {
         assert_eq!(
             run.failure(),
             Some(HttpFailure::Response(ResponseFailure::HeaderMismatch))
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let unsupported = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32022,
+                "message": "synthetic",
+                "data": {
+                    "supported": ["2025-11-25"],
+                    "requested": "2026-07-28"
+                }
+            }
+        });
+        let (run, calls, _) = probe_fixture(
+            ConnectorPlan::Reply {
+                status: StatusCode::BAD_REQUEST,
+                headers: response_headers("application/json"),
+                peer: Some(address("8.8.8.8", 443)),
+                chunks: VecDeque::from([serde_json::to_vec(&unsupported).unwrap()]),
+                pending_body: false,
+            },
+            limits(),
+            Vec::new(),
+        )
+        .await;
+        assert_eq!(
+            run.failure(),
+            Some(HttpFailure::Response(
+                ResponseFailure::UnsupportedProtocolVersion
+            ))
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let (run, calls, _) = probe_fixture(
+            ConnectorPlan::Reply {
+                status: StatusCode::BAD_REQUEST,
+                headers: response_headers("text/plain"),
+                peer: Some(address("8.8.8.8", 443)),
+                chunks: VecDeque::from([serde_json::to_vec(&unsupported).unwrap()]),
+                pending_body: false,
+            },
+            limits(),
+            Vec::new(),
+        )
+        .await;
+        assert_eq!(
+            run.failure(),
+            Some(HttpFailure::Response(ResponseFailure::Status {
+                status: 400
+            }))
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 

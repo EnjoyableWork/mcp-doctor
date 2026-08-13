@@ -3,9 +3,10 @@
 ## Usage and development questions
 
 Review [README.md](README.md), [PROJECT.md](PROJECT.md), and existing issues
-before opening a new question. The current public release is `0.2.0`; only
-behavior proved by code, tests, and release evidence should be treated as
-available.
+before opening a new question. This source tree represents `0.3.0`; a version
+is publicly available only when its canonical GitHub Release and channel
+evidence exist. Only behavior proved by code, tests, and release evidence
+should be treated as available.
 
 For a reproducible bug, use the structured
 [bug-report form](https://github.com/EnjoyableWork/mcp-doctor/issues/new?template=01-bug-report.yml).

@@ -137,6 +137,7 @@ fn http_limits() -> HttpLimits {
         message_bytes: profile.message_bytes,
         aggregate_output_bytes: profile.aggregate_output_bytes,
         message_count: profile.message_count,
+        protocol_revisions: profile.protocol_revisions,
     }
 }
 

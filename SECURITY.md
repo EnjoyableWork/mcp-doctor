@@ -62,8 +62,8 @@ than receive a backport.
 
 | Version | Security support |
 | --- | --- |
-| `0.2.x` | Supported |
-| `0.1.x` | Unsupported |
+| `0.3.x` | Supported |
+| `0.2.x` and earlier | Unsupported |
 | `main` | Development only; no release or backport guarantee |
 
 This table changes when a new supported release line is published. A tag,

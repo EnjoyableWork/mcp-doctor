@@ -307,7 +307,7 @@ impl FindingCode {
             }
             Self::ProtocolRevisionConfirmed => "The requested protocol revision is supported.",
             Self::UnsupportedProtocolRevision => {
-                "The server does not advertise the required protocol revision."
+                "The server does not support the required protocol revision."
             }
             Self::InvalidProtocolRevisionValue => {
                 "The protocol revision value is missing or has the wrong JSON type."
@@ -535,7 +535,7 @@ impl FindingCode {
                 "The server confirms the exact MCP revision selected for this inspection."
             }
             Self::UnsupportedProtocolRevision => {
-                "server/discover must advertise MCP protocol revision 2026-07-28."
+                "The server must support MCP protocol revision 2026-07-28 for this diagnosis."
             }
             Self::InvalidProtocolRevisionValue => {
                 "The selected lifecycle's revision field must have its required string or string-array shape."
@@ -657,7 +657,7 @@ impl FindingCode {
             }
             Self::ProtocolRevisionConfirmed => "No correction is needed.",
             Self::UnsupportedProtocolRevision => {
-                "Add MCP 2026-07-28 support and advertise it from server/discover."
+                "Add MCP 2026-07-28 support, then rerun the same diagnosis without falling back."
             }
             Self::InvalidProtocolRevisionValue => {
                 "Correct the revision field at the reported structural location and rerun the same explicit selection."
@@ -1304,6 +1304,7 @@ pub(super) enum RuleViolation {
         status: u16,
     },
     ProtocolVersionRejected,
+    UnsupportedProtocolVersion,
 }
 
 impl RuleViolation {
@@ -1373,6 +1374,7 @@ impl RuleViolation {
             Self::SessionLost { .. } => "session_lost",
             Self::InitializedRejected { .. } => "initialized_notification_rejected",
             Self::ProtocolVersionRejected => "protocol_version_header_rejected",
+            Self::UnsupportedProtocolVersion => "unsupported_protocol_version",
         }
     }
 
@@ -1439,7 +1441,8 @@ impl RuleViolation {
             | Self::SessionRequired { .. }
             | Self::SessionLost { .. }
             | Self::InitializedRejected { .. }
-            | Self::ProtocolVersionRejected => None,
+            | Self::ProtocolVersionRejected
+            | Self::UnsupportedProtocolVersion => None,
         }
     }
 
@@ -1647,6 +1650,18 @@ impl Finding {
             revision,
             location,
             FindingEvidence::RevisionAdvertisement(advertisement),
+        )
+    }
+
+    pub(super) fn unsupported_protocol_version(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::UnsupportedProtocolRevision,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::UnsupportedProtocolVersion),
         )
     }
 

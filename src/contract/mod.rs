@@ -117,6 +117,7 @@ pub(crate) struct HttpLimitProfile {
     pub(crate) message_bytes: u64,
     pub(crate) aggregate_output_bytes: u64,
     pub(crate) message_count: u64,
+    pub(crate) protocol_revisions: u64,
 }
 
 pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
@@ -143,6 +144,7 @@ pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
         message_bytes: values.message_bytes,
         aggregate_output_bytes: values.aggregate_output_bytes,
         message_count: values.message_count,
+        protocol_revisions: values.protocol_revisions,
     }
 }
 
@@ -288,6 +290,23 @@ impl HttpDiagnostic {
     pub(in crate::contract) const fn failed(self) -> bool {
         self.failure.is_some()
     }
+
+    pub(in crate::contract) const fn unsupported_protocol_version(self) -> bool {
+        matches!(
+            self.failure,
+            Some(HttpFailure::Response(
+                ResponseFailure::UnsupportedProtocolVersion
+            ))
+        )
+    }
+
+    pub(in crate::contract) const fn without_primary_failure(self) -> Self {
+        Self {
+            failure: None,
+            tls_applicable: self.tls_applicable,
+            session_cleanup_failed: self.session_cleanup_failed,
+        }
+    }
 }
 
 pub(crate) const fn http_diagnostic(
@@ -329,6 +348,11 @@ pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
     revision: SupportedRevision,
     negotiated_revision: Option<protocol::KnownRevision>,
 ) -> Diagnostic {
+    if diagnostic.unsupported_protocol_version() {
+        let mut checks = http_checks_for_revision(diagnostic.without_primary_failure(), revision);
+        checks.extend(protocol_version_rejection_checks(revision));
+        return render_checks_for_revision(checks, revision, negotiated_revision);
+    }
     let checks = http_checks_for_revision(diagnostic, revision);
     let failed = diagnostic.failure.is_some();
     let mut checks = checks;
@@ -367,6 +391,35 @@ pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
         ]);
     }
     render_checks_for_revision(checks, revision, negotiated_revision)
+}
+
+fn protocol_version_rejection_checks(revision: SupportedRevision) -> Vec<CheckResult> {
+    vec![
+        CheckResult::performed(CheckId::ProtocolEnvelope, Requirement::Required, Vec::new()),
+        CheckResult::performed(
+            CheckId::ProtocolRevision,
+            Requirement::Required,
+            vec![Finding::unsupported_protocol_version(
+                revision,
+                Location::root(LocationField::Http).field(LocationField::Body),
+            )],
+        ),
+        CheckResult::skipped(
+            CheckId::DiscoveryCatalogs,
+            Requirement::Required,
+            SkipReason::UnsupportedRevision,
+        ),
+        CheckResult::skipped(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            SkipReason::UnsupportedRevision,
+        ),
+        CheckResult::skipped(
+            CheckId::RuntimeTools,
+            Requirement::Optional,
+            SkipReason::NotAuthorized,
+        ),
+    ]
 }
 
 pub(crate) fn render_http_catalog_diagnostic(
@@ -643,6 +696,12 @@ fn http_finding(failure: HttpFailure, revision: SupportedRevision) -> Option<Fin
                     Location::root(LocationField::Http).field(LocationField::Headers),
                     RuleViolation::ProtocolVersionRejected,
                 ),
+                ResponseFailure::UnsupportedProtocolVersion => {
+                    Finding::unsupported_protocol_version(
+                        revision,
+                        Location::root(LocationField::Http).field(LocationField::Body),
+                    )
+                }
             },
             HttpFailure::Limit {
                 kind,

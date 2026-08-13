@@ -1651,8 +1651,24 @@ impl ActiveConversation {
     }
 
     pub(crate) fn into_http_diagnostic(self, http: HttpDiagnostic) -> Diagnostic {
+        if http.unsupported_protocol_version() {
+            return self.into_protocol_version_rejection(http);
+        }
         let failed = http.failed();
         self.into_transport_diagnostic(http_checks(http), failed)
+    }
+
+    fn into_protocol_version_rejection(mut self, http: HttpDiagnostic) -> Diagnostic {
+        self.pending = None;
+        self.envelope = PhaseState::Performed(Vec::new());
+        self.revision = PhaseState::Performed(vec![Finding::unsupported_protocol_version(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Http).field(LocationField::Body),
+        )]);
+        self.discovery = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+        self.schemas = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+        self.stop_cases(SkipReason::UnsupportedRevision);
+        self.into_transport_diagnostic(http_checks(http.without_primary_failure()), false)
     }
 
     fn into_transport_diagnostic(
