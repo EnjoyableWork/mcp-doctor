@@ -85,7 +85,7 @@ if [[ -z "${organization_private_attestation}" ]]; then
   exit 2
 fi
 
-for organization_command in awk chmod cp date env git jq mktemp rm sed sort stat tr wc; do
+for organization_command in awk chmod cp date env git jq mktemp mv rm sed sort stat tr wc; do
   if ! command -v "${organization_command}" >/dev/null 2>&1; then
     printf 'required organization-control verifier command is unavailable: %s\n' \
       "${organization_command}" >&2
@@ -282,6 +282,7 @@ if ! jq -e '
     "approved_installation_count",
     "approved_inventory_location",
     "approved_inventory_public",
+    "exact_repository_mapping_evidence",
     "installation_authority",
     "inventory_fields",
     "new_or_changed_installation_requires_review",
@@ -294,12 +295,19 @@ if ! jq -e '
   .installed_applications.all_repository_access_allowed == false and
   .installed_applications.approved_inventory_location == "private_attestation" and
   .installed_applications.approved_inventory_public == false and
+  .installed_applications.exact_repository_mapping_evidence ==
+    "fresh_private_owner_attestation" and
   .installed_applications.inventory_fields == [
     "app_id",
     "app_slug",
+    "events",
+    "installation_updated_at",
+    "need",
+    "owner_decision",
     "permissions",
     "repositories",
     "repository_selection",
+    "single_file_paths",
     "suspended"
   ] and
   .installed_applications.review_interval_days == 90 and
@@ -325,9 +333,39 @@ if ! jq -e '
     "automation_use": "prohibited"
   } and
   .automation_credentials.interactive_administration_credentials == [
-    "approved_oauth_app_token",
     "exceptional_fine_grained_personal_access_token"
   ] and
+  .automation_credentials.verification_operator_credential == {
+    "type": "fine_grained_personal_access_token",
+    "resource_owner": "EnjoyableWork",
+    "maximum_lifetime_days": 30,
+    "repository_selection": "exact",
+    "repositories": [
+      "EnjoyableWork/mcp-doctor",
+      "EnjoyableWork/homebrew-tap"
+    ],
+    "automation_use": "prohibited",
+    "organization_permissions": {
+      "organization_administration": "read",
+      "organization_actions_variables": "read",
+      "organization_dependabot_secrets": "read",
+      "organization_hooks": "read",
+      "organization_secrets": "read",
+      "organization_self_hosted_runners": "read",
+      "members": "read"
+    },
+    "repository_permissions": {
+      "actions": "read",
+      "actions_variables": "read",
+      "administration": "read",
+      "contents": "read",
+      "dependabot_secrets": "read",
+      "environments": "read",
+      "metadata": "read",
+      "repository_hooks": "read",
+      "secrets": "read"
+    }
+  } and
   .automation_credentials.organization == {
     "actions_secrets": 0,
     "actions_variables": 0,
@@ -395,7 +433,7 @@ if ! jq -e '
     "recovery_material"
   ] and
   .private_attestation.schema_version ==
-    "mcp-doctor.github-organization-private-attestation/v1" and
+    "mcp-doctor.github-organization-private-attestation/v2" and
   (.private_attestation | keys) == [
     "maximum_age_days",
     "required_assertions",
@@ -413,6 +451,7 @@ if ! jq -e '
     "fine_grained_personal_access_token_approval_required",
     "fine_grained_personal_access_token_maximum_lifetime_days",
     "operator_credential_reviewed_for_current_verification",
+    "operator_credential_scope_and_permissions_match_verification_profile",
     "application_inventory_reviewed",
     "repository_credential_inventory_reviewed",
     "single_owner_residual_risk_accepted",
@@ -440,10 +479,10 @@ if ! jq -e '
     "maximum_connect_seconds": 10,
     "maximum_request_seconds": 30,
     "maximum_response_bytes": 4194304,
-    "maximum_organization_repositories": 32,
     "maximum_installations": 16,
+    "maximum_events_per_installation": 128,
     "maximum_repositories_per_installation": 32,
-    "maximum_direct_collaborators_per_repository": 99,
+    "maximum_single_file_paths_per_installation": 32,
     "maximum_environments_per_repository": 16
   } and
   .verification.public_output_fields == [
@@ -458,9 +497,11 @@ if ! jq -e '
     "github_app_installation_authority_setting",
     "app_access_request_setting",
     "application_need_and_owner_decision",
+    "exact_installed_application_repository_mapping",
     "oauth_app_access_restriction_setting",
     "personal_access_token_policy_settings",
     "operator_credential_need_and_lifetime",
+    "repository_codespaces_secret_inventory_requires_write_permission",
     "private_recovery_execution"
   ] and
   .mapped_controls == ["OSPS-AC-01.01", "OSPS-AC-02.01"]
@@ -531,6 +572,14 @@ organization_approved_application_inventory_sha="$(
   jq -er '.application_inventory.inventory_sha256' \
     "${organization_private_attestation}" 2>/dev/null
 )" || organization_report_failure
+organization_operator_issued_on="$(
+  jq -er '.operator_credential.issued_on' \
+    "${organization_private_attestation}" 2>/dev/null
+)" || organization_report_failure
+organization_operator_expires_on="$(
+  jq -er '.operator_credential.expires_on' \
+    "${organization_private_attestation}" 2>/dev/null
+)" || organization_report_failure
 organization_recovery_exercised_on="$(
   jq -er '.recovery.exercised_on' "${organization_private_attestation}" 2>/dev/null
 )" || organization_report_failure
@@ -544,6 +593,9 @@ if ! jq -e \
   --arg observed_on "${organization_attestation_observed_on}" \
   --arg recovery_on "${organization_latest_recovery}" \
   --arg inventory_sha "${organization_approved_application_inventory_sha}" \
+  --arg operator_issued_on "${organization_operator_issued_on}" \
+  --arg operator_expires_on "${organization_operator_expires_on}" \
+  --slurpfile canonical "${organization_canonical_path}" \
   --argjson installation_count "$(jq -er '.installed_applications.approved_installation_count' "${organization_canonical_path}")" \
   --argjson owner_count "$(jq -er '.access.exact_owner_count' "${organization_canonical_path}")" \
   --argjson token_days "$(jq -er '.automation_credentials.fine_grained_personal_access_tokens.maximum_lifetime_days' "${organization_canonical_path}")" '
@@ -552,18 +604,91 @@ if ! jq -e \
       "application_inventory",
       "assertions",
       "observed_on",
+      "operator_credential",
       "organization",
       "recovery",
+      "repository_credential_observations",
       "schema_version"
     ] and
     .organization == $organization and
     .observed_on == $observed_on and
     ($inventory_sha | test("^[0-9a-f]{64}$")) and
-    .application_inventory == {
-      "installation_count": $installation_count,
-      "inventory_sha256": $inventory_sha,
-      "reviewed": true
+    (.application_inventory | keys) == [
+      "installation_count",
+      "inventory",
+      "inventory_sha256",
+      "reviewed"
+    ] and
+    .application_inventory.installation_count == $installation_count and
+    .application_inventory.inventory_sha256 == $inventory_sha and
+    .application_inventory.reviewed == true and
+    (.application_inventory.inventory | type == "array" and
+      length == $installation_count) and
+    ([.application_inventory.inventory[].app_id] | unique | length) ==
+      $installation_count and
+    all(.application_inventory.inventory[];
+      keys == [
+        "app_id",
+        "app_slug",
+        "events",
+        "installation_updated_at",
+        "need",
+        "owner_decision",
+        "permissions",
+        "repositories",
+        "repository_selection",
+        "single_file_paths",
+        "suspended"
+      ] and
+      (.app_id | type == "number" and . > 0) and
+      (.app_slug | type == "string" and
+        test("^[A-Za-z0-9-]+$") and length <= 100) and
+      (.events | type == "array" and
+        length <= $canonical[0].verification.limits.maximum_events_per_installation) and
+      .events == (.events | sort | unique) and
+      all(.events[];
+        type == "string" and test("^[a-z0-9_]+$") and length <= 64) and
+      (.installation_updated_at | type == "string" and
+        test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$") and
+        length == 20) and
+      (.need | type == "string" and
+        test("^[a-z0-9_]+$") and length <= 100) and
+      .owner_decision == "retain" and
+      (.permissions | type == "object" and length > 0 and length <= 64) and
+      all(.permissions | to_entries[];
+        (.key | test("^[a-z0-9_]+$")) and (.key | length <= 64) and
+        (.value == "read" or .value == "write")) and
+      (.repositories | type == "array" and length > 0 and
+        length <= $canonical[0].verification.limits.maximum_repositories_per_installation) and
+      .repositories == (.repositories | sort | unique) and
+      all(.repositories[];
+        type == "string" and
+        test("^EnjoyableWork/[A-Za-z0-9_.-]+$") and length <= 113) and
+      .repository_selection == "selected" and
+      (.single_file_paths | type == "array" and
+        length <=
+          $canonical[0].verification.limits.maximum_single_file_paths_per_installation) and
+      .single_file_paths == (.single_file_paths | sort | unique) and
+      all(.single_file_paths[];
+        type == "string" and length > 0 and length <= 1024) and
+      .suspended == false
+    ) and
+    .operator_credential == {
+      "type": $canonical[0].automation_credentials.verification_operator_credential.type,
+      "resource_owner":
+        $canonical[0].automation_credentials.verification_operator_credential.resource_owner,
+      "issued_on": $operator_issued_on,
+      "expires_on": $operator_expires_on,
+      "repository_selection":
+        $canonical[0].automation_credentials.verification_operator_credential.repository_selection,
+      "repositories":
+        $canonical[0].automation_credentials.verification_operator_credential.repositories,
+      "permissions_match_verification_profile": true,
+      "automation_use": false
     } and
+    .repository_credential_observations ==
+      ($canonical[0].automation_credentials.repositories |
+        map({repository, codespaces_secrets})) and
     .assertions == {
       "secure_two_factor_methods_enforced": true,
       "billing_manager_count": 0,
@@ -575,6 +700,7 @@ if ! jq -e \
       "fine_grained_personal_access_token_approval_required": true,
       "fine_grained_personal_access_token_maximum_lifetime_days": $token_days,
       "operator_credential_reviewed_for_current_verification": true,
+      "operator_credential_scope_and_permissions_match_verification_profile": true,
       "application_inventory_reviewed": true,
       "repository_credential_inventory_reviewed": true,
       "single_owner_residual_risk_accepted": true,
@@ -600,6 +726,12 @@ organization_today_epoch="$(organization_date_epoch "${organization_verification
   organization_report_failure
 organization_observed_epoch="$(organization_date_epoch "${organization_attestation_observed_on}")" ||
   organization_report_failure
+organization_operator_issued_epoch="$(
+  organization_date_epoch "${organization_operator_issued_on}"
+)" || organization_report_failure
+organization_operator_expires_epoch="$(
+  organization_date_epoch "${organization_operator_expires_on}"
+)" || organization_report_failure
 organization_recovery_epoch="$(organization_date_epoch "${organization_recovery_exercised_on}")" ||
   organization_report_failure
 organization_reviewed_epoch="$(
@@ -614,9 +746,18 @@ organization_recovery_max_age="$((
 organization_review_max_age="$((
   $(jq -er '.installed_applications.review_interval_days' "${organization_canonical_path}") * 86400
 ))"
+organization_operator_lifetime_max="$((
+  $(jq -er '.automation_credentials.verification_operator_credential.maximum_lifetime_days' \
+    "${organization_canonical_path}") * 86400
+))"
 
 if ((organization_observed_epoch > organization_today_epoch)) ||
   ((organization_today_epoch - organization_observed_epoch > organization_attestation_max_age)) ||
+  ((organization_operator_issued_epoch > organization_observed_epoch)) ||
+  ((organization_operator_expires_epoch < organization_today_epoch)) ||
+  ((organization_operator_expires_epoch < organization_operator_issued_epoch)) ||
+  ((organization_operator_expires_epoch - organization_operator_issued_epoch >
+    organization_operator_lifetime_max)) ||
   ((organization_recovery_epoch > organization_today_epoch)) ||
   ((organization_today_epoch - organization_recovery_epoch > organization_recovery_max_age)) ||
   ((organization_reviewed_epoch > organization_today_epoch)) ||
@@ -625,6 +766,35 @@ if ((organization_observed_epoch > organization_today_epoch)) ||
 fi
 
 organization_projection="${organization_work_directory}/projection.json"
+organization_private_application_inventory="${organization_work_directory}/private-application-inventory.json"
+organization_private_application_observable="${organization_work_directory}/private-application-observable.json"
+if ! jq -S '.application_inventory.inventory | sort_by(.app_id)' \
+  "${organization_private_attestation}" \
+  >"${organization_private_application_inventory}" 2>/dev/null; then
+  organization_report_failure
+fi
+organization_private_application_inventory_sha="$(
+  organization_sha256_file "${organization_private_application_inventory}"
+)" || organization_report_failure
+if [[ "${organization_private_application_inventory_sha}" != \
+  "${organization_approved_application_inventory_sha}" ]]; then
+  organization_report_failure
+fi
+if ! jq -S '[.application_inventory.inventory[] |
+    {
+      app_id,
+      app_slug,
+      events,
+      installation_updated_at,
+      permissions,
+      repository_selection,
+      single_file_paths,
+      suspended
+    }] | sort_by(.app_id)' \
+  "${organization_private_attestation}" \
+  >"${organization_private_application_observable}" 2>/dev/null; then
+  organization_report_failure
+fi
 
 if [[ -n "${organization_fixture_path}" ]]; then
   if [[ "${MCP_DOCTOR_ORGANIZATION_FIXTURE:-}" != "1" ]] ||
@@ -699,20 +869,8 @@ else
   organization_api_response_max="$(
     jq -er '.verification.limits.maximum_response_bytes' "${organization_canonical_path}"
   )"
-  organization_repository_max="$(
-    jq -er '.verification.limits.maximum_organization_repositories' \
-      "${organization_canonical_path}"
-  )"
   organization_installation_max="$(
     jq -er '.verification.limits.maximum_installations' "${organization_canonical_path}"
-  )"
-  organization_installation_repository_max="$(
-    jq -er '.verification.limits.maximum_repositories_per_installation' \
-      "${organization_canonical_path}"
-  )"
-  organization_direct_collaborator_max="$(
-    jq -er '.verification.limits.maximum_direct_collaborators_per_repository' \
-      "${organization_canonical_path}"
   )"
   organization_environment_max="$(
     jq -er '.verification.limits.maximum_environments_per_repository' \
@@ -767,6 +925,7 @@ else
       --max-filesize "${organization_api_response_max}" \
       --config "${organization_token_config}" \
       --header 'Accept: application/vnd.github+json' \
+      --header 'Time-Zone: UTC' \
       --header "X-GitHub-Api-Version: ${organization_api_version}" \
       --header 'User-Agent: mcp-doctor-organization-control-verifier/0.1' \
       --url "https://api.github.com/${organization_endpoint}" \
@@ -807,8 +966,6 @@ else
     "${organization_work_directory}/invitations.json"
   organization_api_get "orgs/${organization_name}/installations?per_page=100" \
     "${organization_work_directory}/installations.json"
-  organization_api_get "orgs/${organization_name}/repos?type=all&per_page=100" \
-    "${organization_work_directory}/repositories.json"
   organization_api_get "orgs/${organization_name}/actions/secrets?per_page=100" \
     "${organization_work_directory}/organization-actions-secrets.json"
   organization_api_get "orgs/${organization_name}/actions/variables?per_page=100" \
@@ -827,85 +984,40 @@ else
   ' "${organization_work_directory}/installations.json" >/dev/null 2>&1; then
     organization_report_failure
   fi
-  if ! jq -e --argjson maximum "${organization_repository_max}" \
-    'type == "array" and length <= $maximum' \
-    "${organization_work_directory}/repositories.json" >/dev/null 2>&1; then
+  if ! jq -S '[.installations[] |
+      {
+        app_id,
+        app_slug,
+        events: (.events | sort | unique),
+        installation_updated_at: .updated_at,
+        permissions,
+        repository_selection,
+        single_file_paths: (
+          if (.single_file_paths | type) == "array" then
+            (.single_file_paths | sort | unique)
+          elif .single_file_name == null then
+            []
+          else
+            [.single_file_name]
+          end
+        ),
+        suspended: (.suspended_at != null)
+      }] | sort_by(.app_id)' \
+    "${organization_work_directory}/installations.json" \
+    >"${organization_work_directory}/application-inventory.json" 2>/dev/null; then
     organization_report_failure
   fi
 
-  organization_application_lines="${organization_work_directory}/application-lines.jsonl"
-  : >"${organization_application_lines}"
-  while IFS= read -r organization_installation; do
-    organization_installation_id="$(
-      jq -er '.id' <<<"${organization_installation}" 2>/dev/null
-    )" || organization_report_failure
-    if [[ ! "${organization_installation_id}" =~ ^[0-9]+$ ]]; then
-      organization_report_failure
-    fi
-    organization_installation_repositories="${organization_work_directory}/installation-${organization_installation_id}.json"
-    organization_api_get \
-      "user/installations/${organization_installation_id}/repositories?per_page=100" \
-      "${organization_installation_repositories}"
-    if ! jq -e --argjson maximum "${organization_installation_repository_max}" '
-      (.total_count | type == "number" and . >= 0 and . <= $maximum) and
-      (.repositories | type == "array") and
-      ((.repositories | length) == .total_count)
-    ' "${organization_installation_repositories}" >/dev/null 2>&1; then
-      organization_report_failure
-    fi
-    jq -nc \
-      --argjson installation "${organization_installation}" \
-      --slurpfile repositories "${organization_installation_repositories}" '
-        {
-          app_id: $installation.app_id,
-          app_slug: $installation.app_slug,
-          permissions: $installation.permissions,
-          repositories: ($repositories[0].repositories | map(.full_name) | sort),
-          repository_selection: $installation.repository_selection,
-          suspended: ($installation.suspended_at != null)
-        }
-      ' >>"${organization_application_lines}" 2>/dev/null
-  done < <(jq -c '.installations[]' "${organization_work_directory}/installations.json")
-  jq -s 'sort_by(.app_id)' "${organization_application_lines}" \
-    >"${organization_work_directory}/application-inventory.json" 2>/dev/null
-
-  organization_nonowner_admin_ids="${organization_work_directory}/nonowner-admin-ids.jsonl"
-  : >"${organization_nonowner_admin_ids}"
-  while IFS= read -r organization_repository_name; do
-    if [[ ! "${organization_repository_name}" =~ ^EnjoyableWork/[A-Za-z0-9_.-]+$ ]] ||
-      ((${#organization_repository_name} > 113)); then
-      organization_report_failure
-    fi
-    organization_repository_key="$(
-      printf '%s' "${organization_repository_name}" | organization_sha256_file /dev/stdin 2>/dev/null || true
-    )"
-    if [[ ! "${organization_repository_key}" =~ ^[0-9a-f]{64}$ ]]; then
-      organization_report_failure
-    fi
-    organization_collaborators="${organization_work_directory}/collaborators-${organization_repository_key}.json"
-    organization_api_get \
-      "repos/${organization_repository_name}/collaborators?affiliation=direct&per_page=100" \
-      "${organization_collaborators}"
-    if ! jq -e --argjson maximum "${organization_direct_collaborator_max}" \
-      'type == "array" and length <= $maximum and
-       all(.[];
-         (.id | type == "number") and
-         (.role_name | type == "string") and
-         (.permissions.admin | type == "boolean")
-       )' \
-      "${organization_collaborators}" >/dev/null 2>&1; then
-      organization_report_failure
-    fi
-    jq -r --slurpfile owners "${organization_work_directory}/owners.json" '
-      .[] | .id as $id |
-      select(.role_name == "admin" or .permissions.admin == true) |
-      select(([ $owners[0][].id ] | index($id)) == null) |
-      $id
-    ' "${organization_collaborators}" >>"${organization_nonowner_admin_ids}" 2>/dev/null
-  done < <(jq -r '.[].full_name' "${organization_work_directory}/repositories.json")
   organization_nonowner_admin_count="$(
-    sort -u "${organization_nonowner_admin_ids}" | sed '/^$/d' | wc -l | tr -d '[:space:]'
-  )"
+    jq -nr \
+      --slurpfile members "${organization_work_directory}/members.json" \
+      --slurpfile owners "${organization_work_directory}/owners.json" \
+      --slurpfile outside "${organization_work_directory}/outside.json" '
+        (([$members[0][].id, $outside[0][].id] | unique) -
+          ([$owners[0][].id] | unique)) |
+        length
+      '
+  )" || organization_report_failure
 
   organization_collect_repository_credentials() {
     local organization_repository_name="$1"
@@ -922,8 +1034,6 @@ else
       "${organization_prefix}-actions-secrets.json"
     organization_api_get "repos/${organization_repository_name}/actions/variables?per_page=100" \
       "${organization_prefix}-actions-variables.json"
-    organization_api_get "repos/${organization_repository_name}/codespaces/secrets?per_page=100" \
-      "${organization_prefix}-codespaces-secrets.json"
     organization_api_get "repos/${organization_repository_name}/dependabot/secrets?per_page=100" \
       "${organization_prefix}-dependabot-secrets.json"
     organization_api_get "repos/${organization_repository_name}/environments?per_page=100" \
@@ -965,7 +1075,6 @@ else
       --argjson environment_secrets "${organization_environment_secret_count}" \
       --slurpfile actions_secrets "${organization_prefix}-actions-secrets.json" \
       --slurpfile actions_variables "${organization_prefix}-actions-variables.json" \
-      --slurpfile codespaces_secrets "${organization_prefix}-codespaces-secrets.json" \
       --slurpfile dependabot_secrets "${organization_prefix}-dependabot-secrets.json" \
       --slurpfile deploy_keys "${organization_prefix}-keys.json" \
       --slurpfile webhooks "${organization_prefix}-hooks.json" '
@@ -973,7 +1082,6 @@ else
           repository: $repository,
           actions_secrets: $actions_secrets[0].total_count,
           actions_variables: $actions_variables[0].total_count,
-          codespaces_secrets: $codespaces_secrets[0].total_count,
           dependabot_secrets: $dependabot_secrets[0].total_count,
           environment_secrets: $environment_secrets,
           deploy_keys: ($deploy_keys[0] | length),
@@ -1016,6 +1124,7 @@ else
     --slurpfile organization_dependabot_secrets "${organization_work_directory}/organization-dependabot-secrets.json" \
     --slurpfile organization_hooks "${organization_work_directory}/organization-hooks.json" \
     --slurpfile organization_runners "${organization_work_directory}/organization-runners.json" \
+    --slurpfile private_attestation "${organization_private_attestation}" \
     --slurpfile repositories "${organization_work_directory}/repository-credentials.json" '
       {
         source_sha: $source_sha,
@@ -1065,29 +1174,46 @@ else
           webhooks: ($organization_hooks[0] | length),
           self_hosted_runners: $organization_runners[0].total_count
         },
-        repositories: $repositories[0],
+        repositories: ($repositories[0] | map(
+          . as $repository |
+          . + {
+            codespaces_secrets: (
+              $private_attestation[0].repository_credential_observations[] |
+              select(.repository == $repository.repository) |
+              .codespaces_secrets
+            )
+          }
+        )),
         operator_credential_type: $operator_credential_type
       }
     ' >"${organization_projection}" 2>/dev/null
 fi
 
+organization_normalized_projection="${organization_work_directory}/normalized-projection.json"
+if ! jq '
+  def organization_utc_seconds:
+    capture(
+      "^(?<seconds>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.[0-9]{1,9})?Z$"
+    ).seconds + "Z";
+  (.applications.inventory[].installation_updated_at) |= organization_utc_seconds
+' "${organization_projection}" >"${organization_normalized_projection}" 2>/dev/null; then
+  organization_report_failure
+fi
+mv -- "${organization_normalized_projection}" "${organization_projection}"
+
 if [[ ! "${organization_source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
   organization_report_failure
 fi
 
-organization_application_inventory="${organization_work_directory}/normalized-application-inventory.json"
+organization_application_inventory="${organization_work_directory}/normalized-live-application-inventory.json"
 if ! jq -S '.applications.inventory | sort_by(.app_id)' "${organization_projection}" \
   >"${organization_application_inventory}" 2>/dev/null; then
   organization_report_failure
 fi
-organization_application_inventory_sha="$(
-  organization_sha256_file "${organization_application_inventory}"
-)" || organization_report_failure
 
 if ! jq -e \
   --slurpfile canonical "${organization_canonical_path}" \
-  --arg inventory_sha "${organization_application_inventory_sha}" \
-  --arg approved_inventory_sha "${organization_approved_application_inventory_sha}" '
+  --slurpfile approved_applications "${organization_private_application_observable}" '
     (.source_sha | test("^[0-9a-f]{40}$")) and
     .organization.login == $canonical[0].organization and
     .organization.plan ==
@@ -1120,21 +1246,30 @@ if ! jq -e \
     (.applications.inventory | length) ==
       $canonical[0].installed_applications.approved_installation_count and
     all(.applications.inventory[];
+      keys == [
+        "app_id",
+        "app_slug",
+        "events",
+        "installation_updated_at",
+        "permissions",
+        "repository_selection",
+        "single_file_paths",
+        "suspended"
+      ] and
       .repository_selection == "selected" and
       .suspended == false and
       (.app_id | type == "number") and
       (.app_slug | type == "string" and length > 0) and
+      (.events | type == "array") and
+      (.installation_updated_at | type == "string") and
       (.permissions | type == "object") and
-      (.repositories | type == "array" and length > 0)
+      (.single_file_paths | type == "array")
     ) and
-    $inventory_sha == $approved_inventory_sha and
+    (.applications.inventory | sort_by(.app_id)) == $approved_applications[0] and
     .organization_credentials == $canonical[0].automation_credentials.organization and
     (.repositories | sort_by(.repository)) ==
       ($canonical[0].automation_credentials.repositories | sort_by(.repository)) and
-    (.operator_credential_type == "oauth_app_token" or
-     .operator_credential_type == "github_app_user_token" or
-     .operator_credential_type == "github_app_installation_token" or
-     .operator_credential_type == "fine_grained_personal_access_token")
+    .operator_credential_type == "fine_grained_personal_access_token"
   ' "${organization_projection}" >/dev/null 2>&1; then
   organization_report_failure
 fi

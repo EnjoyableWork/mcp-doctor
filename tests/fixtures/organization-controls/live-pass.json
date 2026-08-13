@@ -39,14 +39,17 @@
       {
         "app_id": 101,
         "app_slug": "sentinel-private-application",
+        "events": [
+          "issues",
+          "pull_request"
+        ],
+        "installation_updated_at": "2000-01-01T00:00:00.000Z",
         "permissions": {
           "contents": "read",
           "metadata": "read"
         },
-        "repositories": [
-          "EnjoyableWork/mcp-doctor"
-        ],
         "repository_selection": "selected",
+        "single_file_paths": [],
         "suspended": false
       }
     ]
@@ -82,5 +85,5 @@
       "webhooks": 0
     }
   ],
-  "operator_credential_type": "oauth_app_token"
+  "operator_credential_type": "fine_grained_personal_access_token"
 }
