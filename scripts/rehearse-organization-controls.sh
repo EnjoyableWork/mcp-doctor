@@ -13,6 +13,7 @@ rehearsal_live_source="${rehearsal_repository_root}/tests/fixtures/organization-
 rehearsal_private_source="${rehearsal_repository_root}/tests/fixtures/organization-controls/private-pass.json"
 rehearsal_sentinel="sentinel-private-application"
 rehearsal_reference_date="2030-01-01"
+rehearsal_operator_expiry="2030-01-30"
 
 for rehearsal_command in awk chmod cp grep jq mktemp rm sed tr wc; do
   if ! command -v "${rehearsal_command}" >/dev/null 2>&1; then
@@ -56,14 +57,17 @@ rehearsal_canonical="${rehearsal_work_directory}/canonical.json"
 rehearsal_inventory="${rehearsal_work_directory}/inventory.json"
 
 cp -- "${rehearsal_live_source}" "${rehearsal_live}"
-jq -S '.applications.inventory | sort_by(.app_id)' \
-  "${rehearsal_live}" >"${rehearsal_inventory}"
+jq -S '.application_inventory.inventory | sort_by(.app_id)' \
+  "${rehearsal_private_source}" >"${rehearsal_inventory}"
 rehearsal_inventory_sha="$(rehearsal_sha256_file "${rehearsal_inventory}")"
 jq \
   --arg date "${rehearsal_reference_date}" \
+  --arg expiry "${rehearsal_operator_expiry}" \
   --arg inventory_sha "${rehearsal_inventory_sha}" '
     .observed_on = $date |
     .application_inventory.inventory_sha256 = $inventory_sha |
+    .operator_credential.issued_on = $date |
+    .operator_credential.expires_on = $expiry |
     .recovery.exercised_on = $date
   ' "${rehearsal_private_source}" >"${rehearsal_private}"
 jq \
@@ -235,6 +239,45 @@ rehearsal_expect_failure 'application inventory drift' \
   "${rehearsal_canonical}" "${rehearsal_bad_app_identity}" \
   "${rehearsal_private}" 1111111111111111111111111111111111111111
 
+rehearsal_bad_app_events="$(
+  rehearsal_mutate_live bad-app-events \
+    '.applications.inventory[0].events += ["workflow_run"]'
+)"
+rehearsal_expect_failure 'application event subscription drift' \
+  "${rehearsal_canonical}" "${rehearsal_bad_app_events}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_non_utc_app_timestamp="$(
+  rehearsal_mutate_live non-utc-app-timestamp \
+    '.applications.inventory[0].installation_updated_at = "2000-01-01T00:00:00-05:00"'
+)"
+rehearsal_expect_failure 'a non-UTC installation timestamp' \
+  "${rehearsal_canonical}" "${rehearsal_non_utc_app_timestamp}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_bad_single_file_scope="$(
+  rehearsal_mutate_live bad-single-file-scope \
+    '.applications.inventory[0].single_file_paths = ["sentinel/private-path"]'
+)"
+rehearsal_expect_failure 'application single-file scope drift' \
+  "${rehearsal_canonical}" "${rehearsal_bad_single_file_scope}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_bad_private_app_scope="${rehearsal_work_directory}/bad-private-app-scope.json"
+jq '.application_inventory.inventory[0].repositories +=
+  ["EnjoyableWork/private-sentinel-repository"]' \
+  "${rehearsal_private}" >"${rehearsal_bad_private_app_scope}"
+rehearsal_expect_failure 'a privately attested application repository mapping drift' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_private_app_scope}" unresolved
+
+rehearsal_bad_owner_decision="${rehearsal_work_directory}/bad-owner-decision.json"
+jq '.application_inventory.inventory[0].owner_decision = "remove"' \
+  "${rehearsal_private}" >"${rehearsal_bad_owner_decision}"
+rehearsal_expect_failure 'an application without a retain decision' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_owner_decision}" unresolved
+
 rehearsal_bad_token="$(
   rehearsal_mutate_live bad-token \
     '.operator_credential_type = "classic_personal_access_token"'
@@ -242,6 +285,62 @@ rehearsal_bad_token="$(
 rehearsal_expect_failure 'a classic personal access token' \
   "${rehearsal_canonical}" "${rehearsal_bad_token}" "${rehearsal_private}" \
   1111111111111111111111111111111111111111
+
+rehearsal_oauth_token="$(
+  rehearsal_mutate_live oauth-token \
+    '.operator_credential_type = "oauth_app_token"'
+)"
+rehearsal_expect_failure \
+  'a user-wide OAuth token instead of the organization-scoped verifier credential' \
+  "${rehearsal_canonical}" "${rehearsal_oauth_token}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_app_user_token="$(
+  rehearsal_mutate_live app-user-token \
+    '.operator_credential_type = "github_app_user_token"'
+)"
+rehearsal_expect_failure \
+  'a GitHub App user token that cannot audit unrelated applications' \
+  "${rehearsal_canonical}" "${rehearsal_app_user_token}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_installation_token="$(
+  rehearsal_mutate_live installation-token \
+    '.operator_credential_type = "github_app_installation_token"'
+)"
+rehearsal_expect_failure \
+  'a GitHub App installation token instead of the owner verifier credential' \
+  "${rehearsal_canonical}" "${rehearsal_installation_token}" \
+  "${rehearsal_private}" 1111111111111111111111111111111111111111
+
+rehearsal_bad_operator_scope="${rehearsal_work_directory}/bad-operator-scope.json"
+jq '.operator_credential.resource_owner = "sentinel-unrelated-owner"' \
+  "${rehearsal_private}" >"${rehearsal_bad_operator_scope}"
+rehearsal_expect_failure 'an operator credential scoped outside EnjoyableWork' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_operator_scope}" unresolved
+
+rehearsal_bad_operator_repositories="${rehearsal_work_directory}/bad-operator-repositories.json"
+jq '.operator_credential.repositories +=
+  ["EnjoyableWork/sentinel-unrelated-repository"]' \
+  "${rehearsal_private}" >"${rehearsal_bad_operator_repositories}"
+rehearsal_expect_failure 'an operator credential scoped to an unrelated repository' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_operator_repositories}" unresolved
+
+rehearsal_bad_operator_lifetime="${rehearsal_work_directory}/bad-operator-lifetime.json"
+jq '.operator_credential.expires_on = "2030-02-01"' \
+  "${rehearsal_private}" >"${rehearsal_bad_operator_lifetime}"
+rehearsal_expect_failure 'an operator credential lifetime beyond 30 days' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_operator_lifetime}" unresolved
+
+rehearsal_bad_codespaces_inventory="${rehearsal_work_directory}/bad-codespaces-inventory.json"
+jq '.repository_credential_observations[0].codespaces_secrets = 1' \
+  "${rehearsal_private}" >"${rehearsal_bad_codespaces_inventory}"
+rehearsal_expect_failure 'an in-scope Codespaces secret' \
+  "${rehearsal_canonical}" "${rehearsal_live}" \
+  "${rehearsal_bad_codespaces_inventory}" unresolved
 
 rehearsal_bad_org_secret="$(
   rehearsal_mutate_live bad-org-secret '.organization_credentials.actions_secrets = 1'

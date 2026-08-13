@@ -1,8 +1,8 @@
 {
   "schema_version": "mcp-doctor.github-organization-controls/v2",
-  "lifecycle": "activation",
+  "lifecycle": "verified",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-12",
+  "reviewed_on": "2026-08-13",
   "organization": "EnjoyableWork",
   "scope": {
     "project_repository": "EnjoyableWork/mcp-doctor",
@@ -75,15 +75,21 @@
     "access_requests": "owner_review_required",
     "repository_selection": "selected_only",
     "all_repository_access_allowed": false,
-    "approved_installation_count": null,
+    "approved_installation_count": 3,
     "approved_inventory_location": "private_attestation",
     "approved_inventory_public": false,
+    "exact_repository_mapping_evidence": "fresh_private_owner_attestation",
     "inventory_fields": [
       "app_id",
       "app_slug",
+      "events",
+      "installation_updated_at",
+      "need",
+      "owner_decision",
       "permissions",
       "repositories",
       "repository_selection",
+      "single_file_paths",
       "suspended"
     ],
     "review_interval_days": 90,
@@ -105,9 +111,39 @@
       "automation_use": "prohibited"
     },
     "interactive_administration_credentials": [
-      "approved_oauth_app_token",
       "exceptional_fine_grained_personal_access_token"
     ],
+    "verification_operator_credential": {
+      "type": "fine_grained_personal_access_token",
+      "resource_owner": "EnjoyableWork",
+      "maximum_lifetime_days": 30,
+      "repository_selection": "exact",
+      "repositories": [
+        "EnjoyableWork/mcp-doctor",
+        "EnjoyableWork/homebrew-tap"
+      ],
+      "automation_use": "prohibited",
+      "organization_permissions": {
+        "organization_administration": "read",
+        "organization_actions_variables": "read",
+        "organization_dependabot_secrets": "read",
+        "organization_hooks": "read",
+        "organization_secrets": "read",
+        "organization_self_hosted_runners": "read",
+        "members": "read"
+      },
+      "repository_permissions": {
+        "actions": "read",
+        "actions_variables": "read",
+        "administration": "read",
+        "contents": "read",
+        "dependabot_secrets": "read",
+        "environments": "read",
+        "metadata": "read",
+        "repository_hooks": "read",
+        "secrets": "read"
+      }
+    },
     "organization": {
       "actions_secrets": 0,
       "actions_variables": 0,
@@ -158,7 +194,7 @@
     "cadence_months": 6,
     "maximum_age_days": 184,
     "after_owner_or_authentication_factor_change": true,
-    "latest_exercise_on": null,
+    "latest_exercise_on": "2026-08-13",
     "required_result": "PASS",
     "public_evidence_fields": [
       "date",
@@ -173,7 +209,7 @@
     ]
   },
   "private_attestation": {
-    "schema_version": "mcp-doctor.github-organization-private-attestation/v1",
+    "schema_version": "mcp-doctor.github-organization-private-attestation/v2",
     "maximum_age_days": 31,
     "required_assertions": [
       "secure_two_factor_methods_enforced",
@@ -186,6 +222,7 @@
       "fine_grained_personal_access_token_approval_required",
       "fine_grained_personal_access_token_maximum_lifetime_days",
       "operator_credential_reviewed_for_current_verification",
+      "operator_credential_scope_and_permissions_match_verification_profile",
       "application_inventory_reviewed",
       "repository_credential_inventory_reviewed",
       "single_owner_residual_risk_accepted",
@@ -206,10 +243,10 @@
       "maximum_connect_seconds": 10,
       "maximum_request_seconds": 30,
       "maximum_response_bytes": 4194304,
-      "maximum_organization_repositories": 32,
       "maximum_installations": 16,
+      "maximum_events_per_installation": 128,
       "maximum_repositories_per_installation": 32,
-      "maximum_direct_collaborators_per_repository": 99,
+      "maximum_single_file_paths_per_installation": 32,
       "maximum_environments_per_repository": 16
     },
     "public_output_fields": [
@@ -224,9 +261,11 @@
       "github_app_installation_authority_setting",
       "app_access_request_setting",
       "application_need_and_owner_decision",
+      "exact_installed_application_repository_mapping",
       "oauth_app_access_restriction_setting",
       "personal_access_token_policy_settings",
       "operator_credential_need_and_lifetime",
+      "repository_codespaces_secret_inventory_requires_write_permission",
       "private_recovery_execution"
     ]
   },
