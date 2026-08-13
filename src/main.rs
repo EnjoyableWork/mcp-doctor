@@ -1,3 +1,4 @@
+mod aggregate;
 mod break_command;
 mod check;
 mod contract;
@@ -6,10 +7,11 @@ mod inspect;
 mod report_artifacts;
 mod transport;
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::error::ErrorKind as ClapErrorKind;
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use transport::http::RemoteOptions;
 
@@ -31,6 +33,8 @@ enum Command {
     Break(BreakArgs),
     /// Compare two bounded contract snapshots without starting or contacting a target.
     Diff(DiffArgs),
+    /// Aggregate bounded stable reports without starting or contacting a target.
+    Aggregate(AggregateArgs),
 }
 
 #[derive(Debug, Args)]
@@ -81,6 +85,21 @@ struct DiffArgs {
     /// Later bounded local contract snapshot.
     #[arg(value_name = "AFTER")]
     after: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct AggregateArgs {
+    /// Write stable mcp-doctor.aggregate/v1 JSON to this explicit new file.
+    #[arg(long, value_name = "PATH")]
+    output: PathBuf,
+
+    /// Stdout projection; JSON is byte-identical to the required artifact.
+    #[arg(long, value_enum, default_value_t = AggregateOutputFormat::Human)]
+    format: AggregateOutputFormat,
+
+    /// Ordered stable mcp-doctor.report/v1 JSON files.
+    #[arg(value_name = "REPORT", required = true, num_args = 1..=32)]
+    reports: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -235,6 +254,12 @@ enum DiffOutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum AggregateOutputFormat {
+    Human,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 enum InspectProtocolVersion {
     #[value(name = "2026-07-28", alias = "current")]
     Current,
@@ -302,6 +327,15 @@ impl From<DiffOutputFormat> for contract::DiffFormat {
         match format {
             DiffOutputFormat::Human => Self::Human,
             DiffOutputFormat::Json => Self::Json,
+        }
+    }
+}
+
+impl From<AggregateOutputFormat> for aggregate::AggregateFormat {
+    fn from(format: AggregateOutputFormat) -> Self {
+        match format {
+            AggregateOutputFormat::Human => Self::Human,
+            AggregateOutputFormat::Json => Self::Json,
         }
     }
 }
@@ -375,9 +409,79 @@ fn emit_contract_diff(diff: contract::RenderedContractDiff) -> ExitCode {
     diff.exit
 }
 
+fn emit_aggregate(
+    result: Result<aggregate::RenderedAggregate, aggregate::AggregateError>,
+    destinations: report_artifacts::ReportArtifactDestinations,
+    deadline: &aggregate::AggregateDeadline,
+) -> ExitCode {
+    let rendered = match result {
+        Ok(rendered) => rendered,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return if let Err(cleanup) = destinations.cancel() {
+                eprintln!("error: {cleanup}");
+                ExitCode::from(4)
+            } else {
+                ExitCode::from(error.exit_code())
+            };
+        }
+    };
+    let exit = rendered.exit;
+    let artifact = contract::RenderedReportArtifact {
+        format: contract::ReportArtifactFormat::Json,
+        output: rendered.artifact,
+    };
+    match destinations.persist_checked(vec![artifact], || deadline.within_limit()) {
+        Ok(()) => {
+            print!("{}", rendered.stdout);
+            ExitCode::from(exit)
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            if error == report_artifacts::ReportArtifactError::OperationLimit {
+                ExitCode::from(2)
+            } else {
+                ExitCode::from(4)
+            }
+        }
+    }
+}
+
+fn parse_cli() -> Result<Cli, ExitCode> {
+    let aggregate_invocation =
+        std::env::args_os().nth(1).as_deref() == Some(OsStr::new("aggregate"));
+    if !aggregate_invocation {
+        return Ok(Cli::parse());
+    }
+
+    match Cli::try_parse() {
+        Ok(cli) => Ok(cli),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion
+            ) =>
+        {
+            if error.print().is_ok() {
+                Err(ExitCode::SUCCESS)
+            } else {
+                Err(ExitCode::from(4))
+            }
+        }
+        Err(_) => {
+            eprintln!("error: invalid aggregate invocation; use `mcp-doctor aggregate --help`");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    match Cli::parse().command {
+    let cli = match parse_cli() {
+        Ok(cli) => cli,
+        Err(exit) => return exit,
+    };
+    match cli.command {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
             let revision = arguments.protocol_version.into();
@@ -434,6 +538,25 @@ async fn main() -> ExitCode {
             &arguments.after,
             arguments.format.into(),
         )),
+        Some(Command::Aggregate(arguments)) => {
+            let deadline = aggregate::AggregateDeadline::start();
+            let destinations = match report_artifacts::ReportArtifactDestinations::prepare(
+                Some(arguments.output),
+                None,
+                &[],
+            ) {
+                Ok(destinations) => destinations,
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            emit_aggregate(
+                aggregate::run(&arguments.reports, arguments.format.into(), &deadline),
+                destinations,
+                &deadline,
+            )
+        }
         Some(Command::Check(arguments)) => {
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,

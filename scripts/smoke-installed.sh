@@ -33,6 +33,8 @@ smoke_json_artifact="${smoke_root}/report-artifact.json"
 smoke_junit_artifact="${smoke_root}/report-artifact.xml"
 smoke_snapshot="${smoke_root}/contract.json"
 smoke_diff="${smoke_root}/diff.json"
+smoke_aggregate="${smoke_root}/aggregate.json"
+smoke_aggregate_stdout="${smoke_root}/aggregate-stdout.json"
 smoke_stderr="${smoke_root}/stderr.txt"
 smoke_path=${PATH:?PATH must locate the fixture platform loader}
 
@@ -108,6 +110,32 @@ if ! cmp -s -- "${smoke_report}" "${smoke_json_artifact}"; then
   echo "installed diagnostic JSON artifact diverged from the stdout projection" >&2
   exit 1
 fi
+
+if ! run_mcp_doctor aggregate --format json \
+  --output "${smoke_aggregate}" "${smoke_json_artifact}" \
+  >"${smoke_aggregate_stdout}" 2>"${smoke_stderr}"; then
+  echo "installed offline diagnostic aggregate smoke failed" >&2
+  exit 1
+fi
+if [[ -s "${smoke_stderr}" ]]; then
+  echo "installed offline diagnostic aggregate smoke wrote unexpected stderr" >&2
+  exit 1
+fi
+if ! cmp -s -- "${smoke_aggregate}" "${smoke_aggregate_stdout}"; then
+  echo "installed diagnostic aggregate artifact diverged from JSON stdout" >&2
+  exit 1
+fi
+jq -e '
+  .schema_version == "mcp-doctor.aggregate/v1" and
+  .schema_stability == "stable" and
+  .outcome == "passed" and
+  .exit_code == 0 and
+  .summary == {members: 1, passed: 1, failed: 0, incomplete: 0} and
+  (.members | length) == 1 and
+  .members[0].ordinal == 0 and
+  .members[0].report.schema_version == "mcp-doctor.report/v1" and
+  .members[0].report.outcome == "passed"
+' "${smoke_aggregate}" >/dev/null
 if [[ ! -f "${smoke_junit_artifact}" || -L "${smoke_junit_artifact}" ]]; then
   echo "installed diagnostic did not create a regular JUnit artifact" >&2
   exit 1

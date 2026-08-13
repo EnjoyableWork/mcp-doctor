@@ -1,0 +1,20 @@
+mcp-doctor aggregate · mcp-doctor.aggregate/v1
+3 members · conservative fail > incomplete > pass
+
+MEMBER [0] · MCP 2026-07-28 · outcome passed · exit 0
+  PRIMARY DIAGNOSIS · none
+  protocol.revision · passed · required
+
+MEMBER [1] · MCP 2026-07-28 · outcome incomplete · exit 3
+  PRIMARY DIAGNOSIS · none
+  runtime.tools · skipped · input_required
+
+MEMBER [2] · MCP 2026-07-28 · outcome failed · exit 1
+  PRIMARY DIAGNOSIS · schema.contracts
+    MCP-LIMIT-001 · tools[3].inputSchema
+  protocol.revision · passed · required
+  schema.contracts · failed · required
+    MCP-LIMIT-001 · error · tools[3].inputSchema · fix: Reduce the reported data or work below the maximum, then rerun the same command.
+  runtime.tools · skipped · not_authorized
+
+1 failed · 1 incomplete · 1 passed · outcome failed · exit 1

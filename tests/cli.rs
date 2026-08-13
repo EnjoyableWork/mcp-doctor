@@ -22,6 +22,7 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("Usage: mcp-doctor"));
     assert!(stdout.contains("--version"));
     assert!(stdout.contains("diff"));
+    assert!(stdout.contains("aggregate"));
 }
 
 #[test]
@@ -108,6 +109,87 @@ fn diff_help_is_explicitly_local_and_has_only_human_or_json_output() {
             "diff help exposed {prohibited}"
         );
     }
+}
+
+#[test]
+fn aggregate_help_is_explicitly_offline_bounded_and_requires_an_artifact() {
+    let output = run_cli(&["aggregate", "--help"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(stdout.contains("without starting or contacting a target"));
+    assert!(stdout.contains("Usage: mcp-doctor aggregate [OPTIONS] --output <PATH> <REPORT>..."));
+    assert!(stdout.contains("--output <PATH>"));
+    assert!(stdout.contains("stable mcp-doctor.aggregate/v1"));
+    assert!(stdout.contains("Ordered stable mcp-doctor.report/v1 JSON files"));
+    assert!(stdout.contains("[possible values: human, json]"));
+    for prohibited in [
+        "--endpoint",
+        "--allow-private-network",
+        "--allow-credentials-to",
+        "--allow-tool",
+        "--tls-ca-file",
+        "--json-report",
+        "--junit-report",
+        "--scenario",
+        "--target",
+    ] {
+        assert!(
+            !stdout.contains(prohibited),
+            "aggregate help exposed {prohibited}"
+        );
+    }
+}
+
+#[test]
+fn aggregate_parse_failures_do_not_echo_paths_or_untrusted_values() {
+    const PRIVATE: &str = "synthetic-private-aggregate-cli-value";
+
+    let format_environment = TestEnvironment::new();
+    let output_path = format_environment.artifact_path("aggregate.json");
+    let input_path = format_environment.artifact_path(PRIVATE);
+    let format = format_environment
+        .command()
+        .arg("aggregate")
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--format")
+        .arg(PRIVATE)
+        .arg(&input_path)
+        .output()
+        .expect("the rejected aggregate format should return");
+    assert_eq!(format.status.code(), Some(2));
+    assert!(format.stdout.is_empty());
+    let stderr = String::from_utf8(format.stderr).unwrap();
+    assert_eq!(
+        stderr,
+        "error: invalid aggregate invocation; use `mcp-doctor aggregate --help`\n"
+    );
+    assert!(!stderr.contains(PRIVATE));
+    assert!(!stderr.contains(&output_path.to_string_lossy().to_string()));
+    assert!(!output_path.exists());
+
+    let count_environment = TestEnvironment::new();
+    let output_path = count_environment.artifact_path("aggregate.json");
+    let mut command = count_environment.command();
+    command.arg("aggregate").arg("--output").arg(&output_path);
+    for index in 0..33 {
+        command.arg(format!("{PRIVATE}-{index}.json"));
+    }
+    let count = command
+        .output()
+        .expect("the rejected aggregate input count should return");
+    assert_eq!(count.status.code(), Some(2));
+    assert!(count.stdout.is_empty());
+    let stderr = String::from_utf8(count.stderr).unwrap();
+    assert_eq!(
+        stderr,
+        "error: invalid aggregate invocation; use `mcp-doctor aggregate --help`\n"
+    );
+    assert!(!stderr.contains(PRIVATE));
+    assert!(!stderr.contains(&output_path.to_string_lossy().to_string()));
+    assert!(!output_path.exists());
 }
 
 #[test]

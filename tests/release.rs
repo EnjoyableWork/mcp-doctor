@@ -632,6 +632,59 @@ fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_
 }
 
 #[test]
+fn project_and_readme_define_conservative_offline_report_aggregation() {
+    let project = repository_file("PROJECT.md");
+    let readme = repository_file("README.md");
+    let posix_smoke = repository_file("scripts/smoke-installed.sh");
+    let powershell_smoke = repository_file("scripts/smoke-installed.ps1");
+
+    for contract in [
+        "### MCPD-022 accepted offline aggregate plan",
+        "identifies a real report-sufficiency gap",
+        "strengthens\nthe north star",
+        "mcp-doctor aggregate --output PATH [--format human|json] REPORT...",
+        "zero-based input ordinal",
+        "Aggregate outcome is `failed` with exit `1`",
+        "16 MiB total",
+        "total JSON nodes and validation work to 1,000,000",
+        "Perform no process launch, network access, DNS, credential resolution",
+        "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity",
+        "| DEC-047 | Resolve issue #45 with normalized conservative offline aggregation of stable reports",
+        "| RISK-23 | An offline aggregate turns incomplete or failed evidence into a pass",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain the MCPD-022 contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "**`aggregate`**",
+        "mcp-doctor.aggregate/v1",
+        "Members are identified only by zero-based input ordinal",
+        "There is no waiver, score, baseline",
+        "never starts a process, opens a connection",
+        "resolves DNS or\ncredentials",
+        "must not retrieve either\nat runtime",
+    ] {
+        assert!(
+            readme.contains(contract),
+            "README.md should describe offline aggregation: {contract}"
+        );
+    }
+    for (name, smoke) in [("POSIX", posix_smoke), ("PowerShell", powershell_smoke)] {
+        assert!(
+            smoke.contains("aggregate"),
+            "{name} smoke omitted aggregate"
+        );
+        assert!(
+            smoke.contains("mcp-doctor.aggregate/v1"),
+            "{name} smoke omitted the aggregate schema contract"
+        );
+    }
+}
+
+#[test]
 fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
