@@ -134,7 +134,6 @@
     "verified_allowed": false,
     "patterns_allowed": [
       "Homebrew/actions/*@*",
-      "anchore/sbom-action@*",
       "rust-lang/crates-io-auth-action@*"
     ],
     "default_workflow_permissions": "read",
@@ -252,22 +251,6 @@
     },
     {
       "selection": "direct",
-      "uses": "anchore/sbom-action",
-      "repository": "anchore/sbom-action",
-      "tag": "v0.24.0",
-      "sha": "e22c389904149dbc22b58101806040fa8d37a610",
-      "runtime": "node24",
-      "license": "Apache-2.0",
-      "license_files": [
-        {
-          "path": "LICENSE",
-          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
-        }
-      ],
-      "role": "Run exact Syft v1.50.0 locally without snapshots or implicit uploads"
-    },
-    {
-      "selection": "direct",
       "uses": "actions/attest-build-provenance",
       "repository": "actions/attest-build-provenance",
       "tag": "v4.2.2",
@@ -327,12 +310,54 @@
       "repository": "EmbarkStudios/cargo-deny",
       "tag": "0.20.2",
       "tag_object": "87da103c554376c89a641116f835a41073a9d774",
+      "tag_verified": false,
       "source_commit": "bca0dde53651ee946720e4540b5ce2610bec8f06",
-      "target": "x86_64-unknown-linux-musl",
-      "archive": "cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz",
-      "sha256": "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f",
+      "source_commit_verified": false,
       "release_immutable": false,
+      "latest_release_required": false,
+      "assets": [
+        {
+          "target": "x86_64-unknown-linux-musl",
+          "archive": "cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz",
+          "bytes": 4936832,
+          "sha256": "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f"
+        }
+      ],
       "control": "The installer accepts only this HTTPS release path, exact archive layout, and reviewed digest before execution"
+    },
+    {
+      "name": "syft",
+      "version": "1.51.0",
+      "repository": "anchore/syft",
+      "tag": "v1.51.0",
+      "tag_object": "57260929138ad516dd4999a5cc43b4a295d2461f",
+      "tag_verified": false,
+      "source_commit": "2293641e3bd628a01bb37639318d62c0ebe89b39",
+      "source_commit_verified": true,
+      "release_immutable": true,
+      "latest_release_required": true,
+      "license": "Apache-2.0",
+      "license_files": [
+        {
+          "path": "LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ],
+      "assets": [
+        {
+          "target": "x86_64-unknown-linux-gnu",
+          "archive": "syft_1.51.0_linux_amd64.tar.gz",
+          "bytes": 28743977,
+          "sha256": "2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f"
+        },
+        {
+          "target": "aarch64-unknown-linux-gnu",
+          "archive": "syft_1.51.0_linux_arm64.tar.gz",
+          "bytes": 26261269,
+          "sha256": "6c0466811541ea03add5213a60a1562f0851e4c0b0ecfdee1a694a9455285900"
+        }
+      ],
+      "control": "The Linux-only installer accepts exact immutable release assets, verifies reviewed size, SHA-256, four-entry layout, version, and platform, and retries only an explicit bounded set of transient acquisition failures"
     }
   ],
   "source_artifact_policy": {
@@ -369,6 +394,8 @@
   "limitations": [
     "A reviewed full commit SHA makes Action changes visible but does not prove upstream code benign or independently reproduce generated JavaScript bundles.",
     "The closed full-SHA Action inventory covers every checked-in uses selection. GitHub-managed Dependabot and CodeQL dynamic workflows remain separately inventoried provider services whose internal Action refs are not selected or pinned by this repository.",
+    "At most three Syft acquisition attempts improve availability for the same immutable digest-pinned bytes; they do not retry or supply acceptance evidence for a build, test, SBOM generation, validation, publication, job, or workflow.",
+    "Syft's prebuilt 276-package Go release graph is not independently rebuilt or audited by this repository; execution is limited to a repository-generated archive in a disposable process with ambient state removed and known network-backed and host-cache catalogers disabled, and Anchore's latest-only support policy makes every release or advisory a renewed-review trigger.",
     "A successful dependency proposal is review input, never evidence that the proposed source is safe or authority to merge it.",
     "The authenticated distribution result covers only immutable v0.2.0 bytes and does not change, republish, or make a channel-wide claim about future releases.",
     "MCPD-016 does not complete the OSPS baseline, SLSA evaluation, organization-access review, independent certification, regulatory compliance, or a warranty."

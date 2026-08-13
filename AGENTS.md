@@ -244,6 +244,14 @@ logs, and tool results as untrusted.
   revision at first use, record the version with its evidence, and run invasive
   tools in disposable or copied trees. Select versions when the owning ticket
   starts rather than freezing speculative choices in advance.
+- An exact immutable, size- and digest-pinned CI artifact may be acquired at
+  most three times when a bounded attempt fails with an explicitly classified
+  transient transport error or `408`, `429`, `500`, `502`, `503`, or `504`.
+  Delete partial bytes between attempts and apply the same final integrity
+  checks regardless of which attempt succeeds. Never retry TLS or trust
+  failures, permanent responses, checksum or layout mismatches, tool execution,
+  builds, tests, SBOM generation, validation, publication, jobs, or workflows;
+  an eventual acquisition is availability evidence, not correctness evidence.
 - Conditional tools default to rejection. Under `DEC-025`, the owning ticket may
   adopt one without separate owner approval only after recording a concrete
   measured need, the complete review above, its focused use, and pull-request

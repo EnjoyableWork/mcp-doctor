@@ -204,7 +204,7 @@ fn project_records_open_10_and_open_11_without_claiming_live_completion() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-016` is Done and `MCPD-017` is In progress",
+        "`MCPD-016A` is In progress and `MCPD-017` is temporarily Blocked on it",
         "### Accepted organization access, credential, continuity, and recovery contract",
         "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
         "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",
@@ -214,9 +214,9 @@ fn project_records_open_10_and_open_11_without_claiming_live_completion() {
         "There are no unresolved open decisions.",
         "The owner then explicitly authorized the staged live activation.",
         "The remaining outside-collaborator invitation field is the GitHub",
-        "`MCPD-017` remains In progress",
+        "`MCPD-017` remains temporarily\nBlocked on `MCPD-016A`",
         "| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency",
-        "remaining activation is in progress",
+        "remaining activation is temporarily blocked on `MCPD-016A`",
     ] {
         assert!(
             project.contains(contract),

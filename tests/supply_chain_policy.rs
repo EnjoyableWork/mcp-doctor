@@ -35,7 +35,7 @@ fn every_selected_action_is_closed_inventoried_and_commit_pinned() {
     let actions = controls["actions"]
         .as_array()
         .expect("actions should be an array");
-    assert_eq!(actions.len(), 8);
+    assert_eq!(actions.len(), 7);
 
     let mut direct = BTreeMap::new();
     let mut nested = BTreeMap::new();
@@ -87,6 +87,10 @@ fn every_selected_action_is_closed_inventoried_and_commit_pinned() {
         assert!(
             !workflow.contains("EmbarkStudios/cargo-deny-action@"),
             "the checksum-free cargo-deny Action must not return"
+        );
+        assert!(
+            !workflow.contains("anchore/sbom-action@"),
+            "the indirectly acquired Syft Action must not return"
         );
         for raw_line in workflow.lines() {
             let line = raw_line.trim_start();
@@ -237,11 +241,7 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
     }
 
     let preflight = repository_file(".github/workflows/release-preflight.yml");
-    for explicit_empty_credential in [
-        "github-token: \"\"",
-        "token: \"\"",
-        "brew-gh-api-token: \"\"",
-    ] {
+    for explicit_empty_credential in ["token: \"\"", "brew-gh-api-token: \"\""] {
         assert!(
             preflight.contains(explicit_empty_credential),
             "release preflight should preserve {explicit_empty_credential}"
@@ -403,7 +403,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate"
     );
 
-    let installer = repository_file("scripts/install-cargo-deny.sh");
+    let deny_installer = repository_file("scripts/install-cargo-deny.sh");
     for contract in [
         "deny_version=0.20.2",
         "x86_64-unknown-linux-musl",
@@ -416,16 +416,137 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         "cargo-deny $deny_version",
     ] {
         assert!(
-            installer.contains(contract),
-            "installer should preserve {contract}"
+            deny_installer.contains(contract),
+            "cargo-deny installer should preserve {contract}"
         );
     }
     for forbidden in ["cargo install", "curl |", "set -x", "http://"] {
         assert!(
-            !installer.contains(forbidden),
-            "installer must not contain {forbidden}"
+            !deny_installer.contains(forbidden),
+            "cargo-deny installer must not contain {forbidden}"
         );
     }
+
+    let syft_installer = repository_file("scripts/install-syft.sh");
+    for contract in [
+        "syft_max_attempts=3",
+        "syft_attempt_max_seconds=20",
+        "syft_retry_delay_seconds=1",
+        "($tools[0] as $tool |",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "408 | 429 | 500 | 502 | 503 | 504",
+        "6 | 7 | 18 | 28 | 52 | 55 | 56 | 92",
+        "--proto '=https'",
+        "--proto-redir '=https'",
+        "--proxy ''",
+        "-u SSL_CERT_DIR -u SSL_CERT_FILE -u SSLKEYLOGFILE",
+        "--retry 0",
+        "--max-filesize \"$syft_bytes\"",
+        "000 | 200 | 408 | 429 | 500 | 502 | 503 | 504",
+        "env -u GZIP -u TAR_OPTIONS",
+        "COPYFILE_DISABLE=1",
+        "Syft archive digest does not match the reviewed value",
+        "Syft archive layout is not the reviewed layout",
+        "installed Syft did not report the reviewed version and platform",
+    ] {
+        assert!(
+            syft_installer.contains(contract),
+            "Syft installer should preserve {contract}"
+        );
+    }
+    for forbidden in [
+        "anchore/sbom-action",
+        "raw.githubusercontent.com",
+        "--retry-all-errors",
+        "curl |",
+        "set -x",
+        "http://",
+    ] {
+        assert!(
+            !syft_installer.contains(forbidden),
+            "Syft installer must not contain {forbidden}"
+        );
+    }
+
+    let generator = repository_file("scripts/generate-release-sbom.sh");
+    for contract in [
+        "install-syft.sh",
+        "SYFT_CHECK_FOR_APP_UPDATE=false",
+        "GOMAXPROCS=\"$sbom_generation_max_processors\"",
+        "sbom_input_max_bytes=50000000",
+        "sbom_output_max_bytes=10000000",
+        "sbom_generation_max_seconds=120",
+        "vcpkg-allow-git-clone: false",
+        "search-local-mod-cache-licenses: false",
+        "search-remote-licenses: false",
+        "use-maven-local-repository: false",
+        "use-network: false",
+        "scan \"file:$sbom_input\"",
+        "--output spdx-json",
+        "sbom_config=\"$sbom_temp_root/syft.yaml\"",
+        "--config \"$sbom_config\"",
+        "2>\"$sbom_temporary_stderr\"",
+    ] {
+        assert!(
+            generator.contains(contract),
+            "SBOM generator should preserve {contract}"
+        );
+    }
+
+    let syft = controls["standalone_tools"]
+        .as_array()
+        .expect("standalone tools should be an array")
+        .iter()
+        .find(|tool| tool["name"] == "syft")
+        .expect("Syft should be a standalone tool");
+    assert_eq!(syft["version"], "1.51.0");
+    assert_eq!(syft["repository"], "anchore/syft");
+    assert_eq!(
+        syft["tag_object"],
+        "57260929138ad516dd4999a5cc43b4a295d2461f"
+    );
+    assert_eq!(syft["tag_verified"], false);
+    assert_eq!(
+        syft["source_commit"],
+        "2293641e3bd628a01bb37639318d62c0ebe89b39"
+    );
+    assert_eq!(syft["source_commit_verified"], true);
+    assert_eq!(syft["release_immutable"], true);
+    assert_eq!(syft["latest_release_required"], true);
+    assert_eq!(
+        syft["assets"]
+            .as_array()
+            .expect("Syft assets should be an array")
+            .iter()
+            .map(|asset| (
+                asset["target"].as_str().expect("target should be a string"),
+                asset["bytes"].as_u64().expect("bytes should be an integer"),
+                asset["sha256"].as_str().expect("digest should be a string"),
+            ))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            (
+                "aarch64-unknown-linux-gnu",
+                26_261_269,
+                "6c0466811541ea03add5213a60a1562f0851e4c0b0ecfdee1a694a9455285900",
+            ),
+            (
+                "x86_64-unknown-linux-gnu",
+                28_743_977,
+                "2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f",
+            ),
+        ])
+    );
+    assert!(
+        controls["limitations"]
+            .as_array()
+            .expect("limitations should be an array")
+            .iter()
+            .any(|limitation| limitation
+                .as_str()
+                .is_some_and(|value| value.contains("prebuilt 276-package Go release graph")))
+    );
 
     let verifier = repository_file("scripts/verify-supply-chain-controls.sh");
     for contract in [
@@ -446,6 +567,9 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         ".distribution_authentication.cargo_package",
         "homebrew_source",
         "homebrew_formula_sha256",
+        ".standalone_tools[]",
+        ".immutable == $immutable",
+        "releases/latest",
         "result=PASS",
     ] {
         assert!(
@@ -462,15 +586,38 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "Syft acquisition rehearsal executes through Bash with POSIX fixtures"
+)]
+fn syft_acquisition_and_generation_fail_closed_offline() {
+    let output = Command::new("bash")
+        .arg("scripts/rehearse-syft-acquisition.sh")
+        .current_dir(repository_root())
+        .output()
+        .expect("Syft acquisition rehearsal should execute");
+    assert!(
+        output.status.success(),
+        "Syft acquisition rehearsal failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Syft acquisition and SBOM generation rehearsals passed offline.")
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("Syft rehearsal case failed:"));
+}
+
+#[test]
 fn project_records_mcpd_016_completion() {
     let project = repository_file("PROJECT.md");
     for contract in [
-        "`MCPD-016` is Done and `MCPD-017` is In progress",
+        "`MCPD-016A` is In progress and `MCPD-017` is temporarily Blocked on it",
         "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
         "`DEC-040` fixes the `MCPD-016` boundary.",
         ".github/supply-chain-controls.json",
         "Dependabot opens separate grouped weekly version and security proposals",
-        "The canonical inventory closes that direct set at seven",
+        "The canonical inventory therefore closes the direct set at six",
         "Only `CI` and `Release preflight` execute a pull request's code.",
         "The former full-SHA `cargo-deny-action` still fetched a mutable release executable",
         "There are no binary exceptions.",
@@ -502,8 +649,20 @@ fn project_records_mcpd_016_completion() {
         "closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)",
         "evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39)",
         "corrected a\n  transposed recorded identifier before the final claim",
-        "`MCPD-017` is now In progress under the activation-only",
+        "`MCPD-017` entered active delivery under the activation-only",
         "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
+        "### MCPD-016A Syft acquisition correction",
+        "31641032348",
+        "GHSA-hc8v-wwc9-vgxm",
+        "GHSA-qgq7-7hm3-q39j",
+        "57260929138ad516dd4999a5cc43b4a295d2461f",
+        "2293641e3bd628a01bb37639318d62c0ebe89b39",
+        "2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f",
+        "6c0466811541ea03add5213a60a1562f0851e4c0b0ecfdee1a694a9455285900",
+        "prebuilt tool retains a materially broader",
+        "kernel-level network isolation",
+        "`MCPD-016A` remains In progress",
+        "| DEC-043 | Replace indirect mutable Syft acquisition with exact immutable assets and transient-only bounded retries | Accepted |",
     ] {
         assert!(
             project.contains(contract),
