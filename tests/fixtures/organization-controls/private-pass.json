@@ -1,12 +1,58 @@
 {
-  "schema_version": "mcp-doctor.github-organization-private-attestation/v1",
+  "schema_version": "mcp-doctor.github-organization-private-attestation/v2",
   "organization": "EnjoyableWork",
   "observed_on": "2000-01-01",
   "application_inventory": {
     "installation_count": 1,
     "inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "reviewed": true
+    "reviewed": true,
+    "inventory": [
+      {
+        "app_id": 101,
+        "app_slug": "sentinel-private-application",
+        "events": [
+          "issues",
+          "pull_request"
+        ],
+        "installation_updated_at": "2000-01-01T00:00:00Z",
+        "need": "synthetic_current_workflow",
+        "owner_decision": "retain",
+        "permissions": {
+          "contents": "read",
+          "metadata": "read"
+        },
+        "repositories": [
+          "EnjoyableWork/mcp-doctor"
+        ],
+        "repository_selection": "selected",
+        "single_file_paths": [],
+        "suspended": false
+      }
+    ]
   },
+  "operator_credential": {
+    "type": "fine_grained_personal_access_token",
+    "resource_owner": "EnjoyableWork",
+    "issued_on": "2000-01-01",
+    "expires_on": "2000-01-30",
+    "repository_selection": "exact",
+    "repositories": [
+      "EnjoyableWork/mcp-doctor",
+      "EnjoyableWork/homebrew-tap"
+    ],
+    "permissions_match_verification_profile": true,
+    "automation_use": false
+  },
+  "repository_credential_observations": [
+    {
+      "repository": "EnjoyableWork/mcp-doctor",
+      "codespaces_secrets": 0
+    },
+    {
+      "repository": "EnjoyableWork/homebrew-tap",
+      "codespaces_secrets": 0
+    }
+  ],
   "assertions": {
     "secure_two_factor_methods_enforced": true,
     "billing_manager_count": 0,
@@ -18,6 +64,7 @@
     "fine_grained_personal_access_token_approval_required": true,
     "fine_grained_personal_access_token_maximum_lifetime_days": 30,
     "operator_credential_reviewed_for_current_verification": true,
+    "operator_credential_scope_and_permissions_match_verification_profile": true,
     "application_inventory_reviewed": true,
     "repository_credential_inventory_reviewed": true,
     "single_owner_residual_risk_accepted": true,
