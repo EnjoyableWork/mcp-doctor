@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Write as _};
+#[cfg(windows)]
+use std::fs::OpenOptions;
 use std::fs::{self, File};
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
@@ -157,9 +159,11 @@ struct OpenedInput {
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 enum FileIdentity {
-    #[cfg(any(unix, windows))]
-    Native(u64, u64),
-    #[cfg(not(unix))]
+    #[cfg(unix)]
+    Unix { device: u64, inode: u64 },
+    #[cfg(windows)]
+    Windows { volume: u64, file_id: [u8; 16] },
+    #[cfg(not(any(unix, windows)))]
     Canonical(PathBuf),
 }
 
@@ -355,14 +359,34 @@ fn open_inputs(paths: &[PathBuf], clock: &dyn Clock) -> Result<Vec<OpenedInput>,
                 ordinal,
             ));
         }
-        if metadata.len() > MAXIMUM_INPUT_BYTES {
+        let canonical = fs::canonicalize(path)
+            .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
+        let file = open_input_file(path)
+            .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
+        let opened_metadata = file
+            .metadata()
+            .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
+        if opened_metadata.file_type().is_symlink() || !opened_metadata.is_file() {
+            return Err(AggregateError::input(
+                AggregateErrorKind::InputNotRegular,
+                ordinal,
+            ));
+        }
+        #[cfg(unix)]
+        if unix_file_identity(&metadata) != unix_file_identity(&opened_metadata) {
+            return Err(AggregateError::input(
+                AggregateErrorKind::InputNotRegular,
+                ordinal,
+            ));
+        }
+        if opened_metadata.len() > MAXIMUM_INPUT_BYTES {
             return Err(AggregateError::input(
                 AggregateErrorKind::InputLimit,
                 ordinal,
             ));
         }
         declared_total = declared_total
-            .checked_add(metadata.len())
+            .checked_add(opened_metadata.len())
             .ok_or_else(|| AggregateError::input(AggregateErrorKind::InputLimit, ordinal))?;
         if declared_total > MAXIMUM_TOTAL_INPUT_BYTES {
             return Err(AggregateError::input(
@@ -371,22 +395,8 @@ fn open_inputs(paths: &[PathBuf], clock: &dyn Clock) -> Result<Vec<OpenedInput>,
             ));
         }
 
-        let canonical = fs::canonicalize(path)
+        let identity = file_identity(&file, &opened_metadata, &canonical)
             .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
-        let file = File::open(path)
-            .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
-        let opened_metadata = file
-            .metadata()
-            .map_err(|_| AggregateError::input(AggregateErrorKind::InputUnavailable, ordinal))?;
-        if !opened_metadata.is_file()
-            || file_identity(&metadata, &canonical) != file_identity(&opened_metadata, &canonical)
-        {
-            return Err(AggregateError::input(
-                AggregateErrorKind::InputNotRegular,
-                ordinal,
-            ));
-        }
-        let identity = file_identity(&opened_metadata, &canonical);
         let canonical_key = canonical_path_key(&canonical);
         if !identities.insert(identity) || !canonical_paths.insert(canonical_key) {
             return Err(AggregateError::input(
@@ -400,23 +410,126 @@ fn open_inputs(paths: &[PathBuf], clock: &dyn Clock) -> Result<Vec<OpenedInput>,
 }
 
 #[cfg(unix)]
-fn file_identity(metadata: &fs::Metadata, _canonical: &Path) -> FileIdentity {
-    use std::os::unix::fs::MetadataExt as _;
-    FileIdentity::Native(metadata.dev(), metadata.ino())
+fn open_input_file(path: &Path) -> io::Result<File> {
+    File::open(path)
 }
 
 #[cfg(windows)]
-fn file_identity(metadata: &fs::Metadata, canonical: &Path) -> FileIdentity {
-    use std::os::windows::fs::MetadataExt as _;
-    match (metadata.volume_serial_number(), metadata.file_index()) {
-        (Some(volume), Some(index)) => FileIdentity::Native(u64::from(volume), index),
-        _ => FileIdentity::Canonical(canonical_path_key(canonical)),
-    }
+fn open_input_file(path: &Path) -> io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    // Keep the opened handle bound to the path entry itself. A reparse point
+    // introduced between lstat and open is therefore observed and rejected
+    // instead of being followed to an undeclared input.
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
 }
 
 #[cfg(not(any(unix, windows)))]
-fn file_identity(_metadata: &fs::Metadata, canonical: &Path) -> FileIdentity {
-    FileIdentity::Canonical(canonical_path_key(canonical))
+fn open_input_file(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(unix)]
+fn unix_file_identity(metadata: &fs::Metadata) -> FileIdentity {
+    use std::os::unix::fs::MetadataExt as _;
+    FileIdentity::Unix {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    }
+}
+
+#[cfg(unix)]
+fn file_identity(
+    _file: &File,
+    metadata: &fs::Metadata,
+    _canonical: &Path,
+) -> io::Result<FileIdentity> {
+    Ok(unix_file_identity(metadata))
+}
+
+#[cfg(windows)]
+fn file_identity(
+    file: &File,
+    _metadata: &fs::Metadata,
+    _canonical: &Path,
+) -> io::Result<FileIdentity> {
+    let (volume, file_id) = windows_file_identity::query(file)?;
+    Ok(FileIdentity::Windows { volume, file_id })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn file_identity(
+    _file: &File,
+    _metadata: &fs::Metadata,
+    canonical: &Path,
+) -> io::Result<FileIdentity> {
+    Ok(FileIdentity::Canonical(canonical_path_key(canonical)))
+}
+
+#[cfg(windows)]
+mod windows_file_identity {
+    use std::ffi::c_void;
+    use std::fs::File;
+    use std::io;
+    use std::mem::{MaybeUninit, size_of};
+    use std::os::windows::io::AsRawHandle as _;
+
+    const FILE_ID_INFO_CLASS: i32 = 18;
+
+    #[repr(C)]
+    struct FileId128 {
+        identifier: [u8; 16],
+    }
+
+    #[repr(C)]
+    struct FileIdInfo {
+        volume_serial_number: u64,
+        file_id: FileId128,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandleEx(
+            file: *mut c_void,
+            information_class: i32,
+            information: *mut c_void,
+            information_bytes: u32,
+        ) -> i32;
+    }
+
+    pub(super) fn query(file: &File) -> io::Result<(u64, [u8; 16])> {
+        let mut information = MaybeUninit::<FileIdInfo>::uninit();
+        let information_bytes = u32::try_from(size_of::<FileIdInfo>())
+            .expect("FILE_ID_INFO has a fixed size representable by the Windows API");
+
+        // SAFETY: `file` owns a valid handle for the duration of the call;
+        // `information` points to writable, correctly aligned FILE_ID_INFO
+        // storage; and the byte count is the exact size of that storage. The
+        // value is assumed initialized only after Windows reports success.
+        let succeeded = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FILE_ID_INFO_CLASS,
+                information.as_mut_ptr().cast(),
+                information_bytes,
+            )
+        };
+        if succeeded == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // SAFETY: a nonzero return from GetFileInformationByHandleEx promises
+        // that the complete FILE_ID_INFO output buffer was initialized.
+        let information = unsafe { information.assume_init() };
+        Ok((
+            information.volume_serial_number,
+            information.file_id.identifier,
+        ))
+    }
 }
 
 #[cfg(windows)]
@@ -1276,11 +1389,15 @@ fn render_human(report: &AggregateReport) -> Result<String, AggregateError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::open_inputs;
     use super::{
-        AggregateErrorKind, AggregateFormat, Clock, MAXIMUM_OPERATION_TIME, open_inputs,
-        run_with_clock,
+        AggregateErrorKind, AggregateFormat, Clock, MAXIMUM_OPERATION_TIME, run_with_clock,
     };
+    #[cfg(windows)]
+    use super::{file_identity, open_input_file};
     use std::cell::Cell;
+    #[cfg(unix)]
     use std::io::Read as _;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -1359,5 +1476,31 @@ mod tests {
         inputs[0].file.read_to_string(&mut retained).unwrap();
 
         assert_eq!(retained, "opened identity");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_file_identity_matches_hard_links_and_separates_files() {
+        let root = TempDir::new().expect("a disposable root should be created");
+        let original = root.path().join("original.json");
+        let hard_link = root.path().join("hard-link.json");
+        let distinct = root.path().join("distinct.json");
+        std::fs::write(&original, b"same bytes").unwrap();
+        std::fs::hard_link(&original, &hard_link).unwrap();
+        std::fs::write(&distinct, b"same bytes").unwrap();
+
+        let identity = |path: &std::path::Path| {
+            let file = open_input_file(path)
+                .expect("the regular fixture should open without following reparse points");
+            let metadata = file
+                .metadata()
+                .expect("the opened fixture should have metadata");
+            let canonical = std::fs::canonicalize(path).expect("the fixture should canonicalize");
+            file_identity(&file, &metadata, &canonical)
+                .expect("Windows should return a complete handle identity")
+        };
+
+        assert_eq!(identity(&original), identity(&hard_link));
+        assert_ne!(identity(&original), identity(&distinct));
     }
 }
