@@ -1,10 +1,11 @@
 # Release and installation integrity
 
-The current public release is `mcp-doctor` `0.2.0`, tagged `v0.2.0`. GitHub
-Releases is the canonical immutable record for every version. crates.io and
-the `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact
-source package held by the corresponding release. The sections below retain
-the first-release record and the reusable later-release procedure.
+This source tree represents `mcp-doctor` `0.3.0` and its canonical release tag
+`v0.3.0`. GitHub Releases determines whether a version has completed public
+publication. crates.io and the `EnjoyableWork/tap/mcp-doctor` Homebrew formula
+must install the exact source package held by the corresponding release. The
+sections below retain the first-release record and the reusable later-release
+procedure.
 
 ## v0.1.0 first-release record
 

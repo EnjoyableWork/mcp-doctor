@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CURRENT_RELEASE_VERSION: &str = "0.2.0";
+const CURRENT_RELEASE_VERSION: &str = "0.3.0";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,7 +57,7 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.2.0\"",
+        "version = \"0.3.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.github/community-license-controls.json\"",
@@ -408,7 +408,8 @@ fn assert_release_version_case(arguments: &[&str], expected_success: bool) {
 fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let release = repository_file("docs/release.md");
     let first_notes = repository_file("docs/releases/v0.1.0.md");
-    let current_notes = repository_file("docs/releases/v0.2.0.md");
+    let retained_notes = repository_file("docs/releases/v0.2.0.md");
+    let current_notes = repository_file("docs/releases/v0.3.0.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -421,7 +422,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "The current public release is `mcp-doctor` `0.2.0`",
+        "This source tree represents `mcp-doctor` `0.3.0`",
+        "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
         "31528649333",
@@ -438,12 +440,15 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     }
     assert!(first_notes.contains("does not call tools"));
     assert!(first_notes.contains("does not call tools, connect to remote HTTP endpoints"));
+    assert!(retained_notes.contains("mcp-doctor.report/v1"));
     for contract in [
-        "mcp-doctor.report/v1",
-        "JUnit",
-        "--allow-tool",
+        "2025-11-25",
+        "contract snapshots",
+        "JSON and JUnit report files",
+        "offline aggregation",
+        "unsupported-version response",
         "does not add SARIF",
-        "does not become a general security scanner",
+        "become a general security scanner",
     ] {
         assert!(
             current_notes.contains(contract),
@@ -604,6 +609,55 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
 }
 
 #[test]
+fn readme_leads_with_a_portable_plain_language_diagnosis() {
+    let readme = repository_file("README.md");
+    let introduction = readme
+        .split("## The promise")
+        .next()
+        .expect("README should have an introductory diagnosis");
+
+    for contract in [
+        "A diagnosis you can act on:",
+        "> **Your weather server starts correctly**",
+        "> **First thing to fix**",
+        "> **Safe by default**",
+        "No tools were called and no server data was changed.",
+    ] {
+        assert!(
+            introduction.contains(contract),
+            "README introduction should preserve {contract}"
+        );
+    }
+    for terminal_artifact in ["```console", "$ mcp-doctor", "exit 1"] {
+        assert!(
+            !introduction.contains(terminal_artifact),
+            "README introduction should not depend on {terminal_artifact}"
+        );
+    }
+}
+
+#[test]
+fn project_tracks_the_protocol_correction_and_v030_release_without_claiming_completion() {
+    let project = repository_file("PROJECT.md");
+
+    for contract in [
+        "### MCPD-023 accepted structured protocol-rejection correction",
+        "### MCPD-024 accepted `v0.3.0` release plan",
+        "| MCPD-023 | Classify the exact current-revision unsupported-version response at the protocol layer | Optional correctness | In progress |",
+        "| MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | In progress |",
+        "| DEC-048 | Resolve issue #30 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
+        "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
+        "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
+        "`v0.3.0` is the reviewed release candidate and is not complete until GitHub, crates.io, Homebrew, and installed-channel evidence pass",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should preserve release-candidate contract: {contract}"
+        );
+    }
+}
+
+#[test]
 fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_scope() {
     let project = repository_file("PROJECT.md");
 
@@ -701,7 +755,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
 
     for contract in [
         "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016A` is Done and `MCPD-017` is In progress |",
-        "| Public release | `mcp-doctor` `v0.2.0`",
+        "| Public release | `mcp-doctor` `v0.2.0` remains the verified public release; `v0.3.0` is the reviewed release candidate",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
@@ -861,8 +915,8 @@ fn security_policy_defines_private_reporting_support_and_coordination() {
         "GitHub Security Advisory",
         "request a CVE through GitHub when warranted",
         "does not operate\na bug-bounty program",
-        "| `0.2.x` | Supported |",
-        "| `0.1.x` | Unsupported |",
+        "| `0.3.x` | Supported |",
+        "| `0.2.x` and earlier | Unsupported |",
         "| `main` | Development only; no release or backport guarantee |",
         "## Safe research boundary",
         "Test only systems you own or are explicitly authorized to assess.",
@@ -905,8 +959,8 @@ fn security_control_projection_matches_dec_037_and_dec_038() {
         serde_json::json!({
             "path": "SECURITY.md",
             "private_reporting_url": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
-            "supported_release_lines": ["0.2.x"],
-            "unsupported_release_lines": ["0.1.x"],
+            "supported_release_lines": ["0.3.x"],
+            "unsupported_release_lines": ["0.2.x and earlier"],
             "acknowledgement_business_days": 3,
             "initial_assessment_calendar_days": 7,
             "update_calendar_days": 14,
@@ -1039,7 +1093,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
         "### Accepted vulnerability-disclosure and repository-security policy",
         "`DEC-037` fixes the `MCPD-014` contract.",
-        "Support only the latest published minor line, currently `0.2.x`.",
+        "Support only the release candidate's minor line, `0.3.x`, as part of the same reviewed publication change.",
         "within 3 business days",
         "within 7 calendar days",
         "every 14 calendar days",
@@ -1254,7 +1308,8 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "current public release is `0.2.0`",
+        "This source tree represents `0.3.0`",
+        "a version\nis publicly available only when its canonical GitHub Release and channel\nevidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
         "Suspected vulnerabilities and accidentally exposed secrets",
@@ -1265,7 +1320,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.2.0 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.0 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -1721,5 +1776,5 @@ fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[Pa
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CURRENT_RELEASE_VERSION, "0.2.0");
+    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.0");
 }

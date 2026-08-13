@@ -528,7 +528,7 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     assert_eq!(finding["location"], "server.supportedVersions");
     assert_eq!(
         finding["message"],
-        "The server does not advertise the required protocol revision."
+        "The server does not support the required protocol revision."
     );
     assert_eq!(
         finding["impact"],
@@ -536,11 +536,11 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     );
     assert_eq!(
         finding["expectation"],
-        "server/discover must advertise MCP protocol revision 2026-07-28."
+        "The server must support MCP protocol revision 2026-07-28 for this diagnosis."
     );
     assert_eq!(
         finding["remediation"],
-        "Add MCP 2026-07-28 support and advertise it from server/discover."
+        "Add MCP 2026-07-28 support, then rerun the same diagnosis without falling back."
     );
     assert_eq!(
         finding["reference"],

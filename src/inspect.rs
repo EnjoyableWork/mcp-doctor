@@ -121,6 +121,7 @@ pub(crate) async fn run_http(
         message_bytes: profile.message_bytes,
         aggregate_output_bytes: profile.aggregate_output_bytes,
         message_count: profile.message_count,
+        protocol_revisions: profile.protocol_revisions,
     };
     let target = match HttpTarget::prepare(options, limits, &SystemResolver).await {
         Ok(target) => target,

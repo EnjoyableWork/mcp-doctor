@@ -1353,6 +1353,146 @@ fn loopback_http_requires_exact_gates_and_accepts_json_and_sse() {
 }
 
 #[test]
+fn unsupported_current_revision_is_a_protocol_diagnosis_without_replay_or_fallback() {
+    const MESSAGE_SENTINEL: &str = "synthetic-version-message-never-report-4a91";
+    const VERSION_SENTINEL: &str = "synthetic-version-value-never-report-4a91";
+
+    for format in [None, Some("json"), Some("junit")] {
+        let mut response = FixtureResponse::json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32022,
+                "message": MESSAGE_SENTINEL,
+                "data": {
+                    "supported": ["2025-11-25", VERSION_SENTINEL],
+                    "requested": "2026-07-28"
+                }
+            }
+        }));
+        response.status = 400;
+        response.reason = "Bad Request";
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                response,
+            )],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        if let Some(format) = format {
+            command.arg("--format").arg(format);
+        }
+        let output = run(&mut command);
+        let outcome = server.finish();
+
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(outcome.accepted_connections, 1);
+        assert_eq!(outcome.valid_requests, 1);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let (stdout, stderr) = text(&output);
+        assert!(stderr.is_empty());
+        assert!(!stdout.contains("MCP-HTTP-002"));
+        match format {
+            None => {
+                assert!(stdout.contains("PRIMARY DIAGNOSIS · protocol.revision"));
+                assert!(stdout.contains("PASS  transport.http"));
+                assert!(stdout.contains("PASS  protocol.envelope"));
+                assert!(stdout.contains("FAIL  protocol.revision"));
+                assert!(stdout.contains("MCP-PROTOCOL-002 · http.body"));
+                assert!(stdout.contains("rule unsupported_protocol_version"));
+                assert!(
+                    stdout.contains("blocked by protocol.revision (MCP-PROTOCOL-002 at http.body)")
+                );
+            }
+            Some("json") => {
+                let report = parse_and_validate_report(&output.stdout);
+                assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+                assert_eq!(
+                    report["primary_diagnosis"]["findings"][0]["code"],
+                    "MCP-PROTOCOL-002"
+                );
+                assert_eq!(
+                    report["primary_diagnosis"]["findings"][0]["location"],
+                    "http.body"
+                );
+                let revision_check = report["checks"]
+                    .as_array()
+                    .expect("the stable report has checks")
+                    .iter()
+                    .find(|check| check["id"] == "protocol.revision")
+                    .expect("the stable report has a protocol revision check");
+                assert_eq!(
+                    revision_check["findings"][0]["evidence"]["rule"],
+                    "unsupported_protocol_version"
+                );
+            }
+            Some("junit") => {
+                let (document, _) = parse_and_validate_junit(&output.stdout);
+                assert!(document.contains("MCP-PROTOCOL-002"));
+                assert!(document.contains("primary=true"));
+                assert!(document.contains("unsupported_protocol_version"));
+            }
+            Some(_) => unreachable!("the test selects only stable report formats"),
+        }
+        assert_redacted(&output, &endpoint, &[MESSAGE_SENTINEL, VERSION_SENTINEL]);
+    }
+
+    let mut response = FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+            "code": -32022,
+            "message": MESSAGE_SENTINEL,
+            "data": {
+                "supported": ["2025-11-25"],
+                "requested": "2026-07-28"
+            }
+        }
+    }));
+    response.status = 400;
+    response.reason = "Bad Request";
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            response,
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let scenario = write_scenario(&environment);
+    let mut command = remote_command(&environment, "check", &endpoint);
+    command
+        .arg("--scenario")
+        .arg(&scenario)
+        .arg("--allow-tool")
+        .arg(TOOL);
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("PRIMARY DIAGNOSIS · protocol.revision"));
+    assert!(stdout.contains("MCP-PROTOCOL-002 · http.body"));
+    assert!(stdout.contains("the protocol revision is unsupported"));
+    assert!(!stdout.contains("MCP-HTTP-002"));
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[MESSAGE_SENTINEL, TOOL, CASE_ID, scenario.to_str().unwrap()],
+    );
+}
+
+#[test]
 fn private_and_cleartext_authority_fail_before_any_connection() {
     let listener =
         TcpListener::bind(("127.0.0.1", 0)).expect("a disposable loopback listener should bind");

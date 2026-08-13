@@ -19,11 +19,11 @@ PASS  protocol.envelope      required
 FAIL  protocol.revision      required
       MCP-PROTOCOL-002  error
       Where: server.supportedVersions
-      What: The server does not advertise the required protocol revision.
+      What: The server does not support the required protocol revision.
       Why: Applying rules for a different revision could produce a false diagnosis.
       required 2026-07-28 · 2 offered · 1 recognized legacy · 0 unknown date · 1 opaque
-      Expected: server/discover must advertise MCP protocol revision 2026-07-28.
-      Fix: Add MCP 2026-07-28 support and advertise it from server/discover.
+      Expected: The server must support MCP protocol revision 2026-07-28 for this diagnosis.
+      Fix: Add MCP 2026-07-28 support, then rerun the same diagnosis without falling back.
       Reference: selected MCP revision lifecycle contract
 SKIP  discovery.catalogs     required · the protocol revision is unsupported · blocked by protocol.revision (MCP-PROTOCOL-002 at server.supportedVersions)
 SKIP  schema.contracts       required · the protocol revision is unsupported · blocked by protocol.revision (MCP-PROTOCOL-002 at server.supportedVersions)

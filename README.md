@@ -25,19 +25,20 @@
   <a href="#safe-by-default">Safety</a>
 </p>
 
-```console
-$ mcp-doctor inspect -- node ./dist/weather-server.js
+A diagnosis you can act on:
 
-  mcp-doctor  weather-server · STDIO
-
-  PASS  protocol       MCP 2026-07-28 supported
-  PASS  discovery      8 tools · 2 resources · 1 prompt
-  FAIL  tool/schema    weather_forecast.inputSchema.required
-        expected an array of unique strings, found a string
-  SKIP  tool/runtime   passive inspection; no tools called
-
-  1 failed · 18 passed · 8 skipped                         exit 1
-```
+> **Your weather server starts correctly**
+>
+> `mcp-doctor` found 8 tools, 2 resources, and 1 prompt.
+>
+> **First thing to fix**
+>
+> The `weather_forecast` tool describes its required inputs incorrectly. Define
+> the required fields as a list, then run the diagnosis again.
+>
+> **Safe by default**
+>
+> No tools were called and no server data was changed.
 
 ## The promise
 
@@ -80,7 +81,7 @@ Install with Homebrew or Cargo:
 brew install --build-from-source EnjoyableWork/tap/mcp-doctor
 
 # Any supported Rust host
-cargo install mcp-doctor --version '=0.2.0' --locked
+cargo install mcp-doctor --version '=0.3.0' --locked
 ```
 
 Or download a native GNU/Linux archive from

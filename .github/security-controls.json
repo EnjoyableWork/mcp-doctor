@@ -9,10 +9,10 @@
     "path": "SECURITY.md",
     "private_reporting_url": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
     "supported_release_lines": [
-      "0.2.x"
+      "0.3.x"
     ],
     "unsupported_release_lines": [
-      "0.1.x"
+      "0.2.x and earlier"
     ],
     "acknowledgement_business_days": 3,
     "initial_assessment_calendar_days": 7,
