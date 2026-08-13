@@ -53,6 +53,24 @@ fn junit_inspect_command(environment: &TestEnvironment, mode: &str) -> Command {
     command
 }
 
+fn legacy_inspect_command(
+    environment: &TestEnvironment,
+    revision: &str,
+    format: Option<&str>,
+    mode: &str,
+) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--protocol-version")
+        .arg(revision);
+    if let Some(format) = format {
+        command.arg("--format").arg(format);
+    }
+    command.arg("--").arg(fixture()).arg(mode);
+    command
+}
+
 fn run_mode(mode: &str) -> Output {
     let environment = TestEnvironment::new();
     inspect_command(&environment, mode)
@@ -75,6 +93,164 @@ fn text(output: &Output) -> (&str, &str) {
 
 fn json_report(output: &Output) -> serde_json::Value {
     parse_and_validate_report(&output.stdout)
+}
+
+#[test]
+fn explicit_legacy_stdio_revisions_initialize_once_and_remain_passive() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(&environment, revision, Some("json"), "legacy-success")
+            .output()
+            .expect("mcp-doctor should inspect the selected legacy revision");
+        let (stdout, stderr) = text(&output);
+        assert!(output.status.success(), "{revision}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty(), "{revision}: {stderr}");
+        let report = json_report(&output);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_eq!(report["negotiated_protocol_revision"], revision);
+        assert_eq!(report["outcome"], "passed");
+        assert_eq!(report["summary"]["failed"], 0);
+        assert!(!stdout.contains(CATALOG_SENTINEL));
+
+        let human = legacy_inspect_command(&environment, revision, None, "legacy-success")
+            .output()
+            .expect("mcp-doctor should render the selected legacy revision for a person");
+        let (human_stdout, human_stderr) = text(&human);
+        assert!(
+            human.status.success(),
+            "{revision}: {human_stdout}\n{human_stderr}"
+        );
+        assert!(human_stderr.is_empty());
+        assert!(
+            human_stdout.contains(&format!(
+                "protocol selection · selected {revision} · negotiated {revision}"
+            )),
+            "{human_stdout}"
+        );
+        assert!(!human_stdout.contains(CATALOG_SENTINEL));
+
+        let junit = legacy_inspect_command(&environment, revision, Some("junit"), "legacy-success")
+            .output()
+            .expect("mcp-doctor should project the legacy result as JUnit");
+        assert!(junit.status.success(), "{revision}: {:?}", text(&junit));
+        let (junit_text, _) = parse_and_validate_junit(&junit.stdout);
+        assert!(
+            junit_text.contains(&format!("protocol_revision={revision}")),
+            "{junit_text}"
+        );
+        assert!(
+            junit_text.contains(&format!("negotiated_protocol_revision={revision}")),
+            "{junit_text}"
+        );
+    }
+}
+
+#[test]
+fn legacy_stdio_revision_mismatch_and_malformed_values_fail_without_fallback() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let mismatch =
+            legacy_inspect_command(&environment, revision, Some("json"), "legacy-mismatch")
+                .output()
+                .expect("mcp-doctor should diagnose a legacy mismatch");
+        let (stdout, stderr) = text(&mismatch);
+        assert_eq!(
+            mismatch.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        let report = json_report(&mismatch);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_ne!(report["negotiated_protocol_revision"], revision);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            "MCP-PROTOCOL-005"
+        );
+
+        let malformed = legacy_inspect_command(&environment, revision, None, "legacy-malformed")
+            .output()
+            .expect("mcp-doctor should diagnose a malformed negotiated revision");
+        let (stdout, stderr) = text(&malformed);
+        assert_eq!(
+            malformed.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        assert!(stdout.contains("MCP-PROTOCOL-003"), "{stdout}");
+        assert!(!stdout.contains(REDACTION_SENTINEL), "{stdout}");
+    }
+}
+
+#[test]
+fn legacy_stdio_revisions_retain_message_and_discovery_bounds() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let oversized = legacy_inspect_command(&environment, revision, None, "legacy-oversized")
+            .output()
+            .expect("mcp-doctor should bound a legacy response");
+        let (stdout, stderr) = text(&oversized);
+        assert_eq!(
+            oversized.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        assert!(stdout.contains("message_bytes"), "{stdout}");
+    }
+}
+
+#[test]
+fn legacy_stdio_schema_dialects_follow_the_selected_revision() {
+    let environment = TestEnvironment::new();
+    let ambiguous =
+        legacy_inspect_command(&environment, "2025-06-18", None, "legacy-ambiguous-schema")
+            .output()
+            .expect("mcp-doctor should report an ambiguous 2025-06-18 schema dialect");
+    let (stdout, stderr) = text(&ambiguous);
+    assert!(ambiguous.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-SCHEMA-004"), "{stdout}");
+    assert!(stdout.contains("inputSchema.$schema"), "{stdout}");
+    assert!(
+        stdout.contains("bounded structural checks only"),
+        "{stdout}"
+    );
+
+    let defaulted =
+        legacy_inspect_command(&environment, "2025-11-25", None, "legacy-ambiguous-schema")
+            .output()
+            .expect("mcp-doctor should apply the 2025-11-25 default schema dialect");
+    let (stdout, stderr) = text(&defaulted);
+    assert!(defaulted.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(!stdout.contains("MCP-SCHEMA-004"), "{stdout}");
+}
+
+#[test]
+fn legacy_stdio_revisions_retain_the_discovery_deadline() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let started = Instant::now();
+        let output = legacy_inspect_command(&environment, revision, None, "legacy-timeout")
+            .output()
+            .expect("mcp-doctor should bound an unresponsive legacy server");
+        let elapsed = started.elapsed();
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty(), "{revision}: {stderr}");
+        assert!(stdout.contains("MCP-LIMIT-001"), "{revision}: {stdout}");
+        assert!(stdout.contains("discovery_time"), "{revision}: {stdout}");
+        assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
+    }
 }
 
 #[test]
@@ -332,7 +508,7 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     );
     assert_eq!(
         finding["impact"],
-        "Applying 2026-07-28 rules to another revision could produce a false diagnosis."
+        "Applying rules for a different revision could produce a false diagnosis."
     );
     assert_eq!(
         finding["expectation"],
@@ -344,7 +520,7 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     );
     assert_eq!(
         finding["reference"],
-        "MCP 2026-07-28 server/discover contract"
+        "selected MCP revision lifecycle contract"
     );
     for field in [
         "location",

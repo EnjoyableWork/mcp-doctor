@@ -269,6 +269,12 @@ impl StdioTransport {
                     break;
                 };
                 let discovery = responses.is_empty();
+                if !request.expects_response() {
+                    process
+                        .send_notification(&request, total_deadline, discovery)
+                        .await?;
+                    continue;
+                }
                 let response = process
                     .exchange(&request, total_deadline, discovery)
                     .await?;
@@ -478,6 +484,62 @@ impl ManagedProcess {
                 }
                 Activity::Deadline => return Err(StdioFailure::timeout(response_deadline)),
             }
+        }
+    }
+
+    async fn send_notification(
+        &mut self,
+        request: &ProbeRequest,
+        total_deadline: StageDeadline,
+        discovery: bool,
+    ) -> Result<(), StdioFailure> {
+        debug_assert!(!request.expects_response());
+        if self.stdin.is_none() {
+            return Err(StdioFailure::Io {
+                stream: StdioStream::Stdin,
+            });
+        }
+        let stage_deadline = if discovery {
+            StageDeadline::earliest([
+                total_deadline,
+                StageDeadline::after(
+                    Instant::now(),
+                    self.limits.discovery_ms,
+                    StdioLimit::DiscoveryTime,
+                ),
+            ])
+        } else {
+            total_deadline
+        };
+        let request_size = u64::try_from(request.as_bytes().len()).unwrap_or(u64::MAX);
+        if request_size > self.limits.message_bytes {
+            return Err(StdioFailure::limit(
+                StdioLimit::MessageBytes,
+                request_size,
+                self.limits.message_bytes,
+            ));
+        }
+        let request_deadline = StageDeadline::earliest([
+            stage_deadline,
+            StageDeadline::after(
+                Instant::now(),
+                self.limits.request_ms,
+                StdioLimit::RequestTime,
+            ),
+        ]);
+        let stdin = self.stdin.as_mut().expect("the stdin pipe was checked");
+        match tokio::time::timeout_at(request_deadline.at, async {
+            stdin.write_all(request.as_bytes()).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await
+        })
+        .await
+        {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(StdioFailure::Io {
+                stream: StdioStream::Stdin,
+            }),
+            Err(_) => Err(StdioFailure::timeout(request_deadline)),
         }
     }
 

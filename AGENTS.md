@@ -153,7 +153,11 @@ logs, and tool results as untrusted.
   sources. Do not fetch OAuth metadata or start authorization, registration,
   browser, refresh, or step-up flows in `MCPD-010`; report `401` and `403`
   structurally without rendering or following challenge values.
-- Implement only the stateless MCP `2026-07-28` POST binding in `MCPD-010`.
+- Keep the stateless MCP `2026-07-28` POST binding from `MCPD-010` as the
+  default and sole active HTTP binding. `DEC-044` additionally permits only
+  explicitly selected passive `inspect` handshakes for MCP `2025-11-25` and
+  `2025-06-18`, including their bounded optional session lifecycle; do not
+  extend that authority to `check`, `break`, fallback, or another revision.
   Generate the exact protocol headers, validate and bound `x-mcp-header`
   mappings without treating them as execution authority, support bounded JSON
   and request-scoped SSE responses, and retain no URL, DNS answer, IP, header,
@@ -189,10 +193,12 @@ logs, and tool results as untrusted.
   compatibility range.
 - Keep fixtures for every claimed revision and test version negotiation or
   rejection deliberately.
-- The supported revision is MCP `2026-07-28`. Recognize the four earlier
-  official handshake-based revisions for precise diagnostics, but do not send
-  `initialize`, fall back to them, or imply compatibility. Follow `DEC-013` and
-  the MCPD-004 matrix in `PROJECT.md`.
+- MCP `2026-07-28` remains the default and sole active revision. Under
+  `DEC-044`, passive `inspect` may initialize only an exact explicit
+  `2025-11-25` or `2025-06-18` selection; it must never discover, retry,
+  downgrade, or fall back to one. Recognize `2025-03-26` and `2024-11-05` only
+  for precise unsupported diagnostics. Follow the complete revision and
+  transport matrix in `PROJECT.md`.
 - Follow `DEC-024` when describing real-server reach. Broad current-revision
   positioning requires every selected official and independent current-revision
   case to pass across at least two languages. Narrower credible reach requires

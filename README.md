@@ -103,6 +103,38 @@ Inspect a Streamable HTTP endpoint by URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
+`inspect` uses MCP `2026-07-28` by default. Select either supported handshake
+revision explicitly when diagnosing a server that has not migrated:
+
+```bash
+# Passive legacy STDIO inspection
+mcp-doctor inspect --protocol-version 2025-11-25 -- node ./dist/server.js
+
+# Passive legacy Streamable HTTP inspection
+mcp-doctor inspect --protocol-version 2025-06-18 https://mcp.example.com/mcp
+```
+
+Revision selection never auto-detects, retries, falls back, or downgrades.
+Legacy inspection performs only `initialize`, one
+`notifications/initialized`, and capability-advertised `tools/list`,
+`prompts/list`, `resources/list`, and `resources/templates/list` operations. It
+does not call tools, list retained tasks, read resources, get prompts, answer
+server requests, or enable legacy `check` or `break` behavior.
+
+| MCP revision | `inspect` STDIO | `inspect` Streamable HTTP | `check` / `break` | Evidence position |
+| --- | --- | --- | --- | --- |
+| `2026-07-28` | Default | Default | Supported | Broad current-revision matrix |
+| `2025-11-25` | Explicit only | Explicit only | Not supported | Synthetic diagnostics only |
+| `2025-06-18` | Explicit only | Explicit only | Not supported | Synthetic diagnostics only |
+| `2025-03-26`, `2024-11-05`, or unknown | Rejected | Rejected | Rejected | No compatibility claim |
+
+Advertised tool schemas are checked locally and without external retrieval.
+MCP `2025-11-25` defaults an omitted dialect to bounded JSON Schema Draft
+2020-12. Because MCP `2025-06-18` did not define a default, an omitted dialect
+receives bounded structural and reference checks plus an explicit warning,
+without assigning dialect-specific semantics. An exact Draft 2020-12
+declaration enables full local validation; another dialect is rejected.
+
 The default report is made for people. Add `--format json` for the stable,
 schema-backed `mcp-doctor.report/v1` result, or `--format junit` for the same
 checks projected into conservative JUnit XML. Both keep secrets removed.
@@ -261,7 +293,10 @@ a skipped check into a pass.
 The passive STDIO path is checked against pinned official TypeScript and Go
 servers and independent Dart and PHP servers. See the
 [compatibility evidence](tests/compatibility/README.md) for the exact scope and
-results.
+results. That broad real-server evidence covers MCP `2026-07-28` only. Explicit
+MCP `2025-11-25` and `2025-06-18` diagnostics have synthetic STDIO and
+Streamable HTTP evidence; they do not yet carry a broad ecosystem or published
+installed-channel claim.
 
 ## Bring it into CI
 
@@ -297,6 +332,11 @@ deterministic, bounded, and hide secrets.
   trigger an automatic OAuth or metadata flow.
 - Hard limits cover time, data size, messages, schema work, test cases,
   redirects, retries, and parallel work.
+- A legacy HTTP session identifier is accepted only from initialization,
+  bounded and retained only for the run, repeated exactly on later requests,
+  and followed by one bounded teardown attempt. Session loss never triggers a
+  reinitialize or downgrade, and teardown failure remains independently
+  visible.
 - Normal output hides headers, credentials, tool inputs, raw results, and server
   logs.
 - Local server commands run directly, not through a shell. Before exiting,

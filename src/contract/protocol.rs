@@ -27,7 +27,7 @@ pub(super) enum NegotiationStyle {
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) enum KnownRevision {
+pub(crate) enum KnownRevision {
     V2024_11_05,
     V2025_03_26,
     V2025_06_18,
@@ -36,7 +36,7 @@ pub(super) enum KnownRevision {
 }
 
 impl KnownRevision {
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::V2024_11_05 => "2024-11-05",
             Self::V2025_03_26 => "2025-03-26",
@@ -45,19 +45,46 @@ impl KnownRevision {
             Self::V2026_07_28 => "2026-07-28",
         }
     }
+
+    pub(super) const fn parse(value: &str) -> Option<Self> {
+        match value.as_bytes() {
+            b"2024-11-05" => Some(Self::V2024_11_05),
+            b"2025-03-26" => Some(Self::V2025_03_26),
+            b"2025-06-18" => Some(Self::V2025_06_18),
+            b"2025-11-25" => Some(Self::V2025_11_25),
+            b"2026-07-28" => Some(Self::V2026_07_28),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) enum SupportedRevision {
+pub(crate) enum SupportedRevision {
+    V2025_06_18,
+    V2025_11_25,
     V2026_07_28,
 }
 
 impl SupportedRevision {
-    pub(super) const CURRENT: Self = Self::V2026_07_28;
+    pub(crate) const CURRENT: Self = Self::V2026_07_28;
 
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::V2025_06_18 => "2025-06-18",
+            Self::V2025_11_25 => "2025-11-25",
             Self::V2026_07_28 => "2026-07-28",
+        }
+    }
+
+    pub(crate) const fn uses_initialize(self) -> bool {
+        !matches!(self, Self::V2026_07_28)
+    }
+
+    pub(super) const fn known(self) -> KnownRevision {
+        match self {
+            Self::V2025_06_18 => KnownRevision::V2025_06_18,
+            Self::V2025_11_25 => KnownRevision::V2025_11_25,
+            Self::V2026_07_28 => KnownRevision::V2026_07_28,
         }
     }
 }
@@ -95,13 +122,13 @@ pub(super) const REVISION_MATRIX: [RevisionMatrixEntry; 5] = [
     RevisionMatrixEntry {
         revision: KnownRevision::V2025_11_25,
         era: ProtocolEra::Legacy,
-        support: RevisionSupport::RecognizedUnsupported,
+        support: RevisionSupport::Supported,
         negotiation: NegotiationStyle::InitializeHandshake,
     },
     RevisionMatrixEntry {
         revision: KnownRevision::V2025_06_18,
         era: ProtocolEra::Legacy,
-        support: RevisionSupport::RecognizedUnsupported,
+        support: RevisionSupport::Supported,
         negotiation: NegotiationStyle::InitializeHandshake,
     },
     RevisionMatrixEntry {
@@ -294,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn official_revision_matrix_supports_only_the_current_modern_revision() {
+    fn official_revision_matrix_supports_explicit_selected_legacy_revisions() {
         let revisions: Vec<_> = REVISION_MATRIX
             .iter()
             .map(|entry| entry.revision.as_str())
@@ -317,11 +344,16 @@ mod tests {
             NegotiationStyle::PerRequestMetadata
         );
 
-        for entry in &REVISION_MATRIX[1..] {
+        for entry in &REVISION_MATRIX[1..3] {
+            assert_eq!(entry.era, ProtocolEra::Legacy);
+            assert_eq!(entry.support, RevisionSupport::Supported);
+            assert_eq!(entry.negotiation, NegotiationStyle::InitializeHandshake);
+            assert_ne!(entry.revision, KnownRevision::V2026_07_28);
+        }
+        for entry in &REVISION_MATRIX[3..] {
             assert_eq!(entry.era, ProtocolEra::Legacy);
             assert_eq!(entry.support, RevisionSupport::RecognizedUnsupported);
             assert_eq!(entry.negotiation, NegotiationStyle::InitializeHandshake);
-            assert_ne!(entry.revision, KnownRevision::V2026_07_28);
         }
     }
 

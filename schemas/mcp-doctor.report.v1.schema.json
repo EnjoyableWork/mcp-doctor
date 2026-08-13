@@ -24,6 +24,11 @@
       "const": "stable"
     },
     "protocol_revision": {
+      "description": "The exact MCP rule set selected for this diagnostic run.",
+      "$ref": "#/$defs/protocol_revision"
+    },
+    "negotiated_protocol_revision": {
+      "description": "The safe official revision returned by a selected initialize handshake. Omitted for transports or failures without such a handshake.",
       "$ref": "#/$defs/protocol_revision"
     },
     "primary_diagnosis": {

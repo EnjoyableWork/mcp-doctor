@@ -10,6 +10,7 @@ pub(crate) mod stdio;
 /// their own framing and request metadata.
 pub(crate) struct ProbeRequest {
     id: i64,
+    expects_response: bool,
     bytes: Vec<u8>,
     method: String,
     principal_name: Option<String>,
@@ -40,9 +41,35 @@ impl ProbeRequest {
 
         Self {
             id,
+            expects_response: true,
             bytes,
             method,
             principal_name,
+            mirrored_fields: Vec::new(),
+        }
+    }
+
+    pub(crate) fn notification(bytes: Vec<u8>) -> Self {
+        let value: Value = serde_json::from_slice(&bytes)
+            .expect("a locally generated notification must contain valid JSON");
+        let object = value
+            .as_object()
+            .expect("a locally generated notification must be a JSON object");
+        assert!(
+            !object.contains_key("id"),
+            "a locally generated notification must omit an id"
+        );
+        let method = object
+            .get("method")
+            .and_then(Value::as_str)
+            .expect("a locally generated notification must name its method")
+            .to_owned();
+        Self {
+            id: -1,
+            expects_response: false,
+            bytes,
+            method,
+            principal_name: None,
             mirrored_fields: Vec::new(),
         }
     }
@@ -54,6 +81,10 @@ impl ProbeRequest {
 
     pub(crate) const fn id(&self) -> i64 {
         self.id
+    }
+
+    pub(crate) const fn expects_response(&self) -> bool {
+        self.expects_response
     }
 
     pub(crate) fn as_bytes(&self) -> &[u8] {
@@ -78,6 +109,7 @@ impl fmt::Debug for ProbeRequest {
         formatter
             .debug_struct("ProbeRequest")
             .field("id", &self.id)
+            .field("expects_response", &self.expects_response)
             .field("value", &"[REDACTED]")
             .field("byte_count", &self.bytes.len())
             .field("mirrored_field_count", &self.mirrored_fields.len())

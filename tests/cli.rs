@@ -66,9 +66,49 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("--header-env <FIELD=NAME>"));
     assert!(stdout.contains("--tls-ca-file <PATH>"));
     assert!(stdout.contains("--format <FORMAT>"));
+    assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
+    assert!(stdout.contains("2026-07-28"));
+    assert!(stdout.contains("2025-11-25"));
+    assert!(stdout.contains("2025-06-18"));
     assert!(stdout.contains("stable mcp-doctor.report/v1"));
     assert!(stdout.contains("[default: human]"));
     assert!(stdout.contains("[possible values: human, json, junit]"));
+}
+
+#[test]
+fn legacy_revision_selection_is_exact_and_inspect_only() {
+    let unknown = run_cli(&[
+        "inspect",
+        "--protocol-version",
+        "2025-03-26",
+        "--",
+        "synthetic-target-must-not-start",
+    ]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert!(unknown.stdout.is_empty());
+    let stderr = String::from_utf8(unknown.stderr).expect("error output should be UTF-8");
+    assert!(stderr.contains("invalid value '2025-03-26'"), "{stderr}");
+    assert!(!stderr.contains("No such file"));
+
+    let active = run_cli(&[
+        "check",
+        "--protocol-version",
+        "2025-11-25",
+        "--scenario",
+        "synthetic.json",
+        "--allow-tool",
+        "synthetic.tool",
+        "--",
+        "synthetic-target-must-not-start",
+    ]);
+    assert_eq!(active.status.code(), Some(2));
+    assert!(active.stdout.is_empty());
+    let stderr = String::from_utf8(active.stderr).expect("error output should be UTF-8");
+    assert!(
+        stderr.contains("unexpected argument '--protocol-version'"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("No such file"));
 }
 
 #[test]

@@ -32,6 +32,7 @@ pub(crate) use active::{
     render_resolved_scenario_failure, render_scenario_failure, resolve_target_environment,
 };
 pub(crate) use catalog::PassiveCatalogConversation;
+pub(crate) use protocol::SupportedRevision as ProtocolRevision;
 pub(crate) use report::ReportFormat;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -92,6 +93,7 @@ pub(crate) struct HttpLimitProfile {
     pub(crate) discovery_ms: u64,
     pub(crate) request_ms: u64,
     pub(crate) response_ms: u64,
+    pub(crate) shutdown_grace_ms: u64,
     pub(crate) total_ms: u64,
     pub(crate) endpoint_bytes: u64,
     pub(crate) resolution_addresses: u64,
@@ -117,6 +119,7 @@ pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
         discovery_ms: values.discovery_ms,
         request_ms: values.request_ms,
         response_ms: values.response_ms,
+        shutdown_grace_ms: values.shutdown_grace_ms,
         total_ms: values.total_ms,
         endpoint_bytes: values.endpoint_bytes,
         resolution_addresses: values.resolution_addresses,
@@ -263,6 +266,7 @@ impl RenderedDiagnostic {
 pub(crate) struct HttpDiagnostic {
     failure: Option<HttpFailure>,
     tls_applicable: Option<bool>,
+    session_cleanup_failed: bool,
 }
 
 impl HttpDiagnostic {
@@ -278,6 +282,19 @@ pub(crate) const fn http_diagnostic(
     HttpDiagnostic {
         failure,
         tls_applicable,
+        session_cleanup_failed: false,
+    }
+}
+
+pub(crate) const fn http_diagnostic_with_cleanup(
+    failure: Option<HttpFailure>,
+    tls_applicable: Option<bool>,
+    session_cleanup_failed: bool,
+) -> HttpDiagnostic {
+    HttpDiagnostic {
+        failure,
+        tls_applicable,
+        session_cleanup_failed,
     }
 }
 
@@ -285,7 +302,24 @@ pub(crate) fn render_http_diagnostic(
     diagnostic: HttpDiagnostic,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    let checks = http_checks(diagnostic);
+    render_http_diagnostic_for_revision(diagnostic, format, SupportedRevision::CURRENT)
+}
+
+pub(crate) fn render_http_diagnostic_for_revision(
+    diagnostic: HttpDiagnostic,
+    format: ReportFormat,
+    revision: SupportedRevision,
+) -> RenderedDiagnostic {
+    render_http_diagnostic_for_revision_with_negotiated(diagnostic, format, revision, None)
+}
+
+pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
+    diagnostic: HttpDiagnostic,
+    format: ReportFormat,
+    revision: SupportedRevision,
+    negotiated_revision: Option<protocol::KnownRevision>,
+) -> RenderedDiagnostic {
+    let checks = http_checks_for_revision(diagnostic, revision);
     let failed = diagnostic.failure.is_some();
     let mut checks = checks;
     if failed {
@@ -322,7 +356,7 @@ pub(crate) fn render_http_diagnostic(
             ),
         ]);
     }
-    render_checks(checks, format)
+    render_checks_for_revision(checks, format, revision, negotiated_revision)
 }
 
 pub(crate) fn render_http_catalog_diagnostic(
@@ -331,7 +365,8 @@ pub(crate) fn render_http_catalog_diagnostic(
     responses: &[ProbeResponse],
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    let mut checks = http_checks(diagnostic);
+    let revision = conversation.revision();
+    let mut checks = http_checks_for_revision(diagnostic, revision);
     let reserved_findings = checks
         .iter()
         .filter_map(CheckResult::findings)
@@ -342,23 +377,34 @@ pub(crate) fn render_http_catalog_diagnostic(
         responses,
         reserved_findings,
     ));
-    render_checks(checks, format)
+    render_checks_for_revision(checks, format, revision, conversation.negotiated_revision())
 }
 
 pub(in crate::contract) fn http_checks(diagnostic: HttpDiagnostic) -> Vec<CheckResult> {
+    http_checks_for_revision(diagnostic, SupportedRevision::CURRENT)
+}
+
+fn http_checks_for_revision(
+    diagnostic: HttpDiagnostic,
+    revision: SupportedRevision,
+) -> Vec<CheckResult> {
     let stage = diagnostic.failure.map(http_failure_stage);
     let mut checks = Vec::new();
     checks.push(stage_check(
         CheckId::NetworkTarget,
         HttpStage::Target,
         stage,
-        diagnostic.failure.and_then(http_finding),
+        diagnostic
+            .failure
+            .and_then(|failure| http_finding(failure, revision)),
     ));
     checks.push(stage_check(
         CheckId::NetworkResolution,
         HttpStage::Resolution,
         stage,
-        diagnostic.failure.and_then(http_finding),
+        diagnostic
+            .failure
+            .and_then(|failure| http_finding(failure, revision)),
     ));
     if diagnostic.tls_applicable == Some(false) && stage != Some(HttpStage::Tls) {
         checks.push(CheckResult::skipped(
@@ -371,15 +417,37 @@ pub(in crate::contract) fn http_checks(diagnostic: HttpDiagnostic) -> Vec<CheckR
             CheckId::TransportTls,
             HttpStage::Tls,
             stage,
-            diagnostic.failure.and_then(http_finding),
+            diagnostic
+                .failure
+                .and_then(|failure| http_finding(failure, revision)),
         ));
     }
-    checks.push(stage_check(
-        CheckId::TransportHttp,
-        HttpStage::Http,
-        stage,
-        diagnostic.failure.and_then(http_finding),
-    ));
+    let mut http_findings = if stage == Some(HttpStage::Http) {
+        diagnostic
+            .failure
+            .and_then(|failure| http_finding(failure, revision))
+            .into_iter()
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if diagnostic.session_cleanup_failed {
+        http_findings.push(Finding::session_cleanup_failed(
+            revision,
+            Location::root(LocationField::Http).field(LocationField::Session),
+        ));
+    }
+    checks.push(
+        if stage.is_some_and(|failure| failure < HttpStage::Http) && http_findings.is_empty() {
+            CheckResult::skipped(
+                CheckId::TransportHttp,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            )
+        } else {
+            CheckResult::performed(CheckId::TransportHttp, Requirement::Required, http_findings)
+        },
+    );
     checks
 }
 
@@ -440,116 +508,146 @@ fn http_failure_stage(failure: HttpFailure) -> HttpStage {
     }
 }
 
-fn http_finding(failure: HttpFailure) -> Option<Finding> {
-    let revision = SupportedRevision::CURRENT;
-    Some(match failure {
-        HttpFailure::Target(failure) => match failure {
-            TargetFailure::InvalidEndpoint => Finding::remote_target_invalid(
-                Location::root(LocationField::Endpoint),
-                RuleViolation::InvalidEndpoint,
-            ),
-            TargetFailure::PrivateNetworkAuthorizationRequired => {
-                Finding::network_authorization_missing(
+fn http_finding(failure: HttpFailure, revision: SupportedRevision) -> Option<Finding> {
+    Some(
+        match failure {
+            HttpFailure::Target(failure) => match failure {
+                TargetFailure::InvalidEndpoint => Finding::remote_target_invalid(
                     Location::root(LocationField::Endpoint),
-                    RuleViolation::PrivateNetworkAuthorizationRequired,
-                )
-            }
-            TargetFailure::CleartextAuthorizationRequired => {
-                Finding::network_authorization_missing(
-                    Location::root(LocationField::Endpoint),
-                    RuleViolation::CleartextAuthorizationRequired,
-                )
-            }
-            TargetFailure::CredentialAuthorizationRequired => {
-                Finding::network_authorization_missing(
+                    RuleViolation::InvalidEndpoint,
+                ),
+                TargetFailure::PrivateNetworkAuthorizationRequired => {
+                    Finding::network_authorization_missing(
+                        Location::root(LocationField::Endpoint),
+                        RuleViolation::PrivateNetworkAuthorizationRequired,
+                    )
+                }
+                TargetFailure::CleartextAuthorizationRequired => {
+                    Finding::network_authorization_missing(
+                        Location::root(LocationField::Endpoint),
+                        RuleViolation::CleartextAuthorizationRequired,
+                    )
+                }
+                TargetFailure::CredentialAuthorizationRequired => {
+                    Finding::network_authorization_missing(
+                        Location::root(LocationField::Credentials),
+                        RuleViolation::CredentialAuthorizationRequired,
+                    )
+                }
+                TargetFailure::CredentialsRequireHttps => Finding::remote_target_invalid(
                     Location::root(LocationField::Credentials),
-                    RuleViolation::CredentialAuthorizationRequired,
-                )
+                    RuleViolation::CredentialsRequireHttps,
+                ),
+                TargetFailure::InvalidCredential => Finding::remote_target_invalid(
+                    Location::root(LocationField::Credentials),
+                    RuleViolation::InvalidCredential,
+                ),
+                TargetFailure::InvalidCustomField => Finding::remote_target_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::InvalidCustomField,
+                ),
+                TargetFailure::InvalidTrustFile => Finding::remote_target_invalid(
+                    Location::root(LocationField::Tls).field(LocationField::Trust),
+                    RuleViolation::InvalidTrustFile,
+                ),
+            },
+            HttpFailure::Resolution(failure) => match failure {
+                ResolutionFailure::Unavailable => Finding::resolution_failed(
+                    Location::root(LocationField::Resolution),
+                    RuleViolation::ResolutionUnavailable,
+                ),
+                ResolutionFailure::ProhibitedAddress => Finding::address_policy_blocked(
+                    Location::root(LocationField::Resolution).field(LocationField::Address),
+                    RuleViolation::ProhibitedAddress,
+                ),
+                ResolutionFailure::MixedAddressClasses => Finding::address_policy_blocked(
+                    Location::root(LocationField::Resolution).field(LocationField::Address),
+                    RuleViolation::MixedAddressClasses,
+                ),
+            },
+            HttpFailure::Tls => {
+                Finding::tls_verification_failed(Location::root(LocationField::Tls))
             }
-            TargetFailure::CredentialsRequireHttps => Finding::remote_target_invalid(
-                Location::root(LocationField::Credentials),
-                RuleViolation::CredentialsRequireHttps,
+            HttpFailure::Request | HttpFailure::ResponseIo => Finding::http_exchange_failed(
+                Location::root(LocationField::Http),
+                RuleViolation::HttpRequestFailed,
             ),
-            TargetFailure::InvalidCredential => Finding::remote_target_invalid(
-                Location::root(LocationField::Credentials),
-                RuleViolation::InvalidCredential,
+            HttpFailure::PeerMismatch => Finding::peer_address_mismatch(
+                Location::root(LocationField::Resolution).field(LocationField::Peer),
             ),
-            TargetFailure::InvalidCustomField => Finding::remote_target_invalid(
-                Location::root(LocationField::Http).field(LocationField::Headers),
-                RuleViolation::InvalidCustomField,
+            HttpFailure::Response(failure) => match failure {
+                ResponseFailure::Redirect { status } => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::RedirectRejected { status },
+                ),
+                ResponseFailure::Authentication { status } => {
+                    Finding::remote_authentication_rejected(
+                        Location::root(LocationField::Http).field(LocationField::Status),
+                        status,
+                    )
+                }
+                ResponseFailure::Status { status } => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::HttpStatusRejected { status },
+                ),
+                ResponseFailure::ContentEncoding => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::ContentEncodingRejected,
+                ),
+                ResponseFailure::MediaType => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::MediaTypeRejected,
+                ),
+                ResponseFailure::InvalidMessage => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Body),
+                    RuleViolation::InvalidResponseMessage,
+                ),
+                ResponseFailure::InvalidSse => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Event),
+                    RuleViolation::InvalidSseEvent,
+                ),
+                ResponseFailure::HeaderMismatch => Finding::http_header_mapping_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::HeaderMismatch,
+                ),
+                ResponseFailure::InvalidSession => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::InvalidSession,
+                ),
+                ResponseFailure::SessionChanged => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::SessionChanged,
+                ),
+                ResponseFailure::SessionRequired { status } => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::SessionRequired { status },
+                ),
+                ResponseFailure::SessionLost { status } => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::SessionLost { status },
+                ),
+                ResponseFailure::InitializedRejected { status } => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::InitializedRejected { status },
+                ),
+                ResponseFailure::ProtocolVersionRejected => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Headers),
+                    RuleViolation::ProtocolVersionRejected,
+                ),
+            },
+            HttpFailure::Limit {
+                kind,
+                observed,
+                maximum,
+            } => Finding::limit_exceeded(
+                revision,
+                http_limit_location(kind),
+                LimitViolation::new(http_limit_kind(kind), observed, maximum)
+                    .expect("an HTTP limit failure exceeds its maximum"),
             ),
-            TargetFailure::InvalidTrustFile => Finding::remote_target_invalid(
-                Location::root(LocationField::Tls).field(LocationField::Trust),
-                RuleViolation::InvalidTrustFile,
-            ),
-        },
-        HttpFailure::Resolution(failure) => match failure {
-            ResolutionFailure::Unavailable => Finding::resolution_failed(
-                Location::root(LocationField::Resolution),
-                RuleViolation::ResolutionUnavailable,
-            ),
-            ResolutionFailure::ProhibitedAddress => Finding::address_policy_blocked(
-                Location::root(LocationField::Resolution).field(LocationField::Address),
-                RuleViolation::ProhibitedAddress,
-            ),
-            ResolutionFailure::MixedAddressClasses => Finding::address_policy_blocked(
-                Location::root(LocationField::Resolution).field(LocationField::Address),
-                RuleViolation::MixedAddressClasses,
-            ),
-        },
-        HttpFailure::Tls => Finding::tls_verification_failed(Location::root(LocationField::Tls)),
-        HttpFailure::Request | HttpFailure::ResponseIo => Finding::http_exchange_failed(
-            Location::root(LocationField::Http),
-            RuleViolation::HttpRequestFailed,
-        ),
-        HttpFailure::PeerMismatch => Finding::peer_address_mismatch(
-            Location::root(LocationField::Resolution).field(LocationField::Peer),
-        ),
-        HttpFailure::Response(failure) => match failure {
-            ResponseFailure::Redirect { status } => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Status),
-                RuleViolation::RedirectRejected { status },
-            ),
-            ResponseFailure::Authentication { status } => Finding::remote_authentication_rejected(
-                Location::root(LocationField::Http).field(LocationField::Status),
-                status,
-            ),
-            ResponseFailure::Status { status } => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Status),
-                RuleViolation::HttpStatusRejected { status },
-            ),
-            ResponseFailure::ContentEncoding => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Headers),
-                RuleViolation::ContentEncodingRejected,
-            ),
-            ResponseFailure::MediaType => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Headers),
-                RuleViolation::MediaTypeRejected,
-            ),
-            ResponseFailure::InvalidMessage => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Body),
-                RuleViolation::InvalidResponseMessage,
-            ),
-            ResponseFailure::InvalidSse => Finding::http_response_invalid(
-                Location::root(LocationField::Http).field(LocationField::Event),
-                RuleViolation::InvalidSseEvent,
-            ),
-            ResponseFailure::HeaderMismatch => Finding::http_header_mapping_invalid(
-                Location::root(LocationField::Http).field(LocationField::Headers),
-                RuleViolation::HeaderMismatch,
-            ),
-        },
-        HttpFailure::Limit {
-            kind,
-            observed,
-            maximum,
-        } => Finding::limit_exceeded(
-            revision,
-            http_limit_location(kind),
-            LimitViolation::new(http_limit_kind(kind), observed, maximum)
-                .expect("an HTTP limit failure exceeds its maximum"),
-        ),
-    })
+        }
+        .with_revision(revision),
+    )
 }
 
 fn http_limit_kind(kind: HttpLimit) -> LimitKind {
@@ -622,9 +720,17 @@ pub(crate) fn render_stdio_diagnostic(
     diagnostic: StdioDiagnostic,
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    let findings = stdio_findings(diagnostic);
+    render_stdio_diagnostic_for_revision(diagnostic, format, SupportedRevision::CURRENT)
+}
 
-    render_checks(
+pub(crate) fn render_stdio_diagnostic_for_revision(
+    diagnostic: StdioDiagnostic,
+    format: ReportFormat,
+    revision: SupportedRevision,
+) -> RenderedDiagnostic {
+    let findings = stdio_findings_for_revision(diagnostic, revision);
+
+    render_checks_for_revision(
         vec![
             CheckResult::performed(CheckId::TransportStdio, Requirement::Required, findings),
             CheckResult::skipped(
@@ -654,6 +760,8 @@ pub(crate) fn render_stdio_diagnostic(
             ),
         ],
         format,
+        revision,
+        None,
     )
 }
 
@@ -663,7 +771,8 @@ pub(crate) fn render_catalog_diagnostic(
     responses: &[ProbeResponse],
     format: ReportFormat,
 ) -> RenderedDiagnostic {
-    let transport_findings = stdio_findings(diagnostic);
+    let revision = conversation.revision();
+    let transport_findings = stdio_findings_for_revision(diagnostic, revision);
     let reserved_findings = transport_findings.len();
     let mut checks = vec![CheckResult::performed(
         CheckId::TransportStdio,
@@ -675,11 +784,17 @@ pub(crate) fn render_catalog_diagnostic(
         responses,
         reserved_findings,
     ));
-    render_checks(checks, format)
+    render_checks_for_revision(checks, format, revision, conversation.negotiated_revision())
 }
 
 fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
-    let revision = SupportedRevision::CURRENT;
+    stdio_findings_for_revision(diagnostic, SupportedRevision::CURRENT)
+}
+
+fn stdio_findings_for_revision(
+    diagnostic: StdioDiagnostic,
+    revision: SupportedRevision,
+) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     if let Some(primary) = diagnostic.primary {
@@ -725,12 +840,20 @@ fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
 }
 
 fn render_checks(checks: Vec<CheckResult>, format: ReportFormat) -> RenderedDiagnostic {
-    let report = DiagnosticReport::new(
-        SupportedRevision::CURRENT,
-        DiagnosticLimits::M1_DEFAULTS,
-        checks,
-    )
-    .expect("the STDIO application must construct a valid diagnostic report");
+    render_checks_for_revision(checks, format, SupportedRevision::CURRENT, None)
+}
+
+fn render_checks_for_revision(
+    checks: Vec<CheckResult>,
+    format: ReportFormat,
+    revision: SupportedRevision,
+    negotiated_revision: Option<protocol::KnownRevision>,
+) -> RenderedDiagnostic {
+    let mut report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+        .expect("the STDIO application must construct a valid diagnostic report");
+    if let Some(negotiated_revision) = negotiated_revision {
+        report = report.with_negotiated_revision(negotiated_revision);
+    }
 
     RenderedDiagnostic::from_report(&report, format)
 }
