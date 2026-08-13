@@ -1,0 +1,140 @@
+{
+  "schema_version": "mcp-doctor.contract-snapshot/v1alpha1",
+  "protocol_revision": "2026-07-28",
+  "capabilities": {
+    "tools": {
+      "advertised": true,
+      "list_changed": true
+    },
+    "prompts": {
+      "advertised": true,
+      "list_changed": false
+    },
+    "resources": {
+      "advertised": true,
+      "list_changed": false,
+      "subscribe": false
+    }
+  },
+  "catalogs": {
+    "tools": {
+      "contracts": [
+        {
+          "name": "synthetic.added",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "synthetic.alpha",
+          "behavior_hints": {
+            "read_only": true,
+            "destructive": false,
+            "idempotent": false,
+            "open_world": true
+          },
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "query": {
+                "type": "string",
+                "minLength": 2
+              }
+            },
+            "required": [
+              "limit",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ok"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 1
+        },
+        {
+          "discovery_ordinal": 1,
+          "contract_index": 0
+        }
+      ]
+    },
+    "prompts": {
+      "contracts": [
+        {
+          "name": "synthetic.review",
+          "arguments": [
+            {
+              "name": "subject",
+              "required": true
+            },
+            {
+              "name": "tone",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "synthetic.prompt.added",
+          "arguments": []
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        },
+        {
+          "discovery_ordinal": 1,
+          "contract_index": 1
+        }
+      ]
+    },
+    "resources": {
+      "contracts": [
+        {
+          "name": "Synthetic new resource",
+          "uri": "synthetic://new"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    },
+    "resource_templates": {
+      "contracts": [
+        {
+          "name": "Synthetic new template",
+          "uri_template": "synthetic://new/{id}"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "schema_version": "mcp-doctor.contract-diff/v1alpha1",
+  "protocol_revision": "2026-07-28",
+  "outcome": "potentially_breaking",
+  "exit_code": 1,
+  "summary": {
+    "compatible": 5,
+    "potentially_breaking": 7,
+    "review_required": 2,
+    "invalid": 0,
+    "total": 14
+  },
+  "checks": [
+    {
+      "id": "artifact_validation",
+      "state": "performed"
+    },
+    {
+      "id": "normalization",
+      "state": "performed"
+    },
+    {
+      "id": "catalog_comparison",
+      "state": "performed"
+    },
+    {
+      "id": "schema_comparison",
+      "state": "performed"
+    }
+  ],
+  "findings": [
+    {
+      "code": "MCP-DIFF-001",
+      "classification": "compatible",
+      "change": "contract_added",
+      "catalog": "tools",
+      "after_ordinal": 1
+    },
+    {
+      "code": "MCP-DIFF-005",
+      "classification": "potentially_breaking",
+      "change": "required_input_added",
+      "catalog": "tools",
+      "before_ordinal": 0,
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-007",
+      "classification": "potentially_breaking",
+      "change": "schema_constraint_narrowed",
+      "catalog": "tools",
+      "before_ordinal": 0,
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-009",
+      "classification": "review_required",
+      "change": "output_schema_changed",
+      "catalog": "tools",
+      "before_ordinal": 0,
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-010",
+      "classification": "review_required",
+      "change": "behavior_hint_changed",
+      "catalog": "tools",
+      "before_ordinal": 0,
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-002",
+      "classification": "potentially_breaking",
+      "change": "contract_removed",
+      "catalog": "tools",
+      "before_ordinal": 1
+    },
+    {
+      "code": "MCP-DIFF-001",
+      "classification": "compatible",
+      "change": "contract_added",
+      "catalog": "prompts",
+      "after_ordinal": 1
+    },
+    {
+      "code": "MCP-DIFF-005",
+      "classification": "potentially_breaking",
+      "change": "required_input_added",
+      "catalog": "prompts",
+      "before_ordinal": 0,
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-002",
+      "classification": "potentially_breaking",
+      "change": "contract_removed",
+      "catalog": "prompts",
+      "before_ordinal": 1
+    },
+    {
+      "code": "MCP-DIFF-001",
+      "classification": "compatible",
+      "change": "contract_added",
+      "catalog": "resources",
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-002",
+      "classification": "potentially_breaking",
+      "change": "contract_removed",
+      "catalog": "resources",
+      "before_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-001",
+      "classification": "compatible",
+      "change": "contract_added",
+      "catalog": "resource_templates",
+      "after_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-002",
+      "classification": "potentially_breaking",
+      "change": "contract_removed",
+      "catalog": "resource_templates",
+      "before_ordinal": 0
+    },
+    {
+      "code": "MCP-DIFF-003",
+      "classification": "compatible",
+      "change": "capability_enabled",
+      "catalog": "capabilities"
+    }
+  ]
+}

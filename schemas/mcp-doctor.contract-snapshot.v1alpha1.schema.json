@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json",
+  "title": "mcp-doctor sensitive MCP contract snapshot",
+  "description": "The explicitly requested, value-bearing mcp-doctor.contract-snapshot/v1alpha1 developer artifact. It is separate from ordinary redacted diagnostic reports and must be stored and shared as sensitive contract data.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "protocol_revision",
+    "capabilities",
+    "catalogs"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.contract-snapshot/v1alpha1"
+    },
+    "protocol_revision": {
+      "const": "2026-07-28"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
+    },
+    "catalogs": {
+      "$ref": "#/$defs/catalogs"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "maxLength": 1048576
+    },
+    "list_capability": {
+      "type": "object",
+      "properties": {
+        "advertised": {
+          "type": "boolean",
+          "default": false
+        },
+        "list_changed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource_capability": {
+      "type": "object",
+      "properties": {
+        "advertised": {
+          "type": "boolean",
+          "default": false
+        },
+        "list_changed": {
+          "type": "boolean",
+          "default": false
+        },
+        "subscribe": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "tools": {
+          "$ref": "#/$defs/list_capability"
+        },
+        "prompts": {
+          "$ref": "#/$defs/list_capability"
+        },
+        "resources": {
+          "$ref": "#/$defs/resource_capability"
+        }
+      },
+      "additionalProperties": false
+    },
+    "correlation": {
+      "type": "object",
+      "required": [
+        "discovery_ordinal",
+        "contract_index"
+      ],
+      "properties": {
+        "discovery_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "contract_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        }
+      },
+      "additionalProperties": false
+    },
+    "behavior_hints": {
+      "type": "object",
+      "properties": {
+        "read_only": {
+          "type": "boolean",
+          "default": false
+        },
+        "destructive": {
+          "type": "boolean",
+          "default": true
+        },
+        "idempotent": {
+          "type": "boolean",
+          "default": false
+        },
+        "open_world": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "local_schema": {
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "pattern": "^(?:#.*)?$",
+          "maxLength": 1048576
+        },
+        "$dynamicRef": {
+          "type": "string",
+          "pattern": "^(?:#.*)?$",
+          "maxLength": 1048576
+        }
+      },
+      "additionalProperties": true
+    },
+    "tool": {
+      "type": "object",
+      "required": [
+        "name",
+        "input_schema"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "behavior_hints": {
+          "$ref": "#/$defs/behavior_hints"
+        },
+        "input_schema": {
+          "$ref": "#/$defs/local_schema"
+        },
+        "output_schema": {
+          "$ref": "#/$defs/local_schema"
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt_argument": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/prompt_argument"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "name",
+        "uri"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "uri": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource_template": {
+      "type": "object",
+      "required": [
+        "name",
+        "uri_template"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "uri_template": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_catalog": {
+      "$ref": "#/$defs/catalog",
+      "properties": {
+        "contracts": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/tool"
+          }
+        }
+      }
+    },
+    "prompt_catalog": {
+      "$ref": "#/$defs/catalog",
+      "properties": {
+        "contracts": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/prompt"
+          }
+        }
+      }
+    },
+    "resource_catalog": {
+      "$ref": "#/$defs/catalog",
+      "properties": {
+        "contracts": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/resource"
+          }
+        }
+      }
+    },
+    "resource_template_catalog": {
+      "$ref": "#/$defs/catalog",
+      "properties": {
+        "contracts": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/resource_template"
+          }
+        }
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "required": [
+        "contracts",
+        "correlation"
+      ],
+      "properties": {
+        "contracts": {
+          "type": "array",
+          "maxItems": 10000
+        },
+        "correlation": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/correlation"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "catalogs": {
+      "type": "object",
+      "required": [
+        "tools",
+        "prompts",
+        "resources",
+        "resource_templates"
+      ],
+      "properties": {
+        "tools": {
+          "$ref": "#/$defs/tool_catalog"
+        },
+        "prompts": {
+          "$ref": "#/$defs/prompt_catalog"
+        },
+        "resources": {
+          "$ref": "#/$defs/resource_catalog"
+        },
+        "resource_templates": {
+          "$ref": "#/$defs/resource_template_catalog"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.contract-diff.v1alpha1.schema.json",
+  "title": "mcp-doctor redacted contract diff",
+  "description": "The deterministic, value-free mcp-doctor.contract-diff/v1alpha1 result for two bounded local contract snapshots.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "protocol_revision",
+    "outcome",
+    "exit_code",
+    "summary",
+    "checks",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.contract-diff/v1alpha1"
+    },
+    "protocol_revision": {
+      "const": "2026-07-28"
+    },
+    "outcome": {
+      "enum": [
+        "unchanged",
+        "compatible",
+        "review_required",
+        "potentially_breaking",
+        "invalid"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "compatible",
+        "potentially_breaking",
+        "review_required",
+        "invalid",
+        "total"
+      ],
+      "properties": {
+        "compatible": {
+          "$ref": "#/$defs/count"
+        },
+        "potentially_breaking": {
+          "$ref": "#/$defs/count"
+        },
+        "review_required": {
+          "$ref": "#/$defs/count"
+        },
+        "invalid": {
+          "$ref": "#/$defs/count"
+        },
+        "total": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "additionalProperties": false
+    },
+    "check": {
+      "type": "object",
+      "required": [
+        "id",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "artifact_validation",
+            "normalization",
+            "catalog_comparison",
+            "schema_comparison"
+          ]
+        },
+        "state": {
+          "enum": [
+            "performed",
+            "skipped"
+          ]
+        },
+        "blocked_by": {
+          "enum": [
+            "artifact_validation",
+            "normalization",
+            "catalog_comparison"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "code",
+        "classification",
+        "change"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "MCP-DIFF-001",
+            "MCP-DIFF-002",
+            "MCP-DIFF-003",
+            "MCP-DIFF-004",
+            "MCP-DIFF-005",
+            "MCP-DIFF-006",
+            "MCP-DIFF-007",
+            "MCP-DIFF-008",
+            "MCP-DIFF-009",
+            "MCP-DIFF-010",
+            "MCP-SNAPSHOT-001",
+            "MCP-SNAPSHOT-002",
+            "MCP-SNAPSHOT-003",
+            "MCP-SNAPSHOT-004",
+            "MCP-SNAPSHOT-005",
+            "MCP-SNAPSHOT-006"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "compatible",
+            "potentially_breaking",
+            "review_required",
+            "invalid"
+          ]
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64
+        },
+        "catalog": {
+          "enum": [
+            "tools",
+            "prompts",
+            "resources",
+            "resource_templates",
+            "capabilities"
+          ]
+        },
+        "before_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "after_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9999
+        },
+        "input": {
+          "enum": [
+            "before",
+            "after"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

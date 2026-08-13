@@ -17,7 +17,10 @@ use rcgen::{
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use serde_json::{Value, json};
-use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
+use support::{
+    TestEnvironment, parse_and_validate_contract_snapshot, parse_and_validate_junit,
+    parse_and_validate_report,
+};
 
 const TOOL: &str = "synthetic.remote-reviewed";
 const CASE_ID: &str = "author-only-remote-case-never-report-4a91";
@@ -1466,6 +1469,117 @@ fn passive_remote_inspection_never_calls_an_advertised_tool() {
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     assert_redacted(&output, &endpoint, &[TOOL]);
+}
+
+#[test]
+fn acknowledged_http_snapshot_reuses_one_credentialed_passive_conversation() {
+    let expected_discovery = ExpectedRequest {
+        method: "server/discover",
+        name: None,
+        bearer: Some(BEARER_VALUE),
+        custom: Some((CUSTOM_FIELD, CUSTOM_VALUE)),
+        mirrored: None,
+    };
+    let expected_tools = ExpectedRequest {
+        method: "tools/list",
+        ..expected_discovery
+    };
+    let server = FixtureServer::spawn(
+        WireMode::Https,
+        vec![
+            PlannedExchange::reply(expected_discovery, discovery_response(json!({"tools": {}}))),
+            PlannedExchange::reply(expected_tools, tools_response(false)),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let ca = ca_file(&environment);
+    let snapshot_path = environment.artifact_path("remote-contract.json");
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--format")
+        .arg("json")
+        .arg("--snapshot")
+        .arg(&snapshot_path)
+        .arg("--allow-sensitive-snapshot")
+        .arg(&snapshot_path)
+        .arg("--allow-credentials-to")
+        .arg(&endpoint)
+        .arg("--bearer-token-env")
+        .arg(BEARER_SOURCE)
+        .arg("--header-env")
+        .arg(format!("{CUSTOM_FIELD}={CUSTOM_SOURCE}"))
+        .arg("--tls-ca-file")
+        .arg(&ca)
+        .env(BEARER_SOURCE, BEARER_VALUE)
+        .env(CUSTOM_SOURCE, CUSTOM_VALUE);
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["outcome"], "passed");
+    let bytes = fs::read(&snapshot_path).expect("the HTTP snapshot should exist");
+    let snapshot = parse_and_validate_contract_snapshot(&bytes);
+    assert_eq!(snapshot["catalogs"]["tools"]["contracts"][0]["name"], TOOL);
+    let artifact = std::str::from_utf8(&bytes).expect("snapshot should be UTF-8");
+    for excluded in [
+        endpoint.as_str(),
+        BEARER_SOURCE,
+        BEARER_VALUE,
+        CUSTOM_SOURCE,
+        CUSTOM_FIELD,
+        CUSTOM_VALUE,
+        ca.to_str().expect("CA path should be UTF-8"),
+    ] {
+        assert!(!artifact.contains(excluded), "snapshot exposed HTTP input");
+    }
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[
+            TOOL,
+            BEARER_SOURCE,
+            BEARER_VALUE,
+            CUSTOM_SOURCE,
+            CUSTOM_FIELD,
+            CUSTOM_VALUE,
+            ca.to_str().expect("CA path should be UTF-8"),
+        ],
+    );
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("an HTTP preflight trap should bind");
+    listener
+        .set_nonblocking(true)
+        .expect("the HTTP preflight trap should be nonblocking");
+    let trap_endpoint = format!(
+        "http://127.0.0.1:{}/mcp",
+        listener.local_addr().expect("trap address").port()
+    );
+    let rejected = run(environment
+        .command()
+        .arg("inspect")
+        .arg("--snapshot")
+        .arg(&snapshot_path)
+        .arg("--allow-sensitive-snapshot")
+        .arg(&snapshot_path)
+        .arg(&trap_endpoint)
+        .arg("--allow-private-network")
+        .arg(&trap_endpoint)
+        .arg("--allow-cleartext-http")
+        .arg(&trap_endpoint));
+    assert_eq!(rejected.status.code(), Some(2));
+    assert!(rejected.stdout.is_empty());
+    assert!(
+        listener.accept().is_err(),
+        "snapshot preflight contacted HTTP"
+    );
 }
 
 #[test]

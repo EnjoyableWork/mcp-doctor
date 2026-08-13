@@ -21,6 +21,7 @@ $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'mcp-doctor-release-smoke-' + [guid]::NewGuid().ToString('N')
 )
 $smokeHome = Join-Path $smokeRoot 'home'
+$smokeSnapshot = Join-Path $smokeRoot 'contract.json'
 
 function Invoke-McpDoctor {
     param(
@@ -77,7 +78,10 @@ try {
     }
 
     $reportOutput = Invoke-McpDoctor `
-        'inspect' '--format' 'json' '--' $resolvedFixture 'catalog-valid'
+        'inspect' '--format' 'json' `
+        '--snapshot' $smokeSnapshot `
+        '--allow-sensitive-snapshot' $smokeSnapshot `
+        '--' $resolvedFixture 'catalog-valid'
     $report = $reportOutput | ConvertFrom-Json
 
     if (
@@ -113,6 +117,42 @@ try {
         ($runtimeChecks[0].PSObject.Properties.Name -contains 'blocked_by')
     ) {
         throw 'Installed passive diagnostic did not preserve the no-tool-call boundary.'
+    }
+
+    if (-not (Test-Path -LiteralPath $smokeSnapshot -PathType Leaf)) {
+        throw 'Installed passive diagnostic did not create the acknowledged snapshot.'
+    }
+    $snapshot = Get-Content -LiteralPath $smokeSnapshot -Raw | ConvertFrom-Json
+    if (
+        $snapshot.schema_version -ne 'mcp-doctor.contract-snapshot/v1alpha1' -or
+        $snapshot.protocol_revision -ne '2026-07-28' -or
+        -not $snapshot.capabilities.tools.advertised -or
+        @($snapshot.catalogs.tools.contracts).Count -ne 2 -or
+        @($snapshot.catalogs.tools.correlation).Count -ne 2 -or
+        @($snapshot.catalogs.prompts.contracts).Count -ne 1 -or
+        @($snapshot.catalogs.resources.contracts).Count -ne 1 -or
+        @($snapshot.catalogs.resource_templates.contracts).Count -ne 1
+    ) {
+        throw 'Installed passive diagnostic returned an unexpected snapshot contract.'
+    }
+
+    $diffOutput = Invoke-McpDoctor `
+        'diff' '--format' 'json' $smokeSnapshot $smokeSnapshot
+    $diff = $diffOutput | ConvertFrom-Json
+    if (
+        $diff.schema_version -ne 'mcp-doctor.contract-diff/v1alpha1' -or
+        $diff.protocol_revision -ne '2026-07-28' -or
+        $diff.outcome -ne 'unchanged' -or
+        $diff.exit_code -ne 0 -or
+        $diff.summary.total -ne 0 -or
+        @($diff.findings).Count -ne 0
+    ) {
+        throw 'Installed offline contract diff returned an unexpected result.'
+    }
+    foreach ($check in @($diff.checks)) {
+        if ($check.state -ne 'performed') {
+            throw 'Installed offline contract diff did not perform every comparison check.'
+        }
     }
 }
 finally {
