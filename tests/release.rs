@@ -1830,12 +1830,17 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_indexes_accepted_mcpd_026_and_remaining_proposals_without_support_claims() {
+fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_claims() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-026` is accepted optional work for GitHub issue #74 and is in progress",
+        "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
         "[GitHub issue 74](https://github.com/EnjoyableWork/mcp-doctor/issues/74)",
+        "[PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63)",
+        "[`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039)",
+        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361)",
+        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389015)",
+        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387)",
         "[Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
         "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
         "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
@@ -1847,7 +1852,7 @@ fn project_indexes_accepted_mcpd_026_and_remaining_proposals_without_support_cla
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should index the proposed optional issue intake: {contract}"
+            "PROJECT.md should preserve the optional ticket evidence: {contract}"
         );
     }
 
@@ -1855,7 +1860,13 @@ fn project_indexes_accepted_mcpd_026_and_remaining_proposals_without_support_cla
         .lines()
         .find(|line| line.starts_with("| MCPD-026 |"))
         .expect("PROJECT.md should contain MCPD-026");
-    assert!(mcpd_026.contains("| In progress |"));
+    assert!(mcpd_026.contains("| Done |"));
+    for contract in ["final evidence head", "closed [issue #74]", "exact-`main`"] {
+        assert!(
+            mcpd_026.contains(contract),
+            "MCPD-026 completion must retain {contract}"
+        );
+    }
 
     for ticket in ["MCPD-027", "MCPD-028", "MCPD-029"] {
         let row = project
