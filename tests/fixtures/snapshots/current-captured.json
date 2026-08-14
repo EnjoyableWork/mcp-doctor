@@ -1,0 +1,192 @@
+{
+  "schema_version": "mcp-doctor.contract-snapshot/v1alpha1",
+  "protocol_revision": "2026-07-28",
+  "capabilities": {
+    "tools": {
+      "advertised": true,
+      "list_changed": false
+    },
+    "prompts": {
+      "advertised": true,
+      "list_changed": false
+    },
+    "resources": {
+      "advertised": true,
+      "list_changed": false,
+      "subscribe": false
+    }
+  },
+  "catalogs": {
+    "tools": {
+      "contracts": [
+        {
+          "name": "synthetic.complex",
+          "behavior_hints": {
+            "read_only": false,
+            "destructive": true,
+            "idempotent": false,
+            "open_world": true
+          },
+          "input_schema": {
+            "$defs": {
+              "coordinate": {
+                "type": "number"
+              },
+              "point": {
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "$ref": "#/$defs/coordinate"
+                  },
+                  "y": {
+                    "$ref": "#/$defs/coordinate"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "type": "object"
+              }
+            },
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "not": {
+                    "required": [
+                      "point"
+                    ]
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "safe"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "point"
+                  ]
+                }
+              }
+            ],
+            "properties": {
+              "choice": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "mode": {
+                "enum": [
+                  "dry-run",
+                  "safe"
+                ]
+              },
+              "point": {
+                "$ref": "#/$defs/point"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ok"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "name": "synthetic.empty",
+          "behavior_hints": {
+            "read_only": false,
+            "destructive": true,
+            "idempotent": false,
+            "open_world": true
+          },
+          "input_schema": {
+            "properties": {},
+            "type": "object"
+          }
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        },
+        {
+          "discovery_ordinal": 1,
+          "contract_index": 1
+        }
+      ]
+    },
+    "prompts": {
+      "contracts": [
+        {
+          "name": "synthetic.review",
+          "arguments": [
+            {
+              "name": "subject",
+              "required": true
+            },
+            {
+              "name": "tone",
+              "required": false
+            }
+          ]
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    },
+    "resources": {
+      "contracts": [
+        {
+          "name": "Synthetic guide",
+          "uri": "synthetic://guide"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    },
+    "resource_templates": {
+      "contracts": [
+        {
+          "name": "Synthetic item",
+          "uri_template": "synthetic://items/{id}"
+        }
+      ],
+      "correlation": [
+        {
+          "discovery_ordinal": 0,
+          "contract_index": 0
+        }
+      ]
+    }
+  }
+}

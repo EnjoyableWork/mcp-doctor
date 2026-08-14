@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.contract-diff.v1alpha1.schema.json",
   "title": "mcp-doctor redacted contract diff",
-  "description": "The deterministic, value-free mcp-doctor.contract-diff/v1alpha1 result for two bounded local contract snapshots.",
+  "description": "The deterministic, value-free mcp-doctor.contract-diff/v1alpha1 result for two bounded same-revision local contract snapshots, or a structural rejection before comparison.",
   "type": "object",
   "required": [
     "schema_version",
@@ -18,7 +18,12 @@
       "const": "mcp-doctor.contract-diff/v1alpha1"
     },
     "protocol_revision": {
-      "const": "2026-07-28"
+      "enum": [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18",
+        null
+      ]
     },
     "outcome": {
       "enum": [
@@ -147,7 +152,9 @@
             "MCP-SNAPSHOT-003",
             "MCP-SNAPSHOT-004",
             "MCP-SNAPSHOT-005",
-            "MCP-SNAPSHOT-006"
+            "MCP-SNAPSHOT-006",
+            "MCP-SNAPSHOT-007",
+            "MCP-SNAPSHOT-008"
           ]
         },
         "classification": {

@@ -122,12 +122,26 @@ Legacy inspection performs only `initialize`, one
 does not call tools, list retained tasks, read resources, get prompts, answer
 server requests, or enable legacy `check` or `break` behavior.
 
-| MCP revision | `inspect` STDIO | `inspect` Streamable HTTP | `check` / `break` | Evidence position |
-| --- | --- | --- | --- | --- |
-| `2026-07-28` | Default | Default | Supported | Broad current-revision matrix |
-| `2025-11-25` | Explicit only | Explicit only | Not supported | Synthetic diagnostics only |
-| `2025-06-18` | Explicit only | Explicit only | Not supported | Synthetic diagnostics only |
-| `2025-03-26`, `2024-11-05`, or unknown | Rejected | Rejected | Rejected | No compatibility claim |
+| MCP revision | Est. usage[^revision-usage] | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` |
+| --- | ---: | --- | --- | --- | --- | --- |
+| `2026-07-28` | 11.2% | Default | Supported | Supported offline | Supported | Supported |
+| `2025-11-25` | 77.4% | Explicit only | Explicit only | Supported offline | Not supported | Not supported |
+| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Not supported | Not supported |
+| `2025-03-26` | 1.9% | Rejected | Rejected | Rejected | Rejected | Rejected |
+| `2024-11-05` | 1.3% | Rejected | Rejected | Rejected | Rejected | Rejected |
+| `2024-10-07` | Under 0.1% | Rejected as unknown | Rejected | Rejected | Rejected as unknown | Rejected as unknown |
+| Unknown | — | Rejected | Rejected | Rejected | Rejected | Rejected |
+
+Supported `inspect` and snapshot entries cover STDIO and Streamable HTTP;
+`diff` is local-only. Current-revision active support has broad matrix evidence;
+legacy inspection, snapshot, and diff evidence is synthetic and does not imply
+broad ecosystem compatibility.
+
+[^revision-usage]: Dated 2026-08-13 planning proxy, rounded from seven-day
+    downloads of official TypeScript and Python SDK releases grouped by their
+    advertised default revision. Package downloads are not unique deployments
+    or runtime traffic. Sources: [npm version downloads](https://api.npmjs.org/versions/%40modelcontextprotocol%2Fsdk/last-week)
+    and the [public PyPI dataset](https://github.com/ClickHouse/clickpy).
 
 Let an editor, wrapper, server repository, or CI job check the installed
 binary before it chooses a diagnostic:
@@ -238,38 +252,48 @@ mcp-doctor capabilities --format json
 
 ### Contract snapshots and offline diffs
 
-Contract snapshots are separate, explicitly requested developer artifacts—not
-ordinary diagnostic reports. Create one only during passive MCP `2026-07-28`
-inspection by naming the same exact new path twice:
+Contract snapshots are explicit developer artifacts, not ordinary reports.
+Create one during passive inspection of the default MCP `2026-07-28` revision,
+or an explicitly selected MCP `2025-11-25` or `2025-06-18` revision, by naming
+the same new path twice:
 
 ```bash
 mcp-doctor inspect \
   --snapshot build-a.contract.json \
   --allow-sensitive-snapshot build-a.contract.json \
   -- node ./dist/server.js --stdio
+
+mcp-doctor inspect \
+  --protocol-version 2025-11-25 \
+  --snapshot legacy.contract.json \
+  --allow-sensitive-snapshot legacy.contract.json \
+  -- node ./dist/server.js --stdio
 ```
 
-The redundant path is an acknowledgement that the artifact is sensitive. A
-snapshot contains normalized capability settings, tool and prompt names,
-advertised resource URIs and URI templates, prompt argument names, tool
-behavior hints, JSON Schema property names, and validation-bearing values such
-as `const`, `enum`, patterns, and bounds. Those fields may disclose proprietary
-API shape, internal naming, or allowed values. Store the file with the same
-care as source containing private interfaces, choose a retention period, and
-review it before sharing. `mcp-doctor` creates one new regular file with mode
-`0600` on Unix, never overwrites an existing path, and has no force option.
+The repeated path acknowledges sensitivity. A snapshot can expose proprietary
+API shape, internal names, and allowed values:
 
-Descriptions, titles, defaults, examples, comments, server identity,
-instructions, pagination and cache metadata, transport endpoints, DNS and peer
-data, credentials and their source names, request headers, arguments, runtime
-results, logs, and stderr are not retained. A snapshot requested with an
-ordinary report is assembled from that exact bounded discovery conversation;
-there is no second run or list request. A complete current-revision catalog can
-still be written when a bounded local schema shape retained by the artifact
-makes the report fail, so a redacted location such as `tools[73]` can be
-resolved through the artifact-local ordinal map. Transport, protocol,
-external-reference, resource-bound, unrepresentable or incomplete-catalog, and
-cleanup failures write no snapshot.
+- **Retained:** the selected revision and, for the two legacy revisions, its
+  exact matching negotiated identity; normalized capabilities; tool and prompt
+  names; resource URIs and templates; prompt argument names; tool behavior
+  hints; JSON Schema property names; and validation values such as `const`,
+  `enum`, patterns, and bounds. Legacy snapshots retain only fixed presence
+  booleans for logging and completions and, for MCP `2025-11-25`, the supported
+  task capability booleans.
+- **Excluded:** descriptions, titles, defaults, examples, comments, server
+  identity and instructions, pagination and cache metadata, experimental
+  capability values, transport endpoints, DNS and peer data, credentials and
+  source names, headers, arguments, results, logs, and stderr.
+
+Treat snapshots like source containing private interfaces: set a retention
+period and review them before sharing. `mcp-doctor` derives the artifact from
+the same bounded discovery conversation, makes no second run or list request,
+creates one new regular file (`0600` on Unix), and has no overwrite or force
+mode. It can still capture a complete catalog when an artifact-retained local
+schema shape makes the ordinary report fail, letting an ordinal such as
+`tools[73]` resolve
+inside the artifact. Transport, protocol, external-reference, resource-bound,
+unrepresentable, incomplete-catalog, and cleanup failures write no snapshot.
 
 Compare two artifacts without a target:
 
@@ -278,17 +302,24 @@ mcp-doctor diff before.contract.json after.contract.json
 mcp-doctor diff --format json before.contract.json after.contract.json
 ```
 
-`diff` reads exactly two bounded regular files and never starts a process,
-opens a connection, retrieves a schema, or calls a tool. Catalog and set-like
-schema ordering are normalized, and each snapshot's ordinal map is validated
-but ignored for semantic matching. Human and
-`mcp-doctor.contract-diff/v1alpha1` JSON output use stable codes for additions,
-removals, capability changes, required inputs, and a finite set of syntactic
-narrowing or widening rules. Other schema and behavior-hint changes are
-`review_required`; `mcp-doctor` does not claim general JSON Schema implication,
-universal compatibility, protocol conformance, or a health score. Unchanged or
-documented-compatible diffs exit `0`, potentially breaking or review-required
-diffs exit `1`, and invalid, over-limit, or unreadable artifacts exit `2`.
+`diff` reads exactly two bounded regular files without starting a process,
+opening a connection, retrieving a schema, or calling a tool. Both artifacts
+must identify the same supported revision; cross-revision, selected/negotiated
+identity mismatch, and incompatible revision-specific artifacts are rejected
+without coercion, comparison, or value reflection. It normalizes catalog and
+set-like schema ordering, validates ordinal maps but ignores them for semantic
+matching, and emits stable human or
+`mcp-doctor.contract-diff/v1alpha1` codes for additions, removals, capability
+changes, required inputs, and finite syntactic narrowing or widening rules.
+For MCP `2025-11-25`, an omitted schema dialect retains that revision's Draft
+2020-12 default. For MCP `2025-06-18`, omission is recorded as ambiguous and a
+changed schema receives `review_required` unless both artifacts explicitly
+declare supported Draft 2020-12 semantics. Other schema and behavior-hint
+changes are also `review_required`; this is not general JSON Schema implication,
+cross-revision inference, universal compatibility, protocol conformance, or a
+health score. Unchanged or documented-compatible diffs exit `0`,
+potentially breaking or review-required diffs exit `1`, and invalid,
+over-limit, or unreadable artifacts exit `2`.
 
 The artifact contracts are published with the source as
 [`mcp-doctor.contract-snapshot/v1alpha1`](schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json)
@@ -297,35 +328,32 @@ and
 
 ### Offline diagnostic aggregates
 
-Use `aggregate` when separate jobs or platforms have already produced stable,
-redacted `mcp-doctor.report/v1` JSON files. It accepts one through 32 explicit
-ordered regular files and writes one new `mcp-doctor.aggregate/v1` JSON
-artifact. Human stdout is the default; `--format json` makes stdout
-byte-identical to that required artifact.
+`aggregate` combines one through 32 explicit ordered, stable, redacted
+`mcp-doctor.report/v1` regular files into one new
+`mcp-doctor.aggregate/v1` artifact. Human stdout is the default;
+`--format json` makes stdout byte-identical to the artifact.
 
-Members are identified only by zero-based input ordinal. Every known safe
-report field is retained, while compatible unknown optional properties are
-accepted and discarded instead of echoed. Each input must satisfy the embedded
-stable report schema and consistent summary, severity, outcome, exit,
-revision, primary-diagnosis, independent-finding, and causal-skip semantics.
-Any failed member fails the aggregate; otherwise any incomplete member makes it
-incomplete; only all-pass input passes. There is no waiver, score, baseline,
-deduplication, majority rule, or severity override.
+Members are identified only by zero-based input ordinal. Known safe fields are
+retained; compatible unknown optional properties are discarded, not echoed.
+Every input must satisfy the embedded report schema and its summary, severity,
+outcome, exit, revision, primary diagnosis, independent findings, and causal skips.
+Failure outranks incomplete, which outranks pass: only all-pass input passes.
+There is no waiver, score, baseline, deduplication, majority rule, or severity
+override.
 
-An all-pass aggregate exits `0`, any failed member exits `1`, and otherwise an
-incomplete member exits `3`. Invalid, unreadable, aliased, or over-limit input
-and unsafe destinations exit `2`; render, write, publication, or cleanup
-failure exits `4` and leaves no aggregate artifact.
+All-pass exits `0`, any failure exits `1`, and otherwise incomplete exits `3`.
+Invalid, unreadable, aliased, over-limit input or an unsafe destination exits
+`2`; render, write, publication, or cleanup failure exits `4` and leaves no
+artifact.
 
 `aggregate` never starts a process, opens a connection, resolves DNS or
 credentials, retrieves a schema, discovers a target, or calls a tool. It does
-not scan directories, expand globs, infer CI artifacts, or follow paths found
-inside a report. Per-file, total-input, nesting, node, validation-work, check,
-finding, output, and operation-time limits are fixed in the artifact. Duplicate,
-canonical-alias, hard-link, symbolic-link, malformed, inconsistent, or
-over-limit inputs reject the whole invocation. The required destination must
-be a new file in an existing directory and is staged and published without
-overwrite.
+not scan directories, expand globs, infer CI artifacts, or follow report paths.
+Fixed limits cover each file, total input, nesting, nodes, validation work,
+checks, findings, output, and operation time. Duplicate, aliased, hard-linked,
+symlinked, malformed, inconsistent, or over-limit input rejects the invocation.
+The destination must be a new file in an existing directory and is staged and
+published without overwrite.
 
 The stable aggregate contract is published with the source as
 [`mcp-doctor.aggregate/v1`](schemas/mcp-doctor.aggregate.v1.schema.json). Its
@@ -364,70 +392,58 @@ array order:
 }
 ```
 
-The case ID is for reviewing the file; reports use only its numeric index.
-`target_env` copies only those same-named invoking-process variables into the
-otherwise constrained target environment. Each `secret_refs` key is an RFC
-6901 pointer to an existing `null` argument placeholder, and its value names an
-invoking-process environment variable. Missing values, invalid pointers,
-non-null destinations, duplicate members, unknown fields, and unsupported
-schemas fail before the target starts. There is no interpolation, `.env` or
-file loading, command execution, prompt, keychain, or secret-store lookup.
-Environment reference names use the portable ASCII form
-`[A-Za-z_][A-Za-z0-9_]*`; argument-secret values must be valid UTF-8 because
-they become JSON strings.
+Case IDs aid review; reports use numeric indexes. `target_env` copies only
+same-named invoking-process variables into the constrained target environment.
+Each `secret_refs` entry maps an RFC 6901 pointer at an existing `null`
+argument placeholder to an invoking-process environment variable. Names use
+`[A-Za-z_][A-Za-z0-9_]*`, and argument secrets must be UTF-8 JSON strings.
+Missing values, invalid pointers, non-null destinations, duplicates, unknown
+fields, and unsupported schemas fail before target start. There is no
+interpolation, `.env` or file loading, command execution, prompt, keychain, or
+secret-store lookup.
 
-Every run repeats the exact scenario tool with `--allow-tool`; a
-`side_effecting` scenario also requires `--allow-side-effects`. Advertised tool
-annotations never grant permission. Arguments must match the advertised input
-schema before a call. Completed results are checked against the expected
-`success` or `tool_error`, the advertised output schema, and the optional
-scenario output schema. Ordinary mismatches and tool rejections do not hide
-later cases. Transport, protocol, cleanup, authorization, and exhausted-limit
-failures stop later calls. `input_required` makes that case and an otherwise
-successful report incomplete; `mcp-doctor` neither supplies input nor retries
-that call.
+Every run repeats the exact tool through `--allow-tool`; `side_effecting` also
+requires `--allow-side-effects`, and annotations grant no authority. Arguments
+must match the advertised input schema before a call. Completed results are
+checked against `success` or `tool_error`, the advertised output schema, and
+any scenario output schema. Ordinary mismatches and tool rejections allow later
+cases; transport, protocol, cleanup, authorization, and exhausted limits stop
+them. `input_required` makes the case and an otherwise successful report
+incomplete without supplying input or retrying the call.
 
 ### Generated `break` cases
 
-`break` derives schema-valid object inputs only from the one selected tool's
-bounded local Draft 2020-12 input schema. The invocation must name that tool
-independently with matching `--tool` and `--allow-tool` values, classify it as
-`read_only` or `side_effecting`, choose 1–100 cases, and supply an unsigned
-64-bit seed. A `side_effecting` run also requires `--allow-side-effects`;
-advertised annotations, wildcards, patterns, and discovered selection never
-grant authority.
+`break` derives schema-valid object inputs only from one bounded local Draft
+2020-12 tool schema. Matching `--tool` and `--allow-tool` values select and
+authorize it; the run also declares `read_only` or `side_effecting`, 1–100
+cases, and an unsigned 64-bit seed. A `side_effecting` run also requires `--allow-side-effects`.
+Annotations, wildcards, patterns, and discovery never grant authority.
 
 `mcp-doctor.generator/v1` builds a finite candidate set, validates every
-candidate against the advertised schema, and runs selected cases sequentially
-with concurrency one. Generation is capped at 256 attempts, 64 retained
-candidates, 100,000 synthesis steps, 1 MiB per input, and 8 MiB across active
-inputs. Schema depth, local-reference, validation, transport, response, and
-total-run bounds still apply. An invalid, externally referenced,
-unsatisfiable, or over-limit schema stops generation before `tools/call`.
+candidate, and runs selected cases sequentially at concurrency one. Caps are
+256 attempts, 64 retained candidates, 100,000 synthesis steps, 1 MiB per input,
+and 8 MiB across active inputs, alongside the schema, reference, validation,
+transport, response, and total-run limits. Invalid, externally referenced,
+unsatisfiable, or over-limit schemas stop before `tools/call`.
 
-Each case reports its generator version, case seed, serialized byte count, and
-fixed structural JSON counts without retaining member names or values. Case
-`n` uses the base seed plus `n` with unsigned wraparound. To replay one case,
-run the same tool and advertised schema with that reported seed and
-`--cases 1`. Tool errors remain findings and do not hide later cases;
-`input_required`, unsafe failures, and cleanup retain the same stop rules as
-`check`.
+Reports retain the generator version, case seed, serialized byte count, and
+fixed structural JSON counts—never member names or values. Case `n` uses the
+base seed plus `n` with unsigned wraparound; replay it with the same tool,
+schema, reported seed, and `--cases 1`. Tool errors do not hide later cases;
+`input_required`, unsafe failures, and cleanup follow `check` stop rules.
 
-Generated runs do not accept target-environment or argument-secret sources,
-fetch schemas, choose another tool, change the local executable, or widen the
-exact remote endpoint authorized by the command. Ordinary human and JSON
-reports never contain raw generated arguments or tool results.
+Generated runs accept no target-environment or argument-secret sources, fetch
+no schemas, select no other tool, and cannot change the local executable or
+widen the authorized endpoint. Ordinary reports never contain raw generated arguments or tool results.
 
 ## Findings you can act on
 
-Every finding includes a stable code, severity, MCP version, safe field
-location, and whether the check ran or was skipped. Active reports keep the
-declared case index or generated seed and the structural input shape needed to
-repeat a failure without revealing secrets or raw production data.
-
-When problems are connected, the report points to the first one you can fix.
-It skips only the checks that depend on that problem and tells you why. It
-keeps running unrelated checks and reports their problems too.
+Every finding includes a stable code, severity, MCP revision, safe field
+location, and performed or skipped state. Active reports retain the declared
+case index or generated seed and a structural input shape—enough to repeat a
+failure without secrets or raw production data. Related problems identify the
+first actionable cause, skip only dependent checks with a reason, and keep
+independent checks running.
 
 ```text
 PRIMARY DIAGNOSIS · schema
@@ -447,9 +463,8 @@ Checks skipped because of this issue:
   tool/runtime
 ```
 
-The human, stable JSON, and JUnit reports use the same immutable findings. This
-prevents CI from hiding a failure, choosing a different main issue, or turning
-a skipped check into a pass.
+Human, stable JSON, and JUnit reports share one immutable result, so CI cannot
+hide a failure, choose another primary issue, or turn a skip into a pass.
 
 The passive STDIO path is checked against pinned official TypeScript and Go
 servers and independent Dart and PHP servers. See the
@@ -461,8 +476,8 @@ installed-channel claim.
 
 ## Bring it into CI
 
-Run the same check in a pull request. The process exit remains the gate while
-stable JSON and JUnit files are produced from that one run:
+Run the same check in a pull request. Its exit remains the gate while one run
+produces stable JSON and JUnit:
 
 ```yaml
 - name: Diagnose MCP server
@@ -474,46 +489,39 @@ stable JSON and JUnit files are produced from that one run:
     ./target/release/my-mcp-server --stdio
 ```
 
-A required check that fails returns a non-zero status. Upload or consume the
-explicit paths with the facilities of any CI system; `mcp-doctor` does not
-perform provider-specific uploads. Each JUnit diagnostic check becomes one test
-case, and JSON and JUnit retain the same outcome, primary diagnosis, causal
-skips, and safe evidence as stdout. Reports are deterministic, bounded, and
-hide secrets.
+A failed required check returns non-zero. Your CI system uploads or consumes
+the explicit paths; `mcp-doctor` performs no provider-specific upload. Each
+JUnit diagnostic check becomes one test case, while JSON and JUnit preserve
+stdout's outcome, primary diagnosis, causal skips, and safe evidence. Reports
+remain deterministic, bounded, and secret-free.
 
 ## Safe by default
 
-- `inspect` lists and checks what the server offers; it never calls a tool.
-- Every active run names and independently authorizes the exact tool and
-  target. Reviewed scenarios declare their effect and case limit; generated
-  runs also declare their effect, case limit, and seed.
-- Side-effecting active runs require a separate `--allow-side-effects` gate.
-- Remote connections default to direct public HTTPS with verified TLS, pinned
-  bounded address resolution, and no redirect, retry, proxy, cookie, or cache.
-- Private targets, loopback cleartext, and environment-sourced credentials each
-  require their own exact endpoint gate; credentials never travel over HTTP or
-  trigger an automatic OAuth or metadata flow.
-- Hard limits cover time, data size, messages, schema work, test cases,
-  redirects, retries, and parallel work.
-- A legacy HTTP session identifier is accepted only from initialization,
-  bounded and retained only for the run, repeated exactly on later requests,
-  and followed by one bounded teardown attempt. Session loss never triggers a
-  reinitialize or downgrade, and teardown failure remains independently
-  visible.
-- Normal output hides headers, credentials, tool inputs, raw results, and server
-  logs.
-- Sensitive contract snapshots require an exact-path acknowledgement and a new
-  output file. Offline diffs remain value-free and have no target or network
-  surface.
-- Offline aggregates accept only explicit bounded stable reports, discard
-  unknown optional values, preserve failures conservatively, and have no
-  target, network, credential, retrieval, or tool surface.
-- Capability discovery reports only fixed compiled facts under a 64 KiB output
-  limit and has no configuration, host-inventory, credential, process, network,
-  target, retrieval, or tool surface.
-- Local server commands run directly, not through a shell. Before exiting,
-  `mcp-doctor` closes every child process, stops it if needed, and waits for it
-  to end.
+- `inspect` checks advertised contracts without calling a tool.
+- Active runs name and independently authorize one exact tool and target,
+  declare effects and case limits, and add a seed for generation. Side effects
+  require `--allow-side-effects`.
+- Remote connections use direct public HTTPS, verified TLS, and pinned bounded
+  resolution without redirects, retries, proxies, cookies, or caches.
+- Private targets, loopback cleartext, and environment credentials each require
+  an exact endpoint gate. Credentials never use HTTP or trigger OAuth or
+  metadata discovery.
+- Hard limits cover time, bytes, messages, schema work, cases, retries,
+  redirects, and concurrency.
+- Legacy HTTP session IDs come only from initialization, stay bounded and
+  run-local, repeat exactly, and receive one bounded teardown. Session loss
+  never reinitializes or downgrades; teardown failure stays visible.
+- Reports hide headers, credentials, tool inputs, raw results, and server logs.
+- Sensitive snapshots require an exact-path acknowledgement and new file;
+  value-free offline diffs have no target or network surface.
+- Aggregates accept only explicit bounded stable reports, discard unknown
+  optional values, preserve failures, and perform no target, network,
+  credential, retrieval, or tool activity.
+- Capability discovery reports only fixed compiled facts under 64 KiB and
+  reads no configuration, host inventory, credentials, files, process,
+  network, target, retrieval, or tool data.
+- Local commands bypass the shell. Before exit, `mcp-doctor` closes, stops when
+  needed, and waits for every child process.
 
 ## Contributing
 

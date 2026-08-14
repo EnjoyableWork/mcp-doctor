@@ -33,6 +33,9 @@ smoke_report="${smoke_root}/report.json"
 smoke_json_artifact="${smoke_root}/report-artifact.json"
 smoke_junit_artifact="${smoke_root}/report-artifact.xml"
 smoke_snapshot="${smoke_root}/contract.json"
+smoke_legacy_11_snapshot="${smoke_root}/contract-2025-11-25.json"
+smoke_legacy_06_snapshot="${smoke_root}/contract-2025-06-18.json"
+smoke_legacy_report="${smoke_root}/legacy-report.json"
 smoke_diff="${smoke_root}/diff.json"
 smoke_aggregate="${smoke_root}/aggregate.json"
 smoke_aggregate_stdout="${smoke_root}/aggregate-stdout.json"
@@ -98,6 +101,8 @@ jq -e --arg version "${smoke_version}" '
   .schema_versions.diagnostic_report == ["mcp-doctor.report/v1"] and
   .schema_versions.scenario == ["mcp-doctor.scenario/v1alpha1"] and
   .schema_versions.generator == ["mcp-doctor.generator/v1"] and
+  .schema_versions.contract_snapshot == ["mcp-doctor.contract-snapshot/v1alpha1"] and
+  .schema_versions.contract_diff == ["mcp-doctor.contract-diff/v1alpha1"] and
   .exit_semantics.version == "mcp-doctor.exit/v1" and
   ([.exit_semantics.codes[].code] == [0, 1, 2, 3, 4]) and
   .platform == {
@@ -217,3 +222,73 @@ jq -e '
   (.findings | length) == 0 and
   ([.checks[] | .state == "performed"] | all)
 ' "${smoke_diff}" >/dev/null
+
+for smoke_legacy_case in \
+  "2025-11-25|draft_2020_12|${smoke_legacy_11_snapshot}" \
+  "2025-06-18|ambiguous|${smoke_legacy_06_snapshot}"; do
+  IFS='|' read -r smoke_legacy_revision smoke_legacy_dialect smoke_legacy_snapshot \
+    <<<"${smoke_legacy_case}"
+  if ! run_mcp_doctor inspect --format json \
+    --protocol-version "${smoke_legacy_revision}" \
+    --snapshot "${smoke_legacy_snapshot}" \
+    --allow-sensitive-snapshot "${smoke_legacy_snapshot}" \
+    -- "${smoke_fixture}" legacy-success \
+    >"${smoke_legacy_report}" 2>"${smoke_stderr}"; then
+    echo "installed legacy snapshot smoke failed" >&2
+    exit 1
+  fi
+  if [[ -s "${smoke_stderr}" ]]; then
+    echo "installed legacy snapshot smoke wrote unexpected stderr" >&2
+    exit 1
+  fi
+  jq -e --arg revision "${smoke_legacy_revision}" '
+    .schema_version == "mcp-doctor.report/v1" and
+    .protocol_revision == $revision and
+    .negotiated_protocol_revision == $revision and
+    .outcome == "passed" and
+    .exit_code == 0
+  ' "${smoke_legacy_report}" >/dev/null
+  jq -e \
+    --arg revision "${smoke_legacy_revision}" \
+    --arg dialect "${smoke_legacy_dialect}" '
+    .schema_version == "mcp-doctor.contract-snapshot/v1alpha1" and
+    .protocol_revision == $revision and
+    .negotiated_protocol_revision == $revision and
+    .capabilities.tools.advertised == true and
+    (.catalogs.tools.contracts | length) == 1 and
+    .catalogs.tools.contracts[0].input_schema_dialect == $dialect and
+    .catalogs.tools.contracts[0].output_schema_dialect == $dialect and
+    (if $revision == "2025-11-25" then
+      .capabilities.logging.advertised == true and
+      .capabilities.tasks == {
+        advertised: true,
+        list: true,
+        cancel: true,
+        requests_tools_call: true
+      }
+    else
+      ((.capabilities | has("logging")) | not) and
+      ((.capabilities | has("tasks")) | not)
+    end)
+  ' "${smoke_legacy_snapshot}" >/dev/null
+
+  if ! run_mcp_doctor diff --format json \
+    "${smoke_legacy_snapshot}" "${smoke_legacy_snapshot}" \
+    >"${smoke_diff}" 2>"${smoke_stderr}"; then
+    echo "installed legacy offline contract diff smoke failed" >&2
+    exit 1
+  fi
+  if [[ -s "${smoke_stderr}" ]]; then
+    echo "installed legacy offline contract diff wrote unexpected stderr" >&2
+    exit 1
+  fi
+  jq -e --arg revision "${smoke_legacy_revision}" '
+    .schema_version == "mcp-doctor.contract-diff/v1alpha1" and
+    .protocol_revision == $revision and
+    .outcome == "unchanged" and
+    .exit_code == 0 and
+    .summary.total == 0 and
+    (.findings | length) == 0 and
+    ([.checks[] | .state == "performed"] | all)
+  ' "${smoke_diff}" >/dev/null
+done

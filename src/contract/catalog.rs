@@ -16,7 +16,7 @@ use super::protocol::{RevisionSelection, SupportedRevision, select_server_revisi
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
-const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+pub(super) const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum CatalogKind {

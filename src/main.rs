@@ -32,7 +32,7 @@ enum Command {
     Check(CheckArgs),
     /// Generate deterministic boundary cases for one explicitly authorized tool.
     Break(BreakArgs),
-    /// Compare two bounded contract snapshots without starting or contacting a target.
+    /// Compare two same-revision bounded snapshots without starting or contacting a target.
     Diff(DiffArgs),
     /// Aggregate bounded stable reports without starting or contacting a target.
     Aggregate(AggregateArgs),
@@ -55,7 +55,7 @@ struct InspectArgs {
     #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
     protocol_version: InspectProtocolVersion,
 
-    /// Write a sensitive current-revision contract snapshot to one new file.
+    /// Write a sensitive selected-revision contract snapshot to one new file.
     #[arg(long, value_name = "PATH")]
     snapshot: Option<PathBuf>,
 
@@ -535,7 +535,6 @@ async fn main() -> ExitCode {
             let destination = match contract::prepare_snapshot_destination(
                 arguments.snapshot,
                 arguments.allow_sensitive_snapshot,
-                revision,
             ) {
                 Ok(destination) => destination,
                 Err(error) => {

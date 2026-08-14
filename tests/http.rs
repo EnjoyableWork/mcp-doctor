@@ -79,6 +79,8 @@ struct LegacyExpectedRequest {
     protocol_header: bool,
     session: Option<&'static str>,
     cursor: Option<&'static str>,
+    bearer: Option<&'static str>,
+    custom: Option<(&'static str, &'static str)>,
 }
 
 impl LegacyExpectedRequest {
@@ -90,6 +92,8 @@ impl LegacyExpectedRequest {
             protocol_header: false,
             session: None,
             cursor: None,
+            bearer: None,
+            custom: None,
         }
     }
 
@@ -101,6 +105,8 @@ impl LegacyExpectedRequest {
             protocol_header: true,
             session,
             cursor: None,
+            bearer: None,
+            custom: None,
         }
     }
 
@@ -116,6 +122,8 @@ impl LegacyExpectedRequest {
             protocol_header: true,
             session,
             cursor,
+            bearer: None,
+            custom: None,
         }
     }
 
@@ -127,7 +135,19 @@ impl LegacyExpectedRequest {
             protocol_header: true,
             session: Some(session),
             cursor: None,
+            bearer: None,
+            custom: None,
         }
+    }
+
+    const fn with_credentials(
+        mut self,
+        bearer: &'static str,
+        custom: (&'static str, &'static str),
+    ) -> Self {
+        self.bearer = Some(bearer);
+        self.custom = Some(custom);
+        self
     }
 }
 
@@ -610,6 +630,7 @@ fn legacy_request_matches(request: &FixtureRequest, expected: LegacyExpectedRequ
             .get(name)
             .and_then(|values| (values.len() == 1).then_some(values[0].as_str()))
     };
+    let expected_bearer = expected.bearer.map(|token| format!("Bearer {token}"));
     if request.verb != expected.verb
         || request.request_target != "/mcp"
         || field("host").is_none()
@@ -623,6 +644,14 @@ fn legacy_request_matches(request: &FixtureRequest, expected: LegacyExpectedRequ
             false => field("mcp-protocol-version").is_some(),
         }
         || field("mcp-session-id") != expected.session
+        || match expected_bearer.as_deref() {
+            Some(value) => field("authorization") != Some(value),
+            None => false,
+        }
+        || match expected.custom {
+            Some((name, value)) => field(&name.to_ascii_lowercase()) != Some(value),
+            None => false,
+        }
     {
         return false;
     }
@@ -756,6 +785,31 @@ fn legacy_tools_response(id: i64, next_cursor: Option<&str>) -> FixtureResponse 
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {"query": {"type": "string"}}
+            }
+        })]
+    } else {
+        Vec::new()
+    };
+    let mut result = json!({"tools": tools});
+    if let Some(cursor) = next_cursor {
+        result["nextCursor"] = Value::String(cursor.to_owned());
+    }
+    FixtureResponse::json(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
+fn legacy_snapshot_tools_response(id: i64, next_cursor: Option<&str>) -> FixtureResponse {
+    let tools = if id == 2 {
+        vec![json!({
+            "name": "synthetic.legacy-snapshot",
+            "description": "synthetic legacy description never persisted 4a91",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "additionalProperties": false
+            },
+            "outputSchema": {
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}}
             }
         })]
     } else {
@@ -1252,13 +1306,19 @@ fn legacy_http_teardown_failure_remains_an_independent_safety_finding() {
         );
         let endpoint = server.endpoint();
         let environment = TestEnvironment::new();
+        let snapshot_path = environment.artifact_path(if stalled {
+            "stalled-cleanup-contract.json"
+        } else {
+            "failed-cleanup-contract.json"
+        });
+        let mut command = legacy_remote_command(&environment, &endpoint, revision, Some("json"));
+        command
+            .arg("--snapshot")
+            .arg(&snapshot_path)
+            .arg("--allow-sensitive-snapshot")
+            .arg(&snapshot_path);
         let started = Instant::now();
-        let output = run(&mut legacy_remote_command(
-            &environment,
-            &endpoint,
-            revision,
-            Some("json"),
-        ));
+        let output = run(&mut command);
         let elapsed = started.elapsed();
         let outcome = server.finish();
         assert_eq!(output.status.code(), Some(1));
@@ -1283,6 +1343,7 @@ fn legacy_http_teardown_failure_remains_an_independent_safety_finding() {
                 "teardown exceeded its shutdown grace: {elapsed:?}"
             );
         }
+        assert!(!snapshot_path.exists());
         assert_redacted(&output, &endpoint, &[LEGACY_SESSION]);
     }
 }
@@ -1667,6 +1728,167 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     assert_redacted(&output, &endpoint, &[TOOL]);
+}
+
+#[test]
+fn acknowledged_legacy_http_snapshots_reuse_one_credentialed_passive_session() {
+    for (revision, dialect) in [("2025-11-25", "draft_2020_12"), ("2025-06-18", "ambiguous")] {
+        let capabilities = if revision == "2025-11-25" {
+            json!({
+                "tools": {"listChanged": false},
+                "logging": {"synthetic": "synthetic-private-http-log-never-report-4a91"},
+                "completions": {"synthetic": "synthetic-private-http-completion-never-report-4a91"},
+                "experimental": {"synthetic": {"private": "synthetic-private-http-experimental-never-report-4a91"}},
+                "tasks": {
+                    "list": {"synthetic": "synthetic-private-http-task-never-report-4a91"},
+                    "cancel": {},
+                    "requests": {"tools": {"call": {"synthetic": true}}}
+                }
+            })
+        } else {
+            json!({
+                "tools": {"listChanged": false},
+                "logging": {"synthetic": "synthetic-private-http-log-never-report-4a91"},
+                "completions": {"synthetic": "synthetic-private-http-completion-never-report-4a91"},
+                "experimental": {"synthetic": {"private": "synthetic-private-http-experimental-never-report-4a91"}}
+            })
+        };
+        let credentialed = |expected: LegacyExpectedRequest| {
+            expected.with_credentials(BEARER_VALUE, (CUSTOM_FIELD, CUSTOM_VALUE))
+        };
+        let server = FixtureServer::spawn(
+            WireMode::Https,
+            vec![
+                PlannedExchange::legacy_reply(
+                    credentialed(LegacyExpectedRequest::initialize(revision)),
+                    legacy_initialize_response(revision, capabilities, Some(LEGACY_SESSION)),
+                ),
+                PlannedExchange::legacy_reply(
+                    credentialed(LegacyExpectedRequest::initialized(
+                        revision,
+                        Some(LEGACY_SESSION),
+                    )),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    credentialed(LegacyExpectedRequest::list(
+                        revision,
+                        Some(LEGACY_SESSION),
+                        None,
+                    )),
+                    legacy_snapshot_tools_response(2, Some(LEGACY_CURSOR)),
+                ),
+                PlannedExchange::legacy_reply(
+                    credentialed(LegacyExpectedRequest::list(
+                        revision,
+                        Some(LEGACY_SESSION),
+                        Some(LEGACY_CURSOR),
+                    )),
+                    legacy_snapshot_tools_response(3, None),
+                ),
+                PlannedExchange::legacy_reply(
+                    credentialed(LegacyExpectedRequest::delete(revision, LEGACY_SESSION)),
+                    FixtureResponse::status(200, "OK"),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let ca = ca_file(&environment);
+        let snapshot_path = environment.artifact_path("legacy-remote-contract.json");
+        let mut command = legacy_remote_command(&environment, &endpoint, revision, Some("json"));
+        command
+            .arg("--snapshot")
+            .arg(&snapshot_path)
+            .arg("--allow-sensitive-snapshot")
+            .arg(&snapshot_path)
+            .arg("--allow-credentials-to")
+            .arg(&endpoint)
+            .arg("--bearer-token-env")
+            .arg(BEARER_SOURCE)
+            .arg("--header-env")
+            .arg(format!("{CUSTOM_FIELD}={CUSTOM_SOURCE}"))
+            .arg("--tls-ca-file")
+            .arg(&ca)
+            .env(BEARER_SOURCE, BEARER_VALUE)
+            .env(CUSTOM_SOURCE, CUSTOM_VALUE);
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert!(output.status.success(), "{revision}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 5);
+        assert_eq!(outcome.valid_requests, 5);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_eq!(report["negotiated_protocol_revision"], revision);
+        assert_eq!(report["outcome"], "passed");
+
+        let bytes = fs::read(&snapshot_path).expect("the legacy HTTP snapshot should exist");
+        let snapshot = parse_and_validate_contract_snapshot(&bytes);
+        assert_eq!(snapshot["protocol_revision"], revision);
+        assert_eq!(snapshot["negotiated_protocol_revision"], revision);
+        assert_eq!(snapshot["capabilities"]["logging"]["advertised"], true);
+        assert_eq!(snapshot["capabilities"]["completions"]["advertised"], true);
+        assert_eq!(
+            snapshot["catalogs"]["tools"]["contracts"][0]["input_schema_dialect"],
+            dialect
+        );
+        assert_eq!(
+            snapshot["catalogs"]["tools"]["contracts"][0]["output_schema_dialect"],
+            dialect
+        );
+        if revision == "2025-11-25" {
+            assert_eq!(snapshot["capabilities"]["tasks"]["list"], true);
+            assert_eq!(snapshot["capabilities"]["tasks"]["cancel"], true);
+            assert_eq!(
+                snapshot["capabilities"]["tasks"]["requests_tools_call"],
+                true
+            );
+        } else {
+            assert!(snapshot["capabilities"].get("tasks").is_none());
+        }
+
+        let artifact = std::str::from_utf8(&bytes).expect("snapshot should be UTF-8");
+        for excluded in [
+            endpoint.as_str(),
+            BEARER_SOURCE,
+            BEARER_VALUE,
+            CUSTOM_SOURCE,
+            CUSTOM_FIELD,
+            CUSTOM_VALUE,
+            ca.to_str().expect("CA path should be UTF-8"),
+            LEGACY_SESSION,
+            LEGACY_CURSOR,
+            "synthetic-legacy",
+            "synthetic legacy description never persisted 4a91",
+            "experimental",
+            "synthetic-private-http-log-never-report-4a91",
+            "synthetic-private-http-completion-never-report-4a91",
+            "synthetic-private-http-experimental-never-report-4a91",
+            "synthetic-private-http-task-never-report-4a91",
+        ] {
+            assert!(!artifact.contains(excluded), "snapshot exposed {excluded}");
+            assert!(!stdout.contains(excluded), "report exposed {excluded}");
+        }
+        assert_redacted(
+            &output,
+            &endpoint,
+            &[
+                BEARER_SOURCE,
+                BEARER_VALUE,
+                CUSTOM_SOURCE,
+                CUSTOM_FIELD,
+                CUSTOM_VALUE,
+                ca.to_str().expect("CA path should be UTF-8"),
+                LEGACY_SESSION,
+                LEGACY_CURSOR,
+            ],
+        );
+    }
 }
 
 #[test]

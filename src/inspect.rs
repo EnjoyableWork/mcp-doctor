@@ -3,10 +3,10 @@ use std::ffi::OsString;
 use std::fmt;
 
 use crate::contract::{
-    Diagnostic, PassiveCatalogConversation, ProtocolRevision, SnapshotDestinationError,
-    capture_contract_snapshot, http_diagnostic, http_diagnostic_with_cleanup,
-    m1_http_limit_profile, m1_stdio_limit_profile, render_catalog_diagnostic,
-    render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
+    Diagnostic, KnownRevision, PassiveCatalogConversation, ProtocolRevision,
+    SnapshotDestinationError, capture_contract_snapshot, http_diagnostic,
+    http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
+    render_catalog_diagnostic, render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
     render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
     stdio_diagnostic,
 };
@@ -85,7 +85,13 @@ pub(crate) async fn run_stdio(
         })
     } else {
         let diagnostic = render_catalog_diagnostic(diagnostic, &conversation, result.responses());
-        let snapshot = capture_if_complete(capture_snapshot, !cleanup_failed, result.responses())?;
+        let snapshot = capture_if_complete(
+            capture_snapshot,
+            !cleanup_failed,
+            revision,
+            conversation.negotiated_revision(),
+            result.responses(),
+        )?;
         Ok(InspectOutput {
             diagnostic,
             snapshot,
@@ -171,7 +177,13 @@ pub(crate) async fn run_http(
     } else {
         let diagnostic =
             render_http_catalog_diagnostic(diagnostic, &conversation, result.responses());
-        let snapshot = capture_if_complete(capture_snapshot, !cleanup_failed, result.responses())?;
+        let snapshot = capture_if_complete(
+            capture_snapshot,
+            !cleanup_failed,
+            revision,
+            conversation.negotiated_revision(),
+            result.responses(),
+        )?;
         Ok(InspectOutput {
             diagnostic,
             snapshot,
@@ -182,10 +194,12 @@ pub(crate) async fn run_http(
 fn capture_if_complete(
     requested: bool,
     cleanup_succeeded: bool,
+    revision: ProtocolRevision,
+    negotiated_revision: Option<KnownRevision>,
     responses: &[crate::transport::ProbeResponse],
 ) -> Result<Option<Vec<u8>>, SnapshotDestinationError> {
     if requested && cleanup_succeeded {
-        capture_contract_snapshot(responses).map(Some)
+        capture_contract_snapshot(revision, negotiated_revision, responses).map(Some)
     } else {
         Ok(None)
     }

@@ -254,7 +254,7 @@ fn project_records_open_10_and_open_11_without_claiming_exact_main_completion() 
         "| DEC-042 | Resolve `OPEN-11` when GitHub Free cannot restrict outside-collaborator invitations to owners | Accepted |",
         "`OPEN-10` is accepted as `DEC-041`",
         "`OPEN-11` is accepted as",
-        "There are no unresolved open decisions.",
+        "The completed decisions above remain accepted.",
         "The owner then explicitly authorized and completed the staged live activation.",
         "members or outside\ncollaborators. The remaining outside-collaborator invitation",
         "classic PATs are blocked from every\nEnjoyableWork API and Git-over-HTTPS resource",

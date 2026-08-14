@@ -56,7 +56,11 @@ fn main() -> ExitCode {
         Some("snapshot-invalid-shape") => snapshot_invalid_shape(),
         Some("snapshot-started-marker") => snapshot_started_marker(&remaining),
         Some("legacy-success") => legacy_success(),
+        Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
+        Some("legacy-schema-external") => legacy_schema_external(),
+        Some("legacy-schema-depth-limit") => legacy_schema_depth_limit(),
+        Some("legacy-malformed-capability") => legacy_malformed_capability(),
         Some("legacy-mismatch") => legacy_mismatch(),
         Some("legacy-malformed") => legacy_malformed(),
         Some("legacy-timeout") => legacy_timeout(),
@@ -310,17 +314,19 @@ fn protocol_unsupported() -> ExitCode {
 }
 
 fn legacy_success() -> ExitCode {
+    eprintln!("synthetic-private-legacy-stderr-never-report-7f2c");
     let mut input = io::BufReader::new(io::stdin().lock());
     let revision = read_initialize(&mut input);
     let capabilities = if revision == "2025-11-25" {
         json!({
             "tools": {"listChanged": false},
-            "logging": {},
+            "logging": {"synthetic": "synthetic-private-legacy-log-never-report-7f2c"},
+            "completions": {"synthetic": "synthetic-private-completion-never-report-7f2c"},
             "experimental": {"synthetic": {}},
             "tasks": {
-                "list": {},
+                "list": {"synthetic": "synthetic-private-task-never-report-7f2c"},
                 "cancel": {},
-                "requests": {"tools": {"call": {}}}
+                "requests": {"tools": {"call": {"synthetic": true}}}
             }
         })
     } else {
@@ -364,6 +370,71 @@ fn legacy_success() -> ExitCode {
         Some("synthetic-private-legacy-cursor-never-report-7f2c"),
     );
     write_result(3, json!({"tools": []}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_report_single_run(arguments: &[OsString]) -> ExitCode {
+    if !claim_single_run(arguments.first()) {
+        return ExitCode::from(2);
+    }
+    legacy_success()
+}
+
+fn legacy_schema_external() -> ExitCode {
+    legacy_tool_schema(json!({
+        "$ref": "https://synthetic.invalid/legacy-private-schema-never-report-7f2c"
+    }))
+}
+
+fn legacy_schema_depth_limit() -> ExitCode {
+    let mut schema = json!({"type": "string"});
+    for _ in 0..65 {
+        schema = json!({"not": schema});
+    }
+    legacy_tool_schema(schema)
+}
+
+fn legacy_tool_schema(input_schema: Value) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "tools": [{
+                "name": "synthetic.legacy-bounded",
+                "inputSchema": input_schema
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_malformed_capability() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {
+                "logging": "synthetic-private-malformed-capability-never-report-7f2c"
+            },
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
     assert_eof(&mut input);
     ExitCode::SUCCESS
 }
