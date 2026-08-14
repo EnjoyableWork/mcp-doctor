@@ -313,6 +313,43 @@ and assertions that do not print payloads when they fail.
 A bug involving implicit execution, cleanup, redaction, limits, version
 handling, or a false success claim requires a regression test.
 
+### Deterministic CI policy
+
+- Use timeouts only as product contracts or outer watchdogs that bound failed
+  work. Read a wall clock only when the product contract under test explicitly
+  consumes verification time, and keep the accepted range stable across
+  ordinary clock transitions. Never use elapsed time, a wall-clock-derived
+  expected value, a fixed sleep, or a fast polling interval as synchronization,
+  readiness, or proof.
+- Synchronize asynchronous and process fixtures through observable state or an
+  explicit event/acknowledgement handshake. Polling may observe eventual
+  operating-system state only when that state is itself the success condition
+  and one outer deadline prevents an indefinite hang.
+- Treat pass/fail variance on identical source as an unresolved defect. A green
+  rerun is evidence of nondeterminism, not acceptance evidence; preserve the
+  failed attempt, classify it in the owning ticket or risk, and do not add an
+  automatic test, job, or workflow retry.
+- A narrowly bounded retry is permitted only for `DEC-043`'s idempotent download
+  of one immutable size- and digest-pinned Syft asset, only for its classified
+  transient transport failures, and only under its three-attempt limit. Never
+  retry a test, build, integrity check, publication, complete job, or workflow
+  as correctness evidence.
+- Correct the lowest timing-dependent contract and add one deterministic
+  regression that forces the relevant state transition or interleaving.
+  Repetition and stress execution are supplemental evidence only.
+- Do not make CI green by increasing a product timeout, weakening an assertion,
+  skipping or quarantining a safety regression, or broadly serializing tests.
+  Focused serialization is acceptable only for a demonstrated exclusive
+  resource and must be documented at its call site.
+- Declare every non-standard CI command and verify it before use. Acquire any
+  repository-managed executable through its reviewed exact identity; never
+  depend on an incidental runner-image tool.
+- Keep built-binary and native-host tests for contracts that genuinely cross a
+  process, filesystem, packaging, network-fixture, or operating-system boundary.
+  Prove separable behavior at a narrower layer first. Workflow
+  `timeout-minutes`, socket deadlines, and channel receive deadlines remain
+  outer watchdogs, not fixture readiness or product-behavior evidence.
+
 The normal substantive-change handoff checks are:
 
 1. `cargo fmt --all -- --check`

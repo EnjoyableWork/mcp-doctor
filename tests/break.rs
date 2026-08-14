@@ -5,11 +5,12 @@ mod support;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
+use support::{
+    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_junit,
+    parse_and_validate_report,
+};
 
 const TOOL: &str = "synthetic.generated";
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -467,24 +468,16 @@ fn generated_execution_never_retrieves_an_external_schema_or_calls_the_tool() {
 #[test]
 fn generated_cleanup_terminates_and_reaps_a_resistant_process_tree() {
     let environment = TestEnvironment::new();
-    let marker = environment.artifact_path("generated-descendant-survived");
-    let started = Instant::now();
+    let marker = environment.artifact_path("generated-descendant-ready");
     let output = stdio_break_command(&environment, 1, 303, "break-resistant-child")
         .arg(&marker)
         .output()
         .expect("the generated cleanup journey should run");
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&output);
 
     assert!(output.status.success(), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
-    assert!(elapsed >= Duration::from_millis(1_800), "{elapsed:?}");
-    assert!(elapsed < Duration::from_secs(8), "{elapsed:?}");
-    thread::sleep(Duration::from_secs(2));
-    assert!(
-        !marker.exists(),
-        "the generated descendant survived cleanup"
-    );
+    assert_descendant_was_ready_and_terminated(&marker);
     assert_redacted(&output, &[marker.to_str().unwrap()]);
 }
 

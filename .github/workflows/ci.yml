@@ -25,6 +25,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Reject generated executables and unreviewable binary artifacts
         run: ./scripts/verify-source-artifacts.sh --worktree
 
@@ -72,6 +75,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh '${{ matrix.runner }}'
+
       - name: Report the selected Rust toolchain
         run: |
           rustup show active-toolchain
@@ -99,6 +105,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        shell: pwsh
+        run: ./scripts/verify-ci-tools.ps1 -RunnerLabel windows-2025
 
       - name: Report the selected Rust toolchain
         shell: pwsh

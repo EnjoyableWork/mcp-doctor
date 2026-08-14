@@ -6,9 +6,9 @@ use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rcgen::{
     BasicConstraints, CertificateParams, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
@@ -32,6 +32,8 @@ const CUSTOM_FIELD: &str = "X-Synthetic-Route-4A91";
 const CUSTOM_VALUE: &str = "synthetic-route-value-4a91";
 const LEGACY_SESSION: &str = "synthetic-legacy-session-4a91";
 const LEGACY_CURSOR: &str = "synthetic-legacy-cursor-never-report-4a91";
+const FIXTURE_COMPLETION: &[u8] = b"mcp-doctor-fixture-complete\n";
+const FIXTURE_ACCEPT_TIMEOUT: &[u8] = b"mcp-doctor-fixture-accept-timeout\n";
 
 #[derive(Clone, Copy)]
 enum WireMode {
@@ -63,7 +65,7 @@ impl ExpectedRequest {
 struct PlannedExchange {
     expected: Option<RequestExpectation>,
     response: Option<FixtureResponse>,
-    stall_for: Option<Duration>,
+    wait_for_peer_close: bool,
 }
 
 enum RequestExpectation {
@@ -186,7 +188,7 @@ impl PlannedExchange {
         Self {
             expected: Some(RequestExpectation::Current(expected)),
             response: Some(response),
-            stall_for: None,
+            wait_for_peer_close: false,
         }
     }
 
@@ -194,7 +196,7 @@ impl PlannedExchange {
         Self {
             expected: Some(RequestExpectation::Legacy(expected)),
             response: Some(response),
-            stall_for: None,
+            wait_for_peer_close: false,
         }
     }
 
@@ -202,7 +204,7 @@ impl PlannedExchange {
         Self {
             expected: Some(RequestExpectation::Legacy(expected)),
             response: None,
-            stall_for: Some(Duration::from_secs(3)),
+            wait_for_peer_close: true,
         }
     }
 
@@ -210,7 +212,7 @@ impl PlannedExchange {
         Self {
             expected: Some(RequestExpectation::Legacy(expected)),
             response: None,
-            stall_for: Some(Duration::from_secs(11)),
+            wait_for_peer_close: true,
         }
     }
 
@@ -218,7 +220,7 @@ impl PlannedExchange {
         Self {
             expected: Some(RequestExpectation::Current(expected)),
             response: None,
-            stall_for: None,
+            wait_for_peer_close: false,
         }
     }
 
@@ -226,7 +228,7 @@ impl PlannedExchange {
         Self {
             expected: None,
             response: None,
-            stall_for: None,
+            wait_for_peer_close: false,
         }
     }
 }
@@ -301,11 +303,15 @@ struct FixtureOutcome {
     valid_requests: usize,
     unexpected_connections: usize,
     request_failures: usize,
+    peer_close_observations: usize,
+    peer_close_failures: usize,
+    completion_acknowledged: bool,
 }
 
 struct FixtureServer {
     port: u16,
     mode: WireMode,
+    completion: mpsc::Sender<()>,
     join: thread::JoinHandle<FixtureOutcome>,
 }
 
@@ -323,12 +329,17 @@ impl FixtureServer {
             .local_addr()
             .expect("the loopback listener should have an address")
             .port();
-        listener
-            .set_nonblocking(true)
-            .expect("the disposable listener should become nonblocking");
         let tls = matches!(mode, WireMode::Https).then(tls_server_config);
-        let join = thread::spawn(move || serve_fixture(listener, tls, exchanges, watch_for_extra));
-        Self { port, mode, join }
+        let (completion, completed) = mpsc::channel();
+        let join = thread::spawn(move || {
+            serve_fixture(listener, tls, exchanges, watch_for_extra, completed)
+        });
+        Self {
+            port,
+            mode,
+            completion,
+            join,
+        }
     }
 
     fn endpoint(&self) -> String {
@@ -348,9 +359,16 @@ impl FixtureServer {
     }
 
     fn finish(self) -> FixtureOutcome {
-        self.join
+        let _ = self.completion.send(());
+        let outcome = self
+            .join
             .join()
-            .expect("the disposable HTTP fixture should not panic")
+            .expect("the disposable HTTP fixture should not panic");
+        assert!(
+            outcome.completion_acknowledged,
+            "the client-completion acknowledgement exceeded its outer watchdog"
+        );
+        outcome
     }
 }
 
@@ -441,15 +459,19 @@ fn serve_fixture(
     tls: Option<Arc<ServerConfig>>,
     exchanges: Vec<PlannedExchange>,
     watch_for_extra: bool,
+    completion: mpsc::Receiver<()>,
 ) -> FixtureOutcome {
     let mut outcome = FixtureOutcome {
         accepted_connections: 0,
         valid_requests: 0,
         unexpected_connections: 0,
         request_failures: 0,
+        peer_close_observations: 0,
+        peer_close_failures: 0,
+        completion_acknowledged: !watch_for_extra,
     };
     for exchange in exchanges {
-        let Some(stream) = accept_before(&listener, Instant::now() + Duration::from_secs(5)) else {
+        let Some(stream) = accept_before(&listener) else {
             break;
         };
         outcome.accepted_connections += 1;
@@ -457,7 +479,7 @@ fn serve_fixture(
             .set_nonblocking(false)
             .expect("the accepted fixture stream should become blocking");
         stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(Duration::from_secs(20)))
             .expect("the fixture read deadline should be set");
         stream
             .set_write_timeout(Some(Duration::from_secs(5)))
@@ -475,33 +497,83 @@ fn serve_fixture(
     }
 
     if watch_for_extra {
-        let deadline = Instant::now() + Duration::from_millis(300);
-        while Instant::now() < deadline {
-            match listener.accept() {
-                Ok((_stream, _)) => outcome.unexpected_connections += 1,
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(5));
-                }
-                Err(_) => break,
-            }
-        }
+        observe_until_completion(&listener, completion, &mut outcome);
     }
     outcome
 }
 
-fn accept_before(listener: &TcpListener, deadline: Instant) -> Option<TcpStream> {
+fn observe_until_completion(
+    listener: &TcpListener,
+    completion: mpsc::Receiver<()>,
+    outcome: &mut FixtureOutcome,
+) {
+    let address = listener
+        .local_addr()
+        .expect("the completion acknowledgement needs the fixture address");
+    let completion_sender = thread::spawn(move || {
+        let acknowledged = completion.recv_timeout(Duration::from_secs(125)).is_ok();
+        let mut stream = TcpStream::connect(address)
+            .expect("the completion acknowledgement should reach the fixture");
+        stream
+            .write_all(FIXTURE_COMPLETION)
+            .expect("the completion acknowledgement should be writable");
+        acknowledged
+    });
+
+    listener
+        .set_nonblocking(false)
+        .expect("the completion observer should block on explicit events");
     loop {
-        match listener.accept() {
-            Ok((stream, _)) => return Some(stream),
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                if Instant::now() >= deadline {
-                    return None;
-                }
-                thread::sleep(Duration::from_millis(5));
-            }
-            Err(_) => return None,
+        let (stream, _) = listener
+            .accept()
+            .expect("the completion observer should accept an event");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("the completion event read should have an outer watchdog");
+        let mut event = Vec::new();
+        let _ = stream.take(128).read_to_end(&mut event);
+        if event == FIXTURE_COMPLETION {
+            break;
         }
+        if event == FIXTURE_ACCEPT_TIMEOUT {
+            continue;
+        }
+        outcome.unexpected_connections += 1;
     }
+    outcome.completion_acknowledged = completion_sender
+        .join()
+        .expect("the completion acknowledgement sender should not panic");
+}
+
+fn accept_before(listener: &TcpListener) -> Option<TcpStream> {
+    let accept_listener = listener
+        .try_clone()
+        .expect("the fixture accept watchdog should clone the listener");
+    let address = listener
+        .local_addr()
+        .expect("the fixture accept watchdog needs the listener address");
+    let (accepted_sender, accepted_receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let accepted = accept_listener.accept().map(|(stream, _)| stream);
+        let _ = accepted_sender.send(accepted);
+    });
+
+    let accepted = match accepted_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(accepted) => accepted.ok(),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let mut watchdog = TcpStream::connect(address)
+                .expect("the fixture accept watchdog should reach the listener");
+            watchdog
+                .write_all(FIXTURE_ACCEPT_TIMEOUT)
+                .expect("the fixture accept watchdog should be writable");
+            None
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => None,
+    };
+    acceptor
+        .join()
+        .expect("the fixture accept observer should not panic");
+    accepted
 }
 
 fn serve_exchange(
@@ -522,17 +594,38 @@ fn serve_exchange(
             outcome.valid_requests += 1;
         }
     }
-    if let Some(duration) = exchange.stall_for
-        && request.is_ok()
-    {
-        thread::sleep(duration);
-        return;
-    }
+    let mut wait_for_peer_close = exchange.wait_for_peer_close;
     if let Some(response) = exchange.response {
         if request.is_err() {
             return;
         }
+        wait_for_peer_close |= response.hold_open;
         let _ = write_response(stream, response);
+    }
+    if wait_for_peer_close && request.is_ok() {
+        outcome.peer_close_observations += 1;
+        if !observe_peer_close(stream) {
+            outcome.peer_close_failures += 1;
+        }
+    }
+}
+
+fn observe_peer_close(stream: &mut impl Read) -> bool {
+    let mut byte = [0_u8; 1];
+    match stream.read(&mut byte) {
+        Ok(0) => true,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::UnexpectedEof
+            ) =>
+        {
+            true
+        }
+        Ok(_) | Err(_) => false,
     }
 }
 
@@ -753,7 +846,6 @@ fn legacy_request_matches(request: &FixtureRequest, expected: LegacyExpectedRequ
 }
 
 fn write_response(stream: &mut impl Write, response: FixtureResponse) -> io::Result<()> {
-    let hold_open = response.hold_open;
     write!(
         stream,
         "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
@@ -767,9 +859,6 @@ fn write_response(stream: &mut impl Write, response: FixtureResponse) -> io::Res
     stream.write_all(b"\r\n")?;
     stream.write_all(&response.body)?;
     stream.flush()?;
-    if hold_open {
-        thread::sleep(Duration::from_secs(2));
-    }
     Ok(())
 }
 
@@ -1204,21 +1293,17 @@ fn legacy_http_sse_completes_at_the_matching_response_without_waiting_for_eof() 
     );
     let endpoint = server.endpoint();
     let environment = TestEnvironment::new();
-    let started = Instant::now();
     let output = run(&mut legacy_remote_command(
         &environment,
         &endpoint,
         revision,
         None,
     ));
-    let elapsed = started.elapsed();
     let outcome = server.finish();
     assert_successful_inspection(&output);
-    assert!(
-        elapsed < Duration::from_millis(1_500),
-        "elapsed: {elapsed:?}"
-    );
     assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.peer_close_observations, 1);
+    assert_eq!(outcome.peer_close_failures, 0);
     assert_redacted(
         &output,
         &endpoint,
@@ -1498,9 +1583,7 @@ fn legacy_http_teardown_failure_remains_an_independent_safety_finding() {
             .arg(&snapshot_path)
             .arg("--allow-sensitive-snapshot")
             .arg(&snapshot_path);
-        let started = Instant::now();
         let output = run(&mut command);
-        let elapsed = started.elapsed();
         let outcome = server.finish();
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(outcome.accepted_connections, 3);
@@ -1519,10 +1602,8 @@ fn legacy_http_teardown_failure_remains_an_independent_safety_finding() {
                 })
         );
         if stalled {
-            assert!(
-                elapsed < Duration::from_millis(2_750),
-                "teardown exceeded its shutdown grace: {elapsed:?}"
-            );
+            assert_eq!(outcome.peer_close_observations, 1);
+            assert_eq!(outcome.peer_close_failures, 0);
         }
         assert!(!snapshot_path.exists());
         assert_redacted(&output, &endpoint, &[LEGACY_SESSION]);
@@ -2412,9 +2493,7 @@ fn v2025_06_active_http_initialize_timeout_is_bounded_without_retry() {
         .arg(TOOL)
         .arg("--format")
         .arg("json");
-    let started = Instant::now();
     let output = run(&mut command);
-    let elapsed = started.elapsed();
     let outcome = server.finish();
     let (_, stderr) = text(&output);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
@@ -2444,8 +2523,8 @@ fn v2025_06_active_http_initialize_timeout_is_bounded_without_retry() {
         resolution["findings"][0]["evidence"]["limit"],
         "discovery_time"
     );
-    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
-    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
+    assert_eq!(outcome.peer_close_observations, 1);
+    assert_eq!(outcome.peer_close_failures, 0);
     assert_redacted(
         &output,
         &endpoint,

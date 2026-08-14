@@ -1,0 +1,99 @@
+{
+  "schema_version": "mcp-doctor.ci-tools/v1",
+  "reviewed_on": "2026-08-14",
+  "rust_toolchain": {
+    "channel": "1.97.1",
+    "source": "rust-toolchain.toml",
+    "verification": "Every native quality or package job reports or exercises cargo, rustc, and the selected host before accepting evidence."
+  },
+  "runner_contracts": [
+    {
+      "runner": "ubuntu-24.04",
+      "commands": [
+        "bash",
+        "cargo",
+        "curl",
+        "docker",
+        "gh",
+        "git",
+        "jq",
+        "rustc",
+        "rustup",
+        "sha256sum",
+        "tar",
+        "timeout"
+      ]
+    },
+    {
+      "runner": "ubuntu-24.04-arm",
+      "commands": [
+        "bash",
+        "cargo",
+        "curl",
+        "git",
+        "jq",
+        "rustc",
+        "rustup",
+        "sha256sum",
+        "tar",
+        "timeout"
+      ]
+    },
+    {
+      "runner": "macos-15",
+      "commands": [
+        "bash",
+        "cargo",
+        "curl",
+        "git",
+        "jq",
+        "rustc",
+        "rustup",
+        "shasum",
+        "tar"
+      ]
+    },
+    {
+      "runner": "windows-2025",
+      "commands": [
+        "cargo",
+        "pwsh",
+        "rustc",
+        "rustup",
+        "tar"
+      ]
+    }
+  ],
+  "action_provided": [
+    {
+      "command": "brew",
+      "action": "Homebrew/actions/setup-homebrew",
+      "control": "The full reviewed action commit is pinned in each workflow before brew is used."
+    }
+  ],
+  "container_provided": [
+    {
+      "commands": ["node", "php"],
+      "control": "Compatibility commands run only inside digest-pinned images declared in tests/compatibility/matrix.json."
+    }
+  ],
+  "repository_acquired": [
+    {
+      "command": "cargo-deny",
+      "version": "0.20.2",
+      "control": ".github/supply-chain-controls.json and scripts/install-cargo-deny.sh"
+    },
+    {
+      "command": "syft",
+      "version": "1.51.0",
+      "control": ".github/supply-chain-controls.json and scripts/install-syft.sh"
+    }
+  ],
+  "generated_environment": [
+    {
+      "command": "ruby",
+      "control": "Ruby is used only by the generated Homebrew formula after setup-homebrew establishes the Homebrew environment."
+    }
+  ],
+  "prohibited_incidental_commands": ["rg"]
+}

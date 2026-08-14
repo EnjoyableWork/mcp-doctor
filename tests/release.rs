@@ -618,15 +618,19 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
 }
 
 #[test]
-fn project_and_readme_record_the_active_mcpd_029_rejection_boundary() {
+fn project_and_readme_record_the_completed_mcpd_029_rejection_boundary() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
     let agents = repository_file("AGENTS.md");
 
     for contract in [
         "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
-        "| MCPD-029 | Diagnose bounded schema-invalid tool-argument rejection for the current active revision | Optional active correctness | In progress |",
+        "| MCPD-029 | Diagnose bounded schema-invalid tool-argument rejection for the current active revision | Optional active correctness | Done |",
         "[issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
+        "protected [PR 82](https://github.com/EnjoyableWork/mcp-doctor/pull/82)",
+        "merge commit [`3472952`](https://github.com/EnjoyableWork/mcp-doctor/commit/3472952a521ad30fbf716c828739887835a78898)",
+        "closed [issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
+        "plus first-attempt exact-`main`",
         "`missing_arguments`, `wrong_root_type`, `omitted_required_property`, `wrong_property_type`, `forbidden_null`, `invalid_enum`, and `unexpected_property`",
         "integer code `-32602` and a string message",
         "never match prose",
@@ -1891,7 +1895,7 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_027_and_mcpd_028() {
+fn project_records_completed_mcpd_027_through_mcpd_029_and_active_mcpd_030() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
     let compatibility = repository_file("tests/compatibility/README.md");
@@ -1921,9 +1925,6 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
         "| DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted |",
         "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
         "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
-        "`MCPD-027` established the shared active legacy boundary",
-        "`MCPD-028`\nconsumed",
-        "any overlapping active-engine integration must consume or rebase",
         "The `MCPD-027` merged source implements the typed adapter",
         "controlled compatibility runner passed all four retained",
         "Native Windows PowerShell execution",
@@ -1995,7 +1996,32 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
         .lines()
         .find(|line| line.starts_with("| MCPD-029 |"))
         .expect("PROJECT.md should contain MCPD-029");
-    assert!(later.contains("| In progress |"));
+    assert!(later.contains("| Done |"));
+    for contract in [
+        "final evidence head",
+        "merge commit",
+        "closed [issue #75]",
+        "exact-`main`",
+    ] {
+        assert!(
+            later.contains(contract),
+            "MCPD-029 completion must retain {contract}"
+        );
+    }
+
+    let deterministic_ci = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-030 |"))
+        .expect("PROJECT.md should contain MCPD-030");
+    assert!(deterministic_ci.contains("| In progress |"));
+    assert!(deterministic_ci.contains("[issue #41]"));
+
+    let release_correction = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-031 |"))
+        .expect("PROJECT.md should contain MCPD-031");
+    assert!(release_correction.contains("| Proposed |"));
+    assert!(release_correction.contains("Before a successor to `v0.3.0`"));
 
     for contract in [
         "--protocol-version 2025-06-18",
@@ -2023,16 +2049,12 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
             "{accepted_open} should be removed after its decision accepts it"
         );
     }
-    for accepted_decision in ["| DEC-051 |", "| DEC-052 |", "| DEC-053 |"] {
+    for accepted_decision in ["| DEC-051 |", "| DEC-052 |", "| DEC-053 |", "| DEC-054 |"] {
         assert!(project.contains(accepted_decision));
     }
     assert!(
         !project.contains("https://github.com/EnjoyableWork/mcp-doctor/issues/56"),
         "PROJECT.md must not retain a dead public issue link"
-    );
-    assert!(
-        !project.contains("| DEC-054 |"),
-        "PROJECT.md must not accept proposed DEC-054 prematurely"
     );
 }
 

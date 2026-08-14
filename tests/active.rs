@@ -5,11 +5,12 @@ mod support;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
+use support::{
+    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_junit,
+    parse_and_validate_report,
+};
 
 const TOOL: &str = "synthetic.reviewed";
 const SECRET_VALUE: &str = "synthetic-secret-payload-7f2c";
@@ -638,16 +639,12 @@ fn v2025_06_handshake_failures_stop_without_fallback() {
         assert_redacted(&output, &[TOOL]);
     }
 
-    let started = Instant::now();
     let timeout = run_v2025_06_check("legacy-timeout", &[], None);
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&timeout);
     assert_eq!(timeout.status.code(), Some(1), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
     assert!(stdout.contains("MCP-LIMIT-001"));
     assert!(stdout.contains("discovery_time"));
-    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
-    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
     assert_redacted(&timeout, &[TOOL]);
 }
 
@@ -746,17 +743,13 @@ fn legacy_active_handshake_failures_retain_protocol_and_resource_bounds() {
         assert_redacted(&output, &[TOOL]);
     }
 
-    let started = Instant::now();
     let output = run_legacy_check("legacy-timeout");
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&output);
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
     assert!(stderr.is_empty(), "{stderr}");
     assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
     assert!(stdout.contains("discovery_time"), "{stdout}");
     assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
-    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
-    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
     assert_redacted(&output, &[TOOL]);
 }
 
@@ -1634,21 +1627,16 @@ fn active_cleanup_terminates_and_reaps_a_resistant_process_tree() {
         "cleanup.json",
         &scenario("read_only", vec![reviewed_case(0, "success")]),
     );
-    let marker = environment.artifact_path("descendant-survived");
-    let started = Instant::now();
+    let marker = environment.artifact_path("descendant-ready");
     let output = check_command(&environment, &path, TOOL, "active-resistant-child")
         .arg(&marker)
         .output()
         .expect("the active cleanup journey should run");
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&output);
 
     assert!(output.status.success(), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
-    assert!(elapsed >= Duration::from_millis(1_800), "{elapsed:?}");
-    assert!(elapsed < Duration::from_secs(8), "{elapsed:?}");
-    thread::sleep(Duration::from_secs(2));
-    assert!(!marker.exists(), "the active descendant survived cleanup");
+    assert_descendant_was_ready_and_terminated(&marker);
 }
 
 #[test]

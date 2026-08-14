@@ -7,11 +7,10 @@ use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use support::{
-    TestEnvironment, parse_and_validate_junit, parse_and_validate_report, validate_report_value,
+    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_junit,
+    parse_and_validate_report, validate_report_value,
 };
 
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -257,11 +256,9 @@ fn legacy_stdio_schema_dialects_follow_the_selected_revision() {
 fn legacy_stdio_revisions_retain_the_discovery_deadline() {
     for revision in ["2025-11-25", "2025-06-18"] {
         let environment = TestEnvironment::new();
-        let started = Instant::now();
         let output = legacy_inspect_command(&environment, revision, None, "legacy-timeout")
             .output()
             .expect("mcp-doctor should bound an unresponsive legacy server");
-        let elapsed = started.elapsed();
         let (stdout, stderr) = text(&output);
 
         assert_eq!(
@@ -272,8 +269,6 @@ fn legacy_stdio_revisions_retain_the_discovery_deadline() {
         assert!(stderr.is_empty(), "{revision}: {stderr}");
         assert!(stdout.contains("MCP-LIMIT-001"), "{revision}: {stdout}");
         assert!(stdout.contains("discovery_time"), "{revision}: {stdout}");
-        assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
-        assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
     }
 }
 
@@ -363,17 +358,13 @@ fn every_stdio_output_boundary_fails_at_its_named_limit() {
 
 #[test]
 fn an_unresponsive_server_hits_the_discovery_deadline() {
-    let started = Instant::now();
     let output = run_mode("timeout");
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&output);
 
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
     assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
     assert!(stdout.contains("discovery_time"), "{stdout}");
-    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
-    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
 }
 
 #[test]
@@ -389,28 +380,16 @@ fn an_early_exit_has_a_distinct_transport_finding() {
 #[test]
 fn cleanup_terminates_a_resistant_process_tree_before_returning() {
     let environment = TestEnvironment::new();
-    let survival_marker = environment.artifact_path("descendant-survived");
-    let started = Instant::now();
+    let readiness_marker = environment.artifact_path("descendant-ready");
     let output = inspect_command(&environment, "resistant-child")
-        .arg(&survival_marker)
+        .arg(&readiness_marker)
         .output()
         .expect("mcp-doctor should inspect the resistant fixture");
-    let elapsed = started.elapsed();
     let (stdout, stderr) = text(&output);
 
     assert!(output.status.success(), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
-    assert!(
-        elapsed >= Duration::from_millis(1_800),
-        "elapsed: {elapsed:?}"
-    );
-    assert!(elapsed < Duration::from_secs(8), "elapsed: {elapsed:?}");
-
-    thread::sleep(Duration::from_secs(2));
-    assert!(
-        !survival_marker.exists(),
-        "the descendant survived process-tree cleanup"
-    );
+    assert_descendant_was_ready_and_terminated(&readiness_marker);
 }
 
 #[test]
