@@ -28,6 +28,7 @@ smoke_temp_parent=${TMPDIR:-/tmp}
 smoke_root_prefix="${smoke_temp_parent%/}/mcp-doctor-release-smoke."
 smoke_root=$(mktemp -d "${smoke_root_prefix}XXXXXX")
 smoke_home="${smoke_root}/home"
+smoke_capabilities="${smoke_root}/capabilities.json"
 smoke_report="${smoke_root}/report.json"
 smoke_json_artifact="${smoke_root}/report-artifact.json"
 smoke_junit_artifact="${smoke_root}/report-artifact.xml"
@@ -71,6 +72,42 @@ if [[ "${version_output}" != "mcp-doctor ${smoke_version}" ]]; then
   echo "installed executable reported an unexpected version" >&2
   exit 1
 fi
+
+if ! run_mcp_doctor capabilities --format json \
+  >"${smoke_capabilities}" 2>"${smoke_stderr}"; then
+  echo "installed compiled-capability smoke failed" >&2
+  exit 1
+fi
+if [[ -s "${smoke_stderr}" ]]; then
+  echo "installed compiled-capability smoke wrote unexpected stderr" >&2
+  exit 1
+fi
+jq -e --arg version "${smoke_version}" '
+  .schema_version == "mcp-doctor.capabilities/v1" and
+  .schema_stability == "stable" and
+  .product == {name: "mcp-doctor", version: $version} and
+  ([.commands[].name] == [
+    "aggregate", "break", "capabilities", "check", "diff", "inspect"
+  ]) and
+  ([.protocol_support[] |
+    select(.command == "inspect" and .transport == "stdio") |
+    .revisions] == [["2026-07-28", "2025-11-25", "2025-06-18"]]) and
+  ([.protocol_support[] |
+    select(.command == "check" and .transport == "streamable_http") |
+    .revisions] == [["2026-07-28"]]) and
+  .schema_versions.diagnostic_report == ["mcp-doctor.report/v1"] and
+  .schema_versions.scenario == ["mcp-doctor.scenario/v1alpha1"] and
+  .schema_versions.generator == ["mcp-doctor.generator/v1"] and
+  .exit_semantics.version == "mcp-doctor.exit/v1" and
+  ([.exit_semantics.codes[].code] == [0, 1, 2, 3, 4]) and
+  .platform == {
+    family: "unix",
+    process_tree_control: "process_group",
+    file_identity: "device_inode"
+  } and
+  ([.limit_profiles[] | select(.hard == true)] | length) == 4 and
+  .limits.output_bytes == 65536
+' "${smoke_capabilities}" >/dev/null
 
 if ! run_mcp_doctor inspect --format json \
   --json-report "${smoke_json_artifact}" \

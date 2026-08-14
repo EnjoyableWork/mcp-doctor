@@ -1,5 +1,6 @@
 mod aggregate;
 mod break_command;
+mod capabilities;
 mod check;
 mod contract;
 mod diff;
@@ -35,6 +36,8 @@ enum Command {
     Diff(DiffArgs),
     /// Aggregate bounded stable reports without starting or contacting a target.
     Aggregate(AggregateArgs),
+    /// Show deterministic compiled capabilities without inspecting a host or target.
+    Capabilities(CapabilitiesArgs),
 }
 
 #[derive(Debug, Args)]
@@ -100,6 +103,21 @@ struct AggregateArgs {
     /// Ordered stable mcp-doctor.report/v1 JSON files.
     #[arg(value_name = "REPORT", required = true, num_args = 1..=32)]
     reports: Vec<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct CapabilitiesArgs {
+    /// Output format. JSON uses stable mcp-doctor.capabilities/v1.
+    #[arg(long, value_enum, default_value_t = CapabilitiesOutputFormat::Human)]
+    format: CapabilitiesOutputFormat,
+
+    /// Exact capability-manifest schema requested; unsupported versions never fall back.
+    #[arg(
+        long,
+        value_name = "SCHEMA",
+        default_value = capabilities::CAPABILITIES_SCHEMA_VERSION
+    )]
+    schema_version: String,
 }
 
 #[derive(Debug, Args)]
@@ -260,6 +278,12 @@ enum AggregateOutputFormat {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum CapabilitiesOutputFormat {
+    Human,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 enum InspectProtocolVersion {
     #[value(name = "2026-07-28", alias = "current")]
     Current,
@@ -336,6 +360,15 @@ impl From<AggregateOutputFormat> for aggregate::AggregateFormat {
         match format {
             AggregateOutputFormat::Human => Self::Human,
             AggregateOutputFormat::Json => Self::Json,
+        }
+    }
+}
+
+impl From<CapabilitiesOutputFormat> for capabilities::CapabilitiesFormat {
+    fn from(format: CapabilitiesOutputFormat) -> Self {
+        match format {
+            CapabilitiesOutputFormat::Human => Self::Human,
+            CapabilitiesOutputFormat::Json => Self::Json,
         }
     }
 }
@@ -447,12 +480,24 @@ fn emit_aggregate(
     }
 }
 
-fn parse_cli() -> Result<Cli, ExitCode> {
-    let aggregate_invocation =
-        std::env::args_os().nth(1).as_deref() == Some(OsStr::new("aggregate"));
-    if !aggregate_invocation {
-        return Ok(Cli::parse());
+fn emit_capabilities(rendered: capabilities::RenderedCapabilities) -> ExitCode {
+    print!("{}", rendered.stdout);
+    if let Some(error) = rendered.error {
+        eprintln!("error: {error}");
     }
+    ExitCode::from(rendered.exit_code)
+}
+
+fn parse_cli() -> Result<Cli, ExitCode> {
+    let first_argument = std::env::args_os().nth(1);
+    let sanitized_command = match first_argument.as_deref() {
+        Some(value) if value == OsStr::new("aggregate") => Some("aggregate"),
+        Some(value) if value == OsStr::new("capabilities") => Some("capabilities"),
+        _ => None,
+    };
+    let Some(sanitized_command) = sanitized_command else {
+        return Ok(Cli::parse());
+    };
 
     match Cli::try_parse() {
         Ok(cli) => Ok(cli),
@@ -469,7 +514,9 @@ fn parse_cli() -> Result<Cli, ExitCode> {
             }
         }
         Err(_) => {
-            eprintln!("error: invalid aggregate invocation; use `mcp-doctor aggregate --help`");
+            eprintln!(
+                "error: invalid {sanitized_command} invocation; use `mcp-doctor {sanitized_command} --help`"
+            );
             Err(ExitCode::from(2))
         }
     }
@@ -557,6 +604,10 @@ async fn main() -> ExitCode {
                 &deadline,
             )
         }
+        Some(Command::Capabilities(arguments)) => emit_capabilities(capabilities::render(
+            arguments.format.into(),
+            &arguments.schema_version,
+        )),
         Some(Command::Check(arguments)) => {
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,
@@ -636,11 +687,25 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::{Cli, capabilities};
     use clap::CommandFactory;
 
     #[test]
     fn command_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn capability_command_inventory_matches_the_cli() {
+        let cli = Cli::command();
+        let mut cli_commands = cli
+            .get_subcommands()
+            .map(|command| command.get_name())
+            .collect::<Vec<_>>();
+        cli_commands.sort_unstable();
+        assert_eq!(
+            cli_commands,
+            capabilities::command_names().collect::<Vec<_>>()
+        );
     }
 }

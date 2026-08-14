@@ -25,21 +25,24 @@ use model::{
 };
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
-use report::{DiagnosticReport, ExitStatus, render_reports};
+use report::{DiagnosticReport, render_reports};
 
 pub(crate) use active::{
-    ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, ScenarioFailure,
-    render_authorization_failure, render_generation_configuration_failure,
+    ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, SCENARIO_SCHEMA_VERSION,
+    ScenarioFailure, render_authorization_failure, render_generation_configuration_failure,
     render_resolved_scenario_failure, render_scenario_failure, resolve_target_environment,
 };
 pub(crate) use catalog::PassiveCatalogConversation;
-pub(crate) use protocol::SupportedRevision as ProtocolRevision;
+pub(crate) use generate::GENERATOR_VERSION;
+pub(crate) use protocol::{KnownRevision, SupportedRevision as ProtocolRevision};
 pub(crate) use report::{
-    RenderedReportArtifact, ReportArtifactFormat, ReportFormat, ReportRequest,
+    ExitStatus, REPORT_SCHEMA_VERSION, RenderedReportArtifact, ReportArtifactFormat, ReportFormat,
+    ReportRequest,
 };
 pub(crate) use snapshot::{
-    DiffFormat, RenderedContractDiff, SnapshotDestination, SnapshotDestinationError,
-    capture_contract_snapshot, prepare_snapshot_destination, render_contract_diff,
+    DIFF_SCHEMA_VERSION, DiffFormat, RenderedContractDiff, SNAPSHOT_SCHEMA_VERSION,
+    SnapshotDestination, SnapshotDestinationError, capture_contract_snapshot,
+    prepare_snapshot_destination, render_contract_diff,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

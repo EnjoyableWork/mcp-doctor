@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 const REPORT_SCHEMA: &str = include_str!("../schemas/mcp-doctor.report.v1.schema.json");
-const AGGREGATE_SCHEMA_VERSION: &str = "mcp-doctor.aggregate/v1";
+pub(crate) const AGGREGATE_SCHEMA_VERSION: &str = "mcp-doctor.aggregate/v1";
 const MAXIMUM_INPUTS: usize = 32;
 const MAXIMUM_INPUT_BYTES: u64 = 4 * 1024 * 1024;
 const MAXIMUM_TOTAL_INPUT_BYTES: u64 = 16 * 1024 * 1024;

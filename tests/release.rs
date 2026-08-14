@@ -672,6 +672,98 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
 }
 
 #[test]
+fn project_and_readme_define_compiled_capability_discovery_without_target_authority() {
+    let project = repository_file("PROJECT.md");
+    let readme = repository_file("README.md");
+    let implementation = repository_file("src/capabilities.rs");
+    let schema = repository_file("schemas/mcp-doctor.capabilities.v1.schema.json");
+    let posix_smoke = repository_file("scripts/smoke-installed.sh");
+    let powershell_smoke = repository_file("scripts/smoke-installed.ps1");
+
+    for contract in [
+        "### MCPD-025 accepted compiled capability-manifest plan",
+        "| MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | In progress |",
+        "| DEC-050 | Resolve issue #32 with one exact, stable, compiled-only capability response | Accepted |",
+        "| RISK-25 | A stale or over-broad capability manifest",
+        "mcp-doctor.capabilities/v1",
+        "mcp-doctor.exit/v1",
+        "64-KiB",
+        "tri-state consumer fixture",
+        "cannot delay, redefine, or become a\nprerequisite for `MCPD-017` or `MCPD-018`",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should preserve MCPD-025 contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "mcp-doctor capabilities --format json",
+        "mcp-doctor.capabilities/v1",
+        "supported, unsupported, or unknown",
+        "does not inspect user configuration or host\ninventory",
+        "schemas/mcp-doctor.capabilities.v1.schema.json",
+        "Capability discovery reports only fixed compiled facts",
+    ] {
+        assert!(
+            readme.contains(contract),
+            "README should preserve capability-discovery contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "CAPABILITIES_SCHEMA_VERSION",
+        "MAXIMUM_OUTPUT_BYTES",
+        "render_unsupported_schema",
+        "protocol_support",
+        "recognized_unsupported",
+    ] {
+        assert!(
+            implementation.contains(contract),
+            "compiled manifest should retain {contract}"
+        );
+    }
+    for prohibited in [
+        "std::env::var",
+        "std::fs",
+        "std::net",
+        "std::process::Command",
+        "reqwest",
+        "tokio::net",
+    ] {
+        assert!(
+            !implementation.contains(prohibited),
+            "compiled manifest gained prohibited activity surface {prohibited}"
+        );
+    }
+
+    for contract in [
+        "mcp-doctor.capabilities/v1",
+        "unsupported_schema_version",
+        "additionalProperties",
+        "65536",
+    ] {
+        assert!(
+            schema.contains(contract),
+            "capability schema omitted {contract}"
+        );
+    }
+    for smoke in [posix_smoke, powershell_smoke] {
+        for contract in [
+            "capabilities",
+            "mcp-doctor.capabilities/v1",
+            "mcp-doctor.exit/v1",
+            "mcp-doctor.generator/v1",
+        ] {
+            assert!(
+                smoke.contains(contract),
+                "represented installed smoke omitted {contract}"
+            );
+        }
+    }
+}
+
+#[test]
 fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_scope() {
     let project = repository_file("PROJECT.md");
 

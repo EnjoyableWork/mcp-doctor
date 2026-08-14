@@ -80,6 +80,44 @@ try {
         throw 'Installed executable reported an unexpected version.'
     }
 
+    $capabilitiesOutput = Invoke-McpDoctor 'capabilities' '--format' 'json'
+    $capabilities = $capabilitiesOutput | ConvertFrom-Json
+    $commandNames = @($capabilities.commands | ForEach-Object name)
+    $exitCodes = @($capabilities.exit_semantics.codes | ForEach-Object code)
+    $inspectStdio = @(
+        $capabilities.protocol_support |
+            Where-Object { $_.command -eq 'inspect' -and $_.transport -eq 'stdio' }
+    )
+    $checkHttp = @(
+        $capabilities.protocol_support |
+            Where-Object {
+                $_.command -eq 'check' -and $_.transport -eq 'streamable_http'
+            }
+    )
+    if (
+        $capabilities.schema_version -ne 'mcp-doctor.capabilities/v1' -or
+        $capabilities.schema_stability -ne 'stable' -or
+        $capabilities.product.name -ne 'mcp-doctor' -or
+        $capabilities.product.version -ne $ExpectedVersion -or
+        ($commandNames -join ',') -ne 'aggregate,break,capabilities,check,diff,inspect' -or
+        $inspectStdio.Count -ne 1 -or
+        (@($inspectStdio[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
+        $checkHttp.Count -ne 1 -or
+        (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28' -or
+        (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
+        (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
+        (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
+        $capabilities.exit_semantics.version -ne 'mcp-doctor.exit/v1' -or
+        ($exitCodes -join ',') -ne '0,1,2,3,4' -or
+        $capabilities.platform.family -ne 'windows' -or
+        $capabilities.platform.process_tree_control -ne 'job_object' -or
+        $capabilities.platform.file_identity -ne 'volume_file_id' -or
+        @($capabilities.limit_profiles | Where-Object hard -eq $true).Count -ne 4 -or
+        $capabilities.limits.output_bytes -ne 65536
+    ) {
+        throw 'Installed executable returned an unexpected compiled-capability contract.'
+    }
+
     $reportOutput = Invoke-McpDoctor `
         'inspect' '--format' 'json' `
         '--json-report' $smokeJsonArtifact `

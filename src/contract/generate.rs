@@ -6,7 +6,7 @@ use super::catalog::{InstanceValidationIssue, LocalValidator, resolve_local_refe
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{GeneratedCaseReproduction, JsonKind, StructuralInput};
 
-pub(super) const GENERATOR_VERSION: &str = "mcp-doctor.generator/v1";
+pub(crate) const GENERATOR_VERSION: &str = "mcp-doctor.generator/v1";
 
 pub(super) struct GeneratedInput {
     pub(super) arguments: Value,

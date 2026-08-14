@@ -25,7 +25,7 @@ use super::{
 };
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
-const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
+pub(crate) const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
 const PROTOCOL_REVISION: &str = "2026-07-28";
 pub(crate) const MAX_SCENARIO_BYTES: u64 = 1_048_576;
 

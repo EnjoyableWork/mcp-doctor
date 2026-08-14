@@ -1,0 +1,44 @@
+[
+  {
+    "command": "inspect",
+    "transport": "stdio",
+    "protocol_revision": "2025-11-25",
+    "expected": "supported"
+  },
+  {
+    "command": "check",
+    "transport": "streamable_http",
+    "protocol_revision": "2026-07-28",
+    "expected": "supported"
+  },
+  {
+    "command": "check",
+    "transport": "stdio",
+    "protocol_revision": "2025-11-25",
+    "expected": "unsupported"
+  },
+  {
+    "command": "inspect",
+    "transport": "stdio",
+    "protocol_revision": "2025-03-26",
+    "expected": "unsupported"
+  },
+  {
+    "command": "inspect",
+    "transport": "stdio",
+    "protocol_revision": "2027-01-01",
+    "expected": "unknown"
+  },
+  {
+    "command": "inspect",
+    "transport": "websocket",
+    "protocol_revision": "2026-07-28",
+    "expected": "unknown"
+  },
+  {
+    "command": "future-command",
+    "transport": "stdio",
+    "protocol_revision": "2026-07-28",
+    "expected": "unknown"
+  }
+]

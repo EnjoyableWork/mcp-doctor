@@ -1,0 +1,278 @@
+{
+  "schema_version": "mcp-doctor.capabilities/v1",
+  "schema_stability": "stable",
+  "product": {
+    "name": "mcp-doctor",
+    "version": "0.0.0-test"
+  },
+  "commands": [
+    {
+      "name": "aggregate",
+      "activity": "offline",
+      "reporters": [
+        "human",
+        "json"
+      ],
+      "input_schema_versions": [
+        "mcp-doctor.report/v1"
+      ],
+      "output_schema_versions": [
+        "mcp-doctor.aggregate/v1"
+      ],
+      "generator_versions": [],
+      "limit_profile": "mcp-doctor.limits/aggregate/v1"
+    },
+    {
+      "name": "break",
+      "activity": "active",
+      "reporters": [
+        "human",
+        "json",
+        "junit"
+      ],
+      "input_schema_versions": [],
+      "output_schema_versions": [
+        "mcp-doctor.report/v1"
+      ],
+      "generator_versions": [
+        "mcp-doctor.generator/v1"
+      ],
+      "limit_profile": "mcp-doctor.limits/diagnostic/v1"
+    },
+    {
+      "name": "capabilities",
+      "activity": "compiled_only",
+      "reporters": [
+        "human",
+        "json"
+      ],
+      "input_schema_versions": [],
+      "output_schema_versions": [
+        "mcp-doctor.capabilities/v1"
+      ],
+      "generator_versions": [],
+      "limit_profile": "mcp-doctor.limits/capabilities/v1"
+    },
+    {
+      "name": "check",
+      "activity": "active",
+      "reporters": [
+        "human",
+        "json",
+        "junit"
+      ],
+      "input_schema_versions": [
+        "mcp-doctor.scenario/v1alpha1"
+      ],
+      "output_schema_versions": [
+        "mcp-doctor.report/v1"
+      ],
+      "generator_versions": [],
+      "limit_profile": "mcp-doctor.limits/diagnostic/v1"
+    },
+    {
+      "name": "diff",
+      "activity": "offline",
+      "reporters": [
+        "human",
+        "json"
+      ],
+      "input_schema_versions": [
+        "mcp-doctor.contract-snapshot/v1alpha1"
+      ],
+      "output_schema_versions": [
+        "mcp-doctor.contract-diff/v1alpha1"
+      ],
+      "generator_versions": [],
+      "limit_profile": "mcp-doctor.limits/contract-diff/v1alpha1"
+    },
+    {
+      "name": "inspect",
+      "activity": "passive",
+      "reporters": [
+        "human",
+        "json",
+        "junit"
+      ],
+      "input_schema_versions": [],
+      "output_schema_versions": [
+        "mcp-doctor.report/v1",
+        "mcp-doctor.contract-snapshot/v1alpha1"
+      ],
+      "generator_versions": [],
+      "limit_profile": "mcp-doctor.limits/diagnostic/v1"
+    }
+  ],
+  "protocol_revisions": [
+    {
+      "revision": "2026-07-28",
+      "recognition": "supported"
+    },
+    {
+      "revision": "2025-11-25",
+      "recognition": "supported"
+    },
+    {
+      "revision": "2025-06-18",
+      "recognition": "supported"
+    },
+    {
+      "revision": "2025-03-26",
+      "recognition": "recognized_unsupported"
+    },
+    {
+      "revision": "2024-11-05",
+      "recognition": "recognized_unsupported"
+    }
+  ],
+  "protocol_support": [
+    {
+      "command": "break",
+      "transport": "stdio",
+      "revisions": [
+        "2026-07-28"
+      ]
+    },
+    {
+      "command": "break",
+      "transport": "streamable_http",
+      "revisions": [
+        "2026-07-28"
+      ]
+    },
+    {
+      "command": "check",
+      "transport": "stdio",
+      "revisions": [
+        "2026-07-28"
+      ]
+    },
+    {
+      "command": "check",
+      "transport": "streamable_http",
+      "revisions": [
+        "2026-07-28"
+      ]
+    },
+    {
+      "command": "inspect",
+      "transport": "stdio",
+      "revisions": [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18"
+      ]
+    },
+    {
+      "command": "inspect",
+      "transport": "streamable_http",
+      "revisions": [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18"
+      ]
+    }
+  ],
+  "schema_versions": {
+    "aggregate": [
+      "mcp-doctor.aggregate/v1"
+    ],
+    "capabilities": [
+      "mcp-doctor.capabilities/v1"
+    ],
+    "contract_diff": [
+      "mcp-doctor.contract-diff/v1alpha1"
+    ],
+    "contract_snapshot": [
+      "mcp-doctor.contract-snapshot/v1alpha1"
+    ],
+    "diagnostic_report": [
+      "mcp-doctor.report/v1"
+    ],
+    "generator": [
+      "mcp-doctor.generator/v1"
+    ],
+    "scenario": [
+      "mcp-doctor.scenario/v1alpha1"
+    ]
+  },
+  "reporters": [
+    {
+      "name": "human",
+      "machine_readable": false
+    },
+    {
+      "name": "json",
+      "machine_readable": true
+    },
+    {
+      "name": "junit",
+      "machine_readable": true
+    }
+  ],
+  "exit_semantics": {
+    "version": "mcp-doctor.exit/v1",
+    "codes": [
+      {
+        "code": 0,
+        "meaning": "success"
+      },
+      {
+        "code": 1,
+        "meaning": "unsuccessful_result"
+      },
+      {
+        "code": 2,
+        "meaning": "invalid_invocation_or_input"
+      },
+      {
+        "code": 3,
+        "meaning": "incomplete_evidence"
+      },
+      {
+        "code": 4,
+        "meaning": "internal_or_output_failure"
+      }
+    ]
+  },
+  "platform": {
+    "family": "compiled_test",
+    "process_tree_control": "compiled_test",
+    "file_identity": "compiled_test"
+  },
+  "limit_profiles": [
+    {
+      "id": "mcp-doctor.limits/aggregate/v1",
+      "default_for": [
+        "aggregate"
+      ],
+      "hard": true
+    },
+    {
+      "id": "mcp-doctor.limits/capabilities/v1",
+      "default_for": [
+        "capabilities"
+      ],
+      "hard": true
+    },
+    {
+      "id": "mcp-doctor.limits/contract-diff/v1alpha1",
+      "default_for": [
+        "diff"
+      ],
+      "hard": true
+    },
+    {
+      "id": "mcp-doctor.limits/diagnostic/v1",
+      "default_for": [
+        "break",
+        "check",
+        "inspect"
+      ],
+      "hard": true
+    }
+  ],
+  "limits": {
+    "output_bytes": 65536
+  }
+}
