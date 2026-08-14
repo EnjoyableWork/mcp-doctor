@@ -431,6 +431,15 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "31530330361",
         "a57736ea1a7abf73eeff9a8278af11110247bd20",
         "31530466930",
+        "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
+        "31746397550",
+        "31746397557",
+        "31754685159",
+        "31754685137",
+        "31755736570",
+        "31756253855",
+        "2b62e11902c7461cddbc0b96075e3745fdf6f260",
+        "31756413098",
         "passed all ten jobs",
     ] {
         assert!(
@@ -637,22 +646,27 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
 }
 
 #[test]
-fn project_tracks_the_protocol_correction_and_v030_release_without_claiming_completion() {
+fn project_records_the_completed_protocol_correction_and_v030_release() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
         "### MCPD-023 accepted structured protocol-rejection correction",
         "### MCPD-024 accepted `v0.3.0` release plan",
-        "| MCPD-023 | Classify the exact current-revision unsupported-version response at the protocol layer | Optional correctness | In progress |",
-        "| MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | In progress |",
+        "| MCPD-023 | Classify the exact current-revision unsupported-version response at the protocol layer | Optional correctness | Done |",
+        "| MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | Done |",
         "| DEC-048 | Resolve issue #30 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "`v0.3.0` is the reviewed release candidate and is not complete until GitHub, crates.io, Homebrew, and installed-channel evidence pass",
+        "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release, crates.io, `EnjoyableWork/tap/mcp-doctor`, and all ten represented installed-channel jobs verified |",
+        "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
+        "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
+        "31755736570",
+        "31756253855",
+        "31756413098",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve release-candidate contract: {contract}"
+            "PROJECT.md should preserve completed v0.3.0 evidence: {contract}"
         );
     }
 }
@@ -755,7 +769,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
 
     for contract in [
         "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016A` is Done and `MCPD-017` is In progress |",
-        "| Public release | `mcp-doctor` `v0.2.0` remains the verified public release; `v0.3.0` is the reviewed release candidate",
+        "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
@@ -1093,7 +1107,7 @@ fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
         "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
         "### Accepted vulnerability-disclosure and repository-security policy",
         "`DEC-037` fixes the `MCPD-014` contract.",
-        "Support only the release candidate's minor line, `0.3.x`, as part of the same reviewed publication change.",
+        "Support only the latest published minor line, currently `0.3.x`.",
         "within 3 business days",
         "within 7 calendar days",
         "every 14 calendar days",
@@ -1158,7 +1172,7 @@ fn community_license_projection_matches_dec_039() {
         canonical["schema_version"],
         "mcp-doctor.github-community-license-controls/v1"
     );
-    assert_eq!(canonical["reviewed_on"], "2026-08-12");
+    assert_eq!(canonical["reviewed_on"], "2026-08-13");
     assert_eq!(canonical["api_version"], "2026-03-10");
     assert_eq!(canonical["organization"], "EnjoyableWork");
     assert_eq!(canonical["project_repository"], "EnjoyableWork/mcp-doctor");
@@ -1232,12 +1246,14 @@ fn community_license_projection_matches_dec_039() {
     );
     assert_eq!(
         canonical["tap_contract"]["reviewed_commit"],
-        "8d5421abed22e46b43de35f0876bc65edcd6e0d6"
+        "2b62e11902c7461cddbc0b96075e3745fdf6f260"
     );
     assert_eq!(
         canonical["release_license_contract"]["source_commit"],
-        "b0805a8f685e46814e358de368e2a270c21704af"
+        "d9b96bbeb84baccb8e5c890e9c655a559a12a474"
     );
+    assert_eq!(canonical["release_license_contract"]["version"], "0.3.0");
+    assert_eq!(canonical["release_license_contract"]["tag"], "v0.3.0");
     assert_eq!(
         canonical["release_license_contract"]["spdx_expression"],
         "MIT"
