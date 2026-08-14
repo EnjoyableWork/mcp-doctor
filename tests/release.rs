@@ -1895,7 +1895,7 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_027_through_mcpd_029_and_active_mcpd_030() {
+fn project_records_completed_mcpd_027_through_mcpd_030() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
     let compatibility = repository_file("tests/compatibility/README.md");
@@ -2013,8 +2013,18 @@ fn project_records_completed_mcpd_027_through_mcpd_029_and_active_mcpd_030() {
         .lines()
         .find(|line| line.starts_with("| MCPD-030 |"))
         .expect("PROJECT.md should contain MCPD-030");
-    assert!(deterministic_ci.contains("| In progress |"));
-    assert!(deterministic_ci.contains("[issue #41]"));
+    assert!(deterministic_ci.contains("| Done |"));
+    for contract in [
+        "final evidence head",
+        "merge commit",
+        "closed [issue #41]",
+        "exact-`main`",
+    ] {
+        assert!(
+            deterministic_ci.contains(contract),
+            "MCPD-030 completion must retain {contract}"
+        );
+    }
 
     let release_correction = project
         .lines()
