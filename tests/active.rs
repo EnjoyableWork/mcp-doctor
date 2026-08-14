@@ -13,6 +13,10 @@ use support::{
 };
 
 const TOOL: &str = "synthetic.reviewed";
+const WORKFLOW_LOOKUP: &str = "synthetic.workflow.lookup";
+const WORKFLOW_MUTATE: &str = "synthetic.workflow.mutate";
+const WORKFLOW_READ: &str = "synthetic.workflow.read";
+const WORKFLOW_CLEANUP: &str = "synthetic.workflow.cleanup";
 const SECRET_VALUE: &str = "synthetic-secret-payload-7f2c";
 const ARGUMENT_SECRET_NAME: &str = "SYNTHETIC_TOOL_SECRET_7F2C";
 const TARGET_SECRET_NAME: &str = "ACTIVE_TARGET_SECRET";
@@ -58,6 +62,131 @@ fn reviewed_case(sequence: i64, result: &str) -> Value {
             }
         }
     })
+}
+
+fn workflow_read_only_scenario() -> Value {
+    json!({
+        "schema_version": "mcp-doctor.scenario/v2alpha1",
+        "steps": [
+            {
+                "id": "private-lookup-step-never-report",
+                "tool": WORKFLOW_LOOKUP,
+                "safety": {"effects": "read_only"},
+                "arguments": {"query": SECRET_VALUE},
+                "captures": {"private_resource_id": "/resource/id"},
+                "expect": {"result": "success"}
+            },
+            {
+                "id": "private-read-step-never-report",
+                "tool": WORKFLOW_READ,
+                "safety": {"effects": "read_only"},
+                "arguments": {"id": null},
+                "argument_refs": {"/id": "private_resource_id"},
+                "expect": {
+                    "result": "success",
+                    "structured_output_schema": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"const": SECRET_VALUE},
+                            "version": {"const": 1}
+                        },
+                        "required": ["value", "version"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        ]
+    })
+}
+
+fn workflow_mutation_scenario() -> Value {
+    json!({
+        "schema_version": "mcp-doctor.scenario/v2alpha1",
+        "steps": [
+            {
+                "id": "private-lookup-step-never-report",
+                "tool": WORKFLOW_LOOKUP,
+                "safety": {"effects": "read_only"},
+                "arguments": {"query": SECRET_VALUE},
+                "captures": {"private_resource_id": "/resource/id"},
+                "expect": {"result": "success"}
+            },
+            {
+                "id": "private-mutation-step-never-report",
+                "tool": WORKFLOW_MUTATE,
+                "safety": {"effects": "side_effecting"},
+                "arguments": {"id": null, "value": SECRET_VALUE},
+                "argument_refs": {"/id": "private_resource_id"},
+                "captures": {"private_updated_version": "/version"},
+                "expect": {
+                    "result": "success",
+                    "structured_output_schema": {
+                        "type": "object",
+                        "properties": {"version": {"const": 2}},
+                        "required": ["version"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "id": "private-fresh-read-step-never-report",
+                "tool": WORKFLOW_READ,
+                "safety": {"effects": "read_only"},
+                "arguments": {"id": null, "expectedVersion": null},
+                "argument_refs": {
+                    "/id": "private_resource_id",
+                    "/expectedVersion": "private_updated_version"
+                },
+                "expect": {
+                    "result": "success",
+                    "structured_output_schema": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"const": SECRET_VALUE},
+                            "version": {"const": 2}
+                        },
+                        "required": ["value", "version"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            {
+                "id": "private-cleanup-step-never-report",
+                "tool": WORKFLOW_CLEANUP,
+                "safety": {"effects": "side_effecting"},
+                "cleanup": true,
+                "arguments": {"id": null},
+                "argument_refs": {"/id": "private_resource_id"},
+                "expect": {"result": "success"}
+            }
+        ]
+    })
+}
+
+fn workflow_cleanup_scenario() -> Value {
+    let mut document = workflow_mutation_scenario();
+    document["steps"]
+        .as_array_mut()
+        .expect("workflow steps should be an array")
+        .remove(2);
+    document
+}
+
+fn workflow_command(
+    environment: &TestEnvironment,
+    scenario_path: &Path,
+    allowed_tools: &[&str],
+) -> Command {
+    let mut command = environment.command();
+    command.arg("check").arg("--scenario").arg(scenario_path);
+    for tool in allowed_tools {
+        command.arg("--allow-tool").arg(tool);
+    }
+    command
+}
+
+fn finish_workflow_command(command: &mut Command, mode: &str) {
+    command.arg("--").arg(fixture()).arg(mode);
 }
 
 fn check_command(
@@ -224,6 +353,480 @@ fn assert_redacted(output: &Output, extra: &[&str]) {
             "STDERR disclosed protected data"
         );
     }
+}
+
+fn report_check<'a>(report: &'a Value, id: &str) -> &'a Value {
+    report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == id)
+        .unwrap_or_else(|| panic!("report should contain {id}"))
+}
+
+#[test]
+fn committed_workflow_schema_accepts_the_reviewed_examples_and_stays_strict() {
+    let schema: Value = serde_json::from_str(include_str!(
+        "../schemas/mcp-doctor.scenario.v2alpha1.schema.json"
+    ))
+    .expect("the workflow schema should be JSON");
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .expect("the workflow schema should follow Draft 2020-12");
+    for document in [workflow_read_only_scenario(), workflow_mutation_scenario()] {
+        let errors = validator
+            .iter_errors(&document)
+            .map(|error| error.instance_path().to_string())
+            .collect::<Vec<_>>();
+        assert!(errors.is_empty(), "workflow schema rejected {errors:?}");
+    }
+
+    let mut unreviewed = workflow_read_only_scenario();
+    unreviewed["steps"][0]["script"] = json!("unbounded()");
+    assert!(!validator.is_valid(&unreviewed));
+}
+
+#[test]
+fn workflow_structural_capture_is_deterministic_and_reporter_safe() {
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-read-only.json",
+        &workflow_read_only_scenario(),
+    );
+    let json_path = environment.artifact_path("workflow-report.json");
+    let junit_path = environment.artifact_path("workflow-report.xml");
+    let mut first_command =
+        workflow_command(&environment, &path, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+    first_command
+        .arg("--format")
+        .arg("json")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path);
+    finish_workflow_command(&mut first_command, "workflow-read-only");
+    let first = first_command
+        .output()
+        .expect("the read-only workflow should run");
+
+    let second_environment = TestEnvironment::new();
+    let second_path = write_scenario(
+        &second_environment,
+        "workflow-read-only.json",
+        &workflow_read_only_scenario(),
+    );
+    let mut second_command = workflow_command(
+        &second_environment,
+        &second_path,
+        &[WORKFLOW_LOOKUP, WORKFLOW_READ],
+    );
+    second_command.arg("--format").arg("json");
+    finish_workflow_command(&mut second_command, "workflow-read-only");
+    let second = second_command
+        .output()
+        .expect("the repeated read-only workflow should run");
+
+    let (_, first_stderr) = text(&first);
+    let (_, second_stderr) = text(&second);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stdout)
+    );
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stdout)
+    );
+    assert!(first_stderr.is_empty());
+    assert!(second_stderr.is_empty());
+    assert_eq!(first.stdout, second.stdout);
+
+    let report = parse_and_validate_report(&first.stdout);
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(
+        report_check(&report, "runtime.workflow.step[0]")["state"],
+        "performed"
+    );
+    assert_eq!(
+        report_check(&report, "runtime.workflow.step[1]")["state"],
+        "performed"
+    );
+    assert_eq!(
+        parse_and_validate_report(&fs::read(&json_path).expect("JSON artifact should exist")),
+        report
+    );
+    let (junit, summary) =
+        parse_and_validate_junit(&fs::read(&junit_path).expect("JUnit artifact should exist"));
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(junit.contains("runtime.workflow.step[0]"));
+    assert!(junit.contains("runtime.workflow.step[1]"));
+    assert_redacted(
+        &first,
+        &[
+            WORKFLOW_LOOKUP,
+            WORKFLOW_READ,
+            "private-lookup-step-never-report",
+            "private-read-step-never-report",
+            "private_resource_id",
+            "/resource/id",
+            "/id",
+        ],
+    );
+}
+
+#[test]
+fn workflow_mutation_requires_the_complete_exact_authority_set() {
+    let tools = [
+        WORKFLOW_LOOKUP,
+        WORKFLOW_MUTATE,
+        WORKFLOW_READ,
+        WORKFLOW_CLEANUP,
+    ];
+    for (name, allowed, allow_side_effects) in [
+        ("missing", tools[..3].to_vec(), true),
+        (
+            "wildcard",
+            vec!["*", WORKFLOW_MUTATE, WORKFLOW_READ, WORKFLOW_CLEANUP],
+            true,
+        ),
+        (
+            "duplicate",
+            vec![
+                WORKFLOW_LOOKUP,
+                WORKFLOW_LOOKUP,
+                WORKFLOW_MUTATE,
+                WORKFLOW_READ,
+                WORKFLOW_CLEANUP,
+            ],
+            true,
+        ),
+        ("side-effects", tools.to_vec(), false),
+    ] {
+        let environment = TestEnvironment::new();
+        let path = write_scenario(
+            &environment,
+            &format!("workflow-{name}.json"),
+            &workflow_mutation_scenario(),
+        );
+        let marker_name = format!("workflow-{name}-started");
+        let marker = environment.artifact_path(&marker_name);
+        let mut command = workflow_command(&environment, &path, &allowed);
+        if allow_side_effects {
+            command.arg("--allow-side-effects");
+        }
+        command
+            .arg("--")
+            .arg(fixture())
+            .arg("active-started-marker")
+            .arg(&marker);
+        let output = command
+            .output()
+            .expect("invalid workflow authority should be rejected");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(2), "{name}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert!(!marker.exists(), "{name} authority started the target");
+        if name == "side-effects" {
+            assert!(stdout.contains("MCP-AUTH-002"), "{stdout}");
+        } else {
+            assert!(stdout.contains("MCP-AUTH-001"), "{stdout}");
+        }
+        assert_redacted(&output, &tools);
+    }
+
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-mutation.json",
+        &workflow_mutation_scenario(),
+    );
+    let mut command = workflow_command(&environment, &path, &tools);
+    command
+        .arg("--allow-side-effects")
+        .arg("--format")
+        .arg("json");
+    finish_workflow_command(&mut command, "workflow-mutation");
+    let output = command
+        .output()
+        .expect("the authorized mutation should run");
+    let (_, stderr) = text(&output);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["outcome"], "passed");
+    for id in [
+        "runtime.workflow.step[0]",
+        "runtime.workflow.step[1]",
+        "runtime.workflow.step[2]",
+        "runtime.workflow.cleanup[3]",
+    ] {
+        assert_eq!(report_check(&report, id)["state"], "performed", "{id}");
+    }
+    assert_redacted(
+        &output,
+        &tools
+            .into_iter()
+            .chain([
+                "private_resource_id",
+                "private_updated_version",
+                "private-cleanup-step-never-report",
+            ])
+            .collect::<Vec<_>>(),
+    );
+}
+
+#[test]
+fn workflow_first_failure_skips_later_main_work_and_runs_only_cleanup() {
+    let tools = [
+        WORKFLOW_LOOKUP,
+        WORKFLOW_MUTATE,
+        WORKFLOW_READ,
+        WORKFLOW_CLEANUP,
+    ];
+    for (mode, expected_code) in [
+        ("workflow-main-failure-cleanup", "MCP-ACTIVE-004"),
+        ("workflow-schema-mismatch-cleanup", "MCP-ACTIVE-005"),
+    ] {
+        let environment = TestEnvironment::new();
+        let path = write_scenario(
+            &environment,
+            &format!("{mode}.json"),
+            &workflow_mutation_scenario(),
+        );
+        let mut command = workflow_command(&environment, &path, &tools);
+        command
+            .arg("--allow-side-effects")
+            .arg("--format")
+            .arg("json");
+        finish_workflow_command(&mut command, mode);
+        let output = command.output().expect("the failing workflow should run");
+        let (_, stderr) = text(&output);
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(stderr.is_empty());
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(
+            report["primary_diagnosis"]["check_id"],
+            "runtime.workflow.step[1]"
+        );
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            expected_code
+        );
+        let blocked = report_check(&report, "runtime.workflow.step[2]");
+        assert_eq!(blocked["state"], "skipped");
+        assert_eq!(
+            blocked["blocked_by"]["check_id"],
+            "runtime.workflow.step[1]"
+        );
+        assert_eq!(
+            report_check(&report, "runtime.workflow.cleanup[3]")["state"],
+            "performed"
+        );
+        assert_redacted(&output, &tools);
+    }
+}
+
+#[test]
+fn workflow_input_required_is_incomplete_but_still_runs_declared_cleanup() {
+    let tools = [
+        WORKFLOW_LOOKUP,
+        WORKFLOW_MUTATE,
+        WORKFLOW_READ,
+        WORKFLOW_CLEANUP,
+    ];
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-input-required.json",
+        &workflow_mutation_scenario(),
+    );
+    let mut command = workflow_command(&environment, &path, &tools);
+    command
+        .arg("--allow-side-effects")
+        .arg("--format")
+        .arg("json");
+    finish_workflow_command(&mut command, "workflow-input-required-cleanup");
+    let output = command
+        .output()
+        .expect("the incomplete workflow should return");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(3));
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["outcome"], "incomplete");
+    assert_eq!(
+        report_check(&report, "runtime.workflow.step[1]")["skip_reason"],
+        "input_required"
+    );
+    assert_eq!(
+        report_check(&report, "runtime.workflow.step[2]")["state"],
+        "skipped"
+    );
+    assert_eq!(
+        report_check(&report, "runtime.workflow.cleanup[3]")["state"],
+        "performed"
+    );
+    assert_redacted(&output, &tools);
+}
+
+#[test]
+fn workflow_missing_capture_and_invalid_pointer_fail_without_value_disclosure() {
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-missing-capture.json",
+        &workflow_read_only_scenario(),
+    );
+    let mut command = workflow_command(&environment, &path, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+    command.arg("--format").arg("json");
+    finish_workflow_command(&mut command, "workflow-missing-capture");
+    let output = command
+        .output()
+        .expect("the missing capture should be diagnosed");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"],
+        "runtime.workflow.step[0]"
+    );
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-WORKFLOW-001"
+    );
+    assert_eq!(
+        report_check(&report, "runtime.workflow.step[1]")["state"],
+        "skipped"
+    );
+    assert_redacted(
+        &output,
+        &[WORKFLOW_LOOKUP, WORKFLOW_READ, "private_resource_id"],
+    );
+
+    let environment = TestEnvironment::new();
+    let mut invalid = workflow_read_only_scenario();
+    invalid["steps"][0]["captures"]["private_resource_id"] = json!("not-a-json-pointer");
+    let path = write_scenario(&environment, "workflow-invalid-pointer.json", &invalid);
+    let marker = environment.artifact_path("invalid-pointer-started");
+    let mut command = workflow_command(&environment, &path, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+    command
+        .arg("--")
+        .arg(fixture())
+        .arg("active-started-marker")
+        .arg(&marker);
+    let rejected = command
+        .output()
+        .expect("the invalid pointer should be rejected");
+    let (stdout, stderr) = text(&rejected);
+    assert_eq!(rejected.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-SCENARIO-001"), "{stdout}");
+    assert!(!marker.exists());
+    assert_redacted(&rejected, &["not-a-json-pointer", "private_resource_id"]);
+}
+
+#[test]
+fn workflow_cleanup_failure_remains_an_independent_critical_finding() {
+    let tools = [WORKFLOW_LOOKUP, WORKFLOW_MUTATE, WORKFLOW_CLEANUP];
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-cleanup-failure.json",
+        &workflow_cleanup_scenario(),
+    );
+    let mut command = workflow_command(&environment, &path, &tools);
+    command
+        .arg("--allow-side-effects")
+        .arg("--format")
+        .arg("json");
+    finish_workflow_command(&mut command, "workflow-cleanup-failure");
+    let output = command.output().expect("the cleanup failure should run");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"],
+        "runtime.workflow.cleanup[2]"
+    );
+    assert!(
+        report["independent_findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["check_id"] == "runtime.workflow.cleanup[2]"
+                    && finding["code"] == "MCP-SAFETY-003"
+            }))
+    );
+    assert_redacted(&output, &tools);
+}
+
+#[test]
+fn workflow_timeout_disconnect_and_legacy_selection_stop_causally_without_retry() {
+    for mode in ["workflow-call-timeout", "workflow-disconnect"] {
+        let environment = TestEnvironment::new();
+        let path = write_scenario(
+            &environment,
+            &format!("{mode}.json"),
+            &workflow_read_only_scenario(),
+        );
+        let mut command = workflow_command(&environment, &path, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+        command.arg("--format").arg("json");
+        finish_workflow_command(&mut command, mode);
+        let output = command
+            .output()
+            .expect("the failed transport should return");
+        let (_, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(stderr.is_empty());
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(
+            report_check(&report, "runtime.workflow.step[0]")["state"],
+            "skipped"
+        );
+        assert_eq!(
+            report_check(&report, "runtime.workflow.step[1]")["state"],
+            "skipped"
+        );
+        assert_redacted(&output, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+    }
+
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "workflow-legacy-rejected.json",
+        &workflow_read_only_scenario(),
+    );
+    let marker = environment.artifact_path("legacy-workflow-started");
+    let mut command = workflow_command(&environment, &path, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
+    command
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--")
+        .arg(fixture())
+        .arg("active-started-marker")
+        .arg(&marker);
+    let output = command
+        .output()
+        .expect("legacy workflow selection should reject");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("unsupported_scenario_revision"), "{stdout}");
+    assert!(!marker.exists());
+    assert_redacted(&output, &[WORKFLOW_LOOKUP, WORKFLOW_READ]);
 }
 
 #[test]

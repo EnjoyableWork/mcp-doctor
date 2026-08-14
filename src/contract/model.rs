@@ -21,6 +21,8 @@ pub(super) enum CheckId {
     CaseGeneration,
     RuntimeTools,
     RuntimeToolCase(usize),
+    RuntimeWorkflowStep(usize),
+    RuntimeWorkflowCleanup(usize),
 }
 
 impl CheckId {
@@ -41,6 +43,10 @@ impl CheckId {
             Self::CaseGeneration => "generation.cases".to_owned(),
             Self::RuntimeTools => "runtime.tools".to_owned(),
             Self::RuntimeToolCase(index) => format!("runtime.tools.case[{index}]"),
+            Self::RuntimeWorkflowStep(index) => format!("runtime.workflow.step[{index}]"),
+            Self::RuntimeWorkflowCleanup(index) => {
+                format!("runtime.workflow.cleanup[{index}]")
+            }
         }
     }
 }
@@ -186,6 +192,8 @@ pub(super) enum FindingCode {
     ToolResultInvalid,
     ToolTaskRequired,
     SchemaInvalidArgumentsAccepted,
+    WorkflowCaptureMissing,
+    WorkflowCleanupFailed,
 }
 
 impl FindingCode {
@@ -234,6 +242,8 @@ impl FindingCode {
             Self::ToolResultInvalid => "MCP-ACTIVE-006",
             Self::ToolTaskRequired => "MCP-ACTIVE-007",
             Self::SchemaInvalidArgumentsAccepted => "MCP-ACTIVE-008",
+            Self::WorkflowCaptureMissing => "MCP-WORKFLOW-001",
+            Self::WorkflowCleanupFailed => "MCP-SAFETY-003",
         }
     }
 
@@ -277,10 +287,12 @@ impl FindingCode {
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
             | Self::ToolResultInvalid
-            | Self::ToolTaskRequired => Severity::Error,
+            | Self::ToolTaskRequired
+            | Self::WorkflowCaptureMissing => Severity::Error,
             Self::CleanupFailed
             | Self::SessionCleanupFailed
-            | Self::SchemaInvalidArgumentsAccepted => Severity::Critical,
+            | Self::SchemaInvalidArgumentsAccepted
+            | Self::WorkflowCleanupFailed => Severity::Critical,
         }
     }
 
@@ -384,6 +396,12 @@ impl FindingCode {
             }
             Self::SchemaInvalidArgumentsAccepted => {
                 "The server accepted schema-invalid tool arguments instead of rejecting them."
+            }
+            Self::WorkflowCaptureMissing => {
+                "A workflow step did not produce one declared structural capture."
+            }
+            Self::WorkflowCleanupFailed => {
+                "An explicitly declared workflow cleanup step did not complete successfully."
             }
         }
     }
@@ -505,6 +523,12 @@ impl FindingCode {
             Self::SchemaInvalidArgumentsAccepted => {
                 "The defective server may have executed a call that its advertised input schema forbids."
             }
+            Self::WorkflowCaptureMissing => {
+                "A later exact step cannot receive its reviewed argument without guessing or reflecting the result."
+            }
+            Self::WorkflowCleanupFailed => {
+                "State or resources created by the reviewed workflow may remain after diagnosis."
+            }
         }
     }
 
@@ -596,7 +620,7 @@ impl FindingCode {
                 "mcp-doctor accepts only references contained in the local schema being checked."
             }
             Self::ScenarioInvalid => {
-                "The file must be one strict mcp-doctor.scenario/v1alpha1 JSON scenario with 1–100 ordered cases."
+                "The file must be one strict supported mcp-doctor scenario JSON document within its finite case or step bounds."
             }
             Self::SecretReferenceInvalid => {
                 "Every reference must name an existing invoking-process environment value and every argument pointer must target an existing null placeholder."
@@ -636,6 +660,12 @@ impl FindingCode {
             }
             Self::SchemaInvalidArgumentsAccepted => {
                 "MCP 2026-07-28 schema-invalid tool arguments must receive a matching JSON-RPC -32602 error before execution."
+            }
+            Self::WorkflowCaptureMissing => {
+                "Every declared capture pointer must resolve within a successful, validated structuredContent object."
+            }
+            Self::WorkflowCleanupFailed => {
+                "Every declared cleanup step must return its expected successful result within the remaining safety bounds."
             }
         }
     }
@@ -761,6 +791,12 @@ impl FindingCode {
             Self::SchemaInvalidArgumentsAccepted => {
                 "Validate arguments against the advertised input schema before invoking tool logic, return JSON-RPC -32602, and rerun the same seed."
             }
+            Self::WorkflowCaptureMissing => {
+                "Correct the producing tool or capture pointer, then rerun the same reviewed workflow."
+            }
+            Self::WorkflowCleanupFailed => {
+                "Inspect the disposable target, correct the cleanup tool behavior, and rerun the same reviewed workflow."
+            }
         }
     }
 
@@ -806,7 +842,7 @@ impl FindingCode {
                 "MCP 2025-06-18 Tool schema contract and mcp-doctor DEC-044"
             }
             Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
-                "mcp-doctor.scenario/v1alpha1 contract"
+                "selected mcp-doctor versioned scenario contract"
             }
             Self::CaseGenerationFailed => "mcp-doctor MCPD-011 bounded generation contract",
             Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
@@ -822,11 +858,17 @@ impl FindingCode {
             | Self::SchemaInvalidArgumentsAccepted => {
                 "selected MCP revision tools contract and mcp-doctor MCPD-009/MCPD-011/MCPD-027/MCPD-029 active contract"
             }
+            Self::WorkflowCaptureMissing | Self::WorkflowCleanupFailed => {
+                "mcp-doctor DEC-056 bounded workflow contract"
+            }
         }
     }
 
     pub(super) const fn is_independent_safety(self) -> bool {
-        matches!(self, Self::CleanupFailed | Self::SessionCleanupFailed)
+        matches!(
+            self,
+            Self::CleanupFailed | Self::SessionCleanupFailed | Self::WorkflowCleanupFailed
+        )
     }
 }
 
@@ -840,8 +882,12 @@ pub(super) enum LocationField {
     Effects,
     TargetEnv,
     Cases,
+    Steps,
     Id,
     SecretRefs,
+    ArgumentRefs,
+    Captures,
+    Cleanup,
     Expect,
     StructuredOutputSchema,
     Request,
@@ -932,8 +978,12 @@ impl LocationField {
             Self::Effects => "effects",
             Self::TargetEnv => "target_env",
             Self::Cases => "cases",
+            Self::Steps => "steps",
             Self::Id => "id",
             Self::SecretRefs => "secret_refs",
+            Self::ArgumentRefs => "argument_refs",
+            Self::Captures => "captures",
+            Self::Cleanup => "cleanup",
             Self::Expect => "expect",
             Self::StructuredOutputSchema => "structured_output_schema",
             Self::Request => "request",
@@ -1292,6 +1342,7 @@ pub(super) enum RuleViolation {
     },
     InvalidScenarioShape,
     UnsupportedScenarioVersion,
+    UnsupportedScenarioRevision,
     DuplicateCaseId,
     InvalidEnvironmentReference,
     MissingEnvironmentValue,
@@ -1383,6 +1434,7 @@ impl RuleViolation {
             Self::InvalidDraft202012 { .. } => "invalid_draft_2020_12",
             Self::InvalidScenarioShape => "invalid_scenario_shape",
             Self::UnsupportedScenarioVersion => "unsupported_scenario_version",
+            Self::UnsupportedScenarioRevision => "unsupported_scenario_revision",
             Self::DuplicateCaseId => "duplicate_case_id",
             Self::InvalidEnvironmentReference => "invalid_environment_reference",
             Self::MissingEnvironmentValue => "missing_environment_value",
@@ -1456,6 +1508,7 @@ impl RuleViolation {
             | Self::InvalidDraft202012 { .. }
             | Self::InvalidScenarioShape
             | Self::UnsupportedScenarioVersion
+            | Self::UnsupportedScenarioRevision
             | Self::DuplicateCaseId
             | Self::InvalidEnvironmentReference
             | Self::MissingEnvironmentValue
@@ -2020,6 +2073,24 @@ impl Finding {
         )
     }
 
+    pub(super) fn workflow_capture_missing(location: Location) -> Self {
+        Self::new(
+            FindingCode::WorkflowCaptureMissing,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn workflow_cleanup_failed(location: Location) -> Self {
+        Self::new(
+            FindingCode::WorkflowCleanupFailed,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
     fn new(
         code: FindingCode,
         revision: SupportedRevision,
@@ -2360,6 +2431,21 @@ mod tests {
                 "MCP-ACTIVE-007",
                 Severity::Error,
             ),
+            (
+                FindingCode::SchemaInvalidArgumentsAccepted,
+                "MCP-ACTIVE-008",
+                Severity::Critical,
+            ),
+            (
+                FindingCode::WorkflowCaptureMissing,
+                "MCP-WORKFLOW-001",
+                Severity::Error,
+            ),
+            (
+                FindingCode::WorkflowCleanupFailed,
+                "MCP-SAFETY-003",
+                Severity::Critical,
+            ),
         ];
 
         for (code, stable_code, severity) in cases {
@@ -2387,6 +2473,14 @@ mod tests {
             (CheckId::CaseGeneration, "generation.cases"),
             (CheckId::RuntimeTools, "runtime.tools"),
             (CheckId::RuntimeToolCase(17), "runtime.tools.case[17]"),
+            (
+                CheckId::RuntimeWorkflowStep(17),
+                "runtime.workflow.step[17]",
+            ),
+            (
+                CheckId::RuntimeWorkflowCleanup(17),
+                "runtime.workflow.cleanup[17]",
+            ),
         ];
         let skip_reasons = [
             (SkipReason::NotAuthorized, "not_authorized"),

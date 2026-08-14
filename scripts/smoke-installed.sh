@@ -33,6 +33,8 @@ smoke_report="${smoke_root}/report.json"
 smoke_json_artifact="${smoke_root}/report-artifact.json"
 smoke_junit_artifact="${smoke_root}/report-artifact.xml"
 smoke_legacy_scenario="${smoke_root}/legacy-scenario.json"
+smoke_workflow_scenario="${smoke_root}/workflow-scenario.json"
+smoke_workflow_report="${smoke_root}/workflow-report.json"
 smoke_legacy_check="${smoke_root}/legacy-check.json"
 smoke_legacy_break="${smoke_root}/legacy-break.json"
 smoke_reject="${smoke_root}/reject.json"
@@ -110,7 +112,10 @@ jq -e --arg version "${smoke_version}" '
     select(.command == "reject" and .transport == "streamable_http") |
     .revisions] == [["2026-07-28"]]) and
   .schema_versions.diagnostic_report == ["mcp-doctor.report/v1"] and
-  .schema_versions.scenario == ["mcp-doctor.scenario/v1alpha1"] and
+  .schema_versions.scenario == [
+    "mcp-doctor.scenario/v1alpha1",
+    "mcp-doctor.scenario/v2alpha1"
+  ] and
   .schema_versions.generator == ["mcp-doctor.generator/v1"] and
   .schema_versions.contract_snapshot == ["mcp-doctor.contract-snapshot/v1alpha1"] and
   .schema_versions.contract_diff == ["mcp-doctor.contract-diff/v1alpha1"] and
@@ -230,6 +235,65 @@ for smoke_private_reject_value in \
   secret; do
   if grep -F -- "${smoke_private_reject_value}" "${smoke_reject}" >/dev/null; then
     echo "installed current-revision reject report disclosed a private value" >&2
+    exit 1
+  fi
+done
+
+jq -n '
+  {
+    schema_version: "mcp-doctor.scenario/v2alpha1",
+    steps: [{
+      id: "installed-private-lookup",
+      tool: "synthetic.workflow.lookup",
+      safety: {effects: "read_only"},
+      arguments: {query: "synthetic-secret-payload-7f2c"},
+      captures: {resource_id: "/resource/id"},
+      expect: {result: "success"}
+    }, {
+      id: "installed-private-read",
+      tool: "synthetic.workflow.read",
+      safety: {effects: "read_only"},
+      arguments: {id: null},
+      argument_refs: {"/id": "resource_id"},
+      expect: {result: "success"}
+    }]
+  }
+' >"${smoke_workflow_scenario}"
+
+if ! run_mcp_doctor check \
+  --scenario "${smoke_workflow_scenario}" \
+  --allow-tool synthetic.workflow.lookup \
+  --allow-tool synthetic.workflow.read \
+  --format json \
+  -- "${smoke_fixture}" workflow-read-only \
+  >"${smoke_workflow_report}" 2>"${smoke_stderr}"; then
+  echo "installed current-revision workflow smoke failed" >&2
+  exit 1
+fi
+if [[ -s "${smoke_stderr}" ]]; then
+  echo "installed current-revision workflow smoke wrote unexpected stderr" >&2
+  exit 1
+fi
+jq -e '
+  .schema_version == "mcp-doctor.report/v1" and
+  .protocol_revision == "2026-07-28" and
+  .primary_diagnosis == null and
+  .independent_findings == [] and
+  .outcome == "passed" and
+  .exit_code == 0 and
+  ([.checks[] | select(.id | startswith("runtime.workflow.step["))] | length) == 2 and
+  ([.checks[] | select(.id | startswith("runtime.workflow.step[")) |
+    select(.state == "performed" and .outcome == "passed")] | length) == 2
+' "${smoke_workflow_report}" >/dev/null
+for smoke_private_workflow_value in \
+  synthetic.workflow.lookup \
+  synthetic.workflow.read \
+  installed-private-lookup \
+  installed-private-read \
+  synthetic-secret-payload-7f2c \
+  resource_id; do
+  if grep -F -- "${smoke_private_workflow_value}" "${smoke_workflow_report}" >/dev/null; then
+    echo "installed workflow report disclosed a private value" >&2
     exit 1
   fi
 done

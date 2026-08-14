@@ -138,13 +138,13 @@ struct CheckArgs {
     #[arg(long, value_enum, default_value_t = ActiveProtocolVersion::Current)]
     protocol_version: ActiveProtocolVersion,
 
-    /// Versioned JSON scenario containing one exact tool and ordered reviewed cases.
+    /// Versioned JSON scenario containing ordered, explicitly selected tool calls.
     #[arg(long, value_name = "PATH")]
     scenario: PathBuf,
 
-    /// Exact tool name independently authorized for this run.
-    #[arg(long, value_name = "EXACT-NAME")]
-    allow_tool: String,
+    /// Exact tool independently authorized for this run; repeat once per distinct tool.
+    #[arg(long, value_name = "EXACT-NAME", required = true)]
+    allow_tool: Vec<String>,
 
     /// Additionally authorize a scenario classified as side_effecting.
     #[arg(long)]

@@ -18,7 +18,7 @@ use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetEr
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     scenario_path: &Path,
-    allowed_tool: &str,
+    allowed_tools: &[String],
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
     limit_profile: DiagnosticLimitProfile,
@@ -43,8 +43,18 @@ pub(crate) async fn run_stdio(
             ));
         }
     };
-    if let Err(failure) = scenario.authorize(allowed_tool, allow_side_effects) {
+    if let Err(failure) =
+        scenario.authorize_tools(allowed_tools.iter().map(String::as_str), allow_side_effects)
+    {
         return Ok(render_authorization_failure_for_revision(
+            &scenario,
+            failure,
+            ReportTransport::Stdio,
+            revision,
+        ));
+    }
+    if let Err(failure) = scenario.validate_revision(revision) {
+        return Ok(render_resolved_scenario_failure_for_revision(
             &scenario,
             failure,
             ReportTransport::Stdio,
@@ -106,7 +116,7 @@ pub(crate) async fn run_stdio(
 pub(crate) async fn run_http(
     options: RemoteOptions,
     scenario_path: &Path,
-    allowed_tool: &str,
+    allowed_tools: &[String],
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
     limit_profile: DiagnosticLimitProfile,
@@ -123,8 +133,18 @@ pub(crate) async fn run_http(
             return render_scenario_failure_for_revision(failure, ReportTransport::Http, revision);
         }
     };
-    if let Err(failure) = scenario.authorize(allowed_tool, allow_side_effects) {
+    if let Err(failure) =
+        scenario.authorize_tools(allowed_tools.iter().map(String::as_str), allow_side_effects)
+    {
         return render_authorization_failure_for_revision(
+            &scenario,
+            failure,
+            ReportTransport::Http,
+            revision,
+        );
+    }
+    if let Err(failure) = scenario.validate_revision(revision) {
+        return render_resolved_scenario_failure_for_revision(
             &scenario,
             failure,
             ReportTransport::Http,

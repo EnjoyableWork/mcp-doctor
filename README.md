@@ -425,12 +425,11 @@ member reports use the separate
 offline validators should load both local schemas and must not retrieve either
 at runtime.
 
-### Reviewed `check` scenarios
+### Single-tool reviewed `check` scenarios
 
-`check` accepts only a regular file containing strict
-`mcp-doctor.scenario/v1alpha1` JSON. One scenario names one exact tool, declares
-its effect classification, and contains 1–100 cases that run sequentially in
-array order:
+For one exact tool, `check` accepts a regular file containing strict
+`mcp-doctor.scenario/v1alpha1` JSON. The scenario declares its effect
+classification and contains 1–100 cases that run sequentially in array order:
 
 ```json
 {
@@ -473,6 +472,81 @@ any scenario output schema. Ordinary mismatches and tool rejections allow later
 cases; transport, protocol, cleanup, authorization, and exhausted limits stop
 them. `input_required` makes the case and an otherwise successful report
 incomplete without supplying input or retrying the call.
+
+### Bounded multi-tool `check` workflows
+
+For a reviewed cross-tool path under exact MCP `2026-07-28`, `check` also
+accepts the separately versioned
+[`mcp-doctor.scenario/v2alpha1`](schemas/mcp-doctor.scenario.v2alpha1.schema.json)
+contract. It supports one finite sequence, not a general orchestration language:
+
+```json
+{
+  "schema_version": "mcp-doctor.scenario/v2alpha1",
+  "steps": [
+    {
+      "id": "locate",
+      "tool": "lookup",
+      "safety": { "effects": "read_only" },
+      "arguments": { "query": "MCP" },
+      "captures": { "resource_id": "/resource/id" },
+      "expect": { "result": "success" }
+    },
+    {
+      "id": "verify",
+      "tool": "read",
+      "safety": { "effects": "read_only" },
+      "arguments": { "id": null },
+      "argument_refs": { "/id": "resource_id" },
+      "expect": { "result": "success" }
+    }
+  ]
+}
+```
+
+Each of the 1–100 ordered steps names one exact tool, declares `read_only` or
+`side_effecting`, supplies object arguments, and expects `success` or
+`tool_error`. `captures` may select only bounded values from a successful,
+schema-valid `structuredContent` using RFC 6901 pointers. `argument_refs` may
+copy only an earlier named capture into an existing `null` placeholder. Capture
+names are unique across the workflow. The same environment-only `target_env`
+and `secret_refs` rules apply; secret and capture destinations cannot overlap.
+
+Repeat `--allow-tool <exact-name>` exactly once for every distinct tool in the
+document, with no omissions, duplicates, extras, or wildcard. If any main or
+cleanup step is `side_effecting`, also pass `--allow-side-effects`. All selected
+tools are discovered and locally schema-validated before the first call;
+discovery and annotations never grant authority. For example:
+
+```console
+mcp-doctor check \
+  --scenario workflow.json \
+  --allow-tool lookup \
+  --allow-tool read \
+  -- your-server
+```
+
+Main steps run sequentially at concurrency one. The first failure, incomplete
+result, missing capture, unsafe response, transport loss, or exhausted safety
+limit causally skips later main steps. A contiguous suffix marked
+`"cleanup": true` may still run when its earlier captures and remaining bounds
+are available; cleanup steps must expect success and cannot capture values. A
+cleanup failure is an independent Critical finding and stops later calls.
+
+Reports use only numeric `runtime.workflow.step[n]` and
+`runtime.workflow.cleanup[n]` checks. They never retain step IDs, tool or
+capture names, pointers, arguments, results, endpoints, credentials,
+environment names, or captured values. Arguments and individual captures are
+limited to 1 MiB; active arguments and retained captures are each limited to
+8 MiB in aggregate, in addition to the existing message, schema-work, process,
+network, time, report, zero-retry, and concurrency-one limits.
+
+Workflow scenarios do not support loops, branches, expressions,
+interpolation, scripts, dynamic tool selection, LLM planning, automatic input
+responses, retries, or concurrency. They are rejected before target preparation
+when a legacy protocol revision is selected. Use `v1alpha1` unchanged for
+single-tool legacy `check` runs; `break` and `reject` retain their own exact
+single-tool contracts.
 
 ### Generated `break` cases
 
