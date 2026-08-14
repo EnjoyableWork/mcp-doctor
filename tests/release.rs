@@ -1835,19 +1835,25 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_indexes_both_accepted_legacy_tracks_without_premature_support_claims() {
+fn project_records_completed_mcpd_027_and_keeps_later_tracks_proposed() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
         "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
         "[GitHub issue 74](https://github.com/EnjoyableWork/mcp-doctor/issues/74)",
-        "`MCPD-027` is accepted optional work for GitHub issue #60",
+        "`MCPD-027` is completed optional work for resolved GitHub issue #60",
         "[PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63)",
         "[`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039)",
         "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361)",
         "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389015)",
         "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387)",
-        "[Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
+        "[PR 78](https://github.com/EnjoyableWork/mcp-doctor/pull/78)",
+        "[`ac3d9ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/ac3d9ac1c289b3329eadbe8fb1a35cca597386c4)",
+        "closed [issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
+        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407756)",
+        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407549)",
+        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407803)",
+        "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778427941)",
         "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
         "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
         "`OPEN-14` is accepted as `DEC-051`.",
@@ -1855,17 +1861,17 @@ fn project_indexes_both_accepted_legacy_tracks_without_premature_support_claims(
         "| DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted |",
         "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
         "| OPEN-16 | `MCPD-029` |",
-        "`MCPD-027` establishes the shared active legacy",
-        "complete before `MCPD-028`",
+        "`MCPD-027` established the shared active legacy boundary",
+        "that `MCPD-028` must consume",
         "integration must reuse the settled active adapter if `MCPD-027` has begun",
-        "The `MCPD-027` source candidate implements the typed adapter",
+        "The `MCPD-027` merged source implements the typed adapter",
         "controlled compatibility runner passed all four retained",
         "Native Windows PowerShell execution",
-        "Therefore `MCPD-027` stays In progress",
+        "Therefore `MCPD-027` is Done",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve the accepted active legacy boundary: {contract}"
+            "PROJECT.md should preserve the completed active legacy boundary: {contract}"
         );
     }
 
@@ -1885,7 +1891,18 @@ fn project_indexes_both_accepted_legacy_tracks_without_premature_support_claims(
         .lines()
         .find(|line| line.starts_with("| MCPD-027 |"))
         .expect("PROJECT.md should contain MCPD-027");
-    assert!(active_legacy.contains("| In progress |"));
+    assert!(active_legacy.contains("| Done |"));
+    for contract in [
+        "final evidence head",
+        "merge commit",
+        "closed [issue #60]",
+        "exact-`main`",
+    ] {
+        assert!(
+            active_legacy.contains(contract),
+            "MCPD-027 completion must retain {contract}"
+        );
+    }
 
     for ticket in ["MCPD-028", "MCPD-029"] {
         let row = project
