@@ -3,9 +3,8 @@ use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, Command, ExitCode};
+use std::process::{Child, Command, ExitCode, Stdio};
 use std::thread;
-use std::time::Duration;
 
 use serde_json::Value;
 use serde_json::json;
@@ -13,6 +12,7 @@ use serde_json::json;
 const MIB: usize = 1024 * 1024;
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
 const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+const DESCENDANT_READY: &[u8] = b"descendant-ready\n";
 
 fn main() -> ExitCode {
     let mut arguments = env::args_os().skip(1);
@@ -265,12 +265,7 @@ fn resistant_child(arguments: &[OsString]) -> ExitCode {
     };
     read_one_discover_request();
 
-    let descendant =
-        Command::new(env::current_exe().expect("the fixture path should be available"))
-            .arg("descendant")
-            .arg(marker)
-            .spawn()
-            .expect("the resistant descendant should start");
+    let descendant = spawn_ready_descendant(marker, "resistant");
 
     write_success_response();
     wait_with_child(descendant)
@@ -280,9 +275,29 @@ fn descendant(arguments: &[OsString]) -> ExitCode {
     let Some(marker) = arguments.first().map(PathBuf::from) else {
         return ExitCode::from(2);
     };
-    thread::sleep(Duration::from_millis(3_500));
-    fs::write(marker, b"survived cleanup")
-        .expect("the descendant survival marker should be writable");
+    let mut readiness = OpenOptions::new()
+        .create_new(true)
+        .read(true)
+        .write(true)
+        .open(marker)
+        .expect("the descendant readiness marker should be created");
+    readiness
+        .lock()
+        .expect("the descendant readiness marker should be locked");
+    readiness
+        .write_all(DESCENDANT_READY)
+        .expect("the descendant readiness marker should be writable");
+    readiness
+        .flush()
+        .expect("the descendant readiness marker should flush");
+
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(DESCENDANT_READY)
+        .expect("the descendant readiness acknowledgement should be writable");
+    stdout
+        .flush()
+        .expect("the descendant readiness acknowledgement should flush");
     wait_forever()
 }
 
@@ -1686,12 +1701,7 @@ fn active_resistant_child(arguments: &[OsString]) -> ExitCode {
     active_begin(&mut input);
     let request = read_active_call(&mut input, 3);
     assert_active_arguments(&request, 0, false);
-    let descendant =
-        Command::new(env::current_exe().expect("the fixture path should be available"))
-            .arg("descendant")
-            .arg(marker)
-            .spawn()
-            .expect("the resistant active descendant should start");
+    let descendant = spawn_ready_descendant(marker, "resistant active");
     write_result(
         3,
         json!({
@@ -1915,12 +1925,7 @@ fn break_resistant_child(arguments: &[OsString]) -> ExitCode {
     generated_begin(&mut input, generated_boundary_schema());
     let request = read_generated_call(&mut input, 3);
     assert!(request["params"]["arguments"].is_object());
-    let descendant =
-        Command::new(env::current_exe().expect("the fixture path should be available"))
-            .arg("descendant")
-            .arg(marker)
-            .spawn()
-            .expect("the resistant generated descendant should start");
+    let descendant = spawn_ready_descendant(marker, "resistant generated");
     write_result(
         3,
         json!({
@@ -2537,21 +2542,33 @@ fn write_repeated(output: &mut impl Write, byte: u8, bytes: usize) {
     }
 }
 
+fn spawn_ready_descendant(marker: PathBuf, description: &str) -> Child {
+    let mut child = Command::new(env::current_exe().expect("the fixture path should be available"))
+        .arg("descendant")
+        .arg(marker)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|_| panic!("the {description} descendant should start"));
+    let mut acknowledgement = vec![0_u8; DESCENDANT_READY.len()];
+    child
+        .stdout
+        .take()
+        .expect("the descendant readiness pipe should exist")
+        .read_exact(&mut acknowledgement)
+        .unwrap_or_else(|_| panic!("the {description} descendant should acknowledge readiness"));
+    assert_eq!(acknowledgement, DESCENDANT_READY);
+    child
+}
+
 fn wait_forever() -> ! {
     loop {
-        thread::sleep(Duration::from_secs(60));
+        thread::park();
     }
 }
 
 fn wait_with_child(mut child: Child) -> ! {
-    loop {
-        assert!(
-            child
-                .try_wait()
-                .expect("the resistant descendant should remain observable")
-                .is_none(),
-            "the resistant descendant exited before cleanup"
-        );
-        thread::sleep(Duration::from_secs(60));
-    }
+    let status = child
+        .wait()
+        .expect("the resistant descendant should remain observable");
+    panic!("the resistant descendant exited before cleanup with {status}")
 }

@@ -8,7 +8,8 @@ use quick_xml::events::{BytesStart, Event};
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
@@ -23,6 +24,23 @@ const CONTRACT_SNAPSHOT_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json");
 const CONTRACT_DIFF_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-diff.v1alpha1.schema.json");
+const DESCENDANT_READY_MARKER: &[u8] = b"descendant-ready\n";
+
+pub fn assert_descendant_was_ready_and_terminated(path: &Path) {
+    let mut marker = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .expect("the descendant should publish its readiness marker before cleanup");
+    marker
+        .try_lock()
+        .expect("the descendant still holds its readiness lock after cleanup");
+    let mut contents = Vec::new();
+    marker
+        .read_to_end(&mut contents)
+        .expect("the descendant readiness marker should be readable");
+    assert_eq!(contents, DESCENDANT_READY_MARKER);
+}
 
 pub fn parse_and_validate_report(bytes: &[u8]) -> serde_json::Value {
     let report: serde_json::Value =

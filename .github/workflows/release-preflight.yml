@@ -27,6 +27,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Read the stable package version
         id: version
         run: |
@@ -105,6 +108,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh '${{ matrix.runner }}'
 
       - name: Download the exact source outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -262,6 +268,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        shell: pwsh
+        run: ./scripts/verify-ci-tools.ps1 -RunnerLabel windows-2025
+
       - name: Download the exact source outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -326,6 +336,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
 
       - name: Read the stable package version
         id: version
