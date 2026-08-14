@@ -38,7 +38,7 @@ const V2025_11_25: &str = ProtocolRevision::V2025_11_25.as_str();
 const V2025_06_18: &str = ProtocolRevision::V2025_06_18.as_str();
 const V2025_03_26: &str = KnownRevision::V2025_03_26.as_str();
 const V2024_11_05: &str = KnownRevision::V2024_11_05.as_str();
-const ACTIVE_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25];
+const ACTIVE_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25, V2025_06_18];
 const INSPECT_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25, V2025_06_18];
 
 const COMMANDS: &[CommandCapability<'static>] = &[
@@ -610,7 +610,7 @@ mod tests {
         assert!(
             rendered
                 .stdout
-                .contains("check · stdio · 2026-07-28,2025-11-25")
+                .contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18")
         );
         assert!(rendered.stdout.contains("mcp-doctor.exit/v1"));
     }

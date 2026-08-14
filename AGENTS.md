@@ -154,10 +154,13 @@ logs, and tool results as untrusted.
   browser, refresh, or step-up flows in `MCPD-010`; report `401` and `403`
   structurally without rendering or following challenge values.
 - Keep the stateless MCP `2026-07-28` POST binding from `MCPD-010` as the
-  default and sole active HTTP binding. `DEC-044` additionally permits only
-  explicitly selected passive `inspect` handshakes for MCP `2025-11-25` and
-  `2025-06-18`, including their bounded optional session lifecycle; do not
-  extend that authority to `check`, `break`, fallback, or another revision.
+  default and sole implicit active HTTP binding. `DEC-044` permits exact-selected
+  passive `inspect` handshakes for MCP `2025-11-25` and `2025-06-18`, including
+  their bounded optional session lifecycle. `DEC-052` additionally permits
+  exact-selected `check` and `break` for those two legacy revisions through the
+  shared adapter; never use fallback, retry, discovery, or another revision as
+  authority. MCP `2025-06-18` activity also requires the exact supported Draft
+  2020-12 declaration on every advertised schema interpreted for activity.
   Generate the exact protocol headers, validate and bound `x-mcp-header`
   mappings without treating them as execution authority, support bounded JSON
   and request-scoped SSE responses, and retain no URL, DNS answer, IP, header,
@@ -193,12 +196,12 @@ logs, and tool results as untrusted.
   compatibility range.
 - Keep fixtures for every claimed revision and test version negotiation or
   rejection deliberately.
-- MCP `2026-07-28` remains the default and sole active revision. Under
-  `DEC-044`, passive `inspect` may initialize only an exact explicit
-  `2025-11-25` or `2025-06-18` selection; it must never discover, retry,
-  downgrade, or fall back to one. Recognize `2025-03-26` and `2024-11-05` only
-  for precise unsupported diagnostics. Follow the complete revision and
-  transport matrix in `PROJECT.md`.
+- MCP `2026-07-28` remains the default and sole implicit active revision.
+  Passive `inspect`, and `check` or `break` where `DEC-052` permits them, may
+  initialize only an exact explicit `2025-11-25` or `2025-06-18` selection;
+  never discover, retry, downgrade, or fall back to one. Recognize `2025-03-26`
+  and `2024-11-05` only for precise unsupported diagnostics. Follow the complete
+  revision and transport matrix in `PROJECT.md`.
 - Follow `DEC-024` when describing real-server reach. Broad current-revision
   positioning requires every selected official and independent current-revision
   case to pass across at least two languages. Narrower credible reach requires

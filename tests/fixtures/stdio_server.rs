@@ -12,6 +12,7 @@ use serde_json::json;
 
 const MIB: usize = 1024 * 1024;
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
+const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
 fn main() -> ExitCode {
     let mut arguments = env::args_os().skip(1);
@@ -75,7 +76,9 @@ fn main() -> ExitCode {
         Some("legacy-active-url-elicitation") => legacy_active_url_elicitation(),
         Some("legacy-active-server-request") => legacy_active_server_request(),
         Some("legacy-active-unexpected-request") => legacy_active_unexpected_request(),
+        Some("legacy-active-2025-06-schema") => legacy_active_2025_06_schema(&remaining),
         Some("legacy-break-success") => legacy_break_success(&remaining),
+        Some("legacy-break-2025-06-missing-dialect") => legacy_break_2025_06_missing_dialect(),
         Some("active-success") => active_success(),
         Some("active-one-success") => active_one_success(),
         Some("active-report-single-run") => active_report_single_run(&remaining),
@@ -543,11 +546,17 @@ fn legacy_active_success() -> ExitCode {
 
 fn legacy_active_revision_mismatch() -> ExitCode {
     let mut input = io::BufReader::new(io::stdin().lock());
-    assert_eq!(read_initialize(&mut input), "2025-11-25");
+    let revision = read_initialize(&mut input);
+    let mismatched = if revision == "2025-11-25" {
+        "2025-06-18"
+    } else {
+        assert_eq!(revision, "2025-06-18");
+        "2025-11-25"
+    };
     write_result(
         1,
         json!({
-            "protocolVersion": "2025-06-18",
+            "protocolVersion": mismatched,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "synthetic-legacy-active", "version": "1.0.0"}
         }),
@@ -559,7 +568,7 @@ fn legacy_active_revision_mismatch() -> ExitCode {
 fn legacy_active_no_tools() -> ExitCode {
     let mut input = io::BufReader::new(io::stdin().lock());
     let revision = read_initialize(&mut input);
-    assert_eq!(revision, "2025-11-25");
+    assert!(matches!(revision.as_str(), "2025-11-25" | "2025-06-18"));
     write_result(
         1,
         json!({
@@ -728,14 +737,177 @@ fn legacy_break_success(arguments: &[OsString]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn legacy_active_2025_06_schema(arguments: &[OsString]) -> ExitCode {
+    let Some(mode) = arguments.first().and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+    let mut input_schema = json!({
+        "$schema": DRAFT_2020_12,
+        "type": "object",
+        "properties": {"sequence": {"type": "integer"}},
+        "required": ["sequence"],
+        "additionalProperties": false
+    });
+    let mut output_schema = Some(json!({
+        "$schema": DRAFT_2020_12,
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}},
+        "required": ["ok"],
+        "additionalProperties": false
+    }));
+    match mode {
+        "input-missing" => {
+            input_schema
+                .as_object_mut()
+                .expect("the synthetic input schema is an object")
+                .remove("$schema");
+        }
+        "input-malformed" => input_schema["$schema"] = json!([]),
+        "input-wrong" => {
+            input_schema["$schema"] = json!("https://synthetic.invalid/unsupported-dialect")
+        }
+        "input-vocabulary" => {
+            input_schema["$vocabulary"] =
+                json!({"https://synthetic.invalid/private-vocabulary": true});
+        }
+        "input-standard-vocabulary" => {
+            input_schema["$vocabulary"] = json!({
+                "https://json-schema.org/draft/2020-12/vocab/core": true,
+                "https://json-schema.org/draft/2020-12/vocab/applicator": true,
+                "https://json-schema.org/draft/2020-12/vocab/validation": true
+            });
+        }
+        "input-external" => {
+            input_schema["properties"]["sequence"] =
+                json!({"$ref": "https://synthetic.invalid/private-schema"});
+        }
+        "input-depth" => {
+            let mut nested = json!({"type": "integer"});
+            for _ in 0..70 {
+                nested = json!({"not": nested});
+            }
+            input_schema["properties"]["sequence"] = nested;
+        }
+        "output-omitted" => output_schema = None,
+        "output-missing" => {
+            output_schema
+                .as_mut()
+                .and_then(Value::as_object_mut)
+                .expect("the synthetic output schema is an object")
+                .remove("$schema");
+        }
+        "output-malformed" => {
+            output_schema.as_mut().expect("output schema exists")["$schema"] = json!({});
+        }
+        "output-wrong" => {
+            output_schema.as_mut().expect("output schema exists")["$schema"] =
+                json!("https://synthetic.invalid/unsupported-dialect");
+        }
+        "output-mismatch" => {}
+        _ => return ExitCode::from(2),
+    }
+
+    let mut input = io::BufReader::new(io::stdin().lock());
+    legacy_active_begin_with_schemas(
+        &mut input,
+        "synthetic.reviewed",
+        false,
+        input_schema,
+        output_schema,
+        false,
+    );
+    if matches!(
+        mode,
+        "input-standard-vocabulary" | "output-omitted" | "output-mismatch"
+    ) {
+        let call = read_legacy_call(&mut input, 3, "synthetic.reviewed");
+        assert_eq!(call["params"]["arguments"]["sequence"], 0);
+        write_result(
+            3,
+            json!({
+                "content": [],
+                "structuredContent": if mode == "output-mismatch" {
+                    json!({"ok": "synthetic-private-result-never-report-7f2c"})
+                } else {
+                    json!({"ok": true})
+                },
+                "isError": false
+            }),
+        );
+    }
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_break_2025_06_missing_dialect() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    legacy_active_begin_with_schemas(
+        &mut input,
+        "synthetic.generated",
+        false,
+        generated_boundary_schema(),
+        Some(json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": false
+        })),
+        false,
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
 fn legacy_active_begin(
     input: &mut impl BufRead,
     tool_name: &str,
     task_required: bool,
     input_schema: Value,
 ) {
+    legacy_active_begin_with_schemas(
+        input,
+        tool_name,
+        task_required,
+        input_schema,
+        Some(json!({
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": false
+        })),
+        true,
+    );
+}
+
+fn legacy_active_begin_with_schemas(
+    input: &mut impl BufRead,
+    tool_name: &str,
+    task_required: bool,
+    mut input_schema: Value,
+    mut output_schema: Option<Value>,
+    add_required_dialect: bool,
+) {
     let revision = read_initialize(input);
-    assert_eq!(revision, "2025-11-25");
+    assert!(matches!(revision.as_str(), "2025-11-25" | "2025-06-18"));
+    if revision == "2025-06-18" && add_required_dialect {
+        input_schema
+            .as_object_mut()
+            .expect("a synthetic tool input schema is an object")
+            .insert(
+                "$schema".to_owned(),
+                Value::String(DRAFT_2020_12.to_owned()),
+            );
+        if let Some(output_schema) = output_schema.as_mut() {
+            output_schema
+                .as_object_mut()
+                .expect("a synthetic tool output schema is an object")
+                .insert(
+                    "$schema".to_owned(),
+                    Value::String(DRAFT_2020_12.to_owned()),
+                );
+        }
+    }
     write_result(
         1,
         json!({
@@ -749,13 +921,10 @@ fn legacy_active_begin(
     let mut tool = json!({
         "name": tool_name,
         "inputSchema": input_schema,
-        "outputSchema": {
-            "type": "object",
-            "properties": {"ok": {"type": "boolean"}},
-            "required": ["ok"],
-            "additionalProperties": false
-        }
     });
+    if let Some(output_schema) = output_schema {
+        tool["outputSchema"] = output_schema;
+    }
     if task_required {
         tool["execution"] = json!({"taskSupport": "required"});
     }

@@ -762,6 +762,7 @@ fn project_records_completed_compiled_capability_discovery_without_target_author
             "mcp-doctor.generator/v1",
             "--protocol-version",
             "2025-11-25",
+            "2025-06-18",
             "legacy-active-success",
             "legacy-break-success",
             "negotiated_protocol_revision",
@@ -1835,8 +1836,11 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_027_and_keeps_later_tracks_proposed() {
+fn project_records_completed_mcpd_027_and_tracks_mcpd_028_in_progress() {
     let project = repository_file("PROJECT.md");
+    let readme = repository_file("README.md");
+    let compatibility = repository_file("tests/compatibility/README.md");
+    let agents = repository_file("AGENTS.md");
 
     for contract in [
         "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
@@ -1904,16 +1908,35 @@ fn project_records_completed_mcpd_027_and_keeps_later_tracks_proposed() {
         );
     }
 
-    for ticket in ["MCPD-028", "MCPD-029"] {
-        let row = project
-            .lines()
-            .find(|line| line.starts_with(&format!("| {ticket} |")))
-            .unwrap_or_else(|| panic!("PROJECT.md should contain {ticket}"));
+    let active_2025_06 = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-028 |"))
+        .expect("PROJECT.md should contain MCPD-028");
+    assert!(active_2025_06.contains("| In progress |"));
+
+    let later = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-029 |"))
+        .expect("PROJECT.md should contain MCPD-029");
+    assert!(later.contains("| Proposed |"));
+
+    for contract in [
+        "--protocol-version 2025-06-18",
+        "| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |",
+        "every advertised output schema that `mcp-doctor` interprets",
+        "Active MCP `2025-06-18`",
+        "No broad legacy ecosystem claim follows",
+    ] {
         assert!(
-            row.contains("| Proposed |"),
-            "{ticket} must remain Proposed until its open decision and owner are resolved"
+            readme.contains(contract),
+            "README should retain the scoped MCPD-028 source contract: {contract}"
         );
     }
+    assert!(!readme.contains("MCP `2025-06-18` remains passive-only"));
+    assert!(compatibility.contains("### Active MCP 2025-06-18"));
+    assert!(compatibility.contains("does not add a `2025-06-18` case"));
+    assert!(agents.contains("`DEC-052` additionally permits"));
+    assert!(agents.contains("exact supported Draft\n  2020-12 declaration"));
 
     for accepted_open in ["OPEN-14", "OPEN-15"] {
         assert!(

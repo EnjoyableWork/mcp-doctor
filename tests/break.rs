@@ -108,6 +108,78 @@ fn explicit_legacy_break_generates_and_calls_only_immediate_legacy_tools() {
 }
 
 #[test]
+fn explicit_v2025_06_break_generates_only_after_the_exact_dialect_gate() {
+    let environment = TestEnvironment::new();
+    let junit_path = environment.artifact_path("v2025-06-break.xml");
+    let mut command = break_command(&environment, TOOL, TOOL, "read_only", 3, 4242);
+    let output = command
+        .arg("--protocol-version")
+        .arg("2025-06-18")
+        .arg("--format")
+        .arg("json")
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-break-success")
+        .arg("3")
+        .output()
+        .expect("the selected MCP 2025-06-18 break journey should run");
+    let (_, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(report["protocol_revision"], "2025-06-18");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-06-18");
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["summary"]["passed"], 11);
+    let (junit, summary) = parse_and_validate_junit(
+        &fs::read(&junit_path).expect("the MCP 2025-06-18 JUnit artifact should exist"),
+    );
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(junit.contains("protocol_revision=2025-06-18"));
+    assert!(junit.contains("negotiated_protocol_revision=2025-06-18"));
+    assert_redacted(&output, &[]);
+}
+
+#[test]
+fn v2025_06_break_does_not_generate_or_call_for_an_ambiguous_input_schema() {
+    let environment = TestEnvironment::new();
+    let mut command = break_command(&environment, TOOL, TOOL, "read_only", 3, 4242);
+    let output = command
+        .arg("--protocol-version")
+        .arg("2025-06-18")
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-break-2025-06-missing-dialect")
+        .output()
+        .expect("the ambiguous MCP 2025-06-18 break journey should run");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-SCHEMA-002"
+    );
+    let generation = report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "generation.cases")
+        })
+        .expect("the generation gate should remain explicit");
+    assert_eq!(generation["state"], "skipped");
+    assert_eq!(generation["blocked_by"]["check_id"], "schema.contracts");
+    assert_redacted(&output, &[]);
+}
+
+#[test]
 fn generated_cases_are_seeded_schema_valid_sequential_and_exactly_reproducible() {
     let first_environment = TestEnvironment::new();
     let first_marker = first_environment.artifact_path("first-generated-inputs.json");

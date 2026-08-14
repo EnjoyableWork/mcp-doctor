@@ -1,7 +1,8 @@
 # Compatibility evidence
 
 This directory records the separately controlled real-server evidence for
-`MCPD-007` and `MCPD-027`. It answers two narrow questions: can the built
+`MCPD-007` and `MCPD-027`, and the deliberately narrower claim boundary for
+`MCPD-028`. It answers two narrow questions: can the built
 `mcp-doctor` passive STDIO journey diagnose selected, pinned MCP `2026-07-28`
 servers without calling a tool, and can its explicitly selected MCP
 `2025-11-25` active adapter safely run `check` and `break` against one pinned
@@ -46,9 +47,10 @@ current-revision compatibility.” That means the passive STDIO checks work for
 this reviewed matrix. It does not mean every MCP server works, HTTP works,
 tools were executed, or an official conformance suite passed.
 
-Explicit passive MCP `2025-11-25` and `2025-06-18` adapters remain covered by
-the synthetic built-binary STDIO and Streamable HTTP journeys in
-[`tests/stdio.rs`](../stdio.rs) and [`tests/http.rs`](../http.rs). Legacy
+Explicit passive MCP `2025-11-25` and `2025-06-18` adapters, plus active MCP
+`2025-06-18`, remain covered by synthetic built-binary STDIO and Streamable
+HTTP journeys in [`tests/stdio.rs`](../stdio.rs), [`tests/active.rs`](../active.rs),
+[`tests/break.rs`](../break.rs), and [`tests/http.rs`](../http.rs). Legacy
 selection never serves as a fallback for any case in this matrix.
 
 ### Active MCP 2025-11-25
@@ -80,6 +82,22 @@ Streamable HTTP, malformed responses, task-required tools, elicitation and
 server-request handling, limits, redaction, and cleanup. No legacy HTTP,
 installed-channel, every-server, or official-conformance claim follows from
 these four successful runs.
+
+### Active MCP 2025-06-18
+
+Active MCP `2025-06-18` requires an exact Draft 2020-12 declaration on every
+advertised schema that authorizes or validates activity. Missing, malformed,
+unsupported, external, ambiguous, unsupported-vocabulary, or over-limit schemas
+stop before generation or `tools/call`; passive omitted-dialect reporting stays
+unchanged. Synthetic built-binary journeys cover that stricter gate over STDIO
+and Streamable HTTP, and represented source-install smokes cover successful
+`check` and `break` execution.
+
+The controlled real-server matrix does not add a `2025-06-18` case in this
+slice. Its retained `2025-11-25` active pairs and four current-revision passive
+cases remain regression gates, not evidence of `2025-06-18` server reach. No
+real-server, broad legacy, ecosystem-wide, or published-channel compatibility
+claim follows from the new exact-selected source capability.
 
 ## Reproduce it
 

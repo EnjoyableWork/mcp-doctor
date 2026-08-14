@@ -106,6 +106,7 @@ impl Serialize for SupportedRevision {
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum ActiveProtocolRevision {
+    V2025_06_18,
     V2025_11_25,
     V2026_07_28,
 }
@@ -115,6 +116,7 @@ impl ActiveProtocolRevision {
 
     pub(crate) const fn as_supported(self) -> SupportedRevision {
         match self {
+            Self::V2025_06_18 => SupportedRevision::V2025_06_18,
             Self::V2025_11_25 => SupportedRevision::V2025_11_25,
             Self::V2026_07_28 => SupportedRevision::V2026_07_28,
         }

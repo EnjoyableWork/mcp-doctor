@@ -116,7 +116,7 @@ mcp-doctor inspect --protocol-version 2025-06-18 https://mcp.example.com/mcp
 
 # Active legacy replay remains gated by the exact scenario tool
 mcp-doctor check \
-  --protocol-version 2025-11-25 \
+  --protocol-version 2025-06-18 \
   --scenario path/to/scenario.json \
   --allow-tool search \
   -- node ./dist/server.js --stdio
@@ -127,16 +127,19 @@ Legacy inspection performs only `initialize`, one
 `notifications/initialized`, and capability-advertised `tools/list`,
 `prompts/list`, `resources/list`, and `resources/templates/list` operations. It
 does not call tools, list retained tasks, read resources, get prompts, or answer
-server requests. Explicit MCP `2025-11-25` `check` and `break` preserve every
-active authorization gate, call only immediate tools, never start tasks or
-answer server requests, and leave required additional input incomplete without
-retrying. MCP `2025-06-18` remains passive-only.
+server requests. Explicit MCP `2025-11-25` and `2025-06-18` `check` and `break`
+preserve every active authorization gate, call only immediate tools, never
+start tasks or answer server requests, and leave required additional input
+incomplete without retrying. For active MCP `2025-06-18`, every advertised
+input schema and every advertised output schema that `mcp-doctor` interprets
+must declare the exact supported Draft 2020-12 URI; ambiguity stops before
+generation or `tools/call`.
 
 | MCP revision | Est. usage[^revision-usage] | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` |
 | --- | ---: | --- | --- | --- | --- | --- |
 | `2026-07-28` | 11.2% | Default | Supported | Supported offline | Supported | Supported |
 | `2025-11-25` | 77.4% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |
-| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Not supported | Not supported |
+| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |
 | `2025-03-26` | 1.9% | Rejected | Rejected | Rejected | Rejected | Rejected |
 | `2024-11-05` | 1.3% | Rejected | Rejected | Rejected | Rejected | Rejected |
 | `2024-10-07` | Under 0.1% | Rejected as unknown | Rejected | Rejected | Rejected as unknown | Rejected as unknown |
@@ -144,10 +147,11 @@ retrying. MCP `2025-06-18` remains passive-only.
 
 Supported `inspect` and snapshot entries cover STDIO and Streamable HTTP;
 `diff` is local-only. Current-revision active support has broad matrix evidence.
-Legacy inspection, snapshot, diff, and MCP `2025-11-25` active HTTP behavior
-have synthetic evidence; MCP `2025-11-25` active STDIO additionally has narrow
-controlled evidence from one pinned official Go server and one pinned
-independent PHP server. No broad legacy ecosystem claim follows.
+Legacy inspection, snapshot, diff, and active HTTP behavior have synthetic
+evidence. MCP `2025-11-25` active STDIO additionally has narrow controlled
+evidence from one pinned official Go server and one pinned independent PHP
+server. MCP `2025-06-18` active STDIO has synthetic and represented
+source-install evidence only. No broad legacy ecosystem claim follows.
 
 [^revision-usage]: Dated 2026-08-13 planning proxy, rounded from seven-day
     downloads of official TypeScript and Python SDK releases grouped by their
@@ -186,10 +190,13 @@ is the validation contract.
 
 Advertised tool schemas are checked locally and without external retrieval.
 MCP `2025-11-25` defaults an omitted dialect to bounded JSON Schema Draft
-2020-12. Because MCP `2025-06-18` did not define a default, an omitted dialect
-receives bounded structural and reference checks plus an explicit warning,
-without assigning dialect-specific semantics. An exact Draft 2020-12
-declaration enables full local validation; another dialect is rejected.
+2020-12. Because MCP `2025-06-18` did not define a default, passive `inspect`
+records an omitted dialect as ambiguous after bounded structural and reference
+checks, without assigning dialect-specific semantics. Active MCP `2025-06-18`
+instead requires the exact Draft 2020-12 declaration before scenario validation,
+generation, or a tool call. Missing, malformed, unsupported, external,
+ambiguous, unsupported-vocabulary, or over-limit contracts fail closed; an omitted
+advertised output schema remains optional rather than being inferred.
 
 The default report is made for people. Add `--format json` for the stable,
 schema-backed `mcp-doctor.report/v1` result, or `--format junit` for the same
@@ -483,9 +490,10 @@ servers and independent Dart and PHP servers. See the
 [compatibility evidence](tests/compatibility/README.md) for the exact scope and
 results. That broad real-server evidence covers MCP `2026-07-28` only. Explicit
 MCP `2025-11-25` active STDIO diagnostics additionally pass the pinned official
-Go and independent PHP cases; their Streamable HTTP behavior and all passive
-legacy behavior remain synthetic. Neither legacy revision carries a broad
-ecosystem or published installed-channel claim.
+Go and independent PHP cases. MCP `2025-06-18` active behavior, both legacy
+revisions' Streamable HTTP behavior, and all passive legacy behavior remain
+synthetic apart from represented source-install smokes. Neither legacy revision
+carries a broad ecosystem or published installed-channel claim.
 
 ## Bring it into CI
 
