@@ -672,7 +672,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
 }
 
 #[test]
-fn project_and_readme_define_compiled_capability_discovery_without_target_authority() {
+fn project_records_completed_compiled_capability_discovery_without_target_authority() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
     let implementation = repository_file("src/capabilities.rs");
@@ -682,14 +682,20 @@ fn project_and_readme_define_compiled_capability_discovery_without_target_author
 
     for contract in [
         "### MCPD-025 accepted compiled capability-manifest plan",
-        "| MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | In progress |",
+        "| MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | Done |",
         "| DEC-050 | Resolve issue #32 with one exact, stable, compiled-only capability response | Accepted |",
         "| RISK-25 | A stale or over-broad capability manifest",
         "mcp-doctor.capabilities/v1",
         "mcp-doctor.exit/v1",
         "64-KiB",
         "tri-state consumer fixture",
-        "cannot delay, redefine, or become a\nprerequisite for `MCPD-017` or `MCPD-018`",
+        "did not delay, redefine, or become a\nprerequisite for `MCPD-017` or `MCPD-018`",
+        "`MCPD-025` completed on 2026-08-13",
+        "https://github.com/EnjoyableWork/mcp-doctor/pull/58",
+        "c5847ee794c227376783b2828f44ce3de34c81b9",
+        "f4a96a4cf14f8642e1e66c116c934f58ab86374a",
+        "31761161743",
+        "31761161698",
     ] {
         assert!(
             project.contains(contract),
