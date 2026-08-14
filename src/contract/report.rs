@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 
-use super::limits::{DiagnosticLimits, LimitValues};
+use super::limits::{DiagnosticLimitProfile, DiagnosticLimits, LimitValues};
 use super::model::{
     CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence,
     GeneratedCaseReproduction, Location, Requirement, RuleViolation, Severity, StructuralInput,
@@ -253,6 +253,7 @@ pub(super) struct ReportSummary {
 pub(super) struct DiagnosticReport {
     revision: SupportedRevision,
     negotiated_revision: Option<KnownRevision>,
+    limit_profile: DiagnosticLimitProfile,
     limits: DiagnosticLimits,
     checks: Vec<CheckResult>,
     primary_diagnosis: Option<Diagnosis>,
@@ -339,6 +340,7 @@ impl DiagnosticReport {
         Ok(Self {
             revision,
             negotiated_revision: None,
+            limit_profile: DiagnosticLimitProfile::Default,
             limits,
             checks,
             primary_diagnosis,
@@ -359,12 +361,22 @@ impl DiagnosticReport {
         self
     }
 
+    pub(super) fn with_limit_profile(mut self, profile: DiagnosticLimitProfile) -> Self {
+        self.limit_profile = profile;
+        self.limits = profile.limits();
+        self
+    }
+
     pub(super) const fn revision(&self) -> SupportedRevision {
         self.revision
     }
 
     pub(super) const fn negotiated_revision(&self) -> Option<KnownRevision> {
         self.negotiated_revision
+    }
+
+    pub(super) const fn limit_profile(&self) -> DiagnosticLimitProfile {
+        self.limit_profile
     }
 
     pub(super) const fn limits(&self) -> DiagnosticLimits {
@@ -668,7 +680,11 @@ impl HumanReporter {
 
         write_human_diagnosis(&mut output, report);
         output.push('\n');
-        write_human_limits(&mut output, report.limits().values());
+        write_human_limits(
+            &mut output,
+            report.limit_profile(),
+            report.limits().values(),
+        );
         output.push('\n');
 
         for check in report.checks() {
@@ -737,8 +753,13 @@ impl HumanReporter {
     }
 }
 
-fn write_human_limits(output: &mut BoundedOutput, values: LimitValues) {
-    writeln!(output, "LIMITS").expect("the bounded report writer records limit failures");
+fn write_human_limits(
+    output: &mut BoundedOutput,
+    profile: DiagnosticLimitProfile,
+    values: LimitValues,
+) {
+    writeln!(output, "LIMITS · profile={}", profile.as_str())
+        .expect("the bounded report writer records limit failures");
     writeln!(
         output,
         "  time · startup_ms={} · discovery_ms={} · request_ms={} · response_ms={} · shutdown_grace_ms={} · total_ms={}",
@@ -1122,6 +1143,7 @@ fn write_junit_metadata(
     write_xml_line(output, "report_outcome", report.outcome().as_str());
     writeln!(output, "exit_code={}", report.exit_status().code())
         .expect("the bounded report writer records limit failures");
+    write_xml_line(output, "limits.profile", report.limit_profile().as_str());
     write_xml_line(output, "check_id", &check.id().as_str());
     write_xml_line(output, "requirement", check.requirement().as_str());
     if let Some(outcome) = check.outcome() {
@@ -1504,7 +1526,7 @@ impl From<&DiagnosticReport> for JsonReport {
                 .collect(),
             outcome: report.outcome().as_str(),
             exit_code: report.exit_status().code(),
-            limits: JsonLimits::from(report.limits().values()),
+            limits: JsonLimits::from_report(report),
             summary: report.summary(),
             checks: report
                 .checks()
@@ -1568,6 +1590,7 @@ impl From<&FindingReference> for JsonIndependentFinding {
 
 #[derive(Serialize)]
 struct JsonLimits {
+    profile: &'static str,
     startup_ms: u64,
     discovery_ms: u64,
     request_ms: u64,
@@ -1612,9 +1635,11 @@ struct JsonLimits {
     concurrency: u64,
 }
 
-impl From<LimitValues> for JsonLimits {
-    fn from(values: LimitValues) -> Self {
+impl JsonLimits {
+    fn from_report(report: &DiagnosticReport) -> Self {
+        let values = report.limits().values();
         Self {
+            profile: report.limit_profile().as_str(),
             startup_ms: values.startup_ms,
             discovery_ms: values.discovery_ms,
             request_ms: values.request_ms,
@@ -1864,7 +1889,9 @@ mod tests {
         OverallOutcome, ReportArtifactFormat, ReportContractError, ReportFormat, ReportRenderError,
         ReportRequest, render_reports, render_reports_with_limit, write_xml_escaped,
     };
-    use crate::contract::limits::{DiagnosticLimits, LimitKind, LimitValues, LimitViolation};
+    use crate::contract::limits::{
+        DiagnosticLimitProfile, DiagnosticLimits, LimitKind, LimitValues, LimitViolation,
+    };
     use crate::contract::model::{
         CheckId, CheckResult, ExpectedShape, Finding, FindingCode, JsonKind, Location,
         LocationField, Requirement, RuleViolation, SkipReason,
@@ -2019,6 +2046,28 @@ mod tests {
         assert_eq!(report.outcome(), OverallOutcome::Failed);
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
         assert_stable_report(&json_value);
+        assert_common_junit_document(&junit, 3, 1, 1);
+    }
+
+    #[test]
+    fn selected_profile_is_deterministic_and_agrees_across_reporters() {
+        let report =
+            synthetic_failed_report().with_limit_profile(DiagnosticLimitProfile::SlowStart);
+        let human = HumanReporter::render(&report);
+        let json = JsonReporter::render(&report).expect("typed report should serialize");
+        let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        let value: serde_json::Value =
+            serde_json::from_str(&json).expect("the JSON reporter should emit one value");
+
+        assert_eq!(report.limit_profile(), DiagnosticLimitProfile::SlowStart);
+        assert!(human.contains("LIMITS · profile=slow-start"));
+        assert!(human.contains("startup_ms=30000"));
+        assert!(human.contains("total_ms=240000"));
+        assert_eq!(value["limits"]["profile"], "slow-start");
+        assert_eq!(value["limits"]["startup_ms"], 30_000);
+        assert_eq!(value["limits"]["total_ms"], 240_000);
+        assert!(junit.contains("limits.profile=slow-start"));
+        assert_stable_report(&value);
         assert_common_junit_document(&junit, 3, 1, 1);
     }
 

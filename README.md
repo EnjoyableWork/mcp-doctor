@@ -224,6 +224,38 @@ incomplete diagnostic still publishes both files when reporting succeeds and
 retains exit `1` or `3`; a render, write, publication, or cleanup failure cannot
 report success and exits `4`.
 
+### Bounded diagnostic patience
+
+`inspect`, `check`, and `break` accept one invocation-local
+`--limit-profile`. The default remains suitable for an untrusted target. Use
+`slow-start` only when a legitimate server or constrained CI runner needs more
+time to start, discover capabilities, or return a bounded response:
+
+```bash
+mcp-doctor inspect \
+  --limit-profile slow-start \
+  -- node ./dist/server.js --stdio
+```
+
+| Selection | Startup | Discovery | Request | Response | Cleanup grace | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `default` | 10 s | 10 s | 30 s | 30 s | 2 s | 120 s |
+| `slow-start` | 30 s | 30 s | 60 s | 60 s | 2 s | 240 s |
+
+These are the only accepted selections; `slow-start` is the compiled hard
+maximum and there are no individual overrides, project configuration, or
+disable-limit mode. Every byte, message, page, schema, case, generation,
+report, redirect, retry, concurrency, and cleanup-capacity limit is identical
+between the two selections. A profile changes patience only: it never permits
+a process, private or cleartext network destination, credential, tool,
+side effect, redirect, retry, fallback, schema retrieval, or extra request.
+
+Human and stable JSON reports identify the selection and its effective numeric
+limits; JUnit records the same selection while preserving the diagnostic
+result and exit semantics. `mcp-doctor capabilities` advertises the two names
+and exactly which commands accept them. An invalid name is rejected before
+target preparation.
+
 ## Inspect. Check. Break. Reject. Diff. Aggregate. Capabilities.
 
 Choose how much activity the target allows:

@@ -1,9 +1,9 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, ReportTransport,
-    http_diagnostic, http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
-    render_authorization_failure_for_revision,
+    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, DiagnosticLimitProfile,
+    ReportTransport, diagnostic_http_limit_profile, diagnostic_stdio_limit_profile,
+    http_diagnostic, http_diagnostic_with_cleanup, render_authorization_failure_for_revision,
     render_generation_configuration_failure_for_revision, stdio_diagnostic,
 };
 use crate::transport::http::{
@@ -19,6 +19,7 @@ pub(crate) struct BreakOptions<'a> {
     pub(crate) allow_side_effects: bool,
     pub(crate) cases: usize,
     pub(crate) seed: u64,
+    pub(crate) limit_profile: DiagnosticLimitProfile,
 }
 
 pub(crate) async fn run_stdio(
@@ -53,7 +54,7 @@ pub(crate) async fn run_stdio(
 
     let (executable, arguments) = target.split_first().expect("clap requires a break target");
     let target = StdioTarget::new(executable.clone(), arguments.to_vec())?;
-    let profile = m1_stdio_limit_profile();
+    let profile = diagnostic_stdio_limit_profile(options.limit_profile);
     let transport = StdioTransport::new_for_active_protocol(
         StdioLimits {
             startup_ms: profile.startup_ms,
@@ -107,7 +108,13 @@ pub(crate) async fn run_http(remote: RemoteOptions, options: BreakOptions<'_>) -
     scenario.discard_target_environment_names();
 
     let mut conversation = ActiveConversation::new_http_for_revision(scenario, options.revision);
-    let target = match HttpTarget::prepare(remote, http_limits(), &SystemResolver).await {
+    let target = match HttpTarget::prepare(
+        remote,
+        http_limits(options.limit_profile),
+        &SystemResolver,
+    )
+    .await
+    {
         Ok(target) => target,
         Err(failure) => {
             return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
@@ -131,8 +138,8 @@ pub(crate) async fn run_http(remote: RemoteOptions, options: BreakOptions<'_>) -
     ))
 }
 
-fn http_limits() -> HttpLimits {
-    let profile = m1_http_limit_profile();
+fn http_limits(selected: DiagnosticLimitProfile) -> HttpLimits {
+    let profile = diagnostic_http_limit_profile(selected);
     HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,

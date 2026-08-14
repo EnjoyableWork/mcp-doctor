@@ -378,6 +378,24 @@
         },
         "hard": {
           "const": true
+        },
+        "selections": {
+          "description": "Invocation-local names compiled into this limit contract; an empty list means the contract is not selectable.",
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "selectable_for": {
+          "description": "Commands that accept an explicit selection from this entry.",
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
         }
       },
       "additionalProperties": true

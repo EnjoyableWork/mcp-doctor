@@ -37,6 +37,7 @@ pub(crate) use active::{
 };
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use generate::GENERATOR_VERSION;
+pub(crate) use limits::DiagnosticLimitProfile;
 pub(crate) use protocol::{
     ActiveProtocolRevision, KnownRevision, SupportedRevision as ProtocolRevision,
 };
@@ -128,8 +129,8 @@ pub(crate) struct HttpLimitProfile {
     pub(crate) protocol_revisions: u64,
 }
 
-pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
-    let values = DiagnosticLimits::M1_DEFAULTS.values();
+pub(crate) fn diagnostic_http_limit_profile(selected: DiagnosticLimitProfile) -> HttpLimitProfile {
+    let values = selected.limits().values();
     HttpLimitProfile {
         startup_ms: values.startup_ms,
         discovery_ms: values.discovery_ms,
@@ -156,8 +157,10 @@ pub(crate) fn m1_http_limit_profile() -> HttpLimitProfile {
     }
 }
 
-pub(crate) fn m1_stdio_limit_profile() -> StdioLimitProfile {
-    let values = DiagnosticLimits::M1_DEFAULTS.values();
+pub(crate) fn diagnostic_stdio_limit_profile(
+    selected: DiagnosticLimitProfile,
+) -> StdioLimitProfile {
+    let values = selected.limits().values();
     StdioLimitProfile {
         startup_ms: values.startup_ms,
         discovery_ms: values.discovery_ms,
@@ -267,6 +270,11 @@ pub(crate) struct Diagnostic {
 impl Diagnostic {
     fn from_report(report: DiagnosticReport) -> Self {
         Self { report }
+    }
+
+    pub(crate) fn with_limit_profile(mut self, profile: DiagnosticLimitProfile) -> Self {
+        self.report = self.report.with_limit_profile(profile);
+        self
     }
 
     pub(crate) fn render(self, request: ReportRequest) -> RenderedDiagnostic {

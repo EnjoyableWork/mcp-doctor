@@ -232,6 +232,8 @@ fn machine_report_records_only_reproducible_seed_and_structural_input_evidence()
     let environment = TestEnvironment::new();
     let marker = environment.artifact_path("machine-generated-inputs.json");
     let output = break_command(&environment, TOOL, TOOL, "read_only", 3, u64::MAX - 1)
+        .arg("--limit-profile")
+        .arg("slow-start")
         .arg("--format")
         .arg("json")
         .arg("--")
@@ -246,6 +248,8 @@ fn machine_report_records_only_reproducible_seed_and_structural_input_evidence()
     assert!(stderr.is_empty());
     let report = parse_and_validate_report(&output.stdout);
     assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["limits"]["profile"], "slow-start");
+    assert_eq!(report["limits"]["total_ms"], 240_000);
     assert_eq!(report["limits"]["active_cases"], 100);
     assert_eq!(report["limits"]["generation_attempts"], 256);
     assert_eq!(report["limits"]["generation_candidates"], 64);

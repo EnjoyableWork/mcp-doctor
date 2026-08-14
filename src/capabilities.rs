@@ -16,6 +16,8 @@ pub(crate) const MAXIMUM_OUTPUT_BYTES: usize = 64 * 1024;
 const AGGREGATE_LIMIT_PROFILE: &str = "mcp-doctor.limits/aggregate/v1";
 const CONTRACT_DIFF_LIMIT_PROFILE: &str = "mcp-doctor.limits/contract-diff/v1alpha1";
 const DIAGNOSTIC_LIMIT_PROFILE: &str = "mcp-doctor.limits/diagnostic/v1";
+const DIAGNOSTIC_LIMIT_SELECTIONS: &[&str] = &["default", "slow-start"];
+const DIAGNOSTIC_LIMIT_SELECTABLE_FOR: &[&str] = &["break", "check", "inspect"];
 
 const HUMAN_REPORTER: &str = "human";
 const JSON_REPORTER: &str = "json";
@@ -216,21 +218,29 @@ const LIMIT_PROFILES: &[LimitProfileCapability<'static>] = &[
         id: AGGREGATE_LIMIT_PROFILE,
         default_for: &["aggregate"],
         hard: true,
+        selections: &[],
+        selectable_for: &[],
     },
     LimitProfileCapability {
         id: CAPABILITIES_LIMIT_PROFILE,
         default_for: &["capabilities"],
         hard: true,
+        selections: &[],
+        selectable_for: &[],
     },
     LimitProfileCapability {
         id: CONTRACT_DIFF_LIMIT_PROFILE,
         default_for: &["diff"],
         hard: true,
+        selections: &[],
+        selectable_for: &[],
     },
     LimitProfileCapability {
         id: DIAGNOSTIC_LIMIT_PROFILE,
         default_for: &["break", "check", "inspect", "reject"],
         hard: true,
+        selections: DIAGNOSTIC_LIMIT_SELECTIONS,
+        selectable_for: DIAGNOSTIC_LIMIT_SELECTABLE_FOR,
     },
 ];
 
@@ -356,6 +366,8 @@ struct LimitProfileCapability<'a> {
     id: &'a str,
     default_for: &'a [&'a str],
     hard: bool,
+    selections: &'a [&'a str],
+    selectable_for: &'a [&'a str],
 }
 
 #[derive(Debug, Serialize)]
@@ -506,6 +518,20 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
             command.activity,
             command.reporters.join(","),
             command.limit_profile
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
+    for profile in manifest
+        .limit_profiles
+        .iter()
+        .filter(|profile| !profile.selections.is_empty())
+    {
+        writeln!(
+            output,
+            "Limit selections: {} · {} · commands {}",
+            profile.id,
+            profile.selections.join(","),
+            profile.selectable_for.join(",")
         )
         .map_err(|_| CapabilitiesError::Render)?;
     }

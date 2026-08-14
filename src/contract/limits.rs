@@ -214,6 +214,29 @@ pub(super) struct LimitValues {
     pub(super) concurrency: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub(crate) enum DiagnosticLimitProfile {
+    #[default]
+    Default,
+    SlowStart,
+}
+
+impl DiagnosticLimitProfile {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::SlowStart => "slow-start",
+        }
+    }
+
+    pub(super) const fn limits(self) -> DiagnosticLimits {
+        match self {
+            Self::Default => DiagnosticLimits::M1_DEFAULTS,
+            Self::SlowStart => DiagnosticLimits::SLOW_START,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) struct DiagnosticLimits(LimitValues);
 
@@ -262,6 +285,16 @@ impl DiagnosticLimits {
         retries: 0,
         concurrency: 1,
     });
+
+    pub(super) const SLOW_START: Self = {
+        let mut values = Self::M1_DEFAULTS.0;
+        values.startup_ms = 30_000;
+        values.discovery_ms = 30_000;
+        values.request_ms = 60_000;
+        values.response_ms = 60_000;
+        values.total_ms = 240_000;
+        Self(values)
+    };
 
     pub(super) fn try_from_values(values: LimitValues) -> Result<Self, LimitContractError> {
         for (kind, value) in [
@@ -475,8 +508,8 @@ pub(super) enum LimitViolationError {
 #[cfg(test)]
 mod tests {
     use super::{
-        DiagnosticLimits, LimitContractError, LimitKind, LimitValues, LimitViolation,
-        LimitViolationError,
+        DiagnosticLimitProfile, DiagnosticLimits, LimitContractError, LimitKind, LimitValues,
+        LimitViolation, LimitViolationError,
     };
 
     #[test]
@@ -507,6 +540,43 @@ mod tests {
         assert_eq!(values.redirects, 0);
         assert_eq!(values.retries, 0);
         assert_eq!(values.concurrency, 1);
+    }
+
+    #[test]
+    fn named_profiles_are_finite_and_slow_start_changes_only_phase_patience() {
+        let default = DiagnosticLimitProfile::Default.limits().values();
+        let slow_start = DiagnosticLimitProfile::SlowStart.limits().values();
+
+        assert_eq!(DiagnosticLimitProfile::Default.as_str(), "default");
+        assert_eq!(DiagnosticLimitProfile::SlowStart.as_str(), "slow-start");
+        assert_eq!(
+            DiagnosticLimits::try_from_values(slow_start),
+            Ok(DiagnosticLimits::SLOW_START)
+        );
+        assert_eq!(slow_start.startup_ms, 30_000);
+        assert_eq!(slow_start.discovery_ms, 30_000);
+        assert_eq!(slow_start.request_ms, 60_000);
+        assert_eq!(slow_start.response_ms, 60_000);
+        assert_eq!(slow_start.shutdown_grace_ms, default.shutdown_grace_ms);
+        assert_eq!(slow_start.total_ms, 240_000);
+        let synthetic_cold_start_ms = 20_000;
+        let synthetic_slow_response_ms = 45_000;
+        assert!(synthetic_cold_start_ms > default.startup_ms);
+        assert!(synthetic_cold_start_ms <= slow_start.startup_ms);
+        assert!(synthetic_slow_response_ms > default.response_ms);
+        assert!(synthetic_slow_response_ms <= slow_start.response_ms);
+        assert_eq!(
+            LimitValues {
+                startup_ms: default.startup_ms,
+                discovery_ms: default.discovery_ms,
+                request_ms: default.request_ms,
+                response_ms: default.response_ms,
+                total_ms: default.total_ms,
+                ..slow_start
+            },
+            default,
+            "a named profile must not increase capacity, cleanup, retry, or concurrency authority"
+        );
     }
 
     #[test]

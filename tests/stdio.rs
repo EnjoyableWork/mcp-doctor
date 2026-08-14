@@ -451,6 +451,7 @@ fn stable_json_is_a_complete_passive_built_binary_report() {
     assert_eq!(report["summary"]["checks"], 6);
     assert_eq!(report["summary"]["performed"], 5);
     assert_eq!(report["summary"]["skipped"], 1);
+    assert_eq!(report["limits"]["profile"], "default");
     assert_eq!(report["limits"]["total_ms"], 120_000);
 
     let runtime = report["checks"]
@@ -462,6 +463,72 @@ fn stable_json_is_a_complete_passive_built_binary_report() {
     assert_eq!(runtime["state"], "skipped");
     assert_eq!(runtime["skip_reason"], "not_authorized");
     assert!(runtime.get("blocked_by").is_none());
+}
+
+#[test]
+fn slow_start_profile_is_reported_without_expanding_capacity_or_activity() {
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("slow-start.json");
+    let junit_path = environment.artifact_path("slow-start.xml");
+    let output = environment
+        .command()
+        .arg("inspect")
+        .arg("--limit-profile")
+        .arg("slow-start")
+        .arg("--format")
+        .arg("json")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("catalog-valid")
+        .output()
+        .expect("the bounded slow-start inspection should run");
+    let (_, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(report["limits"]["profile"], "slow-start");
+    assert_eq!(report["limits"]["startup_ms"], 30_000);
+    assert_eq!(report["limits"]["discovery_ms"], 30_000);
+    assert_eq!(report["limits"]["request_ms"], 60_000);
+    assert_eq!(report["limits"]["response_ms"], 60_000);
+    assert_eq!(report["limits"]["shutdown_grace_ms"], 2_000);
+    assert_eq!(report["limits"]["total_ms"], 240_000);
+    assert_eq!(report["limits"]["message_bytes"], 1_048_576);
+    assert_eq!(report["limits"]["active_cases"], 100);
+    assert_eq!(report["limits"]["redirects"], 0);
+    assert_eq!(report["limits"]["retries"], 0);
+    assert_eq!(report["limits"]["concurrency"], 1);
+
+    let artifact = parse_and_validate_report(
+        &std::fs::read(&json_path).expect("the slow-start JSON artifact should exist"),
+    );
+    assert_eq!(artifact["limits"], report["limits"]);
+    let (junit, _) = parse_and_validate_junit(
+        &std::fs::read(&junit_path).expect("the slow-start JUnit artifact should exist"),
+    );
+    assert!(junit.contains("limits.profile=slow-start"));
+
+    let human = environment
+        .command()
+        .arg("inspect")
+        .arg("--limit-profile")
+        .arg("slow-start")
+        .arg("--")
+        .arg(fixture())
+        .arg("catalog-valid")
+        .output()
+        .expect("the slow-start human report should run");
+    let (human_stdout, human_stderr) = text(&human);
+    assert!(human.status.success(), "{human_stdout}\n{human_stderr}");
+    assert!(human_stderr.is_empty());
+    assert!(human_stdout.contains("LIMITS · profile=slow-start"));
+    assert!(human_stdout.contains("startup_ms=30000"));
+    assert!(human_stdout.contains("total_ms=240000"));
 }
 
 #[test]
@@ -903,6 +970,16 @@ fn assert_human_json_summary_and_limits_match(human: &str, report: &serde_json::
         .as_object()
         .expect("limits should be an object")
     {
+        if name == "profile" {
+            let profile = value
+                .as_str()
+                .expect("the limit profile should be a fixed string");
+            assert!(
+                human.contains(&format!("LIMITS · profile={profile}")),
+                "human report is missing JSON limit profile {profile}: {human}"
+            );
+            continue;
+        }
         let value = value.as_u64().expect("every limit should be an integer");
         assert!(
             human.contains(&format!("{name}={value}")),

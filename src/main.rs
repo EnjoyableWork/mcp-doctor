@@ -54,6 +54,9 @@ struct InspectArgs {
     #[command(flatten)]
     report: ReportArgs,
 
+    #[command(flatten)]
+    limits: DiagnosticLimitArgs,
+
     /// Exact MCP revision to inspect; legacy revisions are passive and opt-in only.
     #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
     protocol_version: InspectProtocolVersion,
@@ -150,6 +153,9 @@ struct CheckArgs {
     #[command(flatten)]
     report: ReportArgs,
 
+    #[command(flatten)]
+    limits: DiagnosticLimitArgs,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -200,6 +206,9 @@ struct BreakArgs {
 
     #[command(flatten)]
     report: ReportArgs,
+
+    #[command(flatten)]
+    limits: DiagnosticLimitArgs,
 
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
@@ -271,6 +280,13 @@ struct ReportArgs {
     junit_report: Option<PathBuf>,
 }
 
+#[derive(Debug, Args)]
+struct DiagnosticLimitArgs {
+    /// Select one compiled finite diagnostic budget; this never grants target authority.
+    #[arg(long, value_enum, default_value_t = DiagnosticLimitSelection::Default)]
+    limit_profile: DiagnosticLimitSelection,
+}
+
 #[derive(Debug, Args, Default)]
 struct RemoteArgs {
     /// Authorize an eligible private destination for this exact endpoint.
@@ -335,6 +351,22 @@ enum AggregateOutputFormat {
 enum CapabilitiesOutputFormat {
     Human,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, ValueEnum)]
+enum DiagnosticLimitSelection {
+    #[default]
+    Default,
+    SlowStart,
+}
+
+impl From<DiagnosticLimitSelection> for contract::DiagnosticLimitProfile {
+    fn from(selection: DiagnosticLimitSelection) -> Self {
+        match selection {
+            DiagnosticLimitSelection::Default => Self::Default,
+            DiagnosticLimitSelection::SlowStart => Self::SlowStart,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
@@ -606,6 +638,7 @@ async fn main() -> ExitCode {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
             let revision = arguments.protocol_version.into();
+            let limit_profile = arguments.limits.limit_profile.into();
             let destination = match contract::prepare_snapshot_destination(
                 arguments.snapshot,
                 arguments.allow_sensitive_snapshot,
@@ -636,17 +669,27 @@ async fn main() -> ExitCode {
                     arguments.remote.into_options(endpoint),
                     revision,
                     capture_snapshot,
+                    limit_profile,
                 )
                 .await
                 {
-                    Ok(output) => {
+                    Ok(mut output) => {
+                        output.diagnostic = output.diagnostic.with_limit_profile(limit_profile);
                         emit_inspect(output, destination, report_request, report_destinations)
                     }
                     Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             } else {
-                match inspect::run_stdio(arguments.target, revision, capture_snapshot).await {
-                    Ok(output) => {
+                match inspect::run_stdio(
+                    arguments.target,
+                    revision,
+                    capture_snapshot,
+                    limit_profile,
+                )
+                .await
+                {
+                    Ok(mut output) => {
+                        output.diagnostic = output.diagnostic.with_limit_profile(limit_profile);
                         emit_inspect(output, destination, report_request, report_destinations)
                     }
                     Err(error) => emit_invocation_error(&error, report_destinations),
@@ -683,6 +726,7 @@ async fn main() -> ExitCode {
         )),
         Some(Command::Check(arguments)) => {
             let revision = arguments.protocol_version.into();
+            let limit_profile = arguments.limits.limit_profile.into();
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -697,8 +741,10 @@ async fn main() -> ExitCode {
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
                     revision,
+                    limit_profile,
                 )
-                .await;
+                .await
+                .with_limit_profile(limit_profile);
                 emit_diagnostic(diagnostic, report_request, report_destinations)
             } else {
                 match check::run_stdio(
@@ -707,12 +753,15 @@ async fn main() -> ExitCode {
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
                     revision,
+                    limit_profile,
                 )
                 .await
                 {
-                    Ok(diagnostic) => {
-                        emit_diagnostic(diagnostic, report_request, report_destinations)
-                    }
+                    Ok(diagnostic) => emit_diagnostic(
+                        diagnostic.with_limit_profile(limit_profile),
+                        report_request,
+                        report_destinations,
+                    ),
                     Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             }
@@ -727,10 +776,12 @@ async fn main() -> ExitCode {
                 cases,
                 seed,
                 report,
+                limits,
                 endpoint,
                 remote,
                 target,
             } = arguments;
+            let limit_profile = limits.limit_profile.into();
             let (report_request, report_destinations) = match report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -746,16 +797,23 @@ async fn main() -> ExitCode {
                 allow_side_effects,
                 cases,
                 seed,
+                limit_profile,
             };
             if let Some(endpoint) = endpoint {
                 let diagnostic =
                     break_command::run_http(remote.into_options(endpoint), options).await;
-                emit_diagnostic(diagnostic, report_request, report_destinations)
+                emit_diagnostic(
+                    diagnostic.with_limit_profile(limit_profile),
+                    report_request,
+                    report_destinations,
+                )
             } else {
                 match break_command::run_stdio(target, options).await {
-                    Ok(diagnostic) => {
-                        emit_diagnostic(diagnostic, report_request, report_destinations)
-                    }
+                    Ok(diagnostic) => emit_diagnostic(
+                        diagnostic.with_limit_profile(limit_profile),
+                        report_request,
+                        report_destinations,
+                    ),
                     Err(error) => emit_invocation_error(&error, report_destinations),
                 }
             }

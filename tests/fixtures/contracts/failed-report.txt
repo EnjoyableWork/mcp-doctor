@@ -3,7 +3,7 @@ mcp-doctor report · MCP 2026-07-28 · mcp-doctor.report/v1
 PRIMARY DIAGNOSIS · schema.contracts
   MCP-LIMIT-001 · tools[3].inputSchema
 
-LIMITS
+LIMITS · profile=default
   time · startup_ms=10000 · discovery_ms=10000 · request_ms=30000 · response_ms=30000 · shutdown_grace_ms=2000 · total_ms=120000
   io · message_bytes=1048576 · stdout_bytes=8388608 · stderr_bytes=1048576 · aggregate_output_bytes=8388608 · message_count=1024
   network · endpoint_bytes=8192 · resolution_addresses=16 · resolution_count=1 · trust_bytes=1048576 · trust_certificates=32

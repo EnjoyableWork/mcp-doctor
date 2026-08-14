@@ -1008,6 +1008,52 @@ fn exact_tool_and_side_effect_gates_reject_before_starting_the_target() {
 }
 
 #[test]
+fn slow_start_profile_does_not_grant_tool_or_side_effect_authority() {
+    for (effects, allowed_tool, expected_code) in [
+        ("read_only", "synthetic.other", "MCP-AUTH-001"),
+        ("side_effecting", TOOL, "MCP-AUTH-002"),
+    ] {
+        let environment = TestEnvironment::new();
+        let path = write_scenario(
+            &environment,
+            "profile-authority.json",
+            &scenario(effects, vec![reviewed_case(0, "success")]),
+        );
+        let marker = environment.artifact_path("profile-target-started");
+        let output = environment
+            .command()
+            .arg("check")
+            .arg("--limit-profile")
+            .arg("slow-start")
+            .arg("--scenario")
+            .arg(&path)
+            .arg("--allow-tool")
+            .arg(allowed_tool)
+            .arg("--format")
+            .arg("json")
+            .arg("--")
+            .arg(fixture())
+            .arg("active-started-marker")
+            .arg(&marker)
+            .output()
+            .expect("the profile authorization rejection should run");
+        let (_, stderr) = text(&output);
+        let report = parse_and_validate_report(&output.stdout);
+
+        assert_eq!(output.status.code(), Some(2), "{report:#}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(report["limits"]["profile"], "slow-start");
+        assert_eq!(report["limits"]["total_ms"], 240_000);
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            expected_code
+        );
+        assert!(!marker.exists(), "the limit profile started the target");
+        assert_redacted(&output, &[TOOL, allowed_tool]);
+    }
+}
+
+#[test]
 fn v2025_06_side_effect_authority_is_required_before_target_start() {
     let environment = TestEnvironment::new();
     let path = write_scenario(

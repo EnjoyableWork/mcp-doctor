@@ -4,11 +4,11 @@ use std::io::Read as _;
 use std::path::Path;
 
 use crate::contract::{
-    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, MAX_SCENARIO_BYTES,
-    ReportTransport, ScenarioFailure, http_diagnostic, http_diagnostic_with_cleanup,
-    m1_http_limit_profile, m1_stdio_limit_profile, render_authorization_failure_for_revision,
-    render_resolved_scenario_failure_for_revision, render_scenario_failure_for_revision,
-    resolve_target_environment, stdio_diagnostic,
+    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, DiagnosticLimitProfile,
+    MAX_SCENARIO_BYTES, ReportTransport, ScenarioFailure, diagnostic_http_limit_profile,
+    diagnostic_stdio_limit_profile, http_diagnostic, http_diagnostic_with_cleanup,
+    render_authorization_failure_for_revision, render_resolved_scenario_failure_for_revision,
+    render_scenario_failure_for_revision, resolve_target_environment, stdio_diagnostic,
 };
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
@@ -21,6 +21,7 @@ pub(crate) async fn run_stdio(
     allowed_tool: &str,
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
+    limit_profile: DiagnosticLimitProfile,
 ) -> Result<Diagnostic, TargetError> {
     let bytes = match read_scenario(scenario_path) {
         Ok(bytes) => bytes,
@@ -76,7 +77,7 @@ pub(crate) async fn run_stdio(
     let (executable, arguments) = target.split_first().expect("clap requires a check target");
     let target =
         StdioTarget::with_environment(executable.clone(), arguments.to_vec(), target_environment)?;
-    let profile = m1_stdio_limit_profile();
+    let profile = diagnostic_stdio_limit_profile(limit_profile);
     let transport = StdioTransport::new_for_active_protocol(
         StdioLimits {
             startup_ms: profile.startup_ms,
@@ -108,6 +109,7 @@ pub(crate) async fn run_http(
     allowed_tool: &str,
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
+    limit_profile: DiagnosticLimitProfile,
 ) -> Diagnostic {
     let bytes = match read_scenario(scenario_path) {
         Ok(bytes) => bytes,
@@ -148,12 +150,13 @@ pub(crate) async fn run_http(
     scenario.discard_target_environment_names();
 
     let mut conversation = ActiveConversation::new_http_for_revision(scenario, revision);
-    let target = match HttpTarget::prepare(options, http_limits(), &SystemResolver).await {
-        Ok(target) => target,
-        Err(failure) => {
-            return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
-        }
-    };
+    let target =
+        match HttpTarget::prepare(options, http_limits(limit_profile), &SystemResolver).await {
+            Ok(target) => target,
+            Err(failure) => {
+                return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
+            }
+        };
     let transport = match HttpTransport::new_for_active_protocol(
         target,
         revision.as_str(),
@@ -172,8 +175,8 @@ pub(crate) async fn run_http(
     ))
 }
 
-fn http_limits() -> HttpLimits {
-    let profile = m1_http_limit_profile();
+fn http_limits(selected: DiagnosticLimitProfile) -> HttpLimits {
+    let profile = diagnostic_http_limit_profile(selected);
     HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,

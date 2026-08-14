@@ -3,12 +3,12 @@ use std::ffi::OsString;
 use std::fmt;
 
 use crate::contract::{
-    Diagnostic, KnownRevision, PassiveCatalogConversation, ProtocolRevision,
-    SnapshotDestinationError, capture_contract_snapshot, http_diagnostic,
-    http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
-    render_catalog_diagnostic, render_http_catalog_diagnostic, render_http_diagnostic_for_revision,
-    render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
-    stdio_diagnostic,
+    Diagnostic, DiagnosticLimitProfile, KnownRevision, PassiveCatalogConversation,
+    ProtocolRevision, SnapshotDestinationError, capture_contract_snapshot,
+    diagnostic_http_limit_profile, diagnostic_stdio_limit_profile, http_diagnostic,
+    http_diagnostic_with_cleanup, render_catalog_diagnostic, render_http_catalog_diagnostic,
+    render_http_diagnostic_for_revision, render_http_diagnostic_for_revision_with_negotiated,
+    render_stdio_diagnostic_for_revision, stdio_diagnostic,
 };
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
@@ -53,12 +53,13 @@ pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     revision: ProtocolRevision,
     capture_snapshot: bool,
+    limit_profile: DiagnosticLimitProfile,
 ) -> Result<InspectOutput, InspectError> {
     let (executable, arguments) = target
         .split_first()
         .expect("clap requires an inspect target");
     let target = StdioTarget::new(executable.clone(), arguments.to_vec())?;
-    let profile = m1_stdio_limit_profile();
+    let profile = diagnostic_stdio_limit_profile(limit_profile);
     let transport = StdioTransport::new(StdioLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,
@@ -103,8 +104,9 @@ pub(crate) async fn run_http(
     options: RemoteOptions,
     revision: ProtocolRevision,
     capture_snapshot: bool,
+    limit_profile: DiagnosticLimitProfile,
 ) -> Result<InspectOutput, SnapshotDestinationError> {
-    let profile = m1_http_limit_profile();
+    let profile = diagnostic_http_limit_profile(limit_profile);
     let limits = HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,

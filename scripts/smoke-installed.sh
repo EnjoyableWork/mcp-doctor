@@ -122,10 +122,16 @@ jq -e --arg version "${smoke_version}" '
     file_identity: "device_inode"
   } and
   ([.limit_profiles[] | select(.hard == true)] | length) == 4 and
+  ([.limit_profiles[] |
+    select(.id == "mcp-doctor.limits/diagnostic/v1") |
+    .selections] == [["default", "slow-start"]]) and
+  ([.limit_profiles[] |
+    select(.id == "mcp-doctor.limits/diagnostic/v1") |
+    .selectable_for] == [["break", "check", "inspect"]]) and
   .limits.output_bytes == 65536
 ' "${smoke_capabilities}" >/dev/null
 
-if ! run_mcp_doctor inspect --format json \
+if ! run_mcp_doctor inspect --limit-profile slow-start --format json \
   --json-report "${smoke_json_artifact}" \
   --junit-report "${smoke_junit_artifact}" \
   --snapshot "${smoke_snapshot}" \
@@ -148,6 +154,16 @@ jq -e '
   .independent_findings == [] and
   .outcome == "passed" and
   .exit_code == 0 and
+  .limits.profile == "slow-start" and
+  .limits.startup_ms == 30000 and
+  .limits.discovery_ms == 30000 and
+  .limits.request_ms == 60000 and
+  .limits.response_ms == 60000 and
+  .limits.shutdown_grace_ms == 2000 and
+  .limits.total_ms == 240000 and
+  .limits.redirects == 0 and
+  .limits.retries == 0 and
+  .limits.concurrency == 1 and
   .summary.required == 5 and
   .summary.required_skipped == 0 and
   .summary.failed == 0 and
@@ -161,6 +177,10 @@ jq -e '
 
 if ! cmp -s -- "${smoke_report}" "${smoke_json_artifact}"; then
   echo "installed diagnostic JSON artifact diverged from the stdout projection" >&2
+  exit 1
+fi
+if ! grep -F -- "limits.profile=slow-start" "${smoke_junit_artifact}" >/dev/null; then
+  echo "installed diagnostic JUnit artifact omitted the selected limit profile" >&2
   exit 1
 fi
 
