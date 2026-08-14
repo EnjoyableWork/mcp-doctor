@@ -654,7 +654,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
         "### MCPD-024 accepted `v0.3.0` release plan",
         "| MCPD-023 | Classify the exact current-revision unsupported-version response at the protocol layer | Optional correctness | Done |",
         "| MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | Done |",
-        "| DEC-048 | Resolve issue #30 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
+        "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
         "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release, crates.io, `EnjoyableWork/tap/mcp-doctor`, and all ten represented installed-channel jobs verified |",
@@ -683,7 +683,7 @@ fn project_records_completed_compiled_capability_discovery_without_target_author
     for contract in [
         "### MCPD-025 accepted compiled capability-manifest plan",
         "| MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | Done |",
-        "| DEC-050 | Resolve issue #32 with one exact, stable, compiled-only capability response | Accepted |",
+        "| DEC-050 | Resolve issue #66 with one exact, stable, compiled-only capability response | Accepted |",
         "| RISK-25 | A stale or over-broad capability manifest",
         "mcp-doctor.capabilities/v1",
         "mcp-doctor.exit/v1",
@@ -815,7 +815,7 @@ fn project_and_readme_define_conservative_offline_report_aggregation() {
         "total JSON nodes and validation work to 1,000,000",
         "Perform no process launch, network access, DNS, credential resolution",
         "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity",
-        "| DEC-047 | Resolve issue #45 with normalized conservative offline aggregation of stable reports",
+        "| DEC-047 | Resolve issue #73 with normalized conservative offline aggregation of stable reports",
         "| RISK-23 | An offline aggregate turns incomplete or failed evidence into a pass",
         "| D-13 | Conservative bounded offline diagnostic-report aggregates | Optional offline evidence | Done |",
         "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity | Optional offline evidence | Done |",
@@ -826,7 +826,7 @@ fn project_and_readme_define_conservative_offline_report_aggregation() {
         "31737876282",
         "31737876227",
         "983919d0ffae417133f829b806e8f5a9e72082b7",
-        "completed closure of [issue #45]",
+        "completed closure of [issue #73]",
         "Mitigated for the `MCPD-022` scope",
     ] {
         assert!(
@@ -1834,8 +1834,8 @@ fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_cl
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-026` is completed optional work for resolved GitHub issue #56 under",
-        "[GitHub issue 56](https://github.com/EnjoyableWork/mcp-doctor/issues/56)",
+        "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
+        "[GitHub issue 74](https://github.com/EnjoyableWork/mcp-doctor/issues/74)",
         "[PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63)",
         "[`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039)",
         "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361)",
@@ -1843,7 +1843,7 @@ fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_cl
         "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387)",
         "[Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
         "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
-        "[Issue #57](https://github.com/EnjoyableWork/mcp-doctor/issues/57)",
+        "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
         "`OPEN-14` is accepted as `DEC-051`.",
         "| OPEN-15 | `MCPD-027`, `MCPD-028` |",
         "| OPEN-16 | `MCPD-029` |",
@@ -1861,7 +1861,7 @@ fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_cl
         .find(|line| line.starts_with("| MCPD-026 |"))
         .expect("PROJECT.md should contain MCPD-026");
     assert!(mcpd_026.contains("| Done |"));
-    for contract in ["final evidence head", "closed [issue #56]", "exact-`main`"] {
+    for contract in ["final evidence head", "closed [issue #74]", "exact-`main`"] {
         assert!(
             mcpd_026.contains(contract),
             "MCPD-026 completion must retain {contract}"
