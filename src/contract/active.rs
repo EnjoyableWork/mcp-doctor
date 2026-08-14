@@ -1,13 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 
+use reqwest::Url;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
-use serde_json::{Map, Number, Value, json};
+use serde_json::{Map, Number, Value};
 
+use super::active_protocol::{
+    ActiveProtocolAdapter, ActiveStartKind, ActiveTaskSupport, ActiveToolResultKind,
+};
 use super::catalog::{
-    InstanceValidationIssue, LocalValidator, request_meta, validate_cacheable_result,
-    validate_discovery_capabilities, validate_local_schema,
+    InstanceValidationIssue, LocalValidator, validate_cacheable_result,
+    validate_discovery_capabilities, validate_legacy_capabilities, validate_local_schema,
 };
 use super::generate::{GenerationFailure, generate_inputs};
 use super::http_headers::{HeaderAnnotation, validate_annotations};
@@ -17,16 +21,19 @@ use super::model::{
     GeneratedCaseReproduction, JsonKind, Location, LocationField, Requirement, RuleViolation,
     SkipReason,
 };
-use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
+use super::protocol::{
+    ActiveProtocolRevision, KnownRevision, RevisionSelection, SupportedRevision,
+    select_server_revision,
+};
 use super::redaction::RedactedValue;
 use super::report::{DiagnosticReport, ExitStatus};
 use super::{
-    Diagnostic, HttpDiagnostic, ReportTransport, StdioDiagnostic, http_checks, stdio_findings,
+    Diagnostic, HttpDiagnostic, ReportTransport, StdioDiagnostic, http_checks_for_revision,
+    stdio_findings_for_revision,
 };
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 pub(crate) const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
-const PROTOCOL_REVISION: &str = "2026-07-28";
 pub(crate) const MAX_SCENARIO_BYTES: u64 = 1_048_576;
 
 pub(crate) struct ScenarioFailure {
@@ -510,9 +517,10 @@ impl ActiveScenario {
     }
 }
 
-pub(crate) fn render_scenario_failure(
+pub(crate) fn render_scenario_failure_for_revision(
     failure: ScenarioFailure,
     transport: ReportTransport,
+    revision: ActiveProtocolRevision,
 ) -> Diagnostic {
     render_prestart_failure(
         failure,
@@ -521,13 +529,15 @@ pub(crate) fn render_scenario_failure(
         false,
         false,
         transport,
+        revision.as_supported(),
     )
 }
 
-pub(crate) fn render_resolved_scenario_failure(
+pub(crate) fn render_resolved_scenario_failure_for_revision(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
     transport: ReportTransport,
+    revision: ActiveProtocolRevision,
 ) -> Diagnostic {
     render_prestart_failure(
         failure,
@@ -536,13 +546,15 @@ pub(crate) fn render_resolved_scenario_failure(
         true,
         scenario.generates_cases(),
         transport,
+        revision.as_supported(),
     )
 }
 
-pub(crate) fn render_generation_configuration_failure(
+pub(crate) fn render_generation_configuration_failure_for_revision(
     failure: ScenarioFailure,
     requested_cases: usize,
     transport: ReportTransport,
+    revision: ActiveProtocolRevision,
 ) -> Diagnostic {
     let maximum =
         usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
@@ -554,6 +566,7 @@ pub(crate) fn render_generation_configuration_failure(
         false,
         true,
         transport,
+        revision.as_supported(),
     )
 }
 
@@ -564,11 +577,16 @@ fn render_prestart_failure(
     authorization_passed: bool,
     generated: bool,
     transport: ReportTransport,
+    revision: SupportedRevision,
 ) -> Diagnostic {
     let mut checks = vec![CheckResult::performed(
         configuration_check,
         Requirement::Required,
-        failure.findings,
+        failure
+            .findings
+            .into_iter()
+            .map(|finding| finding.with_revision(revision))
+            .collect(),
     )];
     checks.push(if authorization_passed {
         CheckResult::performed(
@@ -631,21 +649,19 @@ fn render_prestart_failure(
             SkipReason::PrerequisiteFailed,
         ));
     }
-    let report = DiagnosticReport::new(
-        SupportedRevision::CURRENT,
-        DiagnosticLimits::M1_DEFAULTS,
-        checks,
-    )
-    .expect("a scenario configuration failure is a valid report")
-    .with_exit_status(ExitStatus::InvocationError);
+    let report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+        .expect("a scenario configuration failure is a valid report")
+        .with_exit_status(ExitStatus::InvocationError);
     Diagnostic::from_report(report)
 }
 
-pub(crate) fn render_authorization_failure(
+pub(crate) fn render_authorization_failure_for_revision(
     scenario: &ActiveScenario,
     failure: ScenarioFailure,
     transport: ReportTransport,
+    revision: ActiveProtocolRevision,
 ) -> Diagnostic {
+    let revision = revision.as_supported();
     let mut checks = vec![
         CheckResult::performed(
             scenario.configuration_check(),
@@ -655,7 +671,11 @@ pub(crate) fn render_authorization_failure(
         CheckResult::performed(
             CheckId::ActiveAuthorization,
             Requirement::Required,
-            failure.findings,
+            failure
+                .findings
+                .into_iter()
+                .map(|finding| finding.with_revision(revision))
+                .collect(),
         ),
     ];
     checks.extend(prestart_transport_checks(
@@ -698,13 +718,9 @@ pub(crate) fn render_authorization_failure(
             SkipReason::AuthorizationFailed,
         )
     }));
-    let report = DiagnosticReport::new(
-        SupportedRevision::CURRENT,
-        DiagnosticLimits::M1_DEFAULTS,
-        checks,
-    )
-    .expect("an active authorization failure is a valid report")
-    .with_exit_status(ExitStatus::InvocationError);
+    let report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+        .expect("an active authorization failure is a valid report")
+        .with_exit_status(ExitStatus::InvocationError);
     Diagnostic::from_report(report)
 }
 
@@ -725,6 +741,7 @@ fn prestart_transport_checks(transport: ReportTransport, reason: SkipReason) -> 
 }
 
 pub(crate) struct ActiveConversation {
+    adapter: ActiveProtocolAdapter,
     scenario: ActiveScenario,
     stage: Stage,
     pending: Option<PendingRequest>,
@@ -744,10 +761,12 @@ pub(crate) struct ActiveConversation {
     selected_count: usize,
     next_case: usize,
     validate_http_headers: bool,
+    negotiated_revision: Option<KnownRevision>,
 }
 
 enum Stage {
-    Discover,
+    Start,
+    Initialized { list_tools: bool },
     Tools(Option<String>),
     Cases,
     Done,
@@ -755,7 +774,7 @@ enum Stage {
 
 #[derive(Clone, Copy)]
 enum PendingRequest {
-    Discover,
+    Start,
     Tools,
     Call(usize),
 }
@@ -801,8 +820,13 @@ impl ActiveFindingCollector {
         self.findings.is_empty()
     }
 
-    fn finish(self, location: Location) -> Vec<Finding> {
-        cap_active_phase_findings(self.findings.into_iter().collect(), self.overflow, location)
+    fn finish(self, location: Location, revision: SupportedRevision) -> Vec<Finding> {
+        cap_active_phase_findings(
+            self.findings.into_iter().collect(),
+            self.overflow,
+            location,
+            revision,
+        )
     }
 }
 
@@ -819,14 +843,16 @@ struct ToolValidators {
 }
 
 impl ActiveConversation {
-    pub(crate) fn new(scenario: ActiveScenario) -> Self {
+    pub(crate) fn for_revision(scenario: ActiveScenario, revision: ActiveProtocolRevision) -> Self {
+        let adapter = ActiveProtocolAdapter::new(revision);
         let generation = scenario.generates_cases().then_some(PhaseState::Pending);
         let case_states = (0..scenario.case_count())
             .map(|_| CaseState::Pending)
             .collect();
         Self {
+            adapter,
             scenario,
-            stage: Stage::Discover,
+            stage: Stage::Start,
             pending: None,
             next_id: 1,
             envelope: PhaseState::Pending,
@@ -844,53 +870,52 @@ impl ActiveConversation {
             selected_count: 0,
             next_case: 0,
             validate_http_headers: false,
+            negotiated_revision: None,
         }
     }
 
-    pub(crate) fn new_http(scenario: ActiveScenario) -> Self {
-        let mut conversation = Self::new(scenario);
-        conversation.validate_http_headers = true;
+    pub(crate) fn new_http_for_revision(
+        scenario: ActiveScenario,
+        revision: ActiveProtocolRevision,
+    ) -> Self {
+        let mut conversation = Self::for_revision(scenario, revision);
+        conversation.validate_http_headers = conversation.adapter.permits_http_mappings();
         conversation
     }
 
-    fn request(&mut self, pending: PendingRequest, method: &str, params: Value) -> ProbeRequest {
+    fn revision(&self) -> SupportedRevision {
+        self.adapter.revision()
+    }
+
+    fn begin_request(&mut self, pending: PendingRequest) -> i64 {
         let id = self.next_id;
         self.next_id = self
             .next_id
             .checked_add(1)
             .expect("bounded requests keep active request ids representable");
         self.pending = Some(pending);
-        let bytes = serde_json::to_vec(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params,
-        }))
-        .expect("typed active requests must serialize");
-        ProbeRequest::new(id, bytes)
+        id
     }
 
     fn next_outbound(&mut self) -> Option<ProbeRequest> {
         loop {
             match &self.stage {
-                Stage::Discover => {
-                    return Some(self.request(
-                        PendingRequest::Discover,
-                        "server/discover",
-                        json!({"_meta": request_meta()}),
-                    ));
+                Stage::Start => {
+                    let id = self.begin_request(PendingRequest::Start);
+                    return Some(self.adapter.start_request(id));
+                }
+                Stage::Initialized { list_tools } => {
+                    self.stage = if *list_tools {
+                        Stage::Tools(None)
+                    } else {
+                        Stage::Done
+                    };
+                    return self.adapter.initialized_notification();
                 }
                 Stage::Tools(cursor) => {
-                    let mut params = Map::new();
-                    params.insert("_meta".to_owned(), request_meta());
-                    if let Some(cursor) = cursor {
-                        params.insert("cursor".to_owned(), Value::String(cursor.clone()));
-                    }
-                    return Some(self.request(
-                        PendingRequest::Tools,
-                        "tools/list",
-                        Value::Object(params),
-                    ));
+                    let cursor = cursor.clone();
+                    let id = self.begin_request(PendingRequest::Tools);
+                    return Some(self.adapter.tools_request(id, cursor.as_deref()));
                 }
                 Stage::Cases => {
                     if self.next_case >= self.scenario.cases.len() {
@@ -910,13 +935,15 @@ impl ActiveConversation {
                         Ok(()) => {}
                         Err(InstanceValidationIssue::Mismatch { error_count }) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] =
-                                CaseState::Performed(vec![Finding::tool_arguments_mismatch(
+                            self.case_states[index] = CaseState::Performed(vec![
+                                Finding::tool_arguments_mismatch(
                                     self.scenario
                                         .case_location(index)
                                         .field(LocationField::Arguments),
                                     error_count,
-                                )]);
+                                )
+                                .with_revision(self.revision()),
+                            ]);
                             self.next_case += 1;
                             continue;
                         }
@@ -924,7 +951,7 @@ impl ActiveConversation {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::limit_exceeded(
-                                    SupportedRevision::CURRENT,
+                                    self.revision(),
                                     self.scenario
                                         .case_location(index)
                                         .field(LocationField::Arguments),
@@ -936,12 +963,14 @@ impl ActiveConversation {
                         }
                         Err(InstanceValidationIssue::InvalidSchema) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] =
-                                CaseState::Performed(vec![Finding::tool_result_invalid(
+                            self.case_states[index] = CaseState::Performed(vec![
+                                Finding::tool_result_invalid(
                                     self.scenario
                                         .case_location(index)
                                         .field(LocationField::InputSchema),
-                                )]);
+                                )
+                                .with_revision(self.revision()),
+                            ]);
                             self.next_case += 1;
                             self.stop_cases(SkipReason::PrerequisiteFailed);
                             continue;
@@ -977,18 +1006,13 @@ impl ActiveConversation {
                     };
                     let arguments = std::mem::take(&mut self.scenario.cases[index].arguments);
                     let tool = self.scenario.tool.clone();
-                    return Some(
-                        self.request(
-                            PendingRequest::Call(index),
-                            "tools/call",
-                            json!({
-                                "name": tool,
-                                "arguments": arguments,
-                                "_meta": request_meta(),
-                            }),
-                        )
-                        .with_mirrored_fields(mirrored_fields),
-                    );
+                    let id = self.begin_request(PendingRequest::Call(index));
+                    return Some(self.adapter.tool_call_request(
+                        id,
+                        tool,
+                        arguments,
+                        mirrored_fields,
+                    ));
                 }
                 Stage::Done => return None,
             }
@@ -1001,10 +1025,153 @@ impl ActiveConversation {
             .take()
             .expect("every accepted response matches one active request");
         match pending {
-            PendingRequest::Discover => self.process_discovery(response),
+            PendingRequest::Start => self.process_start(response),
             PendingRequest::Tools => self.process_tools(response),
             PendingRequest::Call(index) => self.process_call(index, response),
         }
+    }
+
+    fn process_start(&mut self, response: &ProbeResponse) {
+        match self.adapter.start_kind() {
+            ActiveStartKind::Discover => self.process_discovery(response),
+            ActiveStartKind::Initialize => self.process_initialize(response),
+        }
+    }
+
+    fn process_initialize(&mut self, response: &ProbeResponse) {
+        let value: Value = serde_json::from_slice(response.as_bytes())
+            .expect("the transport accepted this JSON response");
+        let object = value
+            .as_object()
+            .expect("the transport accepted only JSON-RPC objects");
+        let revision = self.revision();
+        let server_location = Location::root(LocationField::Server);
+        if object.contains_key("error") {
+            self.envelope = PhaseState::Performed(vec![Finding::catalog_contract_invalid(
+                revision,
+                server_location,
+                RuleViolation::ServerErrorResponse,
+            )]);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        let Some(result) = object.get("result").and_then(Value::as_object) else {
+            self.envelope = PhaseState::Performed(vec![Finding::catalog_contract_invalid(
+                revision,
+                server_location.field(LocationField::Result),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(object.get("result")),
+                },
+            )]);
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        };
+
+        let result_location = server_location.clone().field(LocationField::Result);
+        let revision_location = result_location
+            .clone()
+            .field(LocationField::NegotiatedProtocolVersion);
+        let negotiated = result.get("protocolVersion").and_then(Value::as_str);
+        self.negotiated_revision = negotiated.and_then(KnownRevision::parse);
+        let revision_valid = match negotiated {
+            Some(value) if value == revision.as_str() => {
+                self.revision = PhaseState::Performed(vec![Finding::revision_confirmed(
+                    revision,
+                    revision_location,
+                )]);
+                true
+            }
+            Some(_) => {
+                self.revision = PhaseState::Performed(vec![Finding::revision_mismatch(
+                    revision,
+                    revision_location,
+                )]);
+                false
+            }
+            None => {
+                self.revision = PhaseState::Performed(vec![Finding::invalid_revision_value(
+                    revision,
+                    revision_location,
+                    RedactedValue::new(
+                        result
+                            .get("protocolVersion")
+                            .map(serialized_len)
+                            .unwrap_or_default(),
+                    ),
+                )]);
+                false
+            }
+        };
+
+        let (mut envelope_findings, tools_advertised) =
+            validate_legacy_capabilities(result, result_location.clone(), revision);
+        let server_info_location = result_location.clone().field(LocationField::ServerInfo);
+        match result.get("serverInfo").and_then(Value::as_object) {
+            Some(server_info) => {
+                for (name, field) in [
+                    ("name", LocationField::Name),
+                    ("version", LocationField::Version),
+                ] {
+                    if !server_info.get(name).is_some_and(Value::is_string) {
+                        envelope_findings.push(Finding::catalog_contract_invalid(
+                            revision,
+                            server_info_location.clone().field(field),
+                            RuleViolation::ExpectedShape {
+                                expected: ExpectedShape::String,
+                                observed: json_kind(server_info.get(name)),
+                            },
+                        ));
+                    }
+                }
+            }
+            None => envelope_findings.push(Finding::catalog_contract_invalid(
+                revision,
+                server_info_location,
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::Object,
+                    observed: json_kind(result.get("serverInfo")),
+                },
+            )),
+        }
+        if let Some(instructions) = result.get("instructions")
+            && !instructions.is_string()
+        {
+            envelope_findings.push(Finding::catalog_contract_invalid(
+                revision,
+                result_location.field(LocationField::Instructions),
+                RuleViolation::ExpectedShape {
+                    expected: ExpectedShape::String,
+                    observed: json_kind(Some(instructions)),
+                },
+            ));
+        }
+        self.envelope = PhaseState::Performed(cap_active_phase_findings(
+            envelope_findings,
+            false,
+            server_location,
+            revision,
+        ));
+        if !revision_valid {
+            self.discovery = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+            self.schemas = PhaseState::Skipped(SkipReason::UnsupportedRevision);
+            self.stop_cases(SkipReason::UnsupportedRevision);
+            return;
+        }
+        if phase_failed(&self.envelope) {
+            self.stop_before_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        if !tools_advertised {
+            self.discovery = PhaseState::Performed(vec![
+                Finding::tool_not_found(Location::root(LocationField::Tools))
+                    .with_revision(revision),
+            ]);
+            self.schemas = PhaseState::Skipped(SkipReason::PrerequisiteFailed);
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+            return;
+        }
+        self.stage = Stage::Initialized { list_tools: true };
     }
 
     fn process_discovery(&mut self, response: &ProbeResponse) {
@@ -1091,6 +1258,7 @@ impl ActiveConversation {
         if !revision_findings.is_empty() {
             self.revision = PhaseState::Performed(revision_findings.finish(
                 Location::root(LocationField::Server).field(LocationField::SupportedVersions),
+                self.revision(),
             ));
             self.stop_before_cases(SkipReason::PrerequisiteFailed);
             return;
@@ -1143,6 +1311,7 @@ impl ActiveConversation {
     }
 
     fn process_tools(&mut self, response: &ProbeResponse) {
+        let revision = self.revision();
         let value: Value = serde_json::from_slice(response.as_bytes())
             .expect("the transport accepted this JSON response");
         let object = value
@@ -1151,19 +1320,19 @@ impl ActiveConversation {
         let mut findings = ActiveFindingCollector::new();
         if object.contains_key("error") {
             findings.push(Finding::catalog_contract_invalid(
-                SupportedRevision::CURRENT,
+                revision,
                 Location::root(LocationField::Tools),
                 RuleViolation::ServerErrorResponse,
             ));
             self.fail_discovery(
-                findings.finish(Location::root(LocationField::Tools)),
+                findings.finish(Location::root(LocationField::Tools), revision),
                 SkipReason::PrerequisiteFailed,
             );
             return;
         }
         let Some(result) = object.get("result").and_then(Value::as_object) else {
             findings.push(Finding::catalog_contract_invalid(
-                SupportedRevision::CURRENT,
+                revision,
                 Location::root(LocationField::Tools).field(LocationField::Result),
                 RuleViolation::ExpectedShape {
                     expected: ExpectedShape::Object,
@@ -1171,20 +1340,24 @@ impl ActiveConversation {
                 },
             ));
             self.fail_discovery(
-                findings.finish(Location::root(LocationField::Tools)),
+                findings.finish(Location::root(LocationField::Tools), revision),
                 SkipReason::PrerequisiteFailed,
             );
             return;
         };
-        let common_findings =
-            validate_cacheable_result(result, Location::root(LocationField::Tools));
+        let common_findings = match self.adapter.tool_result_kind() {
+            ActiveToolResultKind::Modern => {
+                validate_cacheable_result(result, Location::root(LocationField::Tools))
+            }
+            ActiveToolResultKind::Legacy => Vec::new(),
+        };
         if !common_findings.is_empty() {
             self.fail_discovery(common_findings, SkipReason::PrerequisiteFailed);
             return;
         }
         let Some(tools) = result.get("tools").and_then(Value::as_array) else {
             findings.push(Finding::catalog_contract_invalid(
-                SupportedRevision::CURRENT,
+                revision,
                 Location::root(LocationField::Tools),
                 RuleViolation::ExpectedShape {
                     expected: ExpectedShape::Array,
@@ -1192,7 +1365,7 @@ impl ActiveConversation {
                 },
             ));
             self.fail_discovery(
-                findings.finish(Location::root(LocationField::Tools)),
+                findings.finish(Location::root(LocationField::Tools), revision),
                 SkipReason::PrerequisiteFailed,
             );
             return;
@@ -1205,7 +1378,7 @@ impl ActiveConversation {
         let maximum_items = DiagnosticLimits::M1_DEFAULTS.values().catalog_items;
         if self.observed_items > maximum_items {
             findings.push(Finding::limit_exceeded(
-                SupportedRevision::CURRENT,
+                revision,
                 Location::root(LocationField::Tools),
                 LimitViolation::new(LimitKind::CatalogItems, self.observed_items, maximum_items)
                     .expect("the active catalog exceeds its checked maximum"),
@@ -1219,7 +1392,7 @@ impl ActiveConversation {
             let location = Location::root(LocationField::Tools).index(index);
             let Some(tool) = tool.as_object() else {
                 findings.push(Finding::catalog_contract_invalid(
-                    SupportedRevision::CURRENT,
+                    revision,
                     location,
                     RuleViolation::ExpectedShape {
                         expected: ExpectedShape::Object,
@@ -1230,7 +1403,7 @@ impl ActiveConversation {
             };
             let Some(name) = tool.get("name").and_then(Value::as_str) else {
                 findings.push(Finding::catalog_contract_invalid(
-                    SupportedRevision::CURRENT,
+                    revision,
                     location.clone().field(LocationField::Name),
                     RuleViolation::ExpectedShape {
                         expected: ExpectedShape::String,
@@ -1241,7 +1414,7 @@ impl ActiveConversation {
             };
             if !self.seen_names.insert(name.to_owned()) {
                 findings.push(Finding::duplicate_catalog_identifier(
-                    SupportedRevision::CURRENT,
+                    revision,
                     location.clone().field(LocationField::Name),
                 ));
                 continue;
@@ -1250,10 +1423,53 @@ impl ActiveConversation {
                 continue;
             }
             self.selected_count += 1;
+            match self.adapter.task_support(tool) {
+                ActiveTaskSupport::Immediate => {}
+                ActiveTaskSupport::Required => {
+                    self.selected_schema_findings
+                        .push(Finding::tool_task_required(
+                            revision,
+                            location
+                                .clone()
+                                .field(LocationField::Execution)
+                                .field(LocationField::TaskSupport),
+                        ));
+                    continue;
+                }
+                ActiveTaskSupport::InvalidExecution => {
+                    self.selected_schema_findings
+                        .push(Finding::catalog_contract_invalid(
+                            revision,
+                            location.clone().field(LocationField::Execution),
+                            RuleViolation::ExpectedShape {
+                                expected: ExpectedShape::Object,
+                                observed: json_kind(tool.get("execution")),
+                            },
+                        ));
+                    continue;
+                }
+                ActiveTaskSupport::InvalidTaskSupport => {
+                    let execution = tool.get("execution").and_then(Value::as_object);
+                    self.selected_schema_findings
+                        .push(Finding::catalog_contract_invalid(
+                            revision,
+                            location
+                                .clone()
+                                .field(LocationField::Execution)
+                                .field(LocationField::TaskSupport),
+                            RuleViolation::ExpectedTaskSupport {
+                                observed: json_kind(
+                                    execution.and_then(|execution| execution.get("taskSupport")),
+                                ),
+                            },
+                        ));
+                    continue;
+                }
+            }
             let Some(input_schema) = tool.get("inputSchema") else {
                 self.selected_schema_findings
                     .push(Finding::schema_contract_invalid(
-                        SupportedRevision::CURRENT,
+                        revision,
                         location.clone().field(LocationField::InputSchema),
                         RuleViolation::ExpectedShape {
                             expected: ExpectedShape::Object,
@@ -1265,7 +1481,7 @@ impl ActiveConversation {
             if !input_schema.is_object() {
                 self.selected_schema_findings
                     .push(Finding::schema_contract_invalid(
-                        SupportedRevision::CURRENT,
+                        revision,
                         location.clone().field(LocationField::InputSchema),
                         RuleViolation::ExpectedShape {
                             expected: ExpectedShape::Object,
@@ -1281,7 +1497,7 @@ impl ActiveConversation {
             {
                 self.selected_schema_findings
                     .push(Finding::schema_contract_invalid(
-                        SupportedRevision::CURRENT,
+                        revision,
                         location.field(LocationField::OutputSchema),
                         RuleViolation::ExpectedShape {
                             expected: ExpectedShape::Object,
@@ -1312,7 +1528,7 @@ impl ActiveConversation {
         }
         if !findings.is_empty() {
             self.fail_discovery(
-                findings.finish(Location::root(LocationField::Tools)),
+                findings.finish(Location::root(LocationField::Tools), revision),
                 SkipReason::PrerequisiteFailed,
             );
             return;
@@ -1324,7 +1540,7 @@ impl ActiveConversation {
             Some(value) => {
                 self.fail_discovery(
                     vec![Finding::catalog_contract_invalid(
-                        SupportedRevision::CURRENT,
+                        revision,
                         Location::root(LocationField::Tools).field(LocationField::NextCursor),
                         RuleViolation::ExpectedShape {
                             expected: ExpectedShape::String,
@@ -1340,7 +1556,7 @@ impl ActiveConversation {
             if !self.seen_cursors.insert(cursor.clone()) {
                 self.fail_discovery(
                     vec![Finding::pagination_cursor_repeated(
-                        SupportedRevision::CURRENT,
+                        revision,
                         Location::root(LocationField::Tools).field(LocationField::NextCursor),
                     )],
                     SkipReason::PrerequisiteFailed,
@@ -1353,9 +1569,10 @@ impl ActiveConversation {
 
         if self.selected_count != 1 {
             self.fail_discovery(
-                vec![Finding::tool_not_found(Location::root(
-                    LocationField::Tools,
-                ))],
+                vec![
+                    Finding::tool_not_found(Location::root(LocationField::Tools))
+                        .with_revision(revision),
+                ],
                 SkipReason::PrerequisiteFailed,
             );
             return;
@@ -1368,6 +1585,7 @@ impl ActiveConversation {
                 schema_findings,
                 false,
                 Location::root(LocationField::Tools),
+                revision,
             ));
             self.stop_cases(SkipReason::PrerequisiteFailed);
             return;
@@ -1377,24 +1595,29 @@ impl ActiveConversation {
             .field(LocationField::InputSchema);
         if contract.input_schema.get("type").and_then(Value::as_str) != Some("object") {
             schema_findings.push(Finding::schema_contract_invalid(
-                SupportedRevision::CURRENT,
+                revision,
                 input_location.clone().field(LocationField::Type),
                 RuleViolation::ExpectedInputSchemaRootObject {
                     observed: json_kind(contract.input_schema.get("type")),
                 },
             ));
         }
-        schema_findings.extend(validate_local_schema(
-            &contract.input_schema,
-            input_location,
-        ));
+        schema_findings.extend(
+            validate_local_schema(&contract.input_schema, input_location)
+                .into_iter()
+                .map(|finding| finding.with_revision(revision)),
+        );
         if let Some(output_schema) = &contract.output_schema {
-            schema_findings.extend(validate_local_schema(
-                output_schema,
-                Location::root(LocationField::Tools)
-                    .wildcard()
-                    .field(LocationField::OutputSchema),
-            ));
+            schema_findings.extend(
+                validate_local_schema(
+                    output_schema,
+                    Location::root(LocationField::Tools)
+                        .wildcard()
+                        .field(LocationField::OutputSchema),
+                )
+                .into_iter()
+                .map(|finding| finding.with_revision(revision)),
+            );
         }
         if schema_findings.is_empty() {
             let validators = ToolValidators {
@@ -1418,7 +1641,7 @@ impl ActiveConversation {
                         self.schemas = PhaseState::Performed(Vec::new());
                         self.generation =
                             Some(PhaseState::Performed(vec![Finding::limit_exceeded(
-                                SupportedRevision::CURRENT,
+                                revision,
                                 generation_location().field(LocationField::Cases),
                                 violation,
                             )]));
@@ -1431,7 +1654,8 @@ impl ActiveConversation {
                             Finding::case_generation_failed(
                                 generation_location().field(LocationField::Cases),
                                 RuleViolation::NoValidBoundaryInput,
-                            ),
+                            )
+                            .with_revision(revision),
                         ]));
                         self.stop_cases(SkipReason::PrerequisiteFailed);
                         return;
@@ -1447,6 +1671,7 @@ impl ActiveConversation {
                 schema_findings,
                 false,
                 Location::root(LocationField::Tools),
+                revision,
             ));
             self.stop_cases(SkipReason::PrerequisiteFailed);
         }
@@ -1458,12 +1683,35 @@ impl ActiveConversation {
         let object = value
             .as_object()
             .expect("the transport accepted only JSON-RPC objects");
+        if object.contains_key("method") {
+            if self.adapter.tool_result_kind() == ActiveToolResultKind::Legacy
+                && server_request_requires_input(object)
+            {
+                self.case_states[index] = CaseState::Incomplete;
+                self.next_case = index.saturating_add(1);
+                self.stop_cases(SkipReason::InputRequired);
+            } else {
+                self.invalid_tool_result(index, LocationField::Request);
+            }
+            return;
+        }
         if object.contains_key("error") {
-            self.case_states[index] = CaseState::Performed(vec![Finding::tool_call_rejected(
-                self.scenario
-                    .case_location(index)
-                    .field(LocationField::Result),
-            )]);
+            if self.adapter.tool_result_kind() == ActiveToolResultKind::Legacy
+                && is_url_elicitation_required(object)
+            {
+                self.case_states[index] = CaseState::Incomplete;
+                self.next_case = index.saturating_add(1);
+                self.stage = Stage::Cases;
+                return;
+            }
+            self.case_states[index] = CaseState::Performed(vec![
+                Finding::tool_call_rejected(
+                    self.scenario
+                        .case_location(index)
+                        .field(LocationField::Result),
+                )
+                .with_revision(self.revision()),
+            ]);
             self.next_case = index.saturating_add(1);
             self.stage = Stage::Cases;
             return;
@@ -1472,17 +1720,19 @@ impl ActiveConversation {
             self.invalid_tool_result(index, LocationField::Result);
             return;
         };
-        match result.get("resultType").and_then(Value::as_str) {
-            Some("input_required") => {
-                self.case_states[index] = CaseState::Incomplete;
-                self.next_case = index.saturating_add(1);
-                self.stage = Stage::Cases;
-                return;
-            }
-            Some("complete") => {}
-            _ => {
-                self.invalid_tool_result(index, LocationField::ResultType);
-                return;
+        if self.adapter.tool_result_kind() == ActiveToolResultKind::Modern {
+            match result.get("resultType").and_then(Value::as_str) {
+                Some("input_required") => {
+                    self.case_states[index] = CaseState::Incomplete;
+                    self.next_case = index.saturating_add(1);
+                    self.stage = Stage::Cases;
+                    return;
+                }
+                Some("complete") => {}
+                _ => {
+                    self.invalid_tool_result(index, LocationField::ResultType);
+                    return;
+                }
             }
         }
         if !result.get("content").is_some_and(Value::is_array) {
@@ -1513,16 +1763,19 @@ impl ActiveConversation {
             (ExpectedResult::Success, false) | (ExpectedResult::ToolError, true)
         );
         if !classification_matches {
-            findings.push(Finding::tool_result_mismatch(
-                self.scenario
-                    .case_location(index)
-                    .field(LocationField::IsError),
-                if case.expected == ExpectedResult::Success {
-                    RuleViolation::ExpectedSuccess
-                } else {
-                    RuleViolation::ExpectedToolError
-                },
-            ));
+            findings.push(
+                Finding::tool_result_mismatch(
+                    self.scenario
+                        .case_location(index)
+                        .field(LocationField::IsError),
+                    if case.expected == ExpectedResult::Success {
+                        RuleViolation::ExpectedSuccess
+                    } else {
+                        RuleViolation::ExpectedToolError
+                    },
+                )
+                .with_revision(self.revision()),
+            );
         }
 
         let advertised = self
@@ -1544,7 +1797,7 @@ impl ActiveConversation {
             .or_else(|| scenario_mismatch.as_ref().and_then(validation_limit));
         if let Some(violation) = limit {
             findings.push(Finding::limit_exceeded(
-                SupportedRevision::CURRENT,
+                self.revision(),
                 self.scenario
                     .case_location(index)
                     .field(LocationField::StructuredContent),
@@ -1562,11 +1815,14 @@ impl ActiveConversation {
                 .as_ref()
                 .is_some_and(validation_invalid_schema)
         {
-            findings.push(Finding::tool_result_invalid(
-                self.scenario
-                    .case_location(index)
-                    .field(LocationField::StructuredContent),
-            ));
+            findings.push(
+                Finding::tool_result_invalid(
+                    self.scenario
+                        .case_location(index)
+                        .field(LocationField::StructuredContent),
+                )
+                .with_revision(self.revision()),
+            );
             self.case_states[index] = CaseState::Performed(findings);
             self.next_case = index.saturating_add(1);
             self.stop_cases(SkipReason::PrerequisiteFailed);
@@ -1588,12 +1844,15 @@ impl ActiveConversation {
                 },
                 (false, false) => unreachable!(),
             };
-            findings.push(Finding::tool_output_mismatch(
-                self.scenario
-                    .case_location(index)
-                    .field(LocationField::StructuredContent),
-                violation,
-            ));
+            findings.push(
+                Finding::tool_output_mismatch(
+                    self.scenario
+                        .case_location(index)
+                        .field(LocationField::StructuredContent),
+                    violation,
+                )
+                .with_revision(self.revision()),
+            );
         }
 
         self.case_states[index] = CaseState::Performed(findings);
@@ -1602,9 +1861,10 @@ impl ActiveConversation {
     }
 
     fn invalid_tool_result(&mut self, index: usize, field: LocationField) {
-        self.case_states[index] = CaseState::Performed(vec![Finding::tool_result_invalid(
-            self.scenario.case_location(index).field(field),
-        )]);
+        self.case_states[index] = CaseState::Performed(vec![
+            Finding::tool_result_invalid(self.scenario.case_location(index).field(field))
+                .with_revision(self.revision()),
+        ]);
         self.next_case = index.saturating_add(1);
         self.stop_cases(SkipReason::PrerequisiteFailed);
     }
@@ -1638,8 +1898,9 @@ impl ActiveConversation {
     }
 
     pub(crate) fn into_diagnostic(self, stdio: StdioDiagnostic) -> Diagnostic {
+        let revision = self.revision();
         let failed = stdio.primary.is_some();
-        let transport_findings = stdio_findings(stdio);
+        let transport_findings = stdio_findings_for_revision(stdio, revision);
         self.into_transport_diagnostic(
             vec![CheckResult::performed(
                 CheckId::TransportStdio,
@@ -1655,20 +1916,25 @@ impl ActiveConversation {
             return self.into_protocol_version_rejection(http);
         }
         let failed = http.failed();
-        self.into_transport_diagnostic(http_checks(http), failed)
+        let revision = self.revision();
+        self.into_transport_diagnostic(http_checks_for_revision(http, revision), failed)
     }
 
     fn into_protocol_version_rejection(mut self, http: HttpDiagnostic) -> Diagnostic {
         self.pending = None;
         self.envelope = PhaseState::Performed(Vec::new());
         self.revision = PhaseState::Performed(vec![Finding::unsupported_protocol_version(
-            SupportedRevision::CURRENT,
+            self.revision(),
             Location::root(LocationField::Http).field(LocationField::Body),
         )]);
         self.discovery = PhaseState::Skipped(SkipReason::UnsupportedRevision);
         self.schemas = PhaseState::Skipped(SkipReason::UnsupportedRevision);
         self.stop_cases(SkipReason::UnsupportedRevision);
-        self.into_transport_diagnostic(http_checks(http.without_primary_failure()), false)
+        let revision = self.revision();
+        self.into_transport_diagnostic(
+            http_checks_for_revision(http.without_primary_failure(), revision),
+            false,
+        )
     }
 
     fn into_transport_diagnostic(
@@ -1676,6 +1942,7 @@ impl ActiveConversation {
         transport_checks: Vec<CheckResult>,
         transport_failed: bool,
     ) -> Diagnostic {
+        let report_revision = self.revision();
         if transport_failed {
             if let Some(PendingRequest::Call(index)) = self.pending.take() {
                 self.case_states[index] = CaseState::Skipped(SkipReason::PrerequisiteFailed);
@@ -1750,16 +2017,17 @@ impl ActiveConversation {
                     }
                 }),
         );
-        let report = DiagnosticReport::new(
-            SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
-            checks,
-        )
-        .expect("the active application must construct a valid diagnostic report");
+        let mut report =
+            DiagnosticReport::new(report_revision, DiagnosticLimits::M1_DEFAULTS, checks)
+                .expect("the active application must construct a valid diagnostic report");
+        if let Some(negotiated_revision) = self.negotiated_revision {
+            report = report.with_negotiated_revision(negotiated_revision);
+        }
         Diagnostic::from_report(report)
     }
 
     fn fit_report_finding_budget(&mut self, transport_findings: usize) {
+        let revision = self.revision();
         let maximum = usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings)
             .unwrap_or(usize::MAX);
         let total = transport_findings
@@ -1804,19 +2072,26 @@ impl ActiveConversation {
             capacity > 0,
             "independent active findings fit the report budget"
         );
-        *target.0 =
-            cap_active_phase_to_budget(std::mem::take(target.0), capacity, observed, target.1);
+        *target.0 = cap_active_phase_to_budget(
+            std::mem::take(target.0),
+            capacity,
+            observed,
+            target.1,
+            revision,
+        );
     }
 }
 
 impl Conversation for ActiveConversation {
     fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest> {
         if let Some(response) = previous {
-            self.process_response(response);
+            if self.pending.is_some() {
+                self.process_response(response);
+            }
         } else {
             assert!(
                 self.pending.is_none(),
-                "discovery is the first active request"
+                "the adapter start message is the first active request"
             );
         }
         self.next_outbound()
@@ -1842,6 +2117,14 @@ fn phase_finding_count(state: &PhaseState) -> usize {
     }
 }
 
+fn phase_failed(state: &PhaseState) -> bool {
+    matches!(
+        state,
+        PhaseState::Performed(findings)
+            if findings.iter().any(|finding| finding.severity().is_failure())
+    )
+}
+
 fn case_finding_count(state: &CaseState) -> usize {
     match state {
         CaseState::Performed(findings) => findings.len(),
@@ -1853,6 +2136,7 @@ fn cap_active_phase_findings(
     mut findings: Vec<Finding>,
     overflow: bool,
     location: Location,
+    revision: SupportedRevision,
 ) -> Vec<Finding> {
     findings.sort();
     findings.dedup();
@@ -1869,6 +2153,7 @@ fn cap_active_phase_findings(
             .report_findings
             .saturating_add(1),
         location,
+        revision,
     )
 }
 
@@ -1877,6 +2162,7 @@ fn cap_active_phase_to_budget(
     capacity: usize,
     observed: u64,
     location: Location,
+    revision: SupportedRevision,
 ) -> Vec<Finding> {
     let maximum = DiagnosticLimits::M1_DEFAULTS.values().report_findings;
     findings.retain(|finding| {
@@ -1890,7 +2176,7 @@ fn cap_active_phase_to_budget(
     findings.dedup();
     findings.truncate(capacity.saturating_sub(1));
     findings.push(Finding::limit_exceeded(
-        SupportedRevision::CURRENT,
+        revision,
         location,
         LimitViolation::new(
             LimitKind::ReportFindings,
@@ -1913,6 +2199,118 @@ fn validate_optional_output(
     match structured {
         Some(value) => validator.validate(value).err(),
         None => Some(InstanceValidationIssue::Mismatch { error_count: 1 }),
+    }
+}
+
+fn is_url_elicitation_required(response: &Map<String, Value>) -> bool {
+    let Some(error) = response.get("error").and_then(Value::as_object) else {
+        return false;
+    };
+    if error.get("code").and_then(Value::as_i64) != Some(-32042)
+        || !error.get("message").is_some_and(Value::is_string)
+    {
+        return false;
+    }
+    let Some(elicitations) = error
+        .get("data")
+        .and_then(Value::as_object)
+        .and_then(|data| data.get("elicitations"))
+        .and_then(Value::as_array)
+    else {
+        return false;
+    };
+    let maximum =
+        usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
+    elicitations.len() <= maximum
+        && elicitations.iter().all(|elicitation| {
+            let Some(elicitation) = elicitation.as_object() else {
+                return false;
+            };
+            elicitation.get("mode").and_then(Value::as_str) == Some("url")
+                && elicitation
+                    .get("elicitationId")
+                    .and_then(Value::as_str)
+                    .is_some()
+                && elicitation.get("message").and_then(Value::as_str).is_some()
+                && elicitation
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .is_some_and(|url| Url::parse(url).is_ok())
+                && elicitation.get("_meta").is_none_or(valid_elicitation_meta)
+                && elicitation.get("task").is_none_or(valid_task_metadata)
+        })
+}
+
+fn valid_elicitation_meta(value: &Value) -> bool {
+    value.as_object().is_some_and(|meta| {
+        meta.get("progressToken")
+            .is_none_or(|token| token.is_string() || json_integer(token))
+    })
+}
+
+fn valid_task_metadata(value: &Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|task| task.get("ttl").is_none_or(json_integer))
+}
+
+fn json_integer(value: &Value) -> bool {
+    value.as_number().is_some_and(|number| {
+        number.is_i64()
+            || number.is_u64()
+            || number.as_f64().is_some_and(|number| number.fract() == 0.0)
+    })
+}
+
+fn server_request_requires_input(request: &Map<String, Value>) -> bool {
+    let method = request.get("method").and_then(Value::as_str);
+    let params = request.get("params").and_then(Value::as_object);
+    match method {
+        Some("elicitation/create") => params.is_some_and(valid_elicitation_request),
+        Some("sampling/createMessage") => params.is_some_and(|params| {
+            params.get("maxTokens").is_some_and(json_integer)
+                && params.get("messages").is_some_and(Value::is_array)
+                && params.get("_meta").is_none_or(valid_elicitation_meta)
+                && params.get("task").is_none_or(valid_task_metadata)
+        }),
+        Some("roots/list") => request.get("params").is_none_or(|params| {
+            params
+                .as_object()
+                .is_some_and(|params| params.get("_meta").is_none_or(valid_elicitation_meta))
+        }),
+        Some(_) | None => false,
+    }
+}
+
+fn valid_elicitation_request(params: &Map<String, Value>) -> bool {
+    if !params.get("message").is_some_and(Value::is_string)
+        || !params.get("_meta").is_none_or(valid_elicitation_meta)
+        || !params.get("task").is_none_or(valid_task_metadata)
+    {
+        return false;
+    }
+    match params.get("mode").and_then(Value::as_str) {
+        None | Some("form") => params
+            .get("requestedSchema")
+            .and_then(Value::as_object)
+            .is_some_and(|schema| {
+                schema.get("type").and_then(Value::as_str) == Some("object")
+                    && schema.get("properties").is_some_and(Value::is_object)
+                    && schema.get("$schema").is_none_or(Value::is_string)
+                    && schema.get("required").is_none_or(|required| {
+                        required
+                            .as_array()
+                            .is_some_and(|required| required.iter().all(Value::is_string))
+                    })
+            }),
+        Some("url") => {
+            params.get("elicitationId").is_some_and(Value::is_string)
+                && params
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .is_some_and(|url| Url::parse(url).is_ok())
+        }
+        Some(_) => false,
     }
 }
 
@@ -2206,4 +2604,94 @@ where
         resolved.push((OsString::from(name), value));
     }
     Ok(resolved)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map, Value, json};
+
+    use super::{is_url_elicitation_required, server_request_requires_input};
+
+    fn object(value: &Value) -> &Map<String, Value> {
+        value.as_object().expect("the fixture should be an object")
+    }
+
+    #[test]
+    fn url_elicitation_requires_the_exact_bounded_legacy_error_shape() {
+        let valid = json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {
+                "code": -32042,
+                "message": "synthetic",
+                "data": {
+                    "elicitations": [{
+                        "mode": "url",
+                        "elicitationId": "",
+                        "url": "https://synthetic.invalid/continue",
+                        "message": "",
+                        "_meta": {"progressToken": 7},
+                        "task": {"ttl": 1000}
+                    }]
+                }
+            }
+        });
+        assert!(is_url_elicitation_required(object(&valid)));
+        assert!(is_url_elicitation_required(object(&json!({
+            "error": {
+                "code": -32042,
+                "message": "synthetic",
+                "data": {"elicitations": []}
+            }
+        }))));
+
+        for invalid in [
+            json!({"error": {"code": -32043, "message": "synthetic", "data": {"elicitations": []}}}),
+            json!({"error": {"code": -32042, "message": "synthetic", "data": {}}}),
+            json!({"error": {"code": -32042, "message": "synthetic", "data": {"elicitations": [{"mode": "form", "elicitationId": "id", "url": "https://synthetic.invalid", "message": "synthetic"}]}}}),
+            json!({"error": {"code": -32042, "message": "synthetic", "data": {"elicitations": [{"mode": "url", "elicitationId": "id", "url": "not a URL", "message": "synthetic"}]}}}),
+            json!({"error": {"code": -32042, "message": "synthetic", "data": {"elicitations": [{"mode": "url", "elicitationId": "id", "url": "https://synthetic.invalid", "message": "synthetic", "_meta": []}]}}}),
+            json!({"error": {"code": -32042, "message": "synthetic", "data": {"elicitations": [{"mode": "url", "elicitationId": "id", "url": "https://synthetic.invalid", "message": "synthetic", "task": {"ttl": "soon"}}]}}}),
+        ] {
+            assert!(!is_url_elicitation_required(object(&invalid)));
+        }
+    }
+
+    #[test]
+    fn only_structurally_recognized_additional_input_requests_are_incomplete() {
+        for request in [
+            json!({
+                "method": "elicitation/create",
+                "params": {
+                    "mode": "url",
+                    "message": "synthetic",
+                    "elicitationId": "synthetic-id",
+                    "url": "https://synthetic.invalid/continue"
+                }
+            }),
+            json!({
+                "method": "elicitation/create",
+                "params": {
+                    "mode": "form",
+                    "message": "synthetic",
+                    "requestedSchema": {"type": "object", "properties": {}}
+                }
+            }),
+            json!({"method": "sampling/createMessage", "params": {"maxTokens": 1, "messages": []}}),
+            json!({"method": "roots/list"}),
+        ] {
+            assert!(server_request_requires_input(object(&request)));
+        }
+
+        for request in [
+            json!({"method": "elicitation/create", "params": {"mode": "url"}}),
+            json!({"method": "elicitation/create", "params": {"mode": "form", "message": "synthetic", "requestedSchema": {"type": "object"}}}),
+            json!({"method": "sampling/createMessage", "params": {"messages": []}}),
+            json!({"method": "sampling/createMessage", "params": []}),
+            json!({"method": "roots/list", "params": []}),
+            json!({"method": "ping", "params": {}}),
+        ] {
+            assert!(!server_request_requires_input(object(&request)));
+        }
+    }
 }

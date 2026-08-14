@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  current-revision:
-    name: Pinned current-revision servers
+  controlled-matrix:
+    name: Pinned passive and active servers
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -29,5 +29,5 @@ jobs:
           cargo --version
           docker version
 
-      - name: Inspect pinned official and independent servers
+      - name: Diagnose pinned official and independent servers
         run: ./scripts/compatibility.sh

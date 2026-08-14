@@ -63,6 +63,15 @@ compat_case_lock_value() {
     "${compat_matrix}"
 }
 
+compat_active_case_value() {
+  local case_id="$1"
+  local field="$2"
+
+  jq -er --arg case_id "${case_id}" --arg field "${field}" \
+    '.active_legacy.cases[] | select(.id == $case_id) | .[$field]' \
+    "${compat_matrix}"
+}
+
 compat_clone_case() {
   local case_id="$1"
   local destination="$2"
@@ -133,6 +142,56 @@ compat_assert_report() {
   fi
 }
 
+compat_assert_active_report() {
+  local case_id="$1"
+  local command_name="$2"
+  local report_path="$3"
+  local expected_cases="$4"
+  local expected_required
+
+  if [[ "${command_name}" == "break" ]]; then
+    expected_required="$((expected_cases + 8))"
+  else
+    expected_required="$((expected_cases + 7))"
+  fi
+  if ! jq -e \
+    --arg command_name "${command_name}" \
+    --argjson expected_cases "${expected_cases}" \
+    --argjson expected_required "${expected_required}" '
+    .schema_version == "mcp-doctor.report/v1" and
+    .schema_stability == "stable" and
+    .protocol_revision == "2025-11-25" and
+    .negotiated_protocol_revision == "2025-11-25" and
+    .primary_diagnosis == null and
+    .independent_findings == [] and
+    .outcome == "passed" and
+    .exit_code == 0 and
+    .summary.required == $expected_required and
+    .summary.required_skipped == 0 and
+    .summary.failed == 0 and
+    ([.checks[] | select(.requirement == "required") |
+      (.state == "performed" and .outcome == "passed")] | all) and
+    ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) ==
+      $expected_cases and
+    ([.checks[] | select(.id | startswith("runtime.tools.case[")) |
+      (.state == "performed" and .outcome == "passed")] | all) and
+    (if $command_name == "break" then
+      ([.checks[] | select(.id == "generation.cases") |
+        (.state == "performed" and .outcome == "passed")] | all) and
+      ([.checks[] | select(.id == "generation.cases")] | length) == 1
+    else
+      ([.checks[] | select(.id == "generation.cases")] | length) == 0
+    end)
+  ' "${report_path}" >/dev/null; then
+    printf '%s %s returned an unexpected diagnostic report:\n' \
+      "${case_id}" "${command_name}" >&2
+    jq '{schema_version, schema_stability, protocol_revision,
+      negotiated_protocol_revision, primary_diagnosis, independent_findings,
+      outcome, exit_code, summary, checks}' "${report_path}" >&2
+    exit 1
+  fi
+}
+
 compat_run_case() {
   local case_id="$1"
   shift
@@ -165,6 +224,103 @@ compat_run_case() {
   printf 'PASS %s\n' "${case_id}"
 }
 
+compat_run_active_case() {
+  local case_id="$1"
+  local container_label="$2"
+  shift 2
+  local tool
+  local effects
+  local scenario
+  local scenario_path
+  local expected_scenario_hash
+  local actual_scenario_hash
+  local break_cases
+  local break_seed
+  local command_name
+  local expected_cases
+  local report_path
+  local command_status
+  local remaining_container
+  local -a doctor_arguments
+
+  tool="$(compat_active_case_value "${case_id}" tool)"
+  effects="$(compat_active_case_value "${case_id}" effects)"
+  scenario="$(compat_active_case_value "${case_id}" scenario)"
+  expected_scenario_hash="$(compat_active_case_value "${case_id}" scenario_sha256)"
+  break_cases="$(compat_active_case_value "${case_id}" break_cases)"
+  break_seed="$(compat_active_case_value "${case_id}" break_seed)"
+  if [[ "${scenario}" != tests/compatibility/scenarios/*.json ]]; then
+    printf '%s selected an unexpected scenario path.\n' "${case_id}" >&2
+    exit 1
+  fi
+  scenario_path="${compat_repository_root}/${scenario}"
+  if [[ ! -f "${scenario_path}" || -L "${scenario_path}" ]]; then
+    printf '%s scenario is not a regular repository file.\n' "${case_id}" >&2
+    exit 1
+  fi
+  actual_scenario_hash="$(compat_sha256 "${scenario_path}")"
+  if [[ "${actual_scenario_hash}" != "${expected_scenario_hash}" ]]; then
+    printf '%s scenario digest was %s; expected %s.\n' \
+      "${case_id}" "${actual_scenario_hash}" "${expected_scenario_hash}" >&2
+    exit 1
+  fi
+
+  for command_name in check break; do
+    report_path="${compat_reports}/active-${case_id}-${command_name}.json"
+    if [[ "${command_name}" == "check" ]]; then
+      expected_cases=1
+      doctor_arguments=(
+        check
+        --protocol-version 2025-11-25
+        --scenario "${scenario_path}"
+        --allow-tool "${tool}"
+        --format json
+      )
+    else
+      expected_cases="${break_cases}"
+      doctor_arguments=(
+        break
+        --protocol-version 2025-11-25
+        --tool "${tool}"
+        --allow-tool "${tool}"
+        --effects "${effects}"
+        --cases "${break_cases}"
+        --seed "${break_seed}"
+        --format json
+      )
+    fi
+
+    printf 'Running legacy %s against %s.\n' "${command_name}" "${case_id}"
+    set +e
+    "${compat_doctor}" "${doctor_arguments[@]}" -- "$@" >"${report_path}"
+    command_status=$?
+    set -e
+    if ((command_status != 0)); then
+      printf '%s %s exited %s; redacted report follows:\n' \
+        "${case_id}" "${command_name}" "${command_status}" >&2
+      jq . "${report_path}" >&2
+      exit 1
+    fi
+    compat_assert_active_report \
+      "${case_id}" "${command_name}" "${report_path}" "${expected_cases}"
+    if grep -F -- "${tool}" "${report_path}" >/dev/null; then
+      printf '%s %s report disclosed its selected tool.\n' \
+        "${case_id}" "${command_name}" >&2
+      exit 1
+    fi
+    remaining_container="$(
+      docker -H "${compat_docker_host}" ps -q \
+        --filter "label=org.enjoyablework.mcp-doctor.compatibility=${container_label}"
+    )"
+    if [[ -n "${remaining_container}" ]]; then
+      printf '%s %s left a compatibility container running.\n' \
+        "${case_id}" "${command_name}" >&2
+      exit 1
+    fi
+    printf 'PASS legacy %s %s\n' "${command_name}" "${case_id}"
+  done
+}
+
 compat_run_logged() {
   local phase="$1"
   shift
@@ -183,7 +339,17 @@ jq -e '
   .schema_version == "mcp-doctor.compatibility/v1" and
   .protocol_revision == "2026-07-28" and
   .tool_execution == "forbidden" and
-  .transport == "stdio"
+  .transport == "stdio" and
+  .active_legacy.protocol_revision == "2025-11-25" and
+  .active_legacy.transport == "stdio" and
+  .active_legacy.commands == ["check", "break"] and
+  (.active_legacy.cases | length) == 2 and
+  all(.active_legacy.cases[];
+    .expected_outcome == "passed" and
+    .effects == "read_only" and
+    (.break_cases | type) == "number" and
+    .break_cases >= 1 and .break_cases <= 100 and
+    (.break_seed | type) == "number")
 ' "${compat_matrix}" >/dev/null
 
 docker info >/dev/null
@@ -409,4 +575,31 @@ compat_run_case "${compat_php_case}" \
   "${compat_php_image}" \
   examples/simple_server_stdio.php
 
-printf 'All four pinned current-revision compatibility cases passed.\n'
+compat_active_go_label="active-${compat_go_case}"
+compat_run_active_case "${compat_go_case}" "${compat_active_go_label}" \
+  docker -H "${compat_docker_host}" run --rm -i --pull never \
+  --network none --read-only --security-opt no-new-privileges \
+  --cap-drop ALL --init \
+  --label "org.enjoyablework.mcp-doctor.compatibility=${compat_active_go_label}" \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --user "${compat_host_uid}:${compat_host_gid}" \
+  -v "${compat_work_root}/artifacts:/server:ro" \
+  "${compat_go_image}" \
+  /server/official-go-hello
+
+compat_active_php_label="active-${compat_php_case}"
+compat_run_active_case "${compat_php_case}" "${compat_active_php_label}" \
+  docker -H "${compat_docker_host}" run --rm -i --pull never \
+  --network none --read-only --security-opt no-new-privileges \
+  --cap-drop ALL --init \
+  --label "org.enjoyablework.mcp-doctor.compatibility=${compat_active_php_label}" \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --user "${compat_host_uid}:${compat_host_gid}" \
+  -e HOME=/tmp \
+  --entrypoint php \
+  -v "${compat_php_root}:/app:ro" \
+  -w /app \
+  "${compat_php_image}" \
+  examples/simple_server_stdio.php
+
+printf 'All four pinned current-revision cases and four active legacy journeys passed.\n'

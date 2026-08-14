@@ -125,13 +125,13 @@ jobs:
           [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
-      - name: Build the passive release fixture
+      - name: Build the diagnostic release fixture
         run: >-
           cargo build --release --locked
           --features internal-test-fixtures
           --bin mcp-doctor-stdio-fixture
 
-      - name: Install the exact Cargo package and exercise passive diagnosis
+      - name: Install the exact Cargo package and exercise diagnosis
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -156,7 +156,7 @@ jobs:
           token: ""
           brew-gh-api-token: ""
 
-      - name: Install the exact source formula and exercise passive diagnosis
+      - name: Install the exact source formula and exercise diagnosis
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
@@ -249,7 +249,7 @@ jobs:
           retention-days: 1
 
   windows:
-    name: Windows x64 — Cargo source install and passive diagnosis
+    name: Windows x64 — Cargo source install and diagnosis
     needs: source
     runs-on: windows-2025
     timeout-minutes: 35
@@ -268,7 +268,7 @@ jobs:
           name: release-preflight-source
           path: release-source-assets
 
-      - name: Install the exact Cargo package and exercise passive diagnosis
+      - name: Install the exact Cargo package and exercise diagnosis
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -289,7 +289,7 @@ jobs:
             --features internal-test-fixtures `
             --bin mcp-doctor-stdio-fixture
           if ($LASTEXITCODE -ne 0) {
-              throw 'Could not build the passive fixture.'
+              throw 'Could not build the diagnostic fixture.'
           }
 
           $package = Join-Path $env:GITHUB_WORKSPACE "release-source-assets/mcp-doctor-$releaseVersion.crate"

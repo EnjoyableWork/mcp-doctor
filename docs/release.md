@@ -133,7 +133,8 @@ The retained subsequent-release contract is:
    short-lived token. A broad personal access token is prohibited.
 5. The credential-free release-channel workflow compares the public Cargo and
    Homebrew bytes with the canonical GitHub assets, installs them on every
-   represented native host, and runs the passive smoke journey.
+   represented native host, and runs the installed diagnostic smoke journey
+   for the version's advertised command and revision matrix.
 
 `MCPD-008A` passed the required nonpublishing end-to-end rehearsal, including
 rejected authorization and byte-mismatch cases, before any version after
@@ -272,7 +273,7 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    checks still run.
 4. Dispatch `Verify published release channels` for `0.1.0`. This confirms the
    generalized verifier remains credential-free and all existing public
-   channel bytes and installed passive smokes still pass.
+   channel bytes and installed diagnostic smokes still pass.
 
 `PROJECT.md` records the initial four successful run links, exact
 environment-policy readback, and trusted-publisher readback. Repeat and record
@@ -300,7 +301,7 @@ release credential: workflows must not read, copy, or depend on it.
 ## Failure and correction
 
 Do not publish a draft when a package, checksum, SBOM, attestation, byte
-comparison, or installed passive smoke fails. A draft can be repaired and
+comparison, or installed diagnostic smoke fails. A draft can be repaired and
 reverified because it is not public. After publication, never replace an
 asset, move the tag, or overwrite downstream bytes. Correct any defect with a
 new version and preserve the evidence explaining what it supersedes.

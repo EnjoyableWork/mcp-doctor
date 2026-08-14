@@ -104,6 +104,31 @@ impl Serialize for SupportedRevision {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum ActiveProtocolRevision {
+    V2025_11_25,
+    V2026_07_28,
+}
+
+impl ActiveProtocolRevision {
+    pub(crate) const CURRENT: Self = Self::V2026_07_28;
+
+    pub(crate) const fn as_supported(self) -> SupportedRevision {
+        match self {
+            Self::V2025_11_25 => SupportedRevision::V2025_11_25,
+            Self::V2026_07_28 => SupportedRevision::V2026_07_28,
+        }
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        self.as_supported().as_str()
+    }
+
+    pub(crate) const fn uses_initialize(self) -> bool {
+        self.as_supported().uses_initialize()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) struct RevisionMatrixEntry {
     pub(super) revision: KnownRevision,

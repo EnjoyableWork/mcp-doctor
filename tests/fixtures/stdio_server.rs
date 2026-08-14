@@ -65,6 +65,17 @@ fn main() -> ExitCode {
         Some("legacy-malformed") => legacy_malformed(),
         Some("legacy-timeout") => legacy_timeout(),
         Some("legacy-oversized") => legacy_oversized(),
+        Some("legacy-active-success") => legacy_active_success(),
+        Some("legacy-active-revision-mismatch") => legacy_active_revision_mismatch(),
+        Some("legacy-active-no-tools") => legacy_active_no_tools(),
+        Some("legacy-active-task-required") => legacy_active_task_required(),
+        Some("legacy-active-tool-error") => legacy_active_tool_error(),
+        Some("legacy-active-invalid-result") => legacy_active_invalid_result(),
+        Some("legacy-active-schema-external") => legacy_active_schema_external(),
+        Some("legacy-active-url-elicitation") => legacy_active_url_elicitation(),
+        Some("legacy-active-server-request") => legacy_active_server_request(),
+        Some("legacy-active-unexpected-request") => legacy_active_unexpected_request(),
+        Some("legacy-break-success") => legacy_break_success(&remaining),
         Some("active-success") => active_success(),
         Some("active-one-success") => active_one_success(),
         Some("active-report-single-run") => active_report_single_run(&remaining),
@@ -513,6 +524,257 @@ fn legacy_oversized() -> ExitCode {
     write_repeated(&mut stdout, b'x', MIB + 1);
     stdout.flush().expect("STDOUT should flush");
     wait_forever()
+}
+
+#[derive(Clone, Copy)]
+enum LegacyActiveBehavior {
+    Complete,
+    ToolError,
+    InvalidResult,
+    TaskRequired,
+    UrlElicitation,
+    ServerRequest,
+    UnexpectedRequest,
+}
+
+fn legacy_active_success() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::Complete)
+}
+
+fn legacy_active_revision_mismatch() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    assert_eq!(read_initialize(&mut input), "2025-11-25");
+    write_result(
+        1,
+        json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "synthetic-legacy-active", "version": "1.0.0"}
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_active_no_tools() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    assert_eq!(revision, "2025-11-25");
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {},
+            "serverInfo": {"name": "synthetic-legacy-active", "version": "1.0.0"}
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_active_task_required() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::TaskRequired)
+}
+
+fn legacy_active_tool_error() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::ToolError)
+}
+
+fn legacy_active_invalid_result() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::InvalidResult)
+}
+
+fn legacy_active_schema_external() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    legacy_active_begin(
+        &mut input,
+        "synthetic.reviewed",
+        false,
+        json!({
+            "type": "object",
+            "properties": {
+                "sequence": {"$ref": "https://invalid.example/private-schema"}
+            }
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_active_url_elicitation() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::UrlElicitation)
+}
+
+fn legacy_active_server_request() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::ServerRequest)
+}
+
+fn legacy_active_unexpected_request() -> ExitCode {
+    legacy_active_reviewed(LegacyActiveBehavior::UnexpectedRequest)
+}
+
+fn legacy_active_reviewed(behavior: LegacyActiveBehavior) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    legacy_active_begin(
+        &mut input,
+        "synthetic.reviewed",
+        matches!(behavior, LegacyActiveBehavior::TaskRequired),
+        json!({
+            "type": "object",
+            "properties": {"sequence": {"type": "integer"}},
+            "required": ["sequence"],
+            "additionalProperties": false
+        }),
+    );
+    if matches!(behavior, LegacyActiveBehavior::TaskRequired) {
+        assert_eof(&mut input);
+        return ExitCode::SUCCESS;
+    }
+    let call = read_legacy_call(&mut input, 3, "synthetic.reviewed");
+    assert_eq!(call["params"]["arguments"]["sequence"], 0);
+    match behavior {
+        LegacyActiveBehavior::Complete => write_result(
+            3,
+            json!({
+                "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+                "structuredContent": {"ok": true},
+                "isError": false
+            }),
+        ),
+        LegacyActiveBehavior::ToolError => write_result(
+            3,
+            json!({
+                "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+                "structuredContent": {"ok": true},
+                "isError": true
+            }),
+        ),
+        LegacyActiveBehavior::InvalidResult => write_result(
+            3,
+            json!({
+                "content": {"private": REDACTION_SENTINEL},
+                "structuredContent": {"ok": true},
+                "isError": false
+            }),
+        ),
+        LegacyActiveBehavior::UrlElicitation => write_json_frame(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {
+                "code": -32042,
+                "message": REDACTION_SENTINEL,
+                "data": {
+                    "elicitations": [{
+                        "mode": "url",
+                        "elicitationId": REDACTION_SENTINEL,
+                        "url": "https://synthetic.invalid/private-action?secret=synthetic-secret-payload-7f2c",
+                        "message": REDACTION_SENTINEL
+                    }]
+                }
+            }
+        })),
+        LegacyActiveBehavior::ServerRequest => write_json_frame(json!({
+            "jsonrpc": "2.0",
+            "id": "synthetic-server-request-never-report-7f2c",
+            "method": "elicitation/create",
+            "params": {
+                "mode": "url",
+                "message": REDACTION_SENTINEL,
+                "elicitationId": REDACTION_SENTINEL,
+                "url": "https://synthetic.invalid/private-action?secret=synthetic-secret-payload-7f2c"
+            }
+        })),
+        LegacyActiveBehavior::UnexpectedRequest => write_json_frame(json!({
+            "jsonrpc": "2.0",
+            "id": "synthetic-server-request-never-report-7f2c",
+            "method": "ping",
+            "params": {"secret": REDACTION_SENTINEL}
+        })),
+        LegacyActiveBehavior::TaskRequired => unreachable!(),
+    }
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_break_success(arguments: &[OsString]) -> ExitCode {
+    let Some(case_count) = arguments
+        .first()
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<usize>().ok())
+    else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    legacy_active_begin(
+        &mut input,
+        "synthetic.generated",
+        false,
+        generated_boundary_schema(),
+    );
+    for index in 0..case_count {
+        let id = i64::try_from(index).unwrap_or(i64::MAX) + 3;
+        let request = read_legacy_call(&mut input, id, "synthetic.generated");
+        assert!(request["params"]["arguments"].is_object());
+        write_result(
+            id,
+            json!({
+                "content": [],
+                "structuredContent": {"ok": true},
+                "isError": false
+            }),
+        );
+    }
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_active_begin(
+    input: &mut impl BufRead,
+    tool_name: &str,
+    task_required: bool,
+    input_schema: Value,
+) {
+    let revision = read_initialize(input);
+    assert_eq!(revision, "2025-11-25");
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "synthetic-legacy-active", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(input);
+    read_legacy_request(input, 2, "tools/list", None);
+    let mut tool = json!({
+        "name": tool_name,
+        "inputSchema": input_schema,
+        "outputSchema": {
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": false
+        }
+    });
+    if task_required {
+        tool["execution"] = json!({"taskSupport": "required"});
+    }
+    write_result(2, json!({"tools": [tool]}));
+}
+
+fn read_legacy_call(input: &mut impl BufRead, expected_id: i64, tool_name: &str) -> Value {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the legacy active call should be readable");
+    assert!(read > 0, "the legacy active call should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("the legacy call should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], expected_id);
+    assert_eq!(value["method"], "tools/call");
+    assert_eq!(value["params"]["name"], tool_name);
+    assert!(value["params"].get("_meta").is_none());
+    value
 }
 
 fn layered_protocol_failure() -> ExitCode {
@@ -1722,6 +1984,7 @@ fn read_initialize(input: &mut impl BufRead) -> String {
     assert_eq!(value["id"], 1);
     assert_eq!(value["method"], "initialize");
     assert!(value["params"]["capabilities"].is_object());
+    assert_eq!(value["params"]["capabilities"], json!({}));
     assert_eq!(value["params"]["clientInfo"]["name"], "mcp-doctor");
     let revision = value["params"]["protocolVersion"]
         .as_str()
@@ -1791,16 +2054,16 @@ fn write_fixture_result(id: i64, fixture: &str) {
 }
 
 fn write_result(id: i64, result: Value) {
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": result,
+    }));
+}
+
+fn write_json_frame(value: Value) {
     let mut stdout = io::stdout().lock();
-    serde_json::to_writer(
-        &mut stdout,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": result,
-        }),
-    )
-    .expect("the response should be writable");
+    serde_json::to_writer(&mut stdout, &value).expect("the response should be writable");
     stdout.write_all(b"\n").expect("the frame should terminate");
     stdout.flush().expect("STDOUT should flush");
 }

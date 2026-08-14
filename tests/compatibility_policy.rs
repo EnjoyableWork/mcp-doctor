@@ -4,8 +4,12 @@ use std::path::Path;
 use serde_json::Value;
 
 const MATRIX: &str = include_str!("compatibility/matrix.json");
+const EVIDENCE: &str = include_str!("compatibility/README.md");
+const RUNNER: &str = include_str!("../scripts/compatibility.sh");
 const DART_LOCK: &str = include_str!("compatibility/locks/mcp_dart-v2.4.0.pubspec.lock");
 const PHP_LOCK: &str = include_str!("compatibility/locks/mcp-sdk-php-v2.0.0.composer.lock");
+const GO_SCENARIO: &str = include_str!("compatibility/scenarios/official-go-greet.json");
+const PHP_SCENARIO: &str = include_str!("compatibility/scenarios/independent-php-add.json");
 
 fn object<'a>(value: &'a Value, context: &str) -> &'a serde_json::Map<String, Value> {
     value
@@ -118,4 +122,98 @@ fn compatibility_matrix_is_pinned_scoped_and_evidence_backed() {
     );
     assert_eq!(string(last_verified, "date"), "2026-08-10");
     assert_eq!(string(last_verified, "result"), "4/4 passed");
+
+    let active = object(
+        matrix
+            .get("active_legacy")
+            .expect("active_legacy must exist"),
+        "active_legacy",
+    );
+    assert_eq!(string(active, "protocol_revision"), "2025-11-25");
+    assert_eq!(string(active, "transport"), "stdio");
+    assert_eq!(active["commands"], serde_json::json!(["check", "break"]));
+    let active_verified = object(
+        active
+            .get("last_verified")
+            .expect("active last_verified must exist"),
+        "active last_verified",
+    );
+    assert_eq!(string(active_verified, "date"), "2026-08-14");
+    assert_eq!(string(active_verified, "result"), "4/4 passed");
+
+    let active_cases = active["cases"]
+        .as_array()
+        .expect("active cases must be an array");
+    assert_eq!(active_cases.len(), 2);
+    let mut active_languages = BTreeSet::new();
+    let mut active_provenance = BTreeSet::new();
+    for case in active_cases {
+        let case = object(case, "active case");
+        let id = string(case, "id");
+        assert!(ids.contains(id), "active cases must reuse reviewed servers");
+        active_languages.insert(string(case, "language"));
+        active_provenance.insert(string(case, "provenance"));
+        assert_eq!(string(case, "effects"), "read_only");
+        assert_eq!(case["break_cases"].as_u64(), Some(3));
+        assert_eq!(case["break_seed"].as_u64(), Some(6027));
+        assert_eq!(string(case, "expected_outcome"), "passed");
+        assert!(is_lower_hex(string(case, "scenario_sha256"), 64));
+
+        let scenario_path = string(case, "scenario");
+        let scenario_text = match scenario_path {
+            "tests/compatibility/scenarios/official-go-greet.json" => GO_SCENARIO,
+            "tests/compatibility/scenarios/independent-php-add.json" => PHP_SCENARIO,
+            unexpected => panic!("unexpected active scenario: {unexpected}"),
+        };
+        assert!(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(scenario_path)
+                .is_file()
+        );
+        let scenario: Value =
+            serde_json::from_str(scenario_text).expect("active scenario must be JSON");
+        assert_eq!(scenario["schema_version"], "mcp-doctor.scenario/v1alpha1");
+        assert_eq!(scenario["tool"], string(case, "tool"));
+        assert_eq!(scenario["safety"]["effects"], "read_only");
+        assert_eq!(scenario["cases"].as_array().map(Vec::len), Some(1));
+    }
+    assert_eq!(active_languages.len(), 2);
+    assert_eq!(
+        active_provenance,
+        BTreeSet::from(["official", "independent"])
+    );
+}
+
+#[test]
+fn active_legacy_compatibility_runner_retains_exact_authority_and_claim_scope() {
+    for contract in [
+        "--protocol-version 2025-11-25",
+        "--allow-tool \"${tool}\"",
+        "--effects \"${effects}\"",
+        "--cases \"${break_cases}\"",
+        "--seed \"${break_seed}\"",
+        ".negotiated_protocol_revision == \"2025-11-25\"",
+        "--network none",
+        "--read-only",
+        "--cap-drop ALL",
+        "scenario_sha256",
+    ] {
+        assert!(
+            RUNNER.contains(contract),
+            "compatibility runner must preserve {contract}"
+        );
+    }
+    assert!(!RUNNER.contains("--allow-side-effects"));
+    for scope in [
+        "narrow active STDIO reach across two implementations and two languages",
+        "not broad legacy compatibility",
+        "No legacy HTTP",
+        "installed-channel",
+        "official-conformance claim",
+    ] {
+        assert!(
+            EVIDENCE.contains(scope),
+            "compatibility evidence must preserve {scope}"
+        );
+    }
 }

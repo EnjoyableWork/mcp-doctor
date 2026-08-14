@@ -1434,7 +1434,7 @@ pub(super) fn validate_discovery_capabilities(
     )
 }
 
-fn validate_legacy_capabilities(
+pub(super) fn validate_legacy_capabilities(
     result: &Map<String, Value>,
     base: Location,
     revision: SupportedRevision,

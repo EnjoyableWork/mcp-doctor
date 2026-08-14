@@ -184,6 +184,7 @@ pub(super) enum FindingCode {
     ToolResultMismatch,
     ToolOutputMismatch,
     ToolResultInvalid,
+    ToolTaskRequired,
 }
 
 impl FindingCode {
@@ -230,6 +231,7 @@ impl FindingCode {
             Self::ToolResultMismatch => "MCP-ACTIVE-004",
             Self::ToolOutputMismatch => "MCP-ACTIVE-005",
             Self::ToolResultInvalid => "MCP-ACTIVE-006",
+            Self::ToolTaskRequired => "MCP-ACTIVE-007",
         }
     }
 
@@ -272,7 +274,8 @@ impl FindingCode {
             | Self::ToolCallRejected
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
-            | Self::ToolResultInvalid => Severity::Error,
+            | Self::ToolResultInvalid
+            | Self::ToolTaskRequired => Severity::Error,
             Self::CleanupFailed | Self::SessionCleanupFailed => Severity::Critical,
         }
     }
@@ -370,7 +373,10 @@ impl FindingCode {
                 "The structured tool output does not match its required local schema contract."
             }
             Self::ToolResultInvalid => {
-                "The tool response does not match the MCP 2026-07-28 result contract."
+                "The tool response does not match the selected MCP revision's result contract."
+            }
+            Self::ToolTaskRequired => {
+                "The selected tool requires task execution that this active run does not perform."
             }
         }
     }
@@ -486,6 +492,9 @@ impl FindingCode {
             Self::ToolResultInvalid => {
                 "Continuing after an invalid result envelope could make later conclusions unreliable."
             }
+            Self::ToolTaskRequired => {
+                "Calling this tool immediately would violate its advertised execution contract."
+            }
         }
     }
 
@@ -532,7 +541,7 @@ impl FindingCode {
                 "Custom and Mcp-Param fields must satisfy the current-revision token, type, encoding, uniqueness, and size rules."
             }
             Self::ProtocolRevisionConfirmed => {
-                "The server confirms the exact MCP revision selected for this inspection."
+                "The server confirms the exact MCP revision selected for this diagnostic."
             }
             Self::UnsupportedProtocolRevision => {
                 "The server must support MCP protocol revision 2026-07-28 for this diagnosis."
@@ -553,7 +562,7 @@ impl FindingCode {
                 "The managed process tree must terminate and be reaped before mcp-doctor returns."
             }
             Self::SessionCleanupFailed => {
-                "A stateful legacy HTTP inspection must attempt one bounded DELETE and receive a successful, unsupported, or already-absent response."
+                "A stateful legacy HTTP diagnostic must attempt one bounded DELETE and receive a successful, unsupported, or already-absent response."
             }
             Self::CatalogContractInvalid => {
                 "Each advertised catalog response and item must match the selected MCP revision."
@@ -601,7 +610,7 @@ impl FindingCode {
                 "Each case must pass the selected tool's advertised input schema before it is called."
             }
             Self::ToolCallRejected => {
-                "The server must return a completed or input_required tools/call result for an active case."
+                "The server must return a valid selected-revision tools/call result or supported incomplete-input signal."
             }
             Self::ToolResultMismatch => {
                 "The isError classification must match the case's success or tool_error expectation."
@@ -610,7 +619,10 @@ impl FindingCode {
                 "structuredContent must match the advertised output schema and the scenario schema when present."
             }
             Self::ToolResultInvalid => {
-                "A tools/call response must contain a valid complete or input_required result envelope."
+                "A tools/call response must match the result envelope defined by the selected revision."
+            }
+            Self::ToolTaskRequired => {
+                "Active calls must use immediate execution; a tool requiring task augmentation is not called."
             }
         }
     }
@@ -728,7 +740,10 @@ impl FindingCode {
                 "Correct structuredContent or the applicable local output schema, then rerun the active command."
             }
             Self::ToolResultInvalid => {
-                "Return a valid MCP 2026-07-28 tool result before running later active cases."
+                "Return a valid result for the selected MCP revision before running later active cases."
+            }
+            Self::ToolTaskRequired => {
+                "Advertise optional, forbidden, or omitted task support for this run, or use a task-capable client."
             }
         }
     }
@@ -786,8 +801,9 @@ impl FindingCode {
             | Self::ToolCallRejected
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
-            | Self::ToolResultInvalid => {
-                "MCP 2026-07-28 tools contract and mcp-doctor MCPD-009/MCPD-011 active contract"
+            | Self::ToolResultInvalid
+            | Self::ToolTaskRequired => {
+                "selected MCP revision tools contract and mcp-doctor MCPD-009/MCPD-011/MCPD-027 active contract"
             }
         }
     }
@@ -846,6 +862,8 @@ pub(super) enum LocationField {
     UriTemplate,
     InputSchema,
     OutputSchema,
+    Execution,
+    TaskSupport,
     Content,
     StructuredContent,
     IsError,
@@ -935,6 +953,8 @@ impl LocationField {
             Self::UriTemplate => "uriTemplate",
             Self::InputSchema => "inputSchema",
             Self::OutputSchema => "outputSchema",
+            Self::Execution => "execution",
+            Self::TaskSupport => "taskSupport",
             Self::Content => "content",
             Self::StructuredContent => "structuredContent",
             Self::IsError => "isError",
@@ -1217,6 +1237,9 @@ pub(super) enum RuleViolation {
     ExpectedCacheScope {
         observed: JsonKind,
     },
+    ExpectedTaskSupport {
+        observed: JsonKind,
+    },
     ExpectedCurrentRevision,
     ExpectedSelectedRevision,
     ExpectedInputSchemaRootObject {
@@ -1250,6 +1273,7 @@ pub(super) enum RuleViolation {
         error_count: u64,
     },
     ToolCallRejected,
+    TaskExecutionRequired,
     ExpectedSuccess,
     ExpectedToolError,
     AdvertisedOutputMismatch {
@@ -1313,6 +1337,7 @@ impl RuleViolation {
             Self::ExpectedShape { .. } => "expected_shape",
             Self::ExpectedCompleteResult { .. } => "expected_complete_result",
             Self::ExpectedCacheScope { .. } => "expected_cache_scope",
+            Self::ExpectedTaskSupport { .. } => "expected_task_support",
             Self::ExpectedCurrentRevision => "expected_current_revision",
             Self::ExpectedSelectedRevision => "expected_selected_revision",
             Self::ExpectedInputSchemaRootObject { .. } => "expected_input_schema_root_object",
@@ -1336,6 +1361,7 @@ impl RuleViolation {
             Self::ToolNotFound => "exact_tool_not_found",
             Self::ArgumentsDoNotMatchSchema { .. } => "arguments_do_not_match_input_schema",
             Self::ToolCallRejected => "tool_call_rejected",
+            Self::TaskExecutionRequired => "task_execution_required",
             Self::ExpectedSuccess => "expected_success",
             Self::ExpectedToolError => "expected_tool_error",
             Self::AdvertisedOutputMismatch { .. } => "advertised_output_schema_mismatch",
@@ -1383,6 +1409,7 @@ impl RuleViolation {
             Self::ExpectedShape { observed, .. }
             | Self::ExpectedCompleteResult { observed }
             | Self::ExpectedCacheScope { observed }
+            | Self::ExpectedTaskSupport { observed }
             | Self::ExpectedInputSchemaRootObject { observed }
             | Self::ExpectedToolSchemaRootObject { observed }
             | Self::UnsupportedSchemaDialect { observed } => Some(observed),
@@ -1406,6 +1433,7 @@ impl RuleViolation {
             | Self::ToolNotFound
             | Self::ArgumentsDoNotMatchSchema { .. }
             | Self::ToolCallRejected
+            | Self::TaskExecutionRequired
             | Self::ExpectedSuccess
             | Self::ExpectedToolError
             | Self::AdvertisedOutputMismatch { .. }
@@ -1941,6 +1969,15 @@ impl Finding {
         )
     }
 
+    pub(super) fn tool_task_required(revision: SupportedRevision, location: Location) -> Self {
+        Self::new(
+            FindingCode::ToolTaskRequired,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::TaskExecutionRequired),
+        )
+    }
+
     fn new(
         code: FindingCode,
         revision: SupportedRevision,
@@ -2274,6 +2311,11 @@ mod tests {
             (
                 FindingCode::ToolResultInvalid,
                 "MCP-ACTIVE-006",
+                Severity::Error,
+            ),
+            (
+                FindingCode::ToolTaskRequired,
+                "MCP-ACTIVE-007",
                 Severity::Error,
             ),
         ];

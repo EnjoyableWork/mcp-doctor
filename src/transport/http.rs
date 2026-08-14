@@ -1195,6 +1195,7 @@ pub(crate) struct HttpTransport {
     connector: Box<dyn Connector>,
     protocol_revision: &'static str,
     initialize_handshake: bool,
+    accept_server_requests: bool,
     session: Option<SessionId>,
 }
 
@@ -1206,20 +1207,39 @@ impl fmt::Debug for HttpTransport {
             .field("connector", &"[REDACTED]")
             .field("protocol_revision", &self.protocol_revision)
             .field("initialize_handshake", &self.initialize_handshake)
+            .field("accept_server_requests", &self.accept_server_requests)
             .field("session_present", &self.session.is_some())
             .finish()
     }
 }
 
 impl HttpTransport {
-    pub(crate) fn new(target: HttpTarget) -> Result<Self, HttpFailure> {
-        Self::new_for_protocol(target, PROTOCOL_REVISION, false)
-    }
-
     pub(crate) fn new_for_protocol(
         target: HttpTarget,
         protocol_revision: &'static str,
         initialize_handshake: bool,
+    ) -> Result<Self, HttpFailure> {
+        Self::build(target, protocol_revision, initialize_handshake, false)
+    }
+
+    pub(crate) fn new_for_active_protocol(
+        target: HttpTarget,
+        protocol_revision: &'static str,
+        initialize_handshake: bool,
+    ) -> Result<Self, HttpFailure> {
+        Self::build(
+            target,
+            protocol_revision,
+            initialize_handshake,
+            initialize_handshake,
+        )
+    }
+
+    fn build(
+        target: HttpTarget,
+        protocol_revision: &'static str,
+        initialize_handshake: bool,
+        accept_server_requests: bool,
     ) -> Result<Self, HttpFailure> {
         install_ring_provider();
         let selected = connection_candidates(&target.addresses);
@@ -1249,6 +1269,7 @@ impl HttpTransport {
             connector: Box::new(ReqwestConnector { client }),
             protocol_revision,
             initialize_handshake,
+            accept_server_requests,
             session: None,
         })
     }
@@ -1260,6 +1281,7 @@ impl HttpTransport {
             connector,
             protocol_revision: PROTOCOL_REVISION,
             initialize_handshake: false,
+            accept_server_requests: false,
             session: None,
         }
     }
@@ -1544,7 +1566,11 @@ impl HttpTransport {
                 )
                 .await?;
                 response_budget.observe_message(self.target.limits)?;
-                validate_json_response(&bytes, request.id())?;
+                validate_json_response(
+                    &bytes,
+                    request.id(),
+                    self.accept_server_requests && request.method() == "tools/call",
+                )?;
                 Ok(Some(ProbeResponse::new(request.id(), bytes)))
             }
             ResponseMediaType::Sse => {
@@ -1552,6 +1578,7 @@ impl HttpTransport {
                     &mut response,
                     request.id(),
                     self.protocol_revision == "2025-11-25",
+                    self.accept_server_requests && request.method() == "tools/call",
                     self.target.limits,
                     response_budget,
                 )
@@ -1971,6 +1998,7 @@ async fn collect_sse_response(
     response: &mut ConnectorResponse,
     request_id: i64,
     allow_empty_priming_event: bool,
+    accept_server_requests: bool,
     limits: HttpLimits,
     response_budget: &mut ResponseBudget,
 ) -> Result<Vec<u8>, HttpFailure> {
@@ -1984,6 +2012,7 @@ async fn collect_sse_response(
                     &body,
                     request_id,
                     allow_empty_priming_event,
+                    accept_server_requests,
                     limits,
                     response_budget.message_count,
                     false,
@@ -1999,6 +2028,7 @@ async fn collect_sse_response(
                     &body,
                     request_id,
                     allow_empty_priming_event,
+                    accept_server_requests,
                     limits,
                     response_budget.message_count,
                     true,
@@ -2015,21 +2045,38 @@ async fn collect_sse_response(
     }
 }
 
-fn validate_json_response(bytes: &[u8], request_id: i64) -> Result<(), HttpFailure> {
+fn validate_json_response(
+    bytes: &[u8],
+    request_id: i64,
+    accept_server_requests: bool,
+) -> Result<(), HttpFailure> {
     let value: Value = serde_json::from_slice(bytes)
         .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidMessage))?;
     let object = value
         .as_object()
         .ok_or(HttpFailure::Response(ResponseFailure::InvalidMessage))?;
-    let valid = object.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+    let valid_response = object.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
         && object.get("id").and_then(Value::as_i64) == Some(request_id)
         && (object.contains_key("result") ^ object.contains_key("error"))
         && !object.contains_key("method");
-    if valid {
+    if valid_response || (accept_server_requests && valid_server_request(object)) {
         Ok(())
     } else {
         Err(HttpFailure::Response(ResponseFailure::InvalidMessage))
     }
+}
+
+fn valid_server_request(object: &serde_json::Map<String, Value>) -> bool {
+    object.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+        && object
+            .get("id")
+            .is_some_and(|id| id.is_string() || id.as_i64().is_some())
+        && object.get("method").is_some_and(Value::is_string)
+        && object
+            .get("params")
+            .is_none_or(|params| params.is_object() || params.is_array())
+        && !object.contains_key("result")
+        && !object.contains_key("error")
 }
 
 fn is_header_mismatch(bytes: &[u8], request_id: i64) -> bool {
@@ -2082,6 +2129,7 @@ fn parse_sse_events(
     bytes: &[u8],
     request_id: i64,
     allow_empty_priming_event: bool,
+    accept_server_requests: bool,
     limits: HttpLimits,
     prior_messages: u64,
     eof: bool,
@@ -2159,15 +2207,20 @@ fn parse_sse_events(
                 .as_object()
                 .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
             if object.get("method").is_some() {
-                if object.contains_key("id")
-                    || object.contains_key("result")
+                if object.contains_key("result")
                     || object.contains_key("error")
                     || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
                 {
                     return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
                 }
+                if object.contains_key("id") {
+                    if !accept_server_requests || !valid_server_request(object) {
+                        return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
+                    }
+                    return Ok(Some((payload.into_bytes(), message_count)));
+                }
             } else {
-                validate_json_response(payload.as_bytes(), request_id)?;
+                validate_json_response(payload.as_bytes(), request_id, false)?;
                 return Ok(Some((payload.into_bytes(), message_count)));
             }
         }

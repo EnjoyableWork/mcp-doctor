@@ -151,7 +151,7 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
         env!("CARGO_PKG_VERSION")
     )));
     assert!(stdout.contains("inspect · passive"));
-    assert!(stdout.contains("check · stdio · 2026-07-28"));
+    assert!(stdout.contains("check · stdio · 2026-07-28,2025-11-25"));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
 }
 

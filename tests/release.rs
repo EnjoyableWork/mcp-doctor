@@ -202,7 +202,7 @@ fn crates_oidc_wrong_workflow_case_is_nonpublishing_and_must_be_rejected() {
 }
 
 #[test]
-fn published_channel_verifier_is_read_only_and_runs_passive_installed_smokes() {
+fn published_channel_verifier_is_read_only_and_runs_installed_smokes() {
     let workflow = repository_file(".github/workflows/release-channels.yml");
 
     for target in SOURCE_TARGETS {
@@ -760,6 +760,11 @@ fn project_records_completed_compiled_capability_discovery_without_target_author
             "mcp-doctor.capabilities/v1",
             "mcp-doctor.exit/v1",
             "mcp-doctor.generator/v1",
+            "--protocol-version",
+            "2025-11-25",
+            "legacy-active-success",
+            "legacy-break-success",
+            "negotiated_protocol_revision",
         ] {
             assert!(
                 smoke.contains(contract),
@@ -1830,12 +1835,13 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_claims() {
+fn project_indexes_both_accepted_legacy_tracks_without_premature_support_claims() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
         "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
         "[GitHub issue 74](https://github.com/EnjoyableWork/mcp-doctor/issues/74)",
+        "`MCPD-027` is accepted optional work for GitHub issue #60",
         "[PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63)",
         "[`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039)",
         "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361)",
@@ -1845,30 +1851,43 @@ fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_cl
         "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
         "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
         "`OPEN-14` is accepted as `DEC-051`.",
-        "| OPEN-15 | `MCPD-027`, `MCPD-028` |",
+        "`OPEN-15` is accepted as `DEC-052`",
+        "| DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted |",
+        "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
         "| OPEN-16 | `MCPD-029` |",
-        "`MCPD-027` establishes the shared active legacy\nboundary and must complete before `MCPD-028`",
+        "`MCPD-027` establishes the shared active legacy",
+        "complete before `MCPD-028`",
         "integration must reuse the settled active adapter if `MCPD-027` has begun",
+        "The `MCPD-027` source candidate implements the typed adapter",
+        "controlled compatibility runner passed all four retained",
+        "Native Windows PowerShell execution",
+        "Therefore `MCPD-027` stays In progress",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve the optional ticket evidence: {contract}"
+            "PROJECT.md should preserve the accepted active legacy boundary: {contract}"
         );
     }
 
-    let mcpd_026 = project
+    let completed_legacy_artifact = project
         .lines()
         .find(|line| line.starts_with("| MCPD-026 |"))
         .expect("PROJECT.md should contain MCPD-026");
-    assert!(mcpd_026.contains("| Done |"));
+    assert!(completed_legacy_artifact.contains("| Done |"));
     for contract in ["final evidence head", "closed [issue #74]", "exact-`main`"] {
         assert!(
-            mcpd_026.contains(contract),
+            completed_legacy_artifact.contains(contract),
             "MCPD-026 completion must retain {contract}"
         );
     }
 
-    for ticket in ["MCPD-027", "MCPD-028", "MCPD-029"] {
+    let active_legacy = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-027 |"))
+        .expect("PROJECT.md should contain MCPD-027");
+    assert!(active_legacy.contains("| In progress |"));
+
+    for ticket in ["MCPD-028", "MCPD-029"] {
         let row = project
             .lines()
             .find(|line| line.starts_with(&format!("| {ticket} |")))
@@ -1879,8 +1898,22 @@ fn project_records_completed_mcpd_026_and_remaining_proposals_without_support_cl
         );
     }
 
-    assert!(project.contains("| DEC-051 |"));
-    for premature_decision in ["| DEC-052 |", "| DEC-053 |"] {
+    for accepted_open in ["OPEN-14", "OPEN-15"] {
+        assert!(
+            !project
+                .lines()
+                .any(|line| line.starts_with(&format!("| {accepted_open} |"))),
+            "{accepted_open} should be removed after its decision accepts it"
+        );
+    }
+    for accepted_decision in ["| DEC-051 |", "| DEC-052 |"] {
+        assert!(project.contains(accepted_decision));
+    }
+    assert!(
+        !project.contains("https://github.com/EnjoyableWork/mcp-doctor/issues/56"),
+        "PROJECT.md must not retain a dead public issue link"
+    );
+    for premature_decision in ["| DEC-053 |", "| DEC-054 |"] {
         assert!(
             !project.contains(premature_decision),
             "PROJECT.md must not accept a proposed issue decision prematurely: {premature_decision}"

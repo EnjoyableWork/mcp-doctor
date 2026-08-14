@@ -38,7 +38,7 @@ const V2025_11_25: &str = ProtocolRevision::V2025_11_25.as_str();
 const V2025_06_18: &str = ProtocolRevision::V2025_06_18.as_str();
 const V2025_03_26: &str = KnownRevision::V2025_03_26.as_str();
 const V2024_11_05: &str = KnownRevision::V2024_11_05.as_str();
-const CURRENT_ONLY: &[&str] = &[CURRENT_REVISION];
+const ACTIVE_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25];
 const INSPECT_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25, V2025_06_18];
 
 const COMMANDS: &[CommandCapability<'static>] = &[
@@ -125,22 +125,22 @@ const PROTOCOL_SUPPORT: &[ProtocolSupport<'static>] = &[
     ProtocolSupport {
         command: "break",
         transport: "stdio",
-        revisions: CURRENT_ONLY,
+        revisions: ACTIVE_REVISIONS,
     },
     ProtocolSupport {
         command: "break",
         transport: "streamable_http",
-        revisions: CURRENT_ONLY,
+        revisions: ACTIVE_REVISIONS,
     },
     ProtocolSupport {
         command: "check",
         transport: "stdio",
-        revisions: CURRENT_ONLY,
+        revisions: ACTIVE_REVISIONS,
     },
     ProtocolSupport {
         command: "check",
         transport: "streamable_http",
-        revisions: CURRENT_ONLY,
+        revisions: ACTIVE_REVISIONS,
     },
     ProtocolSupport {
         command: "inspect",
@@ -607,7 +607,11 @@ mod tests {
                 .starts_with("mcp-doctor capabilities · mcp-doctor.capabilities/v1\n")
         );
         assert!(rendered.stdout.contains("inspect · passive"));
-        assert!(rendered.stdout.contains("check · stdio · 2026-07-28"));
+        assert!(
+            rendered
+                .stdout
+                .contains("check · stdio · 2026-07-28,2025-11-25")
+        );
         assert!(rendered.stdout.contains("mcp-doctor.exit/v1"));
     }
 }

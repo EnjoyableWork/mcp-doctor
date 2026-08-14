@@ -86,6 +86,63 @@ fn run_check(scenario: Value, mode: &str) -> Output {
         .expect("mcp-doctor check should start")
 }
 
+fn legacy_check_command(
+    environment: &TestEnvironment,
+    scenario_path: &Path,
+    mode: &str,
+) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--scenario")
+        .arg(scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--")
+        .arg(fixture())
+        .arg(mode);
+    command
+}
+
+fn run_legacy_check(mode: &str) -> Output {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "legacy-scenario.json",
+        &scenario("read_only", vec![reviewed_case(0, "success")]),
+    );
+    legacy_check_command(&environment, &scenario_path, mode)
+        .output()
+        .expect("the legacy check should start")
+}
+
+fn run_legacy_check_json(mode: &str) -> Output {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "legacy-scenario.json",
+        &scenario("read_only", vec![reviewed_case(0, "success")]),
+    );
+    environment
+        .command()
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg(mode)
+        .output()
+        .expect("the legacy JSON check should start")
+}
+
 fn text(output: &Output) -> (&str, &str) {
     let stdout = std::str::from_utf8(&output.stdout).expect("STDOUT should be UTF-8");
     let stderr = std::str::from_utf8(&output.stderr).expect("STDERR should be UTF-8");
@@ -107,6 +164,264 @@ fn assert_redacted(output: &Output, extra: &[&str]) {
             "STDERR disclosed protected data"
         );
     }
+}
+
+#[test]
+fn explicit_legacy_check_uses_initialize_and_legacy_results_with_reporter_parity() {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "legacy-success.json",
+        &scenario("read_only", vec![reviewed_case(0, "success")]),
+    );
+    let json_path = environment.artifact_path("legacy-report.json");
+    let junit_path = environment.artifact_path("legacy-report.xml");
+    let output = environment
+        .command()
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("json")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-active-success")
+        .output()
+        .expect("the selected legacy success journey should run");
+    let (_, stderr) = text(&output);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(stderr.is_empty(), "{stderr}");
+
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["protocol_revision"], "2025-11-25");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-11-25");
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(
+        parse_and_validate_report(
+            &fs::read(&json_path).expect("the legacy JSON artifact should exist")
+        ),
+        report
+    );
+    let (junit, summary) = parse_and_validate_junit(
+        &fs::read(&junit_path).expect("the legacy JUnit artifact should exist"),
+    );
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(junit.contains("protocol_revision=2025-11-25"));
+    assert!(junit.contains("negotiated_protocol_revision=2025-11-25"));
+    assert_redacted(&output, &[TOOL, "sequence"]);
+}
+
+#[test]
+fn legacy_tool_error_and_malformed_result_follow_the_selected_result_contract() {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "legacy-tool-error.json",
+        &scenario("read_only", vec![reviewed_case(0, "tool_error")]),
+    );
+    let tool_error = environment
+        .command()
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-active-tool-error")
+        .output()
+        .expect("the legacy tool-error check should start");
+    let (_, stderr) = text(&tool_error);
+    assert!(tool_error.status.success(), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&tool_error.stdout);
+    assert_eq!(report["protocol_revision"], "2025-11-25");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-11-25");
+    assert_eq!(report["outcome"], "passed");
+    assert_redacted(&tool_error, &[TOOL, "sequence"]);
+
+    let invalid = run_legacy_check("legacy-active-invalid-result");
+    let (stdout, stderr) = text(&invalid);
+    assert_eq!(invalid.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-ACTIVE-006"), "{stdout}");
+    assert!(stdout.contains("scenario.cases[0].content"), "{stdout}");
+    assert_redacted(&invalid, &[TOOL]);
+}
+
+#[test]
+fn legacy_required_tasks_stop_before_tools_call_with_actionable_diagnosis() {
+    let output = run_legacy_check("legacy-active-task-required");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-ACTIVE-007"), "{stdout}");
+    assert!(stdout.contains("task augmentation"), "{stdout}");
+    assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+    assert_redacted(&output, &[TOOL]);
+}
+
+#[test]
+fn legacy_initialize_mismatch_and_missing_tools_stop_before_initialized() {
+    let mismatch = run_legacy_check_json("legacy-active-revision-mismatch");
+    let (_, stderr) = text(&mismatch);
+    assert_eq!(mismatch.status.code(), Some(1), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&mismatch.stdout);
+    assert_eq!(report["protocol_revision"], "2025-11-25");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-06-18");
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-PROTOCOL-005"
+    );
+    assert_redacted(&mismatch, &[TOOL]);
+
+    let missing = run_legacy_check("legacy-active-no-tools");
+    let (stdout, stderr) = text(&missing);
+    assert_eq!(missing.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-ACTIVE-001"), "{stdout}");
+    assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+    assert_redacted(&missing, &[TOOL]);
+}
+
+#[test]
+fn legacy_active_handshake_failures_retain_protocol_and_resource_bounds() {
+    for (mode, expected) in [
+        ("legacy-malformed", "MCP-PROTOCOL-003"),
+        ("legacy-oversized", "message_bytes"),
+    ] {
+        let output = run_legacy_check(mode);
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{mode}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty(), "{mode}: {stderr}");
+        assert!(stdout.contains(expected), "{mode}: {stdout}");
+        assert!(stdout.contains("SKIP  discovery.catalogs"), "{stdout}");
+        assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+        assert_redacted(&output, &[TOOL]);
+    }
+
+    let started = Instant::now();
+    let output = run_legacy_check("legacy-timeout");
+    let elapsed = started.elapsed();
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+    assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
+    assert!(stdout.contains("discovery_time"), "{stdout}");
+    assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
+    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
+    assert_redacted(&output, &[TOOL]);
+}
+
+#[test]
+fn legacy_additional_input_signals_are_incomplete_without_answer_or_retry() {
+    for mode in [
+        "legacy-active-url-elicitation",
+        "legacy-active-server-request",
+    ] {
+        let output = run_legacy_check(mode);
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(3), "{mode}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty(), "{mode}: {stderr}");
+        assert!(stdout.contains("outcome incomplete · exit 3"), "{stdout}");
+        assert!(!stdout.contains("MCP-ACTIVE-003"), "{stdout}");
+        assert_redacted(
+            &output,
+            &[
+                TOOL,
+                "synthetic-server-request-never-report-7f2c",
+                "synthetic.invalid",
+            ],
+        );
+    }
+}
+
+#[test]
+fn legacy_server_request_stops_before_any_later_case() {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "legacy-server-request.json",
+        &scenario(
+            "read_only",
+            vec![reviewed_case(0, "success"), reviewed_case(1, "success")],
+        ),
+    );
+    let output = environment
+        .command()
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-active-server-request")
+        .output()
+        .expect("the legacy server-request boundary should run");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(3), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    let cases = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .filter(|check| {
+            check["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("runtime.tools.case["))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(cases.len(), 2);
+    assert!(cases.iter().all(|case| case["state"] == "skipped"));
+    assert!(
+        cases
+            .iter()
+            .all(|case| case["skip_reason"] == "input_required")
+    );
+    assert_redacted(
+        &output,
+        &[TOOL, "synthetic-server-request-never-report-7f2c"],
+    );
+}
+
+#[test]
+fn unrelated_legacy_server_requests_are_protocol_failures_not_input_requests() {
+    let output = run_legacy_check("legacy-active-unexpected-request");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-ACTIVE-006"), "{stdout}");
+    assert!(!stdout.contains("outcome incomplete"), "{stdout}");
+    assert_redacted(
+        &output,
+        &[TOOL, "synthetic-server-request-never-report-7f2c"],
+    );
 }
 
 #[test]
@@ -507,6 +822,14 @@ fn advertised_and_scenario_schemas_are_local_bounded_and_checked_before_activity
         scenario("read_only", vec![reviewed_case(0, "success")]),
         "active-advertised-schema-invalid",
     );
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-SCHEMA-003"), "{stdout}");
+    assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+    assert!(!stdout.contains("invalid.example"));
+
+    let output = run_legacy_check("legacy-active-schema-external");
     let (stdout, stderr) = text(&output);
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());

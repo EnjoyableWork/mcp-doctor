@@ -130,28 +130,32 @@
       "command": "break",
       "transport": "stdio",
       "revisions": [
-        "2026-07-28"
+        "2026-07-28",
+        "2025-11-25"
       ]
     },
     {
       "command": "break",
       "transport": "streamable_http",
       "revisions": [
-        "2026-07-28"
+        "2026-07-28",
+        "2025-11-25"
       ]
     },
     {
       "command": "check",
       "transport": "stdio",
       "revisions": [
-        "2026-07-28"
+        "2026-07-28",
+        "2025-11-25"
       ]
     },
     {
       "command": "check",
       "transport": "streamable_http",
       "revisions": [
-        "2026-07-28"
+        "2026-07-28",
+        "2025-11-25"
       ]
     },
     {

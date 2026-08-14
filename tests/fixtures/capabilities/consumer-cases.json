@@ -15,7 +15,7 @@
     "command": "check",
     "transport": "stdio",
     "protocol_revision": "2025-11-25",
-    "expected": "unsupported"
+    "expected": "supported"
   },
   {
     "command": "inspect",
