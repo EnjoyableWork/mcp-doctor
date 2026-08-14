@@ -1,9 +1,10 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    ActiveConversation, ActiveScenario, Diagnostic, ReportTransport, http_diagnostic,
-    m1_http_limit_profile, m1_stdio_limit_profile, render_authorization_failure,
-    render_generation_configuration_failure, stdio_diagnostic,
+    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, ReportTransport,
+    http_diagnostic, http_diagnostic_with_cleanup, m1_http_limit_profile, m1_stdio_limit_profile,
+    render_authorization_failure_for_revision,
+    render_generation_configuration_failure_for_revision, stdio_diagnostic,
 };
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
@@ -11,6 +12,7 @@ use crate::transport::http::{
 use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
 pub(crate) struct BreakOptions<'a> {
+    pub(crate) revision: ActiveProtocolRevision,
     pub(crate) tool: String,
     pub(crate) allowed_tool: &'a str,
     pub(crate) side_effecting: bool,
@@ -31,18 +33,20 @@ pub(crate) async fn run_stdio(
     ) {
         Ok(scenario) => scenario,
         Err(failure) => {
-            return Ok(render_generation_configuration_failure(
+            return Ok(render_generation_configuration_failure_for_revision(
                 failure,
                 options.cases,
                 ReportTransport::Stdio,
+                options.revision,
             ));
         }
     };
     if let Err(failure) = scenario.authorize(options.allowed_tool, options.allow_side_effects) {
-        return Ok(render_authorization_failure(
+        return Ok(render_authorization_failure_for_revision(
             &scenario,
             failure,
             ReportTransport::Stdio,
+            options.revision,
         ));
     }
     scenario.discard_target_environment_names();
@@ -50,20 +54,23 @@ pub(crate) async fn run_stdio(
     let (executable, arguments) = target.split_first().expect("clap requires a break target");
     let target = StdioTarget::new(executable.clone(), arguments.to_vec())?;
     let profile = m1_stdio_limit_profile();
-    let transport = StdioTransport::new(StdioLimits {
-        startup_ms: profile.startup_ms,
-        discovery_ms: profile.discovery_ms,
-        request_ms: profile.request_ms,
-        response_ms: profile.response_ms,
-        shutdown_grace_ms: profile.shutdown_grace_ms,
-        total_ms: profile.total_ms,
-        message_bytes: profile.message_bytes,
-        stdout_bytes: profile.stdout_bytes,
-        stderr_bytes: profile.stderr_bytes,
-        aggregate_output_bytes: profile.aggregate_output_bytes,
-        message_count: profile.message_count,
-    });
-    let mut conversation = ActiveConversation::new(scenario);
+    let transport = StdioTransport::new_for_active_protocol(
+        StdioLimits {
+            startup_ms: profile.startup_ms,
+            discovery_ms: profile.discovery_ms,
+            request_ms: profile.request_ms,
+            response_ms: profile.response_ms,
+            shutdown_grace_ms: profile.shutdown_grace_ms,
+            total_ms: profile.total_ms,
+            message_bytes: profile.message_bytes,
+            stdout_bytes: profile.stdout_bytes,
+            stderr_bytes: profile.stderr_bytes,
+            aggregate_output_bytes: profile.aggregate_output_bytes,
+            message_count: profile.message_count,
+        },
+        options.revision.uses_initialize(),
+    );
+    let mut conversation = ActiveConversation::for_revision(scenario, options.revision);
     let result = transport.probe(&target, &mut conversation).await;
     let diagnostic = stdio_diagnostic(
         result.failure(),
@@ -81,35 +88,46 @@ pub(crate) async fn run_http(remote: RemoteOptions, options: BreakOptions<'_>) -
     ) {
         Ok(scenario) => scenario,
         Err(failure) => {
-            return render_generation_configuration_failure(
+            return render_generation_configuration_failure_for_revision(
                 failure,
                 options.cases,
                 ReportTransport::Http,
+                options.revision,
             );
         }
     };
     if let Err(failure) = scenario.authorize(options.allowed_tool, options.allow_side_effects) {
-        return render_authorization_failure(&scenario, failure, ReportTransport::Http);
+        return render_authorization_failure_for_revision(
+            &scenario,
+            failure,
+            ReportTransport::Http,
+            options.revision,
+        );
     }
     scenario.discard_target_environment_names();
 
-    let mut conversation = ActiveConversation::new_http(scenario);
+    let mut conversation = ActiveConversation::new_http_for_revision(scenario, options.revision);
     let target = match HttpTarget::prepare(remote, http_limits(), &SystemResolver).await {
         Ok(target) => target,
         Err(failure) => {
             return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
         }
     };
-    let transport = match HttpTransport::new(target) {
+    let transport = match HttpTransport::new_for_active_protocol(
+        target,
+        options.revision.as_str(),
+        options.revision.uses_initialize(),
+    ) {
         Ok(transport) => transport,
         Err(failure) => {
             return conversation.into_http_diagnostic(http_diagnostic(Some(failure), Some(true)));
         }
     };
     let result = transport.probe(&mut conversation).await;
-    conversation.into_http_diagnostic(http_diagnostic(
+    conversation.into_http_diagnostic(http_diagnostic_with_cleanup(
         result.failure(),
         Some(result.tls_applicable()),
+        result.session_cleanup_failed(),
     ))
 }
 

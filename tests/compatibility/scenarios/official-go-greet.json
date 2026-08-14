@@ -1,0 +1,18 @@
+{
+  "schema_version": "mcp-doctor.scenario/v1alpha1",
+  "tool": "greet",
+  "safety": {
+    "effects": "read_only"
+  },
+  "cases": [
+    {
+      "id": "controlled-go-greeting",
+      "arguments": {
+        "name": "Synthetic"
+      },
+      "expect": {
+        "result": "success"
+      }
+    }
+  ]
+}

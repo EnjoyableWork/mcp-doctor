@@ -6,10 +6,10 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, passive legacy inspection, current-revision contract snapshots and diffs, one-run JSON/JUnit report artifacts, conservative offline aggregation, structured unsupported-version diagnosis, and stable schema-backed JSON and JUnit-compatible projections pass local, protected hosted, immutable-release, and represented installed-channel evidence in `v0.3.0`; optional compiled-only capability discovery and explicit passive legacy-revision snapshot/diff support pass local and protected hosted source evidence without target replay, a new release, or a broad compatibility claim |
+| Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, passive legacy inspection, current-revision contract snapshots and diffs, one-run JSON/JUnit report artifacts, conservative offline aggregation, structured unsupported-version diagnosis, and stable schema-backed JSON and JUnit-compatible projections pass local, protected hosted, immutable-release, and represented installed-channel evidence in `v0.3.0`; optional compiled-only capability discovery and explicit passive legacy-revision snapshot/diff support pass local and protected hosted source evidence without target replay, a new release, or a broad compatibility claim; the in-progress `MCPD-027` source candidate adds exact-selected MCP `2025-11-25` `check` and `break` with local synthetic, controlled two-language STDIO, and macOS packaged-install evidence, while merged, hosted, represented installed-channel, and published active support remain unclaimed |
 | Current milestone | M4 — enterprise assurance and adoption; `MCPD-016A` is Done and `MCPD-017` is In progress |
 | Overall status | M0 through M3 are Done; immutable `v0.1.0`, `v0.2.0`, and `v0.3.0` channels are verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence and the completed `MCPD-016A` correction prove the current supply-chain boundary, including direct digest-authenticated Syft acquisition, the narrowed live Action allowlist, and first-attempt exact-head and exact-`main` gates; `DEC-041` and `DEC-042` fix the organization-access policy; owner-authorized `MCPD-017` activation has applied the supported member, App, OAuth, PAT, short-lived verifier, secure-2FA, credential-inventory, deploy-key, and private-recovery controls, with closure still withheld until the protected change merges and the non-disclosing verifier passes on exact `main`; optional `MCPD-021` through `MCPD-026` are Done for resolved issues #72, #73, #64, #66, and #74 plus the independently verified `v0.3.0` release without changing the M4 gate |
-| Current focus | Complete the `MCPD-017` exact-`main` closure independently; completed optional `MCPD-019` through `MCPD-026` and proposed optional `MCPD-027` through `MCPD-029` remain outside the M4 dependency chain and cannot delay, redefine, or become prerequisites for `MCPD-017` or `MCPD-018` |
+| Current focus | Complete the `MCPD-017` exact-`main` closure independently; completed optional `MCPD-019` through `MCPD-026`, in-progress optional `MCPD-027` under accepted `DEC-052`, and proposed optional `MCPD-028` and `MCPD-029` remain outside the M4 dependency chain and cannot delay, redefine, or become prerequisites for `MCPD-017` or `MCPD-018` |
 | Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release, crates.io, `EnjoyableWork/tap/mcp-doctor`, and all ten represented installed-channel jobs verified |
 | Last reviewed | 2026-08-14 |
 | Next review trigger | Any organization authentication, member, owner, billing-manager, invitation, base-permission, member-privilege, repository-creation, application, OAuth, personal-access-token, organization credential, in-scope repository credential, deploy-key, recovery, public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, report destination, projection fan-out, aggregate schema or outcome policy, capability-manifest schema, command/transport/revision matrix, exit/profile identifier, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
@@ -145,15 +145,20 @@ prerequisite for `MCPD-017` or `MCPD-018`.
 `DEC-051`; protected [PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63),
 merge commit [`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039),
 and first-attempt exact-`main` evidence close its isolated legacy artifact
-scope. `MCPD-027` through `MCPD-029` remain proposed optional work for issues
-#60, #61, and #75. `MCPD-027` establishes the shared active legacy
+scope. `MCPD-027` is accepted optional work for GitHub issue #60 and is in
+progress under `DEC-052`; `MCPD-028` and `MCPD-029` remain proposed optional
+work for issues #61 and #75. `MCPD-027` establishes the shared active legacy
 boundary and must complete before `MCPD-028`; `MCPD-029` has no semantic
 dependency on legacy support, but any overlapping active-engine integration
 must consume or rebase onto the settled `MCPD-027` boundary rather than fork
 it. Planning and isolated fixture work may run in parallel, while merge order
-must preserve those dependencies. None is part of M4; `MCPD-026` adds no
-immutable-release or broad compatibility claim, and the remaining tickets
-change no implemented active-revision claim while Proposed.
+must preserve those dependencies. None is part of M4. The `MCPD-027` source
+candidate now changes the exact MCP `2025-11-25` active-command and
+capability-manifest boundary under its scoped local evidence; its ticket and
+any published support remain incomplete until every named acceptance gate
+passes. The other candidate tickets change no implemented revision, snapshot,
+capability-manifest, or active-command claim before their own acceptance
+evidence passes.
 
 ## Product outcome
 
@@ -496,14 +501,14 @@ parity.
 | `MCP-TRANSPORT-001` | Error | The MCP server process could not be started |
 | `MCP-TRANSPORT-002` | Error | A managed STDIO channel failed before diagnosis completed |
 | `MCP-TRANSPORT-003` | Error | The server wrote an invalid bounded STDIO message |
-| `MCP-TRANSPORT-004` | Error | The server exited before returning the discovery response |
+| `MCP-TRANSPORT-004` | Error | The server exited before returning the pending diagnostic response |
 | `MCP-PROTOCOL-001` | Info | The requested protocol revision is supported |
 | `MCP-PROTOCOL-002` | Error | The server does not support the required revision |
 | `MCP-PROTOCOL-003` | Error | The revision value is missing or has the wrong JSON type |
 | `MCP-PROTOCOL-004` | Warning | A feature is deprecated by the selected revision |
 | `MCP-LIMIT-001` | Error | A configured diagnostic safety limit is exceeded |
 | `MCP-SAFETY-001` | Critical | A managed target cannot be fully cleaned up |
-| `MCP-CATALOG-001` | Error | An advertised catalog response or item violates the `2026-07-28` structural contract |
+| `MCP-CATALOG-001` | Error | An advertised catalog response or item violates the selected revision's structural contract |
 | `MCP-CATALOG-002` | Error | An advertised identifier is duplicated within its catalog scope |
 | `MCP-CATALOG-003` | Error | A pagination cursor repeats instead of advancing or ending the catalog |
 | `MCP-SCHEMA-001` | Error | A local advertised or scenario-provided JSON Schema contract is invalid |
@@ -520,7 +525,8 @@ parity.
 | `MCP-ACTIVE-003` | Error | The server rejects an active tool call at the JSON-RPC layer |
 | `MCP-ACTIVE-004` | Error | A completed result disagrees with the declared or generated expectation |
 | `MCP-ACTIVE-005` | Error | `structuredContent` violates an advertised or scenario-provided output schema |
-| `MCP-ACTIVE-006` | Error | A tool response violates the current-revision result envelope and stops later calls |
+| `MCP-ACTIVE-006` | Error | A tool response violates the selected revision's result envelope and stops later calls |
+| `MCP-ACTIVE-007` | Error | The selected tool requires task augmentation, so the immediate active path stops before `tools/call` |
 
 Each check has a stable ID, is `required` or `optional`, and is exactly one of:
 
@@ -1194,9 +1200,10 @@ target starts or a remote target resolves. Wildcard-looking or pattern-looking
 values remain literal and never broaden matching, and server annotations grant
 no authority.
 
-Generation begins only after the current-revision discovery, unique tool
-selection, and bounded local Draft 2020-12 input-schema contract pass. It uses
-only that selected schema and the existing validator. It does not accept
+Generation begins only after the selected revision's discovery or initialize
+lifecycle, unique tool selection, and bounded local Draft 2020-12 input-schema
+contract pass. It uses only that selected schema and the existing validator. It
+does not accept
 target-environment or argument-secret sources, retrieve a schema, answer
 elicitation or another server request, select another tool, alter the literal
 local target, or change the exact `DEC-030` endpoint and credential authority.
@@ -1907,6 +1914,146 @@ SBOM validation, and the new installed capability smoke on every applicable
 path. No retry, dependency, target activity, publication, release-channel claim, or
 M4 assurance claim is part of this evidence.
 
+### MCPD-027 accepted active legacy-adapter plan
+
+[GitHub issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)
+identifies the first active compatibility slice: an author who explicitly
+selects MCP `2025-11-25` can inspect the server but cannot replay a reviewed
+scenario or generate bounded schema-valid cases against that same revision.
+[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61) depends on
+the same active boundary for MCP `2025-06-18` and adds a deliberately stricter
+schema-dialect gate. `DEC-052` resolves `OPEN-15` for both tickets without
+making either revision an implemented active capability ahead of evidence.
+
+#### One selected adapter and unchanged authority
+
+- One typed active-protocol adapter is selected once from the explicit CLI
+  value before target preparation. It owns request sequencing and encoding,
+  handshake and catalog interpretation, schema-dialect policy, tool-result
+  interpretation, and whether modern HTTP request metadata is eligible. The
+  scenario, exact tool/effect/side-effect authorization, environment-only
+  secret resolution, deterministic generator, sequential case runner,
+  redacted result model, reporters, and bounded process and network transports
+  remain shared and do not branch on revisions independently.
+- `check` and `break` default to MCP `2026-07-28`. `MCPD-027` may add only the
+  exact `2025-11-25` value; the adapter recognizes `2025-06-18` as a future
+  policy variant but the CLI and capability manifest must continue rejecting
+  it until `MCPD-028` passes. No range, alias other than the existing current
+  spelling, discovery-based selection, remembered choice, retry, downgrade, or
+  fallback can select an active revision.
+- The current adapter retains byte- and behavior-compatible `server/discover`,
+  `_meta`, catalog, modern `resultType`, HTTP routing field, and
+  `x-mcp-header` behavior. A current-revision golden and all existing active
+  journeys are regression gates for the refactor rather than rewritten to
+  resemble the legacy wire contract.
+
+#### Exact legacy lifecycle, schemas, and results
+
+- A legacy run sends one `initialize` request containing the exact selected
+  revision, empty client capabilities, and bounded fixed `mcp-doctor` client
+  identity. It advertises no tasks, elicitation, sampling, roots, or other
+  server-request capability. The response must be a valid initialize result
+  with the exact negotiated revision, a valid server identity, and a tools
+  capability before exactly one `notifications/initialized` notification and
+  the capability-gated `tools/list` sequence. Any malformed handshake,
+  mismatch, absent tools capability, or exhausted bound stops dependent work
+  without notification, catalog request, generation, or call as applicable.
+- MCP `2025-11-25` input and advertised output schemas use local bounded JSON
+  Schema Draft 2020-12 when `$schema` is omitted. An explicit dialect must be
+  the already supported exact Draft 2020-12 identity; external references and
+  unsupported or over-limit behavior still fail before generation or a call.
+  Tool `execution.taskSupport` is bounded and accepts only `forbidden`,
+  `optional`, or `required`, with omission defaulting to `forbidden`.
+  `required` produces a typed actionable no-call diagnosis because this slice
+  never starts or polls a task; `optional`, `forbidden`, and omitted use the
+  ordinary immediate call only.
+- MCP `2025-06-18` reuses that lifecycle and legacy result adapter only after
+  `MCPD-028`. Every advertised input or output schema interpreted for active
+  authority must then declare the exact supported Draft 2020-12 URI; omitted,
+  malformed, unsupported, or ambiguous dialects stop before generation or
+  `tools/call`. The passive omitted-dialect ambiguity contract remains
+  unchanged and never becomes active authority.
+- A legacy immediate `tools/call` success requires an array `content`, permits
+  only an object `structuredContent` when present, and permits only a boolean
+  `isError` when present; it does not require or interpret modern
+  `resultType`. Output validation and expected success/tool-error
+  classification retain the existing finite and value-free behavior. The
+  exact bounded MCP `2025-11-25` URL-elicitation-required JSON-RPC error code
+  `-32042` with structurally valid URL-mode entries marks the case incomplete
+  without retaining its message, data, identifiers, URLs, or other values and
+  without response, navigation, retrieval, or retry. Other errors retain the
+  existing rejected-call diagnosis.
+
+#### Legacy HTTP, server requests, and reporting
+
+- Legacy Streamable HTTP reuses the `DEC-030` and `DEC-044` direct pinned
+  transport. Initialize omits `MCP-Protocol-Version`; every later POST and the
+  one bounded teardown use the exact selected revision and any bounded
+  visible-ASCII session identifier established by initialize. JSON and
+  request-scoped SSE, including the permitted `2025-11-25` empty priming
+  event, finish on the matching response. Session loss is diagnosed without
+  the specification's optional reinitialization path. One bounded DELETE is
+  attempted when a session exists, and its independent cleanup finding is
+  preserved. Modern `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`, and
+  `x-mcp-header` mappings are never emitted for a legacy request.
+- A server request is never answered. A structurally recognized request for
+  elicitation or other additional input stops the affected case under the
+  existing incomplete semantics without retaining its method parameters or
+  values; every other unexpected request is a protocol failure. No server
+  request, notification, advertisement, annotation, task capability, or
+  elicitation error grants tool, side-effect, credential, target, or retry
+  authority.
+- Stable report `v1` retains its compatible selected and optional negotiated
+  revision fields. Human, JSON, and JUnit must agree on those fields, the
+  earliest primary diagnosis, causal skips, independent cleanup findings,
+  outcome, and exit. New typed finding or rule values are compatible additions
+  only and remain value-free. The compiled capability manifest, help, README
+  matrix, and installed smokes add a revision only in the same change whose
+  complete acceptance evidence proves that exact command/transport pair.
+
+#### Evidence and claim threshold
+
+`MCPD-027` requires positive and negative built-binary `check` and `break`
+journeys for MCP `2025-11-25` over STDIO and Streamable HTTP; exact lifecycle,
+catalog, result, Draft 2020-12 default, task-required, URL-elicitation, server
+request, authority, bound, session, header-omission, teardown, redaction,
+cleanup, reporter, manifest, and deterministic-generation coverage; unchanged
+current-revision goldens and journeys; POSIX and PowerShell installed-source
+smokes; the complete locked and dependency gates; protected merge; issue
+closure; and durable evidence. Synthetic implementation evidence permits only
+an exact revision/command/transport support statement. Broad compatibility
+wording additionally requires the controlled official and independent cases
+across at least two languages plus represented installed-channel journeys from
+`DEC-024`. `MCPD-028` must independently pass the equivalent matrix plus every
+strict dialect negative before it changes any `2025-06-18` active claim.
+
+#### Current implementation evidence
+
+The `MCPD-027` source candidate implements the typed adapter in
+[`src/contract/active_protocol.rs`](src/contract/active_protocol.rs) and keeps
+scenario authority, generation, reporting, and transport limits shared. The
+built-binary suites cover positive and negative MCP `2025-11-25` STDIO and
+Streamable HTTP lifecycle, schema, result, task, additional-input, session,
+header, teardown, redaction, reporter, and current-revision regression paths.
+The compiled capability manifest and both installed-smoke scripts expose the
+same exact command, transport, and revision boundary.
+
+On 2026-08-14, the controlled compatibility runner passed all four retained
+MCP `2026-07-28` passive cases plus MCP `2025-11-25` `check` and `break`
+against the digest-pinned official Go hello server and independent PHP simple
+server. Those two active cases span two languages and retain exact scenario,
+tool, effect, case-count, and seed authority; they establish only narrow active
+STDIO reach. `scripts/check.sh`, `cargo deny --all-features --locked check`,
+the dirty-tree `cargo package --locked --allow-dirty` verification, and a
+disposable macOS install from that exact package followed by
+`scripts/smoke-installed.sh` also pass without a dependency change.
+
+Native Windows PowerShell execution, the complete protected hosted matrix,
+represented installed-channel runs, protected merge, issue closure, and
+exact-`main` durable links remain open. Therefore `MCPD-027` stays In progress,
+the source evidence is not a published-channel claim, and no broad legacy
+ecosystem wording is justified.
+
 ## Target architecture
 
 ```text
@@ -1954,7 +2101,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-15 | Immutable independently verified `v0.3.0` feature release | Optional release | Done | Exact release source [`d9b96bb`](https://github.com/EnjoyableWork/mcp-doctor/commit/d9b96bbeb84baccb8e5c890e9c655a559a12a474), the [immutable GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0), byte-identical [crates.io](https://crates.io/crates/mcp-doctor/0.3.0) and [Homebrew](https://github.com/EnjoyableWork/homebrew-tap/commit/2b62e11902c7461cddbc0b96075e3745fdf6f260) handoffs, and the first-attempt [ten-job installed-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31756413098) pass |
 | D-16 | Stable compiled product-capability discovery | Optional integration discovery | Done | `DEC-050`, protected [PR 58](https://github.com/EnjoyableWork/mcp-doctor/pull/58), merge commit [`c5847ee`](https://github.com/EnjoyableWork/mcp-doctor/commit/c5847ee794c227376783b2828f44ce3de34c81b9), exact implementation head `f4a96a4cf14f8642e1e66c116c934f58ab86374a`, first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161743) and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161698), the [typed compiled manifest](src/capabilities.rs), [stable schema](schemas/mcp-doctor.capabilities.v1.schema.json), deterministic golden, tri-state consumer and forward-compatible fixtures, [bounded built-binary journeys](tests/capabilities.rs), README contract, represented installed smokes, and closed [issue #66](https://github.com/EnjoyableWork/mcp-doctor/issues/66) prove compiled-only discovery without target activity, a dependency, publication, or release claim |
 | D-17 | Explicit legacy contract snapshots and same-revision offline diffs | Optional developer workflow | Done | `DEC-051`; protected [PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63), exact implementation head `ff6f4223b84956fcad39b6e5f8184ddd7eaf469e`, final evidence head `2679e867bc108ca543b89a317fa1f9945eef9097`, merge commit [`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039), closed [issue #74](https://github.com/EnjoyableWork/mcp-doctor/issues/74), the typed implementation, schemas, current byte golden, bounded STDIO/HTTP and offline negative journeys, README/CLI/manifest assertions, represented installed smokes, complete local gate, `cargo-deny`, source review, clean deterministic package and packaged install, final exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770718856), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770715886), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770718592), plus first-attempt exact-`main` [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389015), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387) prove the exact passive legacy artifact extension without replay, cross-revision inference, a dependency, release, broad compatibility, or M4 claim |
-| D-18 | Explicit MCP `2025-11-25` `check` and `break` | Optional compatibility | Proposed | [Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60) defines the candidate shared active-legacy foundation; MCP `2026-07-28` remains the sole active revision before `MCPD-027` is Done |
+| D-18 | Explicit MCP `2025-11-25` `check` and `break` | Optional compatibility | In progress | `DEC-052`, the [typed adapter](src/contract/active_protocol.rs), positive and negative built-binary STDIO/HTTP journeys, unchanged current-revision regressions, the controlled official Go and independent PHP STDIO cases, complete local locked and dependency gates, and the macOS package/install smoke pass without a dependency change; native Windows, protected hosted, represented installed-channel, protected-merge, [Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60) closure, and exact-`main` durable evidence remain open, so no released or broad legacy claim is made |
 | D-19 | Explicit MCP `2025-06-18` `check` and `break` | Optional compatibility | Proposed | [Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61) depends on the `MCPD-027` foundation and adds a distinct no-guess schema-dialect gate; no support is claimed before `MCPD-028` is Done |
 | D-20 | Bounded schema-invalid tool-argument rejection diagnosis | Optional active correctness | Proposed | [Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75) defines the candidate negative-call outcome; existing schema-valid `check` and `break` behavior remains the only implemented active-input contract before `MCPD-029` is Done |
 
@@ -1990,7 +2137,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | Done | `MCPD-023` | Signed annotated tag `v0.3.0` and immutable [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31755736570); exact GitHub asset, crates.io OIDC, and tap-owned [publication](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31756253855) handoffs; tap commit [`2b62e11`](https://github.com/EnjoyableWork/homebrew-tap/commit/2b62e11902c7461cddbc0b96075e3745fdf6f260); and first-attempt [ten-job installed-channel verification](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31756413098) |
 | MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | Done | `MCPD-012` | `DEC-050`; protected [PR 58](https://github.com/EnjoyableWork/mcp-doctor/pull/58); merge commit [`c5847ee`](https://github.com/EnjoyableWork/mcp-doctor/commit/c5847ee794c227376783b2828f44ce3de34c81b9); exact implementation head `f4a96a4cf14f8642e1e66c116c934f58ab86374a`; first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161743) and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161698); typed deterministic human and `mcp-doctor.capabilities/v1` output, exact schema rejection, command/transport/revision and recognized-unsupported matrices, schema/reporter/exit/profile/platform inventories, 64-KiB bound, schema/golden/consumer/forward-compatibility/no-activity regressions, represented installed smokes, and closed [issue #66](https://github.com/EnjoyableWork/mcp-doctor/issues/66) without a dependency, target activity, publication, or release claim |
 | MCPD-026 | Extend sensitive contract snapshots and offline diffs to explicit MCP `2025-11-25` and `2025-06-18` inspection | Optional developer workflow | Done | `MCPD-019`, `MCPD-020` | `DEC-051` resolves `OPEN-14`; protected [PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63), exact implementation head `ff6f4223b84956fcad39b6e5f8184ddd7eaf469e`, final evidence head `2679e867bc108ca543b89a317fa1f9945eef9097`, merge commit [`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039), closed [issue #74](https://github.com/EnjoyableWork/mcp-doctor/issues/74), complete synthetic, secret-exclusion, current-byte-regression, schema, README/CLI/manifest, POSIX and native PowerShell installed/package, locked-gate, dependency, source-review, clean deterministic package, final exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770718856), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770715886), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31770718592), and first-attempt exact-`main` [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389015), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387) evidence pass on 2026-08-14 without a dependency, target replay, active legacy behavior, release, broad compatibility, or M4 change |
-| MCPD-027 | Add explicit MCP `2025-11-25` `check` and `break` over STDIO and Streamable HTTP | Optional compatibility | Proposed | `MCPD-019`, `MCPD-025` | Resolve `OPEN-15`; then [issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60) requires a behavior-preserving versioned active adapter, exact initialize and result contracts, Draft 2020-12 defaulting, legacy HTTP header/session/SSE/teardown behavior, no retry or fallback, task-required and elicitation no-call handling, exact authority and finite-work retention, human/JSON/JUnit parity, capability-manifest accuracy, unchanged current-revision journeys, controlled compatibility evidence, complete gates, protected merge, issue closure, and durable evidence |
+| MCPD-027 | Add explicit MCP `2025-11-25` `check` and `break` over STDIO and Streamable HTTP | Optional compatibility | In progress | `MCPD-019`, `MCPD-025` | `DEC-052`; the source adapter, exact initialize/result/schema/task/additional-input behavior, both transports, reporter and manifest parity, current regressions, controlled official Go and independent PHP active STDIO cases, complete local gates, and macOS package/install smoke pass; [issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60) remains open pending native Windows, protected hosted and represented installed-channel evidence, protected merge, closure, and exact-`main` durable links |
 | MCPD-028 | Extend explicit `check` and `break` to MCP `2025-06-18` with a no-guess schema gate | Optional compatibility | Proposed | `MCPD-027` | Under the active-legacy decision accepted for `MCPD-027`, [issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61) requires exact lifecycle, result, HTTP, authorization, reporting, and no-fallback behavior plus an exact Draft 2020-12 declaration on every schema used to authorize or validate activity; omitted, malformed, unsupported, or ambiguous dialects must stop before generation or `tools/call`; tasks remain unsupported; current and `2025-11-25` journeys remain unchanged; complete gates, protected merge, issue closure, and durable evidence pass before any support claim |
 | MCPD-029 | Diagnose bounded schema-invalid tool-argument rejection for the current active revision | Optional active correctness | Proposed | `MCPD-012` | Resolve `OPEN-16`; then [issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75) requires one exact independently authorized tool and effect boundary, finite reviewed or deterministic cases each proven invalid for one structural reason, revision-defined rejection rather than prose matching, distinct unsafe success, malformed response, transport, timeout, crash, and cleanup outcomes, value-free reproducibility, causal reporter parity, unchanged passive and schema-valid active behavior, represented installed smokes, complete gates, protected merge, issue closure, and durable evidence; integration must reuse the settled active adapter if `MCPD-027` has begun |
 
@@ -3138,6 +3285,7 @@ evidence, and official proof.
 | DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted | 2026-08-13 | Treat `MCPD-019` through `MCPD-023` as an additive minor release; support `0.3.x` and retire `0.2.x` when publication completes; use a portable Markdown diagnosis example and exact `0.3.0` install guidance; preserve stable report-major, safety, historical evidence, and every `MCPD-008A` protected immutable-byte handoff; make no M4, scanner, active-legacy, broad legacy-compatibility, native-signing, or certification claim; and withhold completion until GitHub, crates.io, Homebrew, and represented installed-channel evidence all pass. |
 | DEC-050 | Resolve issue #66 with one exact, stable, compiled-only capability response | Accepted | 2026-08-13 | Add human and stable `mcp-doctor.capabilities/v1` output from fixed source-owned constants only; cover product, command activity/reporters/contracts, exact command/transport/revision support, recognized-unsupported revisions, `mcp-doctor.exit/v1`, named hard limit profiles, a 64-KiB output bound, and compile-family process-tree/file-identity mechanisms. Require an exact schema request with no discovery, retry, fallback, or downgrade; return a value-free schema-valid `v1` error and exit `2` for unsupported JSON requests. Permit compatible optional fields and new inventory entries within `v1`, require a new major for removal or semantic breakage, and require consumers to treat unknown values as unknown. Never inspect configuration or host inventory, read files, environment values, or credentials, start a process, resolve DNS, connect, retrieve a schema, trust a server advertisement, invoke a tool, add a dependency, or make a release, conformance, health, security, or assurance claim. |
 | DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted | 2026-08-13 | Keep existing current-revision artifact bytes valid and unchanged; treat `protocol_revision` as selected identity and require a matching `negotiated_protocol_revision` only for MCP `2025-11-25` and `2025-06-18`; retain only fixed revision-defined logging, completions, and applicable task-capability booleans in addition to the `DEC-045` content; attach fixed value-free dialect state to legacy tool schemas so omitted `2025-11-25` means Draft 2020-12 while omitted `2025-06-18` remains ambiguous; capture from the same completed bounded passive conversation only after cleanup; compare only artifacts with the same exact revision; reject selected/negotiated, cross-revision, or revision-contract mismatch with value-free `MCP-SNAPSHOT-007`/`008` and causal skips; preserve every sensitivity, no-clobber, cleanup, size, depth, count, correlation, redaction, and offline no-activity bound; and add no replay, active call, retrieval, overwrite, cross-revision inference, score, dependency, release, broad compatibility, or M4 claim. |
+| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted | 2026-08-13 | Select one typed adapter before target preparation and keep scenario authority, generation, transports, reporting, and limits shared; preserve the current `2026-07-28` wire contract exactly; let `MCPD-027` add only explicit `2025-11-25` initialize, initialized, tools catalog, immediate call, Draft 2020-12 default, legacy result, task-required no-call, exact `-32042` incomplete, and server-request no-answer behavior; reserve `2025-06-18` for `MCPD-028` behind an exact declared Draft 2020-12 gate. Legacy HTTP reuses the bounded optional session, JSON/SSE, loss-without-reinitialize, and one-DELETE boundary while omitting every modern routing and mapped header. Reports retain exact selected/negotiated identity; manifests and public claims change only with exact acceptance evidence, and broad compatibility still requires the controlled two-language and installed-channel gate. No revision is discovered, retried, downgraded, fallen back to, or granted authority by advertisements, annotations, tasks, elicitation, or server requests. |
 
 ## Open decisions
 
@@ -3150,7 +3298,8 @@ accepted as `DEC-032`, `OPEN-08` and `OPEN-09` are accepted as `DEC-034` and
 `OPEN-14` is accepted as `DEC-051`.
 `DEC-048` records the focused issue #64 protocol-rejection correction, and
 `DEC-049` records the intentional `v0.3.0` release and supported-line advance.
-`DEC-050` records the issue #66 compiled capability-discovery contract.
+`DEC-050` records the issue #66 compiled capability-discovery contract, and
+`OPEN-15` is accepted as `DEC-052` for the shared active legacy adapter.
 `DEC-033` separately records
 the dynamic comparative evaluation method. `DEC-036` and `DEC-038` refine live
 verification boundaries discovered during `MCPD-013` and `MCPD-014` without
@@ -3160,12 +3309,12 @@ supply-chain, and corrective acquisition contracts. None of these decisions cons
 claims that pending `MCPD-017` live controls and private recovery evidence have
 passed.
 
-The completed decisions above remain accepted. The remaining proposed optional
-tickets are not eligible to start until their material choices are resolved:
+The completed decisions above remain accepted. The remaining optional ticket
+below is Proposed and not eligible to start until its material choices are
+resolved:
 
 | ID | Owning ticket | Open choice | Resolution required for Ready |
 | --- | --- | --- | --- |
-| OPEN-15 | `MCPD-027`, `MCPD-028` | Shared active legacy adapter and exact per-revision behavior | Accept one cohesive adapter boundary and lock explicit CLI selection, lifecycle and result envelopes, schema-dialect policies, HTTP headers/session/SSE/teardown, task and elicitation no-call behavior, reporter compatibility, capability-manifest changes, and the evidence threshold for each revision without fallback or a support claim ahead of proof |
 | OPEN-16 | `MCPD-029` | Schema-invalid diagnostic surface and rejection semantics | Select the command or versioned scenario surface, finite mutation contract, revision-allowed rejection shapes, unsafe-success and causal stop rules, report additions, reproduction evidence, and compatibility policy while preserving exact tool/effect/side-effect authority and treating rejection as an expectation rather than a safety guarantee |
 
 Future material choices must receive new `OPEN-*` identifiers rather than
@@ -3192,7 +3341,7 @@ silently changing an accepted decision.
 | RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency | High | `DEC-041` accepts the documented single-owner residual risk and fixes strong MFA, lowest access, application and credential scope, and private recovery requirements; `DEC-042` fails closed around GitHub Free's unavailable owner-only outside-invitation setting; `MCPD-017` remains incomplete until the protected exact-`main` verifier and temporary-credential revocation bind the completed live controls, reviewed selected-repository App inventory, exact short-lived operator authority, and fresh private recovery exercise without sensitive disclosure | Mitigated at the live pre-merge boundary: supported organization controls, restricted OAuth and PAT access, exact source-and-tap verifier scope, bounded private inventories, obsolete tap-key removal, and the independent recovery exercise pass; exact-`main` evidence and verifier-token revocation remain open under `MCPD-017` |
 | RISK-16 | A stale, unofficial, or over-broad assurance claim misleads adopters | High | `DEC-034` locks exact version and proof routes and makes drift a stop-and-decide gate; `MCPD-018` binds every claim to exact scope, date, official proof, public evidence, and removal triggers; missing, stale, withdrawn, or ambiguous proof blocks or removes the claim | Policy resolved; proof remains deferred with M4 |
 | RISK-17 | Technically correct findings become an undifferentiated failure list that does not help a developer repair a server or earn repeat use | High | Every MVP failure identifies the expected earliest actionable layer, preserves independent safety failures, links downstream skips to their cause, and includes safe what, where, why, expectation, remediation, and versioned-rule evidence; report-only cases, maintainer trials, and voluntary feedback record unclear findings, false findings, time to value, and repeat use | M1 report sufficiency passes locally and hosted; the checkpoint closed with zero independent reports and no adoption claim, while future feedback may reprioritize later product work |
-| RISK-18 | Revision support excludes or misdiagnoses too much of the reachable ecosystem | High | `DEC-024` retains the proven current-revision matrix and `DEC-044` permits only explicit passive legacy selection with revision-specific synthetic evidence; broad wording for any new revision additionally requires controlled official and independent cases spanning at least two languages plus represented installed-channel journeys | Four selected current-revision servers across four languages passed locally and hosted before M2 release; `MCPD-019` synthetic legacy implementation evidence passes on [PR 47](https://github.com/EnjoyableWork/mcp-doctor/pull/47), while broad legacy positioning remains withheld pending its distinct real-server and installed-channel gate; `OPEN-15` and `MCPD-027`/`MCPD-028` remain proposed, so MCP `2026-07-28` remains the sole active revision |
+| RISK-18 | Revision support excludes or misdiagnoses too much of the reachable ecosystem | High | `DEC-024` retains the proven current-revision matrix, `DEC-044` permits only explicit passive legacy selection, and `DEC-052` fixes exact-selected active legacy adaptation without fallback; broad wording for any new revision additionally requires controlled official and independent cases spanning at least two languages plus represented installed-channel journeys | Four selected current-revision servers across four languages passed locally and hosted before M2 release; `MCPD-019` synthetic legacy implementation evidence passes on [PR 47](https://github.com/EnjoyableWork/mcp-doctor/pull/47); the `MCPD-027` source candidate now passes synthetic active MCP `2025-11-25` journeys on both transports, narrow controlled active STDIO cases across official Go and independent PHP, and a macOS packaged-install smoke, while protected hosted, represented installed-channel, merge, closure, and exact-`main` evidence remain open; broad or released legacy positioning stays withheld, and `MCPD-028` remains Proposed |
 | RISK-19 | An unnecessary, stale, compromised, or silently widened dependency executes in the product, developer environment, or CI supply chain | Critical | Default to no addition; require an owning need and dated maintenance/provenance/security/graph review; use exact direct requirements, a committed lockfile, narrow features, reviewed sources, `cargo-deny`, non-automatic update approval, and a regression check; removal, unexplained upstream inactivity, ownership change, advisory, new build script/unsafe surface, or unreviewable lockfile growth triggers escalation | Mitigated for the dated `MCPD-016` dependency scope and tightened by `MCPD-016A`: explicit grouped version and security proposals remain review-only; exact direct-requirement, feature-graph, source, license, advisory, duplicate, Action, and standalone-tool inventories fail closed; and superseded Syft `1.50.0` moves from an Action-controlled mutable installer to exact immutable, security-remediating `1.51.0` asset identities. Future dependency, Action, tool, asset, or acquisition-policy drift requires the same review. |
 | RISK-20 | Users cannot find a real project route or receive incompatible license terms because repository, community, channel, or artifact scope drifts | High | `DEC-039` inventories every public organization repository, centralizes reachable community and defect routes, explicitly delegates the tap, and verifies HTTPS official channels plus exact source, package, archive, and formula license evidence without credentials; any new unclassified repository, unavailable route, stale policy, license mismatch, or unexplained asset blocks M4 | Mitigated for the current three-repository `MCPD-015` scope revalidated on 2026-08-12. The credential-free five-repository completion pass remains historical; when `courtside-mcp` and `enjoyable-mcp` disappeared from the organization inventory, the verifier failed closed and the MCPD-016 closure rebaselined the canonical inventory before restoring a pass. Any later repository, route, channel, license, release-set, package, formula, or GitHub/crates.io drift reopens the risk; the immutable SPDX limitation and later complete-assurance work remain explicit. |
 | RISK-21 | A contract snapshot discloses sensitive advertised data, an offline diff contacts a target, or a compatibility label overstates what a structural comparison proves | High | `DEC-045` and `DEC-051` require an exact-path sensitivity acknowledgement, same-conversation completed passive creation, exclusive bounded regular-file creation with owner-only Unix mode, a fixed include/exclude boundary, exact legacy selected/negotiated and dialect identity, value-free same-revision diff findings, artifact-local ordinal correlation, local-only inputs, no retrieval or activity, and conservative documented classifications with review-required fallback; any ordinary-report identifier, excluded sentinel, overwrite, network/process attempt, unbounded artifact, invalid correlation, cross-revision comparison, dialect inference, or unsupported compatibility claim blocks completion | Mitigated for current and explicit passive legacy snapshot/diff source scope by `MCPD-020` and `MCPD-026`: protected [PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63), merge [`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039), closed issue #74, and first-attempt exact-head plus exact-`main` native CI/preflight prove same-conversation, capability, dialect, finite-bound, no-clobber, cleanup, current-byte, redaction, installed-package, dependency, and offline-isolation behavior. No broad compatibility or immutable-release claim follows. Any snapshot boundary, acknowledgement, identity, dialect, overwrite, ordinal, offline-isolation, bound, or compatibility-classification drift reopens the risk |

@@ -194,7 +194,7 @@ fn aggregate_parse_failures_do_not_echo_paths_or_untrusted_values() {
 }
 
 #[test]
-fn legacy_revision_selection_is_exact_and_inspect_only() {
+fn legacy_revision_selection_is_exact_for_each_command() {
     let unknown = run_cli(&[
         "inspect",
         "--protocol-version",
@@ -208,7 +208,25 @@ fn legacy_revision_selection_is_exact_and_inspect_only() {
     assert!(stderr.contains("invalid value '2025-03-26'"), "{stderr}");
     assert!(!stderr.contains("No such file"));
 
-    let active = run_cli(&[
+    let unsupported_active = run_cli(&[
+        "check",
+        "--protocol-version",
+        "2025-06-18",
+        "--scenario",
+        "synthetic.json",
+        "--allow-tool",
+        "synthetic.tool",
+        "--",
+        "synthetic-target-must-not-start",
+    ]);
+    assert_eq!(unsupported_active.status.code(), Some(2));
+    assert!(unsupported_active.stdout.is_empty());
+    let stderr =
+        String::from_utf8(unsupported_active.stderr).expect("error output should be UTF-8");
+    assert!(stderr.contains("invalid value '2025-06-18'"), "{stderr}");
+    assert!(!stderr.contains("No such file"));
+
+    let selected_active = run_cli(&[
         "check",
         "--protocol-version",
         "2025-11-25",
@@ -219,14 +237,12 @@ fn legacy_revision_selection_is_exact_and_inspect_only() {
         "--",
         "synthetic-target-must-not-start",
     ]);
-    assert_eq!(active.status.code(), Some(2));
-    assert!(active.stdout.is_empty());
-    let stderr = String::from_utf8(active.stderr).expect("error output should be UTF-8");
-    assert!(
-        stderr.contains("unexpected argument '--protocol-version'"),
-        "{stderr}"
-    );
-    assert!(!stderr.contains("No such file"));
+    assert_eq!(selected_active.status.code(), Some(2));
+    assert!(selected_active.stderr.is_empty());
+    let stdout = String::from_utf8(selected_active.stdout).expect("report output should be UTF-8");
+    assert!(stdout.contains("mcp-doctor report · MCP 2025-11-25"));
+    assert!(stdout.contains("MCP-SCENARIO-001"));
+    assert!(!stdout.contains("synthetic-target-must-not-start"));
 }
 
 #[test]
@@ -271,6 +287,10 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--scenario <PATH>"));
     assert!(stdout.contains("--allow-tool <EXACT-NAME>"));
     assert!(stdout.contains("--allow-side-effects"));
+    assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
+    assert!(stdout.contains("2026-07-28"));
+    assert!(stdout.contains("2025-11-25"));
+    assert!(!stdout.contains("2025-06-18"));
     assert!(stdout.contains(
         "Usage: mcp-doctor check [OPTIONS] --scenario <PATH> --allow-tool <EXACT-NAME> <URL|TARGET>"
     ));
@@ -322,6 +342,10 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--allow-side-effects"));
     assert!(stdout.contains("--cases <COUNT>"));
     assert!(stdout.contains("--seed <U64>"));
+    assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
+    assert!(stdout.contains("2026-07-28"));
+    assert!(stdout.contains("2025-11-25"));
+    assert!(!stdout.contains("2025-06-18"));
     assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));

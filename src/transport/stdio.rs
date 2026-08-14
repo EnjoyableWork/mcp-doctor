@@ -220,11 +220,25 @@ impl StdioRun {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StdioTransport {
     limits: StdioLimits,
+    accept_server_requests: bool,
 }
 
 impl StdioTransport {
     pub(crate) const fn new(limits: StdioLimits) -> Self {
-        Self { limits }
+        Self {
+            limits,
+            accept_server_requests: false,
+        }
+    }
+
+    pub(crate) const fn new_for_active_protocol(
+        limits: StdioLimits,
+        initialize_handshake: bool,
+    ) -> Self {
+        Self {
+            limits,
+            accept_server_requests: initialize_handshake,
+        }
     }
 
     pub(crate) async fn probe<C>(self, target: &StdioTarget, conversation: &mut C) -> StdioRun
@@ -239,7 +253,7 @@ impl StdioTransport {
             StageDeadline::after(run_started, self.limits.startup_ms, StdioLimit::StartupTime),
         ]);
 
-        let spawn_result = ManagedProcess::spawn(target, self.limits);
+        let spawn_result = ManagedProcess::spawn(target, self.limits, self.accept_server_requests);
         let mut process = match spawn_result {
             Ok(process) => process,
             Err(failure) => {
@@ -314,7 +328,11 @@ struct ManagedProcess {
 }
 
 impl ManagedProcess {
-    fn spawn(target: &StdioTarget, limits: StdioLimits) -> Result<Self, StdioFailure> {
+    fn spawn(
+        target: &StdioTarget,
+        limits: StdioLimits,
+        accept_server_requests: bool,
+    ) -> Result<Self, StdioFailure> {
         let mut command = target.command();
         command
             .env_clear()
@@ -342,7 +360,7 @@ impl ManagedProcess {
             stdout,
             stderr,
             decoder: FrameDecoder::new(limits.message_bytes, limits.message_count),
-            protocol: ProtocolTracker::default(),
+            protocol: ProtocolTracker::new(accept_server_requests),
             output: OutputBudget::new(limits),
             limits,
             cleaned: false,
@@ -400,7 +418,7 @@ impl ManagedProcess {
                 StdioLimit::RequestTime,
             ),
         ]);
-        self.protocol.begin(request.id());
+        self.protocol.begin(request.id(), request.method());
         let stdin = self.stdin.as_mut().expect("the stdin pipe was checked");
         match tokio::time::timeout_at(request_deadline.at, async {
             stdin.write_all(request.as_bytes()).await?;
@@ -897,10 +915,21 @@ impl FrameDecoder {
 struct ProtocolTracker {
     active_request: Option<i64>,
     completed_requests: Vec<i64>,
+    accept_server_requests: bool,
+    active_server_request_allowed: bool,
 }
 
 impl ProtocolTracker {
-    fn begin(&mut self, request_id: i64) {
+    const fn new(accept_server_requests: bool) -> Self {
+        Self {
+            active_request: None,
+            completed_requests: Vec::new(),
+            accept_server_requests,
+            active_server_request_allowed: false,
+        }
+    }
+
+    fn begin(&mut self, request_id: i64, method: &str) {
         assert!(
             self.active_request.is_none(),
             "a new request cannot begin while another response is pending"
@@ -910,6 +939,7 @@ impl ProtocolTracker {
             "a locally generated request id cannot be reused"
         );
         self.active_request = Some(request_id);
+        self.active_server_request_allowed = self.accept_server_requests && method == "tools/call";
     }
 
     fn observe(&mut self, frame: Frame) -> Result<Option<ProbeResponse>, StdioFailure> {
@@ -924,12 +954,18 @@ impl ProtocolTracker {
         }
 
         if let Some(method) = object.get("method") {
-            if !method.is_string()
-                || object.contains_key("id")
-                || object.contains_key("result")
-                || object.contains_key("error")
+            if !method.is_string() || object.contains_key("result") || object.contains_key("error")
             {
                 return Err(invalid());
+            }
+            if object.contains_key("id") {
+                if !self.active_server_request_allowed || !valid_server_request(object) {
+                    return Err(invalid());
+                }
+                let request_id = self.active_request.take().ok_or_else(invalid)?;
+                self.active_server_request_allowed = false;
+                self.completed_requests.push(request_id);
+                return Ok(Some(ProbeResponse::new(request_id, frame.bytes)));
             }
             return Ok(None);
         }
@@ -943,9 +979,20 @@ impl ProtocolTracker {
 
         let request_id = response_id.expect("a matching active response id was checked");
         self.active_request = None;
+        self.active_server_request_allowed = false;
         self.completed_requests.push(request_id);
         Ok(Some(ProbeResponse::new(request_id, frame.bytes)))
     }
+}
+
+fn valid_server_request(object: &serde_json::Map<String, Value>) -> bool {
+    let id = object.get("id");
+    let valid_id = id.is_some_and(|id| id.is_string() || id.as_i64().is_some());
+    valid_id
+        && object.get("method").is_some_and(Value::is_string)
+        && object
+            .get("params")
+            .is_none_or(|params| params.is_object() || params.is_array())
 }
 
 struct OutputBudget {
@@ -1205,7 +1252,7 @@ mod tests {
     fn response_parser_rejects_server_requests_and_duplicate_responses() {
         let mut decoder = FrameDecoder::new(256, 8);
         let mut tracker = ProtocolTracker::default();
-        tracker.begin(1);
+        tracker.begin(1, "server/discover");
         let mut frames = decoder
             .push(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n")
             .expect("a bounded response frame should decode");
@@ -1225,7 +1272,7 @@ mod tests {
 
         let mut request_decoder = FrameDecoder::new(256, 8);
         let mut request_tracker = ProtocolTracker::default();
-        request_tracker.begin(1);
+        request_tracker.begin(1, "server/discover");
         let mut request = request_decoder
             .push(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"roots/list\"}\n")
             .expect("a bounded server request frame should decode");
@@ -1233,6 +1280,18 @@ mod tests {
             request_tracker.observe(request.remove(0)),
             Err(StdioFailure::InvalidMessage { .. })
         ));
+
+        let mut active_decoder = FrameDecoder::new(256, 8);
+        let mut active_tracker = ProtocolTracker::new(true);
+        active_tracker.begin(3, "tools/call");
+        let mut active_request = active_decoder
+            .push(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"roots/list\"}\n")
+            .expect("a bounded active server request frame should decode");
+        let response = active_tracker
+            .observe(active_request.remove(0))
+            .expect("a legacy tools/call server request should be surfaced")
+            .expect("the server request should stop the pending local call");
+        assert_eq!(response.request_id(), 3);
     }
 
     #[cfg(windows)]

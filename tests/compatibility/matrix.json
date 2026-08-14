@@ -10,6 +10,46 @@
     "server_runtime": "Linux ARM64 containers",
     "result": "4/4 passed"
   },
+  "active_legacy": {
+    "protocol_revision": "2025-11-25",
+    "transport": "stdio",
+    "commands": [
+      "check",
+      "break"
+    ],
+    "last_verified": {
+      "date": "2026-08-14",
+      "host": "macOS ARM64",
+      "server_runtime": "Linux ARM64 containers",
+      "result": "4/4 passed"
+    },
+    "cases": [
+      {
+        "id": "official-go-hello",
+        "provenance": "official",
+        "language": "Go",
+        "tool": "greet",
+        "effects": "read_only",
+        "scenario": "tests/compatibility/scenarios/official-go-greet.json",
+        "scenario_sha256": "88dbce0fbcfb62ddfe3e380225738cb6c2c73cfa77127732b321c04d3d1b3668",
+        "break_cases": 3,
+        "break_seed": 6027,
+        "expected_outcome": "passed"
+      },
+      {
+        "id": "independent-php-simple",
+        "provenance": "independent",
+        "language": "PHP",
+        "tool": "add-numbers",
+        "effects": "read_only",
+        "scenario": "tests/compatibility/scenarios/independent-php-add.json",
+        "scenario_sha256": "69e1e236006a8b257dcd5e3261d0ee289a48b66d70845e91560495e753678ea1",
+        "break_cases": 3,
+        "break_seed": 6027,
+        "expected_outcome": "passed"
+      }
+    ]
+  },
   "runtimes": {
     "node": {
       "version": "24.12.0",

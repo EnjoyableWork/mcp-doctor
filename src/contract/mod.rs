@@ -4,6 +4,7 @@
 )]
 
 mod active;
+mod active_protocol;
 mod catalog;
 mod generate;
 mod http_headers;
@@ -29,12 +30,16 @@ use report::{DiagnosticReport, render_reports};
 
 pub(crate) use active::{
     ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, SCENARIO_SCHEMA_VERSION,
-    ScenarioFailure, render_authorization_failure, render_generation_configuration_failure,
-    render_resolved_scenario_failure, render_scenario_failure, resolve_target_environment,
+    ScenarioFailure, render_authorization_failure_for_revision,
+    render_generation_configuration_failure_for_revision,
+    render_resolved_scenario_failure_for_revision, render_scenario_failure_for_revision,
+    resolve_target_environment,
 };
 pub(crate) use catalog::PassiveCatalogConversation;
 pub(crate) use generate::GENERATOR_VERSION;
-pub(crate) use protocol::{KnownRevision, SupportedRevision as ProtocolRevision};
+pub(crate) use protocol::{
+    ActiveProtocolRevision, KnownRevision, SupportedRevision as ProtocolRevision,
+};
 pub(crate) use report::{
     ExitStatus, REPORT_SCHEMA_VERSION, RenderedReportArtifact, ReportArtifactFormat, ReportFormat,
     ReportRequest,
@@ -449,7 +454,7 @@ pub(in crate::contract) fn http_checks(diagnostic: HttpDiagnostic) -> Vec<CheckR
     http_checks_for_revision(diagnostic, SupportedRevision::CURRENT)
 }
 
-fn http_checks_for_revision(
+pub(in crate::contract) fn http_checks_for_revision(
     diagnostic: HttpDiagnostic,
     revision: SupportedRevision,
 ) -> Vec<CheckResult> {
@@ -856,7 +861,7 @@ fn stdio_findings(diagnostic: StdioDiagnostic) -> Vec<Finding> {
     stdio_findings_for_revision(diagnostic, SupportedRevision::CURRENT)
 }
 
-fn stdio_findings_for_revision(
+pub(in crate::contract) fn stdio_findings_for_revision(
     diagnostic: StdioDiagnostic,
     revision: SupportedRevision,
 ) -> Vec<Finding> {

@@ -26,6 +26,7 @@ $smokeLegacy11Snapshot = Join-Path $smokeRoot 'contract-2025-11-25.json'
 $smokeLegacy06Snapshot = Join-Path $smokeRoot 'contract-2025-06-18.json'
 $smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
 $smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
+$smokeLegacyScenario = Join-Path $smokeRoot 'legacy-scenario.json'
 $smokeAggregate = Join-Path $smokeRoot 'aggregate.json'
 
 function Invoke-McpDoctor {
@@ -74,6 +75,52 @@ function Invoke-McpDoctor {
     return $stdout.TrimEnd("`r", "`n")
 }
 
+function Assert-LegacyActiveReport {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Report,
+
+        [Parameter(Mandatory = $true)]
+        [int]$ExpectedRequired,
+
+        [Parameter(Mandatory = $true)]
+        [int]$ExpectedCases,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$ExpectGeneration
+    )
+
+    if (
+        $Report.schema_version -ne 'mcp-doctor.report/v1' -or
+        $Report.protocol_revision -ne '2025-11-25' -or
+        $Report.negotiated_protocol_revision -ne '2025-11-25' -or
+        $null -ne $Report.primary_diagnosis -or
+        @($Report.independent_findings).Count -ne 0 -or
+        $Report.outcome -ne 'passed' -or
+        $Report.exit_code -ne 0 -or
+        $Report.summary.required -ne $ExpectedRequired -or
+        $Report.summary.required_skipped -ne 0 -or
+        $Report.summary.failed -ne 0
+    ) {
+        throw 'Installed legacy active diagnostic returned an unexpected report.'
+    }
+    foreach ($check in @($Report.checks | Where-Object requirement -eq 'required')) {
+        if ($check.state -ne 'performed' -or $check.outcome -ne 'passed') {
+            throw 'Installed legacy active diagnostic did not pass every required check.'
+        }
+    }
+    $runtimeCases = @(
+        $Report.checks | Where-Object { $_.id.StartsWith('runtime.tools.case[') }
+    )
+    if ($runtimeCases.Count -ne $ExpectedCases) {
+        throw 'Installed legacy active diagnostic returned an unexpected case count.'
+    }
+    $generation = @($Report.checks | Where-Object id -eq 'generation.cases')
+    if (($generation.Count -eq 1) -ne $ExpectGeneration) {
+        throw 'Installed legacy active diagnostic returned unexpected generation evidence.'
+    }
+}
+
 try {
     New-Item -ItemType Directory -Path $smokeHome -Force | Out-Null
 
@@ -105,7 +152,7 @@ try {
         $inspectStdio.Count -ne 1 -or
         (@($inspectStdio[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
         $checkHttp.Count -ne 1 -or
-        (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28' -or
+        (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28,2025-11-25' -or
         (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
         (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
@@ -167,6 +214,69 @@ try {
         @($artifactReport.checks).Count -ne @($report.checks).Count
     ) {
         throw 'Installed diagnostic JSON artifact diverged from stdout.'
+    }
+
+    $legacyScenario = [ordered]@{
+        schema_version = 'mcp-doctor.scenario/v1alpha1'
+        tool = 'synthetic.reviewed'
+        safety = [ordered]@{ effects = 'read_only' }
+        cases = @(
+            [ordered]@{
+                id = 'installed-legacy-case'
+                arguments = [ordered]@{ sequence = 0 }
+                expect = [ordered]@{ result = 'success' }
+            }
+        )
+    } | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText(
+        $smokeLegacyScenario,
+        $legacyScenario,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    $legacyCheckOutput = Invoke-McpDoctor `
+        'check' '--protocol-version' '2025-11-25' `
+        '--scenario' $smokeLegacyScenario `
+        '--allow-tool' 'synthetic.reviewed' `
+        '--format' 'json' `
+        '--' $resolvedFixture 'legacy-active-success'
+    $legacyCheck = $legacyCheckOutput | ConvertFrom-Json
+    Assert-LegacyActiveReport `
+        -Report $legacyCheck `
+        -ExpectedRequired 8 `
+        -ExpectedCases 1 `
+        -ExpectGeneration $false
+
+    $legacyBreakOutput = Invoke-McpDoctor `
+        'break' '--protocol-version' '2025-11-25' `
+        '--tool' 'synthetic.generated' `
+        '--allow-tool' 'synthetic.generated' `
+        '--effects' 'read_only' `
+        '--cases' '2' `
+        '--seed' '6027' `
+        '--format' 'json' `
+        '--' $resolvedFixture 'legacy-break-success' '2'
+    $legacyBreak = $legacyBreakOutput | ConvertFrom-Json
+    Assert-LegacyActiveReport `
+        -Report $legacyBreak `
+        -ExpectedRequired 10 `
+        -ExpectedCases 2 `
+        -ExpectGeneration $true
+    foreach ($privateActiveValue in @(
+        'synthetic.reviewed',
+        'synthetic.generated',
+        'installed-legacy-case',
+        'synthetic-secret-payload-7f2c',
+        'synthetic_private_query_never_report_7f2c',
+        'synthetic_private_limit_never_report_7f2c',
+        'synthetic_private_flags_never_report_7f2c'
+    )) {
+        if (
+            $legacyCheckOutput.Contains($privateActiveValue) -or
+            $legacyBreakOutput.Contains($privateActiveValue)
+        ) {
+            throw 'Installed legacy active report disclosed a private value.'
+        }
     }
     if (-not (Test-Path -LiteralPath $smokeJunitArtifact -PathType Leaf)) {
         throw 'Installed diagnostic did not create the JUnit report artifact.'

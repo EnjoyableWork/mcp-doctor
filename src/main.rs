@@ -128,6 +128,10 @@ struct CapabilitiesArgs {
         .args(["endpoint", "target"])
 ))]
 struct CheckArgs {
+    /// Exact MCP revision to use; legacy active behavior is opt-in only.
+    #[arg(long, value_enum, default_value_t = ActiveProtocolVersion::Current)]
+    protocol_version: ActiveProtocolVersion,
+
     /// Versioned JSON scenario containing one exact tool and ordered reviewed cases.
     #[arg(long, value_name = "PATH")]
     scenario: PathBuf,
@@ -163,6 +167,10 @@ struct CheckArgs {
         .args(["endpoint", "target"])
 ))]
 struct BreakArgs {
+    /// Exact MCP revision to use; legacy active behavior is opt-in only.
+    #[arg(long, value_enum, default_value_t = ActiveProtocolVersion::Current)]
+    protocol_version: ActiveProtocolVersion,
+
     /// Exact tool selected as the only generation and execution target.
     #[arg(long, value_name = "EXACT-NAME")]
     tool: String,
@@ -299,6 +307,23 @@ impl From<InspectProtocolVersion> for contract::ProtocolRevision {
             InspectProtocolVersion::Current => Self::V2026_07_28,
             InspectProtocolVersion::V2025_11_25 => Self::V2025_11_25,
             InspectProtocolVersion::V2025_06_18 => Self::V2025_06_18,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum ActiveProtocolVersion {
+    #[value(name = "2026-07-28", alias = "current")]
+    Current,
+    #[value(name = "2025-11-25")]
+    V2025_11_25,
+}
+
+impl From<ActiveProtocolVersion> for contract::ActiveProtocolRevision {
+    fn from(version: ActiveProtocolVersion) -> Self {
+        match version {
+            ActiveProtocolVersion::Current => Self::V2026_07_28,
+            ActiveProtocolVersion::V2025_11_25 => Self::V2025_11_25,
         }
     }
 }
@@ -608,6 +633,7 @@ async fn main() -> ExitCode {
             &arguments.schema_version,
         )),
         Some(Command::Check(arguments)) => {
+            let revision = arguments.protocol_version.into();
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -621,6 +647,7 @@ async fn main() -> ExitCode {
                     &arguments.scenario,
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
+                    revision,
                 )
                 .await;
                 emit_diagnostic(diagnostic, report_request, report_destinations)
@@ -630,6 +657,7 @@ async fn main() -> ExitCode {
                     &arguments.scenario,
                     &arguments.allow_tool,
                     arguments.allow_side_effects,
+                    revision,
                 )
                 .await
                 {
@@ -642,6 +670,7 @@ async fn main() -> ExitCode {
         }
         Some(Command::Break(arguments)) => {
             let BreakArgs {
+                protocol_version,
                 tool,
                 allow_tool,
                 effects,
@@ -661,6 +690,7 @@ async fn main() -> ExitCode {
                 }
             };
             let options = break_command::BreakOptions {
+                revision: protocol_version.into(),
                 tool,
                 allowed_tool: &allow_tool,
                 side_effecting: effects == ToolEffects::SideEffecting,

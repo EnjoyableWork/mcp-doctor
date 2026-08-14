@@ -82,6 +82,32 @@ fn assert_redacted(output: &Output, extra: &[&str]) {
 }
 
 #[test]
+fn explicit_legacy_break_generates_and_calls_only_immediate_legacy_tools() {
+    let environment = TestEnvironment::new();
+    let mut command = break_command(&environment, TOOL, TOOL, "read_only", 3, 4242);
+    let output = command
+        .arg("--protocol-version")
+        .arg("2025-11-25")
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-break-success")
+        .arg("3")
+        .output()
+        .expect("the selected legacy break journey should run");
+    let (_, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(report["protocol_revision"], "2025-11-25");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-11-25");
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["summary"]["passed"], 11);
+    assert_redacted(&output, &[]);
+}
+
+#[test]
 fn generated_cases_are_seeded_schema_valid_sequential_and_exactly_reproducible() {
     let first_environment = TestEnvironment::new();
     let first_marker = first_environment.artifact_path("first-generated-inputs.json");

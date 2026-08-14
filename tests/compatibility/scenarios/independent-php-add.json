@@ -1,0 +1,19 @@
+{
+  "schema_version": "mcp-doctor.scenario/v1alpha1",
+  "tool": "add-numbers",
+  "safety": {
+    "effects": "read_only"
+  },
+  "cases": [
+    {
+      "id": "controlled-php-addition",
+      "arguments": {
+        "a": 1,
+        "b": 2
+      },
+      "expect": {
+        "result": "success"
+      }
+    }
+  ]
+}
