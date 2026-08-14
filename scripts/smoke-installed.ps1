@@ -27,6 +27,7 @@ $smokeLegacy06Snapshot = Join-Path $smokeRoot 'contract-2025-06-18.json'
 $smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
 $smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
 $smokeLegacyScenario = Join-Path $smokeRoot 'legacy-scenario.json'
+$smokeRejectMarker = Join-Path $smokeRoot 'reject-count.txt'
 $smokeAggregate = Join-Path $smokeRoot 'aggregate.json'
 
 function Invoke-McpDoctor {
@@ -146,16 +147,30 @@ try {
                 $_.command -eq 'check' -and $_.transport -eq 'streamable_http'
             }
     )
+    $rejectStdio = @(
+        $capabilities.protocol_support |
+            Where-Object { $_.command -eq 'reject' -and $_.transport -eq 'stdio' }
+    )
+    $rejectHttp = @(
+        $capabilities.protocol_support |
+            Where-Object {
+                $_.command -eq 'reject' -and $_.transport -eq 'streamable_http'
+            }
+    )
     if (
         $capabilities.schema_version -ne 'mcp-doctor.capabilities/v1' -or
         $capabilities.schema_stability -ne 'stable' -or
         $capabilities.product.name -ne 'mcp-doctor' -or
         $capabilities.product.version -ne $ExpectedVersion -or
-        ($commandNames -join ',') -ne 'aggregate,break,capabilities,check,diff,inspect' -or
+        ($commandNames -join ',') -ne 'aggregate,break,capabilities,check,diff,inspect,reject' -or
         $inspectStdio.Count -ne 1 -or
         (@($inspectStdio[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
         $checkHttp.Count -ne 1 -or
         (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
+        $rejectStdio.Count -ne 1 -or
+        (@($rejectStdio[0].revisions) -join ',') -ne '2026-07-28' -or
+        $rejectHttp.Count -ne 1 -or
+        (@($rejectHttp[0].revisions) -join ',') -ne '2026-07-28' -or
         (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
         (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
@@ -217,6 +232,55 @@ try {
         @($artifactReport.checks).Count -ne @($report.checks).Count
     ) {
         throw 'Installed diagnostic JSON artifact diverged from stdout.'
+    }
+
+    $rejectOutput = Invoke-McpDoctor `
+        'reject' `
+        '--tool' 'synthetic.reviewed' `
+        '--allow-tool' 'synthetic.reviewed' `
+        '--effects' 'read_only' `
+        '--seed' '7529' `
+        '--format' 'json' `
+        '--' $resolvedFixture 'reject-success' $smokeRejectMarker
+    $rejectReport = $rejectOutput | ConvertFrom-Json
+    $rejectCases = @(
+        $rejectReport.checks |
+            Where-Object { $_.id.StartsWith('runtime.tools.case[') }
+    )
+    $rejectGeneration = @($rejectReport.checks | Where-Object id -eq 'generation.cases')
+    if (
+        $rejectReport.schema_version -ne 'mcp-doctor.report/v1' -or
+        $rejectReport.protocol_revision -ne '2026-07-28' -or
+        $null -ne $rejectReport.primary_diagnosis -or
+        @($rejectReport.independent_findings).Count -ne 0 -or
+        $rejectReport.outcome -ne 'passed' -or
+        $rejectReport.exit_code -ne 0 -or
+        $rejectReport.summary.failed -ne 0 -or
+        $rejectCases.Count -ne 7 -or
+        @($rejectCases | Where-Object {
+            $_.state -eq 'performed' -and $_.outcome -eq 'passed'
+        }).Count -ne 7 -or
+        @($rejectCases | Where-Object {
+            $_.state -eq 'skipped' -and $_.skip_reason -eq 'not_applicable'
+        }).Count -ne 0 -or
+        $rejectGeneration.Count -ne 1 -or
+        $rejectGeneration[0].state -ne 'performed' -or
+        $rejectGeneration[0].outcome -ne 'passed' -or
+        (Get-Content -LiteralPath $smokeRejectMarker -Raw).Trim() -ne '7'
+    ) {
+        throw 'Installed current-revision reject diagnostic returned unexpected evidence.'
+    }
+    foreach ($privateRejectValue in @(
+        'synthetic.reviewed',
+        'synthetic-secret-payload-7f2c',
+        'synthetic_private_mode_never_report_7f2c',
+        'mcp-doctor-invalid-enum',
+        'sequence',
+        'secret'
+    )) {
+        if ($rejectOutput.Contains($privateRejectValue)) {
+            throw 'Installed current-revision reject report disclosed a private value.'
+        }
     }
 
     $legacyScenario = [ordered]@{

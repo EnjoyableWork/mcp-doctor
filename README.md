@@ -20,7 +20,7 @@
   <a href="#the-promise">The promise</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#inspect-check-break-diff-aggregate-capabilities">Commands</a> ·
+  <a href="#inspect-check-break-reject-diff-aggregate-capabilities">Commands</a> ·
   <a href="#bring-it-into-ci">CI</a> ·
   <a href="#safe-by-default">Safety</a>
 </p>
@@ -135,15 +135,15 @@ input schema and every advertised output schema that `mcp-doctor` interprets
 must declare the exact supported Draft 2020-12 URI; ambiguity stops before
 generation or `tools/call`.
 
-| MCP revision | Est. usage[^revision-usage] | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` |
-| --- | ---: | --- | --- | --- | --- | --- |
-| `2026-07-28` | 11.2% | Default | Supported | Supported offline | Supported | Supported |
-| `2025-11-25` | 77.4% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |
-| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |
-| `2025-03-26` | 1.9% | Rejected | Rejected | Rejected | Rejected | Rejected |
-| `2024-11-05` | 1.3% | Rejected | Rejected | Rejected | Rejected | Rejected |
-| `2024-10-07` | Under 0.1% | Rejected as unknown | Rejected | Rejected | Rejected as unknown | Rejected as unknown |
-| Unknown | — | Rejected | Rejected | Rejected | Rejected | Rejected |
+| MCP revision | Est. usage[^revision-usage] | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` | `reject` |
+| --- | ---: | --- | --- | --- | --- | --- | --- |
+| `2026-07-28` | 11.2% | Default | Supported | Supported offline | Supported | Supported | Supported |
+| `2025-11-25` | 77.4% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only | Not supported |
+| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only | Not supported |
+| `2025-03-26` | 1.9% | Rejected | Rejected | Rejected | Rejected | Rejected | Not supported |
+| `2024-11-05` | 1.3% | Rejected | Rejected | Rejected | Rejected | Rejected | Not supported |
+| `2024-10-07` | Under 0.1% | Rejected as unknown | Rejected | Rejected | Rejected as unknown | Rejected as unknown | Not supported |
+| Unknown | — | Rejected | Rejected | Rejected | Rejected | Rejected | Not supported |
 
 Supported `inspect` and snapshot entries cover STDIO and Streamable HTTP;
 `diff` is local-only. Current-revision active support has broad matrix evidence.
@@ -152,6 +152,8 @@ evidence. MCP `2025-11-25` active STDIO additionally has narrow controlled
 evidence from one pinned official Go server and one pinned independent PHP
 server. MCP `2025-06-18` active STDIO has synthetic and represented
 source-install evidence only. No broad legacy ecosystem claim follows.
+`reject` is current-revision-only and has bounded synthetic STDIO and
+Streamable HTTP evidence; it does not carry a broad real-server reach claim.
 
 [^revision-usage]: Dated 2026-08-13 planning proxy, rounded from seven-day
     downloads of official TypeScript and Python SDK releases grouped by their
@@ -212,7 +214,8 @@ mcp-doctor inspect \
   -- node ./dist/server.js --stdio
 ```
 
-`--json-report` and `--junit-report` also apply to `check` and `break`. Each
+`--json-report` and `--junit-report` also apply to `check`, `break`, and
+`reject`. Each
 parent directory must already exist, each destination must be distinct and not
 already exist, and `-` is not a file destination. `mcp-doctor` validates those
 conditions before target or network activity, runs the diagnostic once, and
@@ -221,7 +224,7 @@ incomplete diagnostic still publishes both files when reporting succeeds and
 retains exit `1` or `3`; a render, write, publication, or cleanup failure cannot
 report success and exits `4`.
 
-## Inspect. Check. Break. Diff. Aggregate. Capabilities.
+## Inspect. Check. Break. Reject. Diff. Aggregate. Capabilities.
 
 Choose how much activity the target allows:
 
@@ -230,6 +233,7 @@ Choose how much activity the target allows:
 | **`inspect`** | Does not call tools | Connect, list what the server offers, and check its definitions and schemas |
 | **`check`** | Calls selected tools | Run known inputs from a scenario you wrote and check the results |
 | **`break`** | Tries generated edge cases | Search one selected tool for failures you can repeat |
+| **`reject`** | Tries fixed schema-invalid arguments | Prove that one selected tool rejects malformed inputs at the protocol boundary |
 | **`diff`** | Reads two local files only | Compare explicitly captured advertised contracts without starting or contacting a target |
 | **`aggregate`** | Reads explicit local files only | Combine stable diagnostic reports conservatively without rerunning or contacting a target |
 | **`capabilities`** | Uses compiled facts only | Select, skip, or defer a diagnostic without inspecting a host or target |
@@ -253,6 +257,14 @@ mcp-doctor break \
   --seed 4242 \
   -- node ./dist/server.js --stdio
 
+# Active: verify exact invalid-argument rejection for one selected tool
+mcp-doctor reject \
+  --tool search \
+  --allow-tool search \
+  --effects read_only \
+  --seed 4242 \
+  -- node ./dist/server.js --stdio
+
 # Offline: compare two deliberately retained contract artifacts
 mcp-doctor diff --format json before.contract.json after.contract.json
 
@@ -266,7 +278,7 @@ mcp-doctor capabilities --format json
 ```
 
 > [!CAUTION]
-> `check` and `break` execute real tool calls. Use disposable data and a test
+> `check`, `break`, and `reject` execute real tool calls. Use disposable data and a test
 > environment. Finding a tool does not give `mcp-doctor` permission to call it.
 
 ### Contract snapshots and offline diffs
@@ -455,6 +467,35 @@ Generated runs accept no target-environment or argument-secret sources, fetch
 no schemas, select no other tool, and cannot change the local executable or
 widen the authorized endpoint. Ordinary reports never contain raw generated arguments or tool results.
 
+### Schema-invalid `reject` cases
+
+`reject` tests one exact tool on STDIO or Streamable HTTP under MCP
+`2026-07-28`. Matching `--tool` and `--allow-tool` values, an explicit
+`read_only` or `side_effecting` classification, and an unsigned 64-bit seed are
+required. A side-effecting run additionally requires `--allow-side-effects`;
+tool annotations never grant authority.
+
+An expected rejection is not an execution safeguard: a defective server may
+still run a schema-invalid call. Use disposable data and a test target even for
+a `read_only` run.
+
+The command considers seven mutations in a fixed order: omitted arguments,
+wrong root type, one omitted required property, one wrong property type, a
+forbidden null, one invalid enum value, and one unexpected property. It starts
+from bounded locally valid candidates and transmits a mutation only after the
+same local validator proves exactly one structural mismatch. Mutations that do
+not apply to the advertised schema are reported as skipped. Invalid,
+externally referenced, unsatisfiable, or over-limit schemas stop before any
+`tools/call`.
+
+A case passes only for a matching, structurally valid JSON-RPC error whose code
+is exactly `-32602` and whose message is a string. `mcp-doctor` never matches or
+retains that prose. A malformed or different error fails the case; any result,
+including `isError: true` or `input_required`, is a critical unsafe acceptance
+and stops later calls. Reports retain only the generator version, seed,
+mutation kind, and structural input counts—not arguments, results, error data,
+or error messages.
+
 ## Findings you can act on
 
 Every finding includes a stable code, severity, MCP revision, safe field
@@ -520,8 +561,8 @@ remain deterministic, bounded, and secret-free.
 
 - `inspect` checks advertised contracts without calling a tool.
 - Active runs name and independently authorize one exact tool and target,
-  declare effects and case limits, and add a seed for generation. Side effects
-  require `--allow-side-effects`.
+  declare effects and bounded cases, and add a seed for generation. Side
+  effects require `--allow-side-effects`.
 - Remote connections use direct public HTTPS, verified TLS, and pinned bounded
   resolution without redirects, retries, proxies, cookies, or caches.
 - Private targets, loopback cleartext, and environment credentials each require

@@ -299,6 +299,7 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
     legacy["checks"][0]["reproduction"] = json!({
         "generator": "mcp-doctor.generator/v1",
         "seed": 4242,
+        "mutation_kind": "wrong_root_type",
         "input": {
             "root": "object",
             "byte_count": 2,
@@ -365,6 +366,10 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
     assert_eq!(
         aggregate["members"][1]["report"]["checks"][1]["reproduction"]["seed"],
         4242
+    );
+    assert_eq!(
+        aggregate["members"][1]["report"]["checks"][1]["reproduction"]["mutation_kind"],
+        "wrong_root_type"
     );
     assert!(
         aggregate["members"][0]["report"]["checks"]

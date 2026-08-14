@@ -97,6 +97,15 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
             .expect("inspect transport support should be declared")["revisions"]
             .clone();
         assert_eq!(revisions, json!(["2026-07-28", "2025-11-25", "2025-06-18"]));
+
+        let reject_revisions = manifest["protocol_support"]
+            .as_array()
+            .expect("protocol support should be an array")
+            .iter()
+            .find(|support| support["command"] == "reject" && support["transport"] == transport)
+            .expect("reject transport support should be declared")["revisions"]
+            .clone();
+        assert_eq!(reject_revisions, json!(["2026-07-28"]));
     }
     assert!(first.stdout.len() <= 65_536);
 
@@ -152,6 +161,7 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     )));
     assert!(stdout.contains("inspect · passive"));
     assert!(stdout.contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18"));
+    assert!(stdout.contains("reject · stdio · 2026-07-28"));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
 }
 

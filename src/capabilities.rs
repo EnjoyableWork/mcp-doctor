@@ -96,6 +96,15 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         generator_versions: NO_SCHEMAS,
         limit_profile: DIAGNOSTIC_LIMIT_PROFILE,
     },
+    CommandCapability {
+        name: "reject",
+        activity: "active",
+        reporters: DIAGNOSTIC_REPORTERS,
+        input_schema_versions: NO_SCHEMAS,
+        output_schema_versions: DIAGNOSTIC_REPORT_SCHEMAS,
+        generator_versions: GENERATOR_SCHEMAS,
+        limit_profile: DIAGNOSTIC_LIMIT_PROFILE,
+    },
 ];
 
 const PROTOCOL_REVISIONS: &[ProtocolRevisionCapability<'static>] = &[
@@ -151,6 +160,16 @@ const PROTOCOL_SUPPORT: &[ProtocolSupport<'static>] = &[
         command: "inspect",
         transport: "streamable_http",
         revisions: INSPECT_REVISIONS,
+    },
+    ProtocolSupport {
+        command: "reject",
+        transport: "stdio",
+        revisions: &[CURRENT_REVISION],
+    },
+    ProtocolSupport {
+        command: "reject",
+        transport: "streamable_http",
+        revisions: &[CURRENT_REVISION],
     },
 ];
 
@@ -210,7 +229,7 @@ const LIMIT_PROFILES: &[LimitProfileCapability<'static>] = &[
     },
     LimitProfileCapability {
         id: DIAGNOSTIC_LIMIT_PROFILE,
-        default_for: &["break", "check", "inspect"],
+        default_for: &["break", "check", "inspect", "reject"],
         hard: true,
     },
 ];

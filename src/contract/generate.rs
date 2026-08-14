@@ -8,8 +8,49 @@ use super::model::{GeneratedCaseReproduction, JsonKind, StructuralInput};
 
 pub(crate) const GENERATOR_VERSION: &str = "mcp-doctor.generator/v1";
 
+pub(super) const INVALID_MUTATION_KINDS: [InvalidMutationKind; 7] = [
+    InvalidMutationKind::MissingArguments,
+    InvalidMutationKind::WrongRootType,
+    InvalidMutationKind::OmittedRequiredProperty,
+    InvalidMutationKind::WrongPropertyType,
+    InvalidMutationKind::ForbiddenNull,
+    InvalidMutationKind::InvalidEnum,
+    InvalidMutationKind::UnexpectedProperty,
+];
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum InvalidMutationKind {
+    MissingArguments,
+    WrongRootType,
+    OmittedRequiredProperty,
+    WrongPropertyType,
+    ForbiddenNull,
+    InvalidEnum,
+    UnexpectedProperty,
+}
+
+impl InvalidMutationKind {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingArguments => "missing_arguments",
+            Self::WrongRootType => "wrong_root_type",
+            Self::OmittedRequiredProperty => "omitted_required_property",
+            Self::WrongPropertyType => "wrong_property_type",
+            Self::ForbiddenNull => "forbidden_null",
+            Self::InvalidEnum => "invalid_enum",
+            Self::UnexpectedProperty => "unexpected_property",
+        }
+    }
+}
+
 pub(super) struct GeneratedInput {
     pub(super) arguments: Value,
+    pub(super) reproduction: GeneratedCaseReproduction,
+}
+
+pub(super) struct GeneratedInvalidInput {
+    pub(super) arguments: Value,
+    pub(super) omit_arguments: bool,
     pub(super) reproduction: GeneratedCaseReproduction,
 }
 
@@ -121,6 +162,335 @@ pub(super) fn generate_inputs(
         });
     }
     Ok(generated)
+}
+
+pub(super) fn generate_invalid_inputs(
+    schema: &Value,
+    validator: &LocalValidator,
+    seed: u64,
+) -> Result<Vec<Option<GeneratedInvalidInput>>, GenerationFailure> {
+    // A rejection probe starts from evidence that the advertised schema has at
+    // least one bounded, locally valid object instance. Without that baseline,
+    // a rejection could be caused by an unsatisfiable schema rather than the
+    // one mutation named in the report.
+    let pool = generate_inputs(schema, validator, seed, INVALID_MUTATION_KINDS.len())?;
+    let mut aggregate_bytes = 0_u64;
+    let mut generated = Vec::with_capacity(INVALID_MUTATION_KINDS.len());
+    for kind in INVALID_MUTATION_KINDS {
+        let candidate = invalid_candidate(schema, validator, &pool, kind)?;
+        let Some((arguments, omit_arguments)) = candidate else {
+            generated.push(None);
+            continue;
+        };
+        let bytes = u64::try_from(
+            serde_json::to_vec(&arguments)
+                .map_err(|_| GenerationFailure::Unavailable)?
+                .len(),
+        )
+        .unwrap_or(u64::MAX);
+        let limits = DiagnosticLimits::M1_DEFAULTS.values();
+        if bytes > limits.instance_bytes {
+            return Err(GenerationFailure::Limit(
+                LimitViolation::new(LimitKind::InstanceBytes, bytes, limits.instance_bytes)
+                    .expect("an oversized invalid input exceeds its maximum"),
+            ));
+        }
+        aggregate_bytes = aggregate_bytes.saturating_add(bytes);
+        if aggregate_bytes > limits.aggregate_output_bytes {
+            return Err(GenerationFailure::Limit(
+                LimitViolation::new(
+                    LimitKind::ActiveInputBytes,
+                    aggregate_bytes,
+                    limits.aggregate_output_bytes,
+                )
+                .expect("aggregate invalid inputs exceed their maximum"),
+            ));
+        }
+        generated.push(Some(GeneratedInvalidInput {
+            reproduction: GeneratedCaseReproduction::new(
+                GENERATOR_VERSION,
+                seed,
+                structural_input(&arguments, bytes),
+            )
+            .with_mutation_kind(kind.as_str()),
+            arguments,
+            omit_arguments,
+        }));
+    }
+    if generated.iter().all(Option::is_none) {
+        return Err(GenerationFailure::Unavailable);
+    }
+    Ok(generated)
+}
+
+fn invalid_candidate(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+    kind: InvalidMutationKind,
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    match kind {
+        InvalidMutationKind::MissingArguments => {
+            let arguments = Value::Object(Map::new());
+            exact_mismatch(validator, &arguments).map(|valid| valid.then_some((arguments, true)))
+        }
+        InvalidMutationKind::WrongRootType => {
+            let arguments = Value::Array(Vec::new());
+            exact_mismatch(validator, &arguments).map(|valid| valid.then_some((arguments, false)))
+        }
+        InvalidMutationKind::OmittedRequiredProperty => {
+            omitted_required_property(schema, validator, pool)
+        }
+        InvalidMutationKind::WrongPropertyType => wrong_property_type(schema, validator, pool),
+        InvalidMutationKind::ForbiddenNull => forbidden_null(schema, validator, pool),
+        InvalidMutationKind::InvalidEnum => invalid_enum(schema, validator, pool),
+        InvalidMutationKind::UnexpectedProperty => unexpected_property(schema, validator, pool),
+    }
+}
+
+fn omitted_required_property(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    let Some(required) = schema
+        .as_object()
+        .and_then(|object| object.get("required"))
+        .and_then(Value::as_array)
+    else {
+        return Ok(None);
+    };
+    for name in required.iter().filter_map(Value::as_str) {
+        for base in pool {
+            let mut arguments = base.arguments.clone();
+            let Some(object) = arguments.as_object_mut() else {
+                continue;
+            };
+            if object.remove(name).is_some() && exact_mismatch(validator, &arguments)? {
+                return Ok(Some((arguments, false)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn wrong_property_type(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    let Some(properties) = schema
+        .as_object()
+        .and_then(|object| object.get("properties"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(None);
+    };
+    let replacements = [
+        Value::Bool(false),
+        Value::Number(Number::from(0)),
+        Value::String(String::new()),
+        Value::Array(Vec::new()),
+        Value::Object(Map::new()),
+    ];
+    for base in pool {
+        let Some(object) = base.arguments.as_object() else {
+            continue;
+        };
+        for (name, current) in object {
+            let Some(property_schema) = properties.get(name) else {
+                continue;
+            };
+            for replacement in &replacements {
+                if json_kind(current) == json_kind(replacement) {
+                    continue;
+                }
+                if declared_type_allows(property_schema, replacement) != Some(false) {
+                    continue;
+                }
+                let mut arguments = base.arguments.clone();
+                arguments
+                    .as_object_mut()
+                    .expect("generated root inputs are objects")
+                    .insert(name.clone(), replacement.clone());
+                if exact_mismatch(validator, &arguments)? {
+                    return Ok(Some((arguments, false)));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn forbidden_null(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    let Some(properties) = schema
+        .as_object()
+        .and_then(|object| object.get("properties"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(None);
+    };
+    for base in pool {
+        let Some(object) = base.arguments.as_object() else {
+            continue;
+        };
+        for (name, current) in object {
+            if current.is_null()
+                || properties
+                    .get(name)
+                    .is_none_or(|schema| declared_type_allows(schema, &Value::Null) != Some(false))
+            {
+                continue;
+            }
+            let mut arguments = base.arguments.clone();
+            arguments
+                .as_object_mut()
+                .expect("generated root inputs are objects")
+                .insert(name.clone(), Value::Null);
+            if exact_mismatch(validator, &arguments)? {
+                return Ok(Some((arguments, false)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn invalid_enum(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    let Some(properties) = schema
+        .as_object()
+        .and_then(|object| object.get("properties"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(None);
+    };
+    let alternatives = [
+        Value::String("mcp-doctor-invalid-enum".to_owned()),
+        Value::Number(Number::from(0)),
+        Value::Number(Number::from(1)),
+        Value::Bool(false),
+        Value::Bool(true),
+        Value::Null,
+        Value::Array(Vec::new()),
+        Value::Array(vec![Value::Null]),
+        Value::Object(Map::new()),
+        Value::Object(Map::from_iter([(
+            "mcp_doctor_enum".to_owned(),
+            Value::Bool(false),
+        )])),
+    ];
+    for (name, property_schema) in properties {
+        let Some(values) = property_schema
+            .as_object()
+            .and_then(|object| object.get("enum"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        for base in pool {
+            if !base
+                .arguments
+                .as_object()
+                .is_some_and(|object| object.contains_key(name))
+            {
+                continue;
+            }
+            for example in values {
+                for replacement in alternatives.iter().filter(|value| {
+                    json_kind(value) == json_kind(example) && !values.contains(value)
+                }) {
+                    let mut arguments = base.arguments.clone();
+                    arguments
+                        .as_object_mut()
+                        .expect("generated root inputs are objects")
+                        .insert(name.clone(), replacement.clone());
+                    if exact_mismatch(validator, &arguments)? {
+                        return Ok(Some((arguments, false)));
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn unexpected_property(
+    schema: &Value,
+    validator: &LocalValidator,
+    pool: &[GeneratedInput],
+) -> Result<Option<(Value, bool)>, GenerationFailure> {
+    if schema
+        .as_object()
+        .and_then(|object| object.get("additionalProperties"))
+        != Some(&Value::Bool(false))
+    {
+        return Ok(None);
+    }
+    let declared = schema
+        .as_object()
+        .and_then(|object| object.get("properties"))
+        .and_then(Value::as_object);
+    for base in pool {
+        let mut arguments = base.arguments.clone();
+        let Some(object) = arguments.as_object_mut() else {
+            continue;
+        };
+        let mut index = 0_u64;
+        let name = loop {
+            let name = format!("mcp_doctor_unexpected_{index}");
+            if !object.contains_key(&name)
+                && !declared.is_some_and(|properties| properties.contains_key(&name))
+            {
+                break name;
+            }
+            index = index.saturating_add(1);
+            if index > DiagnosticLimits::M1_DEFAULTS.values().generation_attempts {
+                return Ok(None);
+            }
+        };
+        object.insert(name, Value::Bool(false));
+        if exact_mismatch(validator, &arguments)? {
+            return Ok(Some((arguments, false)));
+        }
+    }
+    Ok(None)
+}
+
+fn declared_type_allows(schema: &Value, value: &Value) -> Option<bool> {
+    let declared = schema.as_object()?.get("type")?;
+    let allows = |name: &str| match (name, value) {
+        ("null", Value::Null)
+        | ("boolean", Value::Bool(_))
+        | ("string", Value::String(_))
+        | ("array", Value::Array(_))
+        | ("object", Value::Object(_))
+        | ("number", Value::Number(_)) => true,
+        ("integer", Value::Number(number)) => {
+            number.as_i64().is_some() || number.as_u64().is_some()
+        }
+        _ => false,
+    };
+    match declared {
+        Value::String(name) => Some(allows(name)),
+        Value::Array(names) => Some(names.iter().filter_map(Value::as_str).any(allows)),
+        _ => None,
+    }
+}
+
+fn exact_mismatch(validator: &LocalValidator, value: &Value) -> Result<bool, GenerationFailure> {
+    match validator.validate(value) {
+        Ok(()) => Ok(false),
+        Err(InstanceValidationIssue::Mismatch { error_count }) => Ok(error_count == 1),
+        Err(InstanceValidationIssue::Limit(violation)) => Err(GenerationFailure::Limit(violation)),
+        Err(InstanceValidationIssue::InvalidSchema) => Err(GenerationFailure::Unavailable),
+    }
 }
 
 struct Synthesizer<'root, 'budget> {
@@ -836,8 +1206,8 @@ const fn stable_mix(mut value: u64) -> u64 {
 mod tests {
     use serde_json::json;
 
-    use super::{GenerationFailure, generate_inputs};
-    use crate::contract::catalog::LocalValidator;
+    use super::{GenerationFailure, generate_inputs, generate_invalid_inputs};
+    use crate::contract::catalog::{InstanceValidationIssue, LocalValidator};
     use crate::contract::limits::LimitKind;
 
     #[test]
@@ -891,6 +1261,89 @@ mod tests {
     }
 
     #[test]
+    fn invalid_inputs_are_deterministic_and_each_has_one_proven_structural_mismatch() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "enum": ["safe", "strict"]},
+                "count": {"type": "integer", "minimum": 1, "maximum": 5}
+            },
+            "required": ["count"],
+            "additionalProperties": false
+        });
+        let validator = LocalValidator::compile(&schema).expect("the schema should compile");
+        let first = generate_invalid_inputs(&schema, &validator, 4242)
+            .expect("every fixed mutation should apply");
+        let second = generate_invalid_inputs(&schema, &validator, 4242)
+            .expect("the same rejection seed should generate again");
+
+        assert_eq!(first.len(), 7);
+        assert!(first.iter().all(Option::is_some));
+        for (left, right) in first.iter().zip(&second) {
+            let left = left.as_ref().unwrap();
+            let right = right.as_ref().unwrap();
+            assert_eq!(left.arguments, right.arguments);
+            assert_eq!(left.omit_arguments, right.omit_arguments);
+            assert_eq!(left.reproduction, right.reproduction);
+            assert!(matches!(
+                validator.validate(&left.arguments),
+                Err(InstanceValidationIssue::Mismatch { error_count: 1 })
+            ));
+            assert!(left.reproduction.mutation_kind().is_some());
+        }
+        assert!(first[0].as_ref().unwrap().omit_arguments);
+        assert!(
+            first[1..]
+                .iter()
+                .all(|case| !case.as_ref().unwrap().omit_arguments)
+        );
+    }
+
+    #[test]
+    fn fixed_mutation_names_require_the_corresponding_advertised_schema_rule() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "mode": {"enum": ["safe", "strict"]}
+            },
+            "required": ["mode"]
+        });
+        let validator = LocalValidator::compile(&schema).expect("the schema should compile");
+        let generated = generate_invalid_inputs(&schema, &validator, 99)
+            .expect("the schema still admits several exact invalid mutations");
+
+        assert!(generated[0].is_some());
+        assert!(generated[1].is_some());
+        assert!(generated[2].is_some());
+        assert!(generated[3].is_none(), "no property type was advertised");
+        assert!(generated[4].is_none(), "null was not forbidden by a type");
+        assert!(generated[5].is_some());
+        assert!(
+            generated[6].is_none(),
+            "additional properties were not forbidden"
+        );
+    }
+
+    #[test]
+    fn every_valid_root_object_contract_has_at_least_one_rejection_case() {
+        let schema = json!({"type": "object"});
+        let validator = LocalValidator::compile(&schema).expect("the schema should compile");
+        let generated = generate_invalid_inputs(&schema, &validator, 101)
+            .expect("a root object contract always admits a wrong-root mutation");
+
+        assert_eq!(generated.len(), 7);
+        let wrong_root = generated[1]
+            .as_ref()
+            .expect("the wrong-root mutation must remain applicable");
+        assert!(wrong_root.arguments.is_array());
+        assert!(matches!(
+            validator.validate(&wrong_root.arguments),
+            Err(InstanceValidationIssue::Mismatch { error_count: 1 })
+        ));
+        assert!(generated.iter().any(Option::is_some));
+    }
+
+    #[test]
     fn const_enum_defaults_and_local_references_supply_constrained_boundaries() {
         let schema = json!({
             "type": "object",
@@ -921,6 +1374,10 @@ mod tests {
         let validator = LocalValidator::compile(&impossible).expect("the schema should compile");
         assert!(matches!(
             generate_inputs(&impossible, &validator, 1, 1),
+            Err(GenerationFailure::Unavailable)
+        ));
+        assert!(matches!(
+            generate_invalid_inputs(&impossible, &validator, 1),
             Err(GenerationFailure::Unavailable)
         ));
 

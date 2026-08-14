@@ -23,6 +23,7 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("--version"));
     assert!(stdout.contains("diff"));
     assert!(stdout.contains("aggregate"));
+    assert!(stdout.contains("reject"));
 }
 
 #[test]
@@ -431,6 +432,95 @@ fn break_requires_every_generation_authority_and_one_literal_target() {
             "read_only",
             "--cases",
             "1",
+            "--seed",
+            "1",
+        ],
+    ] {
+        let output = run_cli(&arguments);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+        assert!(stderr.contains("required arguments"), "{stderr}");
+    }
+}
+
+#[test]
+fn reject_help_documents_fixed_current_revision_authority() {
+    let output = run_cli(&["reject", "--help"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
+    assert!(stdout.contains("bounded schema-invalid arguments"));
+    assert!(stdout.contains("--tool <EXACT-NAME>"));
+    assert!(stdout.contains("--allow-tool <EXACT-NAME>"));
+    assert!(stdout.contains("--effects <EFFECTS>"));
+    assert!(stdout.contains("[possible values: read_only, side_effecting]"));
+    assert!(stdout.contains("--allow-side-effects"));
+    assert!(stdout.contains("--seed <U64>"));
+    assert!(!stdout.contains("--cases"));
+    assert!(!stdout.contains("--protocol-version"));
+    assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
+    assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
+    assert!(stdout.contains("--json-report <PATH>"));
+    assert!(stdout.contains("--junit-report <PATH>"));
+}
+
+#[test]
+fn reject_requires_every_authority_seed_and_one_literal_target() {
+    for arguments in [
+        vec![
+            "reject",
+            "--allow-tool",
+            "synthetic.reviewed",
+            "--effects",
+            "read_only",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "reject",
+            "--tool",
+            "synthetic.reviewed",
+            "--effects",
+            "read_only",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "reject",
+            "--tool",
+            "synthetic.reviewed",
+            "--allow-tool",
+            "synthetic.reviewed",
+            "--seed",
+            "1",
+            "--",
+            "target",
+        ],
+        vec![
+            "reject",
+            "--tool",
+            "synthetic.reviewed",
+            "--allow-tool",
+            "synthetic.reviewed",
+            "--effects",
+            "read_only",
+            "--",
+            "target",
+        ],
+        vec![
+            "reject",
+            "--tool",
+            "synthetic.reviewed",
+            "--allow-tool",
+            "synthetic.reviewed",
+            "--effects",
+            "read_only",
             "--seed",
             "1",
         ],

@@ -30,6 +30,18 @@
     "expected": "supported"
   },
   {
+    "command": "reject",
+    "transport": "stdio",
+    "protocol_revision": "2026-07-28",
+    "expected": "supported"
+  },
+  {
+    "command": "reject",
+    "transport": "streamable_http",
+    "protocol_revision": "2025-11-25",
+    "expected": "unsupported"
+  },
+  {
     "command": "inspect",
     "transport": "stdio",
     "protocol_revision": "2025-03-26",

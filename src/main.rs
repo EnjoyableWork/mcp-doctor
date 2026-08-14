@@ -5,6 +5,7 @@ mod check;
 mod contract;
 mod diff;
 mod inspect;
+mod reject_command;
 mod report_artifacts;
 mod transport;
 
@@ -32,6 +33,8 @@ enum Command {
     Check(CheckArgs),
     /// Generate deterministic boundary cases for one explicitly authorized tool.
     Break(BreakArgs),
+    /// Diagnose whether one tool rejects bounded schema-invalid arguments.
+    Reject(RejectArgs),
     /// Compare two same-revision bounded snapshots without starting or contacting a target.
     Diff(DiffArgs),
     /// Aggregate bounded stable reports without starting or contacting a target.
@@ -190,6 +193,49 @@ struct BreakArgs {
     /// Number of deterministic generated cases to run, from 1 through 100.
     #[arg(long, value_name = "COUNT")]
     cases: usize,
+
+    /// Reproducible unsigned 64-bit generation seed.
+    #[arg(long, value_name = "U64")]
+    seed: u64,
+
+    #[command(flatten)]
+    report: ReportArgs,
+
+    /// One absolute Streamable HTTP endpoint.
+    #[arg(value_name = "URL")]
+    endpoint: Option<String>,
+
+    #[command(flatten)]
+    remote: RemoteArgs,
+
+    /// Server executable followed by its literal arguments after `--`.
+    #[arg(last = true, num_args = 1.., allow_hyphen_values = true)]
+    target: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("transport")
+        .required(true)
+        .multiple(false)
+        .args(["endpoint", "target"])
+))]
+struct RejectArgs {
+    /// Exact tool selected as the only schema-invalid execution target.
+    #[arg(long, value_name = "EXACT-NAME")]
+    tool: String,
+
+    /// Independently authorize the same exact tool for this run.
+    #[arg(long, value_name = "EXACT-NAME")]
+    allow_tool: String,
+
+    /// Classify the selected tool's possible effects for this run.
+    #[arg(long, value_enum)]
+    effects: ToolEffects,
+
+    /// Additionally authorize schema-invalid calls to a side_effecting tool.
+    #[arg(long)]
+    allow_side_effects: bool,
 
     /// Reproducible unsigned 64-bit generation seed.
     #[arg(long, value_name = "U64")]
@@ -707,6 +753,45 @@ async fn main() -> ExitCode {
                 emit_diagnostic(diagnostic, report_request, report_destinations)
             } else {
                 match break_command::run_stdio(target, options).await {
+                    Ok(diagnostic) => {
+                        emit_diagnostic(diagnostic, report_request, report_destinations)
+                    }
+                    Err(error) => emit_invocation_error(&error, report_destinations),
+                }
+            }
+        }
+        Some(Command::Reject(arguments)) => {
+            let RejectArgs {
+                tool,
+                allow_tool,
+                effects,
+                allow_side_effects,
+                seed,
+                report,
+                endpoint,
+                remote,
+                target,
+            } = arguments;
+            let (report_request, report_destinations) = match report.prepare(&[]) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            let options = reject_command::RejectOptions {
+                tool,
+                allowed_tool: &allow_tool,
+                side_effecting: effects == ToolEffects::SideEffecting,
+                allow_side_effects,
+                seed,
+            };
+            if let Some(endpoint) = endpoint {
+                let diagnostic =
+                    reject_command::run_http(remote.into_options(endpoint), options).await;
+                emit_diagnostic(diagnostic, report_request, report_destinations)
+            } else {
+                match reject_command::run_stdio(target, options).await {
                     Ok(diagnostic) => {
                         emit_diagnostic(diagnostic, report_request, report_destinations)
                     }

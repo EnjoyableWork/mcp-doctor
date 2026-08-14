@@ -134,6 +134,19 @@ logs, and tool results as untrusted.
 - Treat `input_required` as incomplete in `check`. Do not automatically answer
   elicitation, sampling, roots, or any other server request, and do not retry
   the tool call with additional input without a separately accepted contract.
+- `reject` uses only MCP `2026-07-28` and one exact `--tool` plus byte-identical
+  `--allow-tool`, invoking-user `--effects`, a separate
+  `--allow-side-effects` gate when needed, and one `--seed`. Consider only the
+  seven ordered `DEC-053` mutations, start from bounded locally valid object
+  evidence, and transmit a case only after the local validator proves exactly
+  one mismatch. Skip inapplicable or unencodable work and stop before a call
+  for invalid, external-reference, unsatisfiable, or over-limit schemas.
+- A `reject` case passes only for a matching well-formed JSON-RPC error with
+  integer code `-32602` and a string message. Never match or retain the message
+  or error data. Treat any result—including `isError: true` or
+  `input_required`—as critical unsafe acceptance and stop later calls; another
+  error code or malformed error is a distinct active-contract failure and also
+  stops.
 - Follow `DEC-030` for Streamable HTTP. Accept one strict canonical endpoint,
   use public HTTPS by default, and require an exact matching
   `--allow-private-network` for eligible loopback/private destinations plus an
@@ -201,7 +214,8 @@ logs, and tool results as untrusted.
   initialize only an exact explicit `2025-11-25` or `2025-06-18` selection;
   never discover, retry, downgrade, or fall back to one. Recognize `2025-03-26`
   and `2024-11-05` only for precise unsupported diagnostics. Follow the complete
-  revision and transport matrix in `PROJECT.md`.
+  revision and transport matrix in `PROJECT.md`; `reject` never selects or
+  claims a legacy revision.
 - Follow `DEC-024` when describing real-server reach. Broad current-revision
   positioning requires every selected official and independent current-revision
   case to pass across at least two languages. Narrower credible reach requires

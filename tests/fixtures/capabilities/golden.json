@@ -101,6 +101,23 @@
       ],
       "generator_versions": [],
       "limit_profile": "mcp-doctor.limits/diagnostic/v1"
+    },
+    {
+      "name": "reject",
+      "activity": "active",
+      "reporters": [
+        "human",
+        "json",
+        "junit"
+      ],
+      "input_schema_versions": [],
+      "output_schema_versions": [
+        "mcp-doctor.report/v1"
+      ],
+      "generator_versions": [
+        "mcp-doctor.generator/v1"
+      ],
+      "limit_profile": "mcp-doctor.limits/diagnostic/v1"
     }
   ],
   "protocol_revisions": [
@@ -178,6 +195,20 @@
         "2026-07-28",
         "2025-11-25",
         "2025-06-18"
+      ]
+    },
+    {
+      "command": "reject",
+      "transport": "stdio",
+      "revisions": [
+        "2026-07-28"
+      ]
+    },
+    {
+      "command": "reject",
+      "transport": "streamable_http",
+      "revisions": [
+        "2026-07-28"
       ]
     }
   ],
@@ -275,7 +306,8 @@
       "default_for": [
         "break",
         "check",
-        "inspect"
+        "inspect",
+        "reject"
       ],
       "hard": true
     }
