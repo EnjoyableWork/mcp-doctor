@@ -15,6 +15,7 @@
   "outcome": "failed",
   "exit_code": 1,
   "limits": {
+    "profile": "default",
     "startup_ms": 10000,
     "discovery_ms": 10000,
     "request_ms": 30000,

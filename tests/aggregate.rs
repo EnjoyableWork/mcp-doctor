@@ -280,6 +280,12 @@ fn assert_no_stages(root: &Path) {
 fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifact() {
     let environment = TestEnvironment::new();
     let mut stdio = passed_report();
+    stdio["limits"]["profile"] = json!("slow-start");
+    stdio["limits"]["startup_ms"] = json!(30_000);
+    stdio["limits"]["discovery_ms"] = json!(30_000);
+    stdio["limits"]["request_ms"] = json!(60_000);
+    stdio["limits"]["response_ms"] = json!(60_000);
+    stdio["limits"]["total_ms"] = json!(240_000);
     stdio["checks"].as_array_mut().unwrap().insert(
         0,
         json!({
@@ -356,6 +362,18 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
     );
     assert_eq!(aggregate["members"][0]["ordinal"], 0);
     assert_eq!(aggregate["members"][1]["ordinal"], 1);
+    assert_eq!(
+        aggregate["members"][0]["report"]["limits"]["profile"],
+        "slow-start"
+    );
+    assert_eq!(
+        aggregate["members"][0]["report"]["limits"]["total_ms"],
+        240_000
+    );
+    assert_eq!(
+        aggregate["members"][1]["report"]["limits"]["profile"],
+        "default"
+    );
     assert_eq!(aggregate["limits"]["retries"], 0);
     assert_eq!(aggregate["limits"]["concurrency"], 1);
     assert_eq!(aggregate["limits"]["total_ms"], 10_000);

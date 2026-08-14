@@ -54,6 +54,7 @@ fn help_exposes_only_compiled_capability_options() {
         "--scenario",
         "--snapshot",
         "--output",
+        "--limit-profile",
     ] {
         assert!(
             !stdout.contains(prohibited),
@@ -80,6 +81,20 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
     assert_eq!(manifest["product"]["name"], "mcp-doctor");
     assert_eq!(manifest["product"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(manifest["limits"]["output_bytes"], 65_536);
+    let diagnostic_limits = manifest["limit_profiles"]
+        .as_array()
+        .expect("limit profiles should be an array")
+        .iter()
+        .find(|profile| profile["id"] == "mcp-doctor.limits/diagnostic/v1")
+        .expect("the diagnostic limit contract should be declared");
+    assert_eq!(
+        diagnostic_limits["selections"],
+        json!(["default", "slow-start"])
+    );
+    assert_eq!(
+        diagnostic_limits["selectable_for"],
+        json!(["break", "check", "inspect"])
+    );
     assert_eq!(
         manifest["schema_versions"]["contract_snapshot"],
         json!(["mcp-doctor.contract-snapshot/v1alpha1"])
@@ -162,6 +177,9 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     assert!(stdout.contains("inspect · passive"));
     assert!(stdout.contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18"));
     assert!(stdout.contains("reject · stdio · 2026-07-28"));
+    assert!(stdout.contains(
+        "Limit selections: mcp-doctor.limits/diagnostic/v1 · default,slow-start · commands break,check,inspect"
+    ));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
 }
 

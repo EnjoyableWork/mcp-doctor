@@ -69,6 +69,8 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("--header-env <FIELD=NAME>"));
     assert!(stdout.contains("--tls-ca-file <PATH>"));
     assert!(stdout.contains("--format <FORMAT>"));
+    assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
+    assert!(stdout.contains("[possible values: default, slow-start]"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
@@ -105,6 +107,7 @@ fn diff_help_is_explicitly_local_and_has_only_human_or_json_output() {
         "--tls-ca-file",
         "--json-report",
         "--junit-report",
+        "--limit-profile",
     ] {
         assert!(
             !stdout.contains(prohibited),
@@ -136,6 +139,7 @@ fn aggregate_help_is_explicitly_offline_bounded_and_requires_an_artifact() {
         "--junit-report",
         "--scenario",
         "--target",
+        "--limit-profile",
     ] {
         assert!(
             !stdout.contains(prohibited),
@@ -279,6 +283,35 @@ fn inspect_rejects_an_unknown_report_format_before_starting_a_target() {
 }
 
 #[test]
+fn non_profile_unbounded_numeric_and_overflow_values_are_rejected_before_target_activity() {
+    for invalid in [
+        "unbounded",
+        "0",
+        "-1",
+        "18446744073709551616",
+        "slow-start=999999",
+    ] {
+        let selection = format!("--limit-profile={invalid}");
+        let output = run_cli(&[
+            "inspect",
+            &selection,
+            "--",
+            "synthetic-target-must-not-start",
+        ]);
+
+        assert_eq!(output.status.code(), Some(2), "{invalid}");
+        assert!(output.stdout.is_empty(), "{invalid}");
+        let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+        assert!(stderr.contains("invalid value"), "{invalid}: {stderr}");
+        assert!(
+            stderr.contains("[possible values: default, slow-start]"),
+            "{invalid}: {stderr}"
+        );
+        assert!(!stderr.contains("No such file"), "{invalid}: {stderr}");
+    }
+}
+
+#[test]
 fn check_help_documents_every_redundant_active_gate() {
     let output = run_cli(&["check", "--help"]);
 
@@ -300,6 +333,8 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
+    assert!(stdout.contains("[possible values: default, slow-start]"));
 }
 
 #[test]
@@ -352,6 +387,8 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
+    assert!(stdout.contains("[possible values: default, slow-start]"));
 }
 
 #[test]
@@ -464,6 +501,7 @@ fn reject_help_documents_fixed_current_revision_authority() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(!stdout.contains("--limit-profile"));
 }
 
 #[test]

@@ -2771,10 +2771,16 @@ fn loopback_http_requires_exact_gates_and_accepts_json_and_sse() {
         let endpoint = server.endpoint();
         let environment = TestEnvironment::new();
         let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--limit-profile").arg("slow-start");
         let output = run(&mut command);
         let outcome = server.finish();
 
         assert_successful_inspection(&output);
+        assert!(
+            text(&output).0.contains("LIMITS · profile=slow-start"),
+            "{}",
+            text(&output).0
+        );
         assert_eq!(outcome.accepted_connections, 1);
         assert_eq!(outcome.valid_requests, 1);
         assert_eq!(outcome.unexpected_connections, 0);
@@ -2934,15 +2940,45 @@ fn private_and_cleartext_authority_fail_before_any_connection() {
         listener.local_addr().unwrap().port()
     );
     let environment = TestEnvironment::new();
-    let output = run(environment.command().arg("inspect").arg(&endpoint));
+    let output = run(environment
+        .command()
+        .arg("inspect")
+        .arg("--limit-profile")
+        .arg("slow-start")
+        .arg(&endpoint));
 
     assert_eq!(output.status.code(), Some(1));
     assert!(listener.accept().is_err());
     let (stdout, stderr) = text(&output);
     assert!(stderr.is_empty());
+    assert!(stdout.contains("LIMITS · profile=slow-start"));
     assert!(stdout.contains("MCP-TARGET-002"));
     assert!(stdout.contains("SKIP  network.resolution"));
     assert_redacted(&output, &endpoint, &[]);
+
+    let credential_endpoint = endpoint.replacen("http://", "https://", 1);
+    let credential_source = "MCP_DOCTOR_SYNTHETIC_PROFILE_BEARER";
+    let credential_value = "synthetic-profile-credential-never-report-4a91";
+    let mut credentialed = remote_command(&environment, "inspect", &credential_endpoint);
+    credentialed
+        .arg("--limit-profile")
+        .arg("slow-start")
+        .arg("--bearer-token-env")
+        .arg(credential_source)
+        .env(credential_source, credential_value);
+    let output = run(&mut credentialed);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(listener.accept().is_err());
+    let (stdout, stderr) = text(&output);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("LIMITS · profile=slow-start"));
+    assert!(stdout.contains("MCP-TARGET-002"));
+    assert!(stdout.contains("SKIP  network.resolution"));
+    assert_redacted(
+        &output,
+        &credential_endpoint,
+        &[credential_source, credential_value],
+    );
 }
 
 #[test]
@@ -3704,6 +3740,8 @@ fn authorized_remote_check_maps_validated_arguments_to_mcp_fields() {
     let junit_path = environment.artifact_path("remote-check.xml");
     let mut command = remote_command(&environment, "check", &endpoint);
     command
+        .arg("--limit-profile")
+        .arg("slow-start")
         .arg("--scenario")
         .arg(&scenario)
         .arg("--allow-tool")
@@ -3721,8 +3759,14 @@ fn authorized_remote_check_maps_validated_arguments_to_mcp_fields() {
     assert_eq!(outcome.accepted_connections, 3);
     assert_eq!(outcome.valid_requests, 3);
     assert_report_artifacts(&json_path, &junit_path);
+    let report = parse_and_validate_report(
+        &fs::read(&json_path).expect("the remote check JSON artifact should exist"),
+    );
+    assert_eq!(report["limits"]["profile"], "slow-start");
+    assert_eq!(report["limits"]["total_ms"], 240_000);
     let (stdout, stderr) = text(&output);
     assert!(stderr.is_empty());
+    assert!(stdout.contains("LIMITS · profile=slow-start"));
     assert!(stdout.contains("PASS  runtime.tools.case[0]"));
     assert_redacted(
         &output,
@@ -3777,6 +3821,8 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
     let junit_path = environment.artifact_path("remote-break.xml");
     let mut command = remote_command(&environment, "break", &endpoint);
     command
+        .arg("--limit-profile")
+        .arg("slow-start")
         .arg("--tool")
         .arg(TOOL)
         .arg("--allow-tool")
@@ -3801,8 +3847,14 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
     assert_eq!(outcome.valid_requests, 3);
     assert_eq!(outcome.unexpected_connections, 0);
     assert_report_artifacts(&json_path, &junit_path);
+    let report = parse_and_validate_report(
+        &fs::read(&json_path).expect("the remote break JSON artifact should exist"),
+    );
+    assert_eq!(report["limits"]["profile"], "slow-start");
+    assert_eq!(report["limits"]["total_ms"], 240_000);
     let (stdout, stderr) = text(&output);
     assert!(stderr.is_empty());
+    assert!(stdout.contains("LIMITS · profile=slow-start"));
     assert!(stdout.contains("PASS  generation.cases"));
     assert!(stdout.contains("PASS  runtime.tools.case[0]"));
     assert!(stdout.contains("mcp-doctor.generator/v1 · seed=8080 · input=object"));

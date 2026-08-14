@@ -1,9 +1,10 @@
 use std::ffi::OsString;
 
 use crate::contract::{
-    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, REJECTION_CASE_COUNT,
-    ReportTransport, http_diagnostic, http_diagnostic_with_cleanup, m1_http_limit_profile,
-    m1_stdio_limit_profile, render_authorization_failure_for_revision,
+    ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, DiagnosticLimitProfile,
+    REJECTION_CASE_COUNT, ReportTransport, diagnostic_http_limit_profile,
+    diagnostic_stdio_limit_profile, http_diagnostic, http_diagnostic_with_cleanup,
+    render_authorization_failure_for_revision,
     render_generation_configuration_failure_for_revision, stdio_diagnostic,
 };
 use crate::transport::http::{
@@ -48,7 +49,7 @@ pub(crate) async fn run_stdio(
 
     let (executable, arguments) = target.split_first().expect("clap requires a reject target");
     let target = StdioTarget::new(executable.clone(), arguments.to_vec())?;
-    let profile = m1_stdio_limit_profile();
+    let profile = diagnostic_stdio_limit_profile(DiagnosticLimitProfile::Default);
     let transport = StdioTransport::new_for_active_protocol(
         StdioLimits {
             startup_ms: profile.startup_ms,
@@ -120,7 +121,7 @@ pub(crate) async fn run_http(remote: RemoteOptions, options: RejectOptions<'_>) 
 }
 
 fn http_limits() -> HttpLimits {
-    let profile = m1_http_limit_profile();
+    let profile = diagnostic_http_limit_profile(DiagnosticLimitProfile::Default);
     HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,

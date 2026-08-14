@@ -221,6 +221,13 @@
         "concurrency"
       ],
       "properties": {
+        "profile": {
+          "description": "The invocation-local compiled diagnostic limit selection. Older v1 reports may omit this compatible field and therefore imply default.",
+          "enum": [
+            "default",
+            "slow-start"
+          ]
+        },
         "startup_ms": {
           "$ref": "#/$defs/positive_count"
         },

@@ -744,6 +744,8 @@ struct FindingReference {
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 struct ReportLimits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    profile: Option<String>,
     startup_ms: u64,
     discovery_ms: u64,
     request_ms: u64,

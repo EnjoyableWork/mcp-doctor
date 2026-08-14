@@ -182,13 +182,23 @@ try {
         $capabilities.platform.process_tree_control -ne 'job_object' -or
         $capabilities.platform.file_identity -ne 'volume_file_id' -or
         @($capabilities.limit_profiles | Where-Object hard -eq $true).Count -ne 4 -or
+        (@(
+            $capabilities.limit_profiles |
+                Where-Object id -eq 'mcp-doctor.limits/diagnostic/v1' |
+                ForEach-Object { $_.selections -join ',' }
+        ) -join ',') -ne 'default,slow-start' -or
+        (@(
+            $capabilities.limit_profiles |
+                Where-Object id -eq 'mcp-doctor.limits/diagnostic/v1' |
+                ForEach-Object { $_.selectable_for -join ',' }
+        ) -join ',') -ne 'break,check,inspect' -or
         $capabilities.limits.output_bytes -ne 65536
     ) {
         throw 'Installed executable returned an unexpected compiled-capability contract.'
     }
 
     $reportOutput = Invoke-McpDoctor `
-        'inspect' '--format' 'json' `
+        'inspect' '--limit-profile' 'slow-start' '--format' 'json' `
         '--json-report' $smokeJsonArtifact `
         '--junit-report' $smokeJunitArtifact `
         '--snapshot' $smokeSnapshot `
@@ -204,6 +214,16 @@ try {
         @($report.independent_findings).Count -ne 0 -or
         $report.outcome -ne 'passed' -or
         $report.exit_code -ne 0 -or
+        $report.limits.profile -ne 'slow-start' -or
+        $report.limits.startup_ms -ne 30000 -or
+        $report.limits.discovery_ms -ne 30000 -or
+        $report.limits.request_ms -ne 60000 -or
+        $report.limits.response_ms -ne 60000 -or
+        $report.limits.shutdown_grace_ms -ne 2000 -or
+        $report.limits.total_ms -ne 240000 -or
+        $report.limits.redirects -ne 0 -or
+        $report.limits.retries -ne 0 -or
+        $report.limits.concurrency -ne 1 -or
         $report.summary.required -ne 5 -or
         $report.summary.required_skipped -ne 0 -or
         $report.summary.failed -ne 0
@@ -223,6 +243,10 @@ try {
 
     if (-not (Test-Path -LiteralPath $smokeJsonArtifact -PathType Leaf)) {
         throw 'Installed diagnostic did not create the JSON report artifact.'
+    }
+    $junitArtifact = Get-Content -LiteralPath $smokeJunitArtifact -Raw
+    if (-not $junitArtifact.Contains('limits.profile=slow-start')) {
+        throw 'Installed diagnostic JUnit artifact omitted the selected limit profile.'
     }
     $artifactReport = Get-Content -LiteralPath $smokeJsonArtifact -Raw | ConvertFrom-Json
     if (
