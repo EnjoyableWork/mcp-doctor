@@ -103,6 +103,13 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
         manifest["schema_versions"]["contract_diff"],
         json!(["mcp-doctor.contract-diff/v1alpha1"])
     );
+    assert_eq!(
+        manifest["schema_versions"]["scenario"],
+        json!([
+            "mcp-doctor.scenario/v1alpha1",
+            "mcp-doctor.scenario/v2alpha1"
+        ])
+    );
     for transport in ["stdio", "streamable_http"] {
         let revisions = manifest["protocol_support"]
             .as_array()

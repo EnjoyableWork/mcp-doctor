@@ -62,7 +62,8 @@
         "junit"
       ],
       "input_schema_versions": [
-        "mcp-doctor.scenario/v1alpha1"
+        "mcp-doctor.scenario/v1alpha1",
+        "mcp-doctor.scenario/v2alpha1"
       ],
       "output_schema_versions": [
         "mcp-doctor.report/v1"
@@ -232,7 +233,8 @@
       "mcp-doctor.generator/v1"
     ],
     "scenario": [
-      "mcp-doctor.scenario/v1alpha1"
+      "mcp-doctor.scenario/v1alpha1",
+      "mcp-doctor.scenario/v2alpha1"
     ]
   },
   "reporters": [

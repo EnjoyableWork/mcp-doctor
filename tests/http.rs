@@ -23,6 +23,9 @@ use support::{
 };
 
 const TOOL: &str = "synthetic.remote-reviewed";
+const WORKFLOW_LOOKUP: &str = "synthetic.remote-workflow.lookup";
+const WORKFLOW_READ: &str = "synthetic.remote-workflow.read";
+const WORKFLOW_CAPTURE: &str = "synthetic-remote-capture-never-report-4a91";
 const CASE_ID: &str = "author-only-remote-case-never-report-4a91";
 const MIRRORED_VALUE: &str = "synthetic-north-4a91";
 const BEARER_SOURCE: &str = "MCP_DOCTOR_SYNTHETIC_BEARER_4A91";
@@ -908,6 +911,65 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
     }))
 }
 
+fn workflow_tools_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": WORKFLOW_LOOKUP,
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": false
+                },
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {"resource": {"type": "string"}},
+                    "required": ["resource"],
+                    "additionalProperties": false
+                }
+            }, {
+                "name": WORKFLOW_READ,
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "resource": {
+                            "type": "string",
+                            "x-mcp-header": "Resource"
+                        }
+                    },
+                    "required": ["resource"],
+                    "additionalProperties": false
+                },
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                    "additionalProperties": false
+                }
+            }]
+        }
+    }))
+}
+
+fn workflow_call_response(id: i64, structured_content: Value) -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "resultType": "complete",
+            "content": [],
+            "structuredContent": structured_content,
+            "isError": false
+        }
+    }))
+}
+
 fn reject_tools_response() -> FixtureResponse {
     FixtureResponse::json(json!({
         "jsonrpc": "2.0",
@@ -1635,6 +1697,42 @@ fn write_scenario(environment: &TestEnvironment) -> PathBuf {
         .expect("the synthetic scenario should serialize"),
     )
     .expect("the synthetic scenario should be writable");
+    path
+}
+
+fn write_workflow_scenario(environment: &TestEnvironment) -> PathBuf {
+    let path = environment.artifact_path("remote-workflow-scenario.json");
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(&json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "private-remote-lookup-never-report",
+                "tool": WORKFLOW_LOOKUP,
+                "safety": {"effects": "read_only"},
+                "arguments": {"query": WORKFLOW_CAPTURE},
+                "captures": {"private_resource": "/resource"},
+                "expect": {"result": "success"}
+            }, {
+                "id": "private-remote-read-never-report",
+                "tool": WORKFLOW_READ,
+                "safety": {"effects": "read_only"},
+                "arguments": {"resource": null},
+                "argument_refs": {"/resource": "private_resource"},
+                "expect": {
+                    "result": "success",
+                    "structured_output_schema": {
+                        "type": "object",
+                        "properties": {"ok": {"const": true}},
+                        "required": ["ok"],
+                        "additionalProperties": false
+                    }
+                }
+            }]
+        }))
+        .expect("the remote workflow should serialize"),
+    )
+    .expect("the remote workflow should be writable");
     path
 }
 
@@ -3698,6 +3796,98 @@ fn tls_identity_and_ambient_trust_fail_without_disclosing_verifier_values() {
     assert!(stderr.is_empty());
     assert!(stdout.contains("MCP-TLS-001"), "{stdout}");
     assert_redacted(&output, &endpoint, &[ca.to_str().unwrap()]);
+}
+
+#[test]
+fn authorized_remote_workflow_preserves_structural_handoff_and_report_redaction() {
+    let server = FixtureServer::spawn(
+        WireMode::Https,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                workflow_tools_response(),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest {
+                    method: "tools/call",
+                    name: Some(WORKFLOW_LOOKUP),
+                    bearer: None,
+                    custom: None,
+                    mirrored: None,
+                },
+                workflow_call_response(3, json!({"resource": WORKFLOW_CAPTURE})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest {
+                    method: "tools/call",
+                    name: Some(WORKFLOW_READ),
+                    bearer: None,
+                    custom: None,
+                    mirrored: Some(("Resource", WORKFLOW_CAPTURE)),
+                },
+                workflow_call_response(4, json!({"ok": true})),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let ca = ca_file(&environment);
+    let scenario = write_workflow_scenario(&environment);
+    let mut command = remote_command(&environment, "check", &endpoint);
+    command
+        .arg("--scenario")
+        .arg(&scenario)
+        .arg("--allow-tool")
+        .arg(WORKFLOW_LOOKUP)
+        .arg("--allow-tool")
+        .arg(WORKFLOW_READ)
+        .arg("--format")
+        .arg("json")
+        .arg("--tls-ca-file")
+        .arg(&ca);
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (_, stderr) = text(&output);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 4);
+    assert_eq!(outcome.valid_requests, 4);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["outcome"], "passed");
+    assert!(report["checks"].as_array().is_some_and(|checks| {
+        checks
+            .iter()
+            .any(|check| check["id"] == "runtime.workflow.step[0]")
+            && checks
+                .iter()
+                .any(|check| check["id"] == "runtime.workflow.step[1]")
+    }));
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[
+            WORKFLOW_LOOKUP,
+            WORKFLOW_READ,
+            WORKFLOW_CAPTURE,
+            "private_resource",
+            "private-remote-lookup-never-report",
+            "private-remote-read-never-report",
+            "mcp-param-resource",
+            ca.to_str().unwrap(),
+            scenario.to_str().unwrap(),
+        ],
+    );
 }
 
 #[test]

@@ -27,6 +27,7 @@ $smokeLegacy06Snapshot = Join-Path $smokeRoot 'contract-2025-06-18.json'
 $smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
 $smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
 $smokeLegacyScenario = Join-Path $smokeRoot 'legacy-scenario.json'
+$smokeWorkflowScenario = Join-Path $smokeRoot 'workflow-scenario.json'
 $smokeRejectMarker = Join-Path $smokeRoot 'reject-count.txt'
 $smokeAggregate = Join-Path $smokeRoot 'aggregate.json'
 
@@ -172,7 +173,7 @@ try {
         $rejectHttp.Count -ne 1 -or
         (@($rejectHttp[0].revisions) -join ',') -ne '2026-07-28' -or
         (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
-        (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
+        (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1,mcp-doctor.scenario/v2alpha1' -or
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
         (@($capabilities.schema_versions.contract_snapshot) -join ',') -ne 'mcp-doctor.contract-snapshot/v1alpha1' -or
         (@($capabilities.schema_versions.contract_diff) -join ',') -ne 'mcp-doctor.contract-diff/v1alpha1' -or
@@ -304,6 +305,70 @@ try {
     )) {
         if ($rejectOutput.Contains($privateRejectValue)) {
             throw 'Installed current-revision reject report disclosed a private value.'
+        }
+    }
+
+    $workflowScenario = [ordered]@{
+        schema_version = 'mcp-doctor.scenario/v2alpha1'
+        steps = @(
+            [ordered]@{
+                id = 'installed-private-lookup'
+                tool = 'synthetic.workflow.lookup'
+                safety = [ordered]@{ effects = 'read_only' }
+                arguments = [ordered]@{ query = 'synthetic-secret-payload-7f2c' }
+                captures = [ordered]@{ resource_id = '/resource/id' }
+                expect = [ordered]@{ result = 'success' }
+            },
+            [ordered]@{
+                id = 'installed-private-read'
+                tool = 'synthetic.workflow.read'
+                safety = [ordered]@{ effects = 'read_only' }
+                arguments = [ordered]@{ id = $null }
+                argument_refs = [ordered]@{ '/id' = 'resource_id' }
+                expect = [ordered]@{ result = 'success' }
+            }
+        )
+    } | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText(
+        $smokeWorkflowScenario,
+        $workflowScenario,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $workflowOutput = Invoke-McpDoctor `
+        'check' '--scenario' $smokeWorkflowScenario `
+        '--allow-tool' 'synthetic.workflow.lookup' `
+        '--allow-tool' 'synthetic.workflow.read' `
+        '--format' 'json' `
+        '--' $resolvedFixture 'workflow-read-only'
+    $workflowReport = $workflowOutput | ConvertFrom-Json
+    $workflowChecks = @(
+        $workflowReport.checks |
+            Where-Object { $_.id.StartsWith('runtime.workflow.step[') }
+    )
+    if (
+        $workflowReport.schema_version -ne 'mcp-doctor.report/v1' -or
+        $workflowReport.protocol_revision -ne '2026-07-28' -or
+        $null -ne $workflowReport.primary_diagnosis -or
+        @($workflowReport.independent_findings).Count -ne 0 -or
+        $workflowReport.outcome -ne 'passed' -or
+        $workflowReport.exit_code -ne 0 -or
+        $workflowChecks.Count -ne 2 -or
+        @($workflowChecks | Where-Object {
+            $_.state -eq 'performed' -and $_.outcome -eq 'passed'
+        }).Count -ne 2
+    ) {
+        throw 'Installed current-revision workflow diagnostic returned unexpected evidence.'
+    }
+    foreach ($privateWorkflowValue in @(
+        'synthetic.workflow.lookup',
+        'synthetic.workflow.read',
+        'installed-private-lookup',
+        'installed-private-read',
+        'synthetic-secret-payload-7f2c',
+        'resource_id'
+    )) {
+        if ($workflowOutput.Contains($privateWorkflowValue)) {
+            throw 'Installed workflow report disclosed a private value.'
         }
     }
 

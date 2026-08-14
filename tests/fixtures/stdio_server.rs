@@ -100,6 +100,15 @@ fn main() -> ExitCode {
         Some("active-oversize") => active_oversize(),
         Some("active-resistant-child") => active_resistant_child(&remaining),
         Some("active-started-marker") => active_started_marker(&remaining),
+        Some("workflow-read-only") => workflow_read_only(),
+        Some("workflow-mutation") => workflow_mutation(),
+        Some("workflow-main-failure-cleanup") => workflow_main_failure_cleanup(),
+        Some("workflow-schema-mismatch-cleanup") => workflow_schema_mismatch_cleanup(),
+        Some("workflow-input-required-cleanup") => workflow_input_required_cleanup(),
+        Some("workflow-missing-capture") => workflow_missing_capture(),
+        Some("workflow-cleanup-failure") => workflow_cleanup_failure(),
+        Some("workflow-call-timeout") => workflow_call_timeout(),
+        Some("workflow-disconnect") => workflow_disconnect(),
         Some("break-success") => break_success(&remaining),
         Some("break-report-single-run") => break_report_single_run(&remaining),
         Some("break-tool-error") => break_tool_error(&remaining),
@@ -1723,6 +1732,158 @@ fn active_started_marker(arguments: &[OsString]) -> ExitCode {
     wait_forever()
 }
 
+fn workflow_read_only() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    let lookup = read_workflow_call(&mut input, 3, "synthetic.workflow.lookup");
+    assert_eq!(lookup["params"]["arguments"]["query"], REDACTION_SENTINEL);
+    write_workflow_result(3, json!({"resource": {"id": REDACTION_SENTINEL}}), false);
+
+    let read = read_workflow_call(&mut input, 4, "synthetic.workflow.read");
+    assert_eq!(read["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    assert!(read["params"]["arguments"].get("expectedVersion").is_none());
+    write_workflow_result(4, json!({"value": REDACTION_SENTINEL, "version": 1}), false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_mutation() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    assert_eq!(mutate["params"]["arguments"]["value"], REDACTION_SENTINEL);
+    write_workflow_result(4, json!({"version": 2}), false);
+
+    let read = read_workflow_call(&mut input, 5, "synthetic.workflow.read");
+    assert_eq!(read["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    assert_eq!(read["params"]["arguments"]["expectedVersion"], 2);
+    write_workflow_result(5, json!({"value": REDACTION_SENTINEL, "version": 2}), false);
+
+    workflow_cleanup(&mut input, 6, false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_main_failure_cleanup() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    write_workflow_result(4, json!({"version": 2}), true);
+
+    workflow_cleanup(&mut input, 5, false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_schema_mismatch_cleanup() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    write_workflow_result(4, json!({"version": REDACTION_SENTINEL}), false);
+
+    workflow_cleanup(&mut input, 5, false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_input_required_cleanup() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    write_result(
+        4,
+        json!({
+            "resultType": "input_required",
+            "inputRequests": {
+                "synthetic": {
+                    "type": "elicitation",
+                    "message": REDACTION_SENTINEL,
+                    "schema": {"type": "boolean"}
+                }
+            },
+            "requestState": REDACTION_SENTINEL
+        }),
+    );
+
+    workflow_cleanup(&mut input, 5, false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_missing_capture() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    let lookup = read_workflow_call(&mut input, 3, "synthetic.workflow.lookup");
+    assert_eq!(lookup["params"]["arguments"]["query"], REDACTION_SENTINEL);
+    write_workflow_result(3, json!({"resource": {}}), false);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_cleanup_failure() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    write_workflow_result(4, json!({"version": 2}), false);
+
+    workflow_cleanup(&mut input, 5, true);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_call_timeout() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    let _ = read_workflow_call(&mut input, 3, "synthetic.workflow.lookup");
+    wait_forever()
+}
+
+fn workflow_disconnect() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    let _ = read_workflow_call(&mut input, 3, "synthetic.workflow.lookup");
+    ExitCode::from(7)
+}
+
+fn workflow_lookup(input: &mut impl BufRead, id: i64) {
+    let lookup = read_workflow_call(input, id, "synthetic.workflow.lookup");
+    assert_eq!(lookup["params"]["arguments"]["query"], REDACTION_SENTINEL);
+    write_workflow_result(id, json!({"resource": {"id": REDACTION_SENTINEL}}), false);
+}
+
+fn workflow_cleanup(input: &mut impl BufRead, id: i64, fail: bool) {
+    let cleanup = read_workflow_call(input, id, "synthetic.workflow.cleanup");
+    assert_eq!(cleanup["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    write_workflow_result(id, json!({"removed": !fail}), fail);
+}
+
+fn write_workflow_result(id: i64, structured: Value, is_error: bool) {
+    write_result(
+        id,
+        json!({
+            "resultType": "complete",
+            "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+            "structuredContent": structured,
+            "isError": is_error
+        }),
+    );
+}
+
 fn break_success(arguments: &[OsString]) -> ExitCode {
     let Some(marker) = arguments.first().map(PathBuf::from) else {
         return ExitCode::from(2);
@@ -2217,6 +2378,97 @@ fn active_begin(input: &mut impl BufRead) {
     );
 }
 
+fn workflow_begin(input: &mut impl BufRead) {
+    read_request(input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic.workflow.lookup",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                        "additionalProperties": false
+                    },
+                    "outputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "resource": {
+                                "type": "object",
+                                "properties": {"id": {"type": "string"}},
+                                "additionalProperties": false
+                            }
+                        },
+                        "required": ["resource"],
+                        "additionalProperties": false
+                    }
+                },
+                {
+                    "name": "synthetic.workflow.mutate",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "value": {"type": "string"}
+                        },
+                        "required": ["id", "value"],
+                        "additionalProperties": false
+                    },
+                    "outputSchema": {
+                        "type": "object",
+                        "properties": {"version": {"type": "integer"}},
+                        "required": ["version"],
+                        "additionalProperties": false
+                    }
+                },
+                {
+                    "name": "synthetic.workflow.read",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "expectedVersion": {"type": "integer"}
+                        },
+                        "required": ["id"],
+                        "additionalProperties": false
+                    },
+                    "outputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "version": {"type": "integer"}
+                        },
+                        "required": ["value", "version"],
+                        "additionalProperties": false
+                    }
+                },
+                {
+                    "name": "synthetic.workflow.cleanup",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}},
+                        "required": ["id"],
+                        "additionalProperties": false
+                    },
+                    "outputSchema": {
+                        "type": "object",
+                        "properties": {"removed": {"type": "boolean"}},
+                        "required": ["removed"],
+                        "additionalProperties": false
+                    }
+                }
+            ]
+        }),
+    );
+}
+
 fn reject_begin(input: &mut impl BufRead) {
     active_begin_with_input_schema(
         input,
@@ -2279,6 +2531,25 @@ fn read_active_call(input: &mut impl BufRead, expected_id: i64) -> Value {
         value["params"]["name"] == "synthetic.reviewed",
         "only the exactly reviewed tool should be called"
     );
+    assert_eq!(
+        value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
+        "2026-07-28"
+    );
+    assert!(!request.contains("initialize"));
+    value
+}
+
+fn read_workflow_call(input: &mut impl BufRead, expected_id: i64, expected_tool: &str) -> Value {
+    let mut request = String::new();
+    let read = input
+        .read_line(&mut request)
+        .expect("the workflow request should be readable");
+    assert!(read > 0, "the workflow request should not be empty");
+    let value: Value = serde_json::from_str(&request).expect("the workflow request should be JSON");
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], expected_id);
+    assert_eq!(value["method"], "tools/call");
+    assert_eq!(value["params"]["name"], expected_tool);
     assert_eq!(
         value["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"],
         "2026-07-28"

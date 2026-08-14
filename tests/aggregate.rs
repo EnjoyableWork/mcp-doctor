@@ -277,6 +277,42 @@ fn assert_no_stages(root: &Path) {
 }
 
 #[test]
+fn workflow_step_and_cleanup_checks_survive_offline_aggregation() {
+    let environment = TestEnvironment::new();
+    let mut report = passed_report();
+    report["checks"][0]["id"] = json!("runtime.workflow.step[0]");
+    report["checks"].as_array_mut().unwrap().push(json!({
+        "id": "runtime.workflow.cleanup[1]",
+        "requirement": "required",
+        "state": "performed",
+        "outcome": "passed",
+        "findings": []
+    }));
+    recompute_report(&mut report);
+    let input = write_report(&environment, "workflow-report.json", &report);
+    let output_path = environment.artifact_path("workflow-aggregate.json");
+    let output = aggregate_command(&environment, &output_path, "json", &[input])
+        .output()
+        .expect("the workflow report should aggregate");
+
+    assert!(output.status.success(), "{:?}", text(&output));
+    let aggregate = parse_and_validate_aggregate(&output.stdout);
+    let checks = aggregate["members"][0]["report"]["checks"]
+        .as_array()
+        .expect("the member checks should remain an array");
+    assert!(
+        checks
+            .iter()
+            .any(|check| check["id"] == "runtime.workflow.step[0]")
+    );
+    assert!(
+        checks
+            .iter()
+            .any(|check| check["id"] == "runtime.workflow.cleanup[1]")
+    );
+}
+
+#[test]
 fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifact() {
     let environment = TestEnvironment::new();
     let mut stdio = passed_report();

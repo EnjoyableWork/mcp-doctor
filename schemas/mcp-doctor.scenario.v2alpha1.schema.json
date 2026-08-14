@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.scenario.v2alpha1.schema.json",
+  "title": "mcp-doctor bounded multi-tool workflow scenario",
+  "description": "The strict mcp-doctor.scenario/v2alpha1 authoring contract. Runtime validation additionally enforces unique identifiers, prior-only captures, non-overlapping null destinations, a contiguous cleanup suffix, aggregate byte limits, and exact invocation authorization.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.scenario/v2alpha1"
+    },
+    "target_env": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/environment_name"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "environment_name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "maxLength": 1024
+    },
+    "capture_name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "maxLength": 1024
+    },
+    "json_pointer": {
+      "type": "string",
+      "pattern": "^(?:|/(?:[^~]|~[01])*)$",
+      "maxLength": 8192
+    },
+    "pointer_to_environment": {
+      "type": "object",
+      "maxProperties": 100,
+      "propertyNames": {
+        "$ref": "#/$defs/json_pointer"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/environment_name"
+      }
+    },
+    "pointer_to_capture": {
+      "type": "object",
+      "maxProperties": 100,
+      "propertyNames": {
+        "$ref": "#/$defs/json_pointer"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/capture_name"
+      }
+    },
+    "captures": {
+      "type": "object",
+      "maxProperties": 100,
+      "propertyNames": {
+        "$ref": "#/$defs/capture_name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/json_pointer"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "effects"
+      ],
+      "properties": {
+        "effects": {
+          "enum": [
+            "read_only",
+            "side_effecting"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "expectation": {
+      "type": "object",
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "success",
+            "tool_error"
+          ]
+        },
+        "structured_output_schema": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "id",
+        "tool",
+        "safety",
+        "arguments",
+        "expect"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        },
+        "cleanup": {
+          "type": "boolean"
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "secret_refs": {
+          "$ref": "#/$defs/pointer_to_environment"
+        },
+        "argument_refs": {
+          "$ref": "#/$defs/pointer_to_capture"
+        },
+        "captures": {
+          "$ref": "#/$defs/captures"
+        },
+        "expect": {
+          "$ref": "#/$defs/expectation"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

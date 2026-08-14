@@ -120,11 +120,15 @@ logs, and tool results as untrusted.
   behind success.
 - Never send generated or mutating tool calls merely because a schema permits
   them. Active scenarios must select tools and record their safety assumptions.
-- `check` scenarios use only `mcp-doctor.scenario/v1alpha1` JSON, name one tool,
-  and replay declared cases in order. Every run requires an exact matching
-  `--allow-tool`; every scenario declares `read_only` or `side_effecting`; and
-  side effects also require `--allow-side-effects`. Never accept a wildcard,
-  generic confirmation, discovered selection, or server annotation as authority.
+- Single-tool `check` scenarios use `mcp-doctor.scenario/v1alpha1` JSON and
+  replay declared cases in order. Current-revision multi-tool `check` workflows
+  use only `mcp-doctor.scenario/v2alpha1`: a finite ordered sequence with exact
+  per-step tools and effects, prior-success structural captures, references into
+  existing null placeholders, and an optional contiguous cleanup suffix. Every
+  run repeats `--allow-tool` exactly once for every distinct selected tool;
+  `side_effecting` work also requires `--allow-side-effects`. Never accept a
+  wildcard, extra or duplicate authorization, generic confirmation, discovered
+  selection, capture, prior result, or server annotation as authority.
 - Resolve scenario secrets only from explicitly named invoking-process
   environment variables: a same-name target-environment allowlist or an
   RFC 6901 pointer to an existing null argument placeholder. Fail before starting

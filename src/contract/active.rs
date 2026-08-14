@@ -37,8 +37,11 @@ use super::{
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 pub(crate) const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
+pub(crate) const WORKFLOW_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v2alpha1";
 pub(crate) const MAX_SCENARIO_BYTES: u64 = 1_048_576;
 pub(crate) const REJECTION_CASE_COUNT: usize = INVALID_MUTATION_KINDS.len();
+const MAX_WORKFLOW_NAME_CHARS: usize = 1_024;
+const MAX_WORKFLOW_POINTER_CHARS: usize = 8_192;
 
 pub(crate) struct ScenarioFailure {
     findings: Vec<Finding>,
@@ -70,11 +73,12 @@ impl ScenarioFailure {
 }
 
 pub(crate) struct ActiveScenario {
-    tool: String,
-    effects: ScenarioEffects,
+    tools: BTreeSet<String>,
+    side_effecting: bool,
     target_env: Vec<String>,
     cases: Vec<ScenarioCase>,
     source: CaseSource,
+    resolved_input_bytes: u64,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -84,10 +88,14 @@ enum ScenarioEffects {
 }
 
 struct ScenarioCase {
+    tool: String,
     arguments: Value,
     omit_arguments: bool,
     applicable: bool,
     secret_refs: BTreeMap<String, String>,
+    argument_refs: BTreeMap<String, String>,
+    captures: BTreeMap<String, String>,
+    cleanup: bool,
     expected: ExpectedResult,
     output_validator: Option<LocalValidator>,
     reproduction: Option<GeneratedCaseReproduction>,
@@ -95,7 +103,8 @@ struct ScenarioCase {
 
 #[derive(Clone, Copy)]
 enum CaseSource {
-    Reviewed,
+    ReviewedV1,
+    Workflow { first_cleanup: usize },
     Generated { seed: u64, requested_cases: usize },
     Rejection { seed: u64 },
 }
@@ -105,6 +114,16 @@ enum ExpectedResult {
     Success,
     ToolError,
     InvalidArgumentsRejection,
+}
+
+enum ArgumentReferenceFailure {
+    Unavailable,
+    Limit(LimitViolation),
+}
+
+enum CaptureFailure {
+    Missing,
+    Limit(LimitViolation),
 }
 
 impl ActiveScenario {
@@ -122,19 +141,22 @@ impl ActiveScenario {
                 json_kind(Some(&value)),
             )
         })?;
+        let schema_version = root.get("schema_version").and_then(Value::as_str);
+        if schema_version == Some(WORKFLOW_SCHEMA_VERSION) {
+            return Self::parse_workflow(root);
+        }
+        if schema_version != Some(SCENARIO_SCHEMA_VERSION) {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::SchemaVersion),
+                RuleViolation::UnsupportedScenarioVersion,
+            )));
+        }
         ensure_fields(
             root,
             &["schema_version", "tool", "safety", "target_env", "cases"],
             &["schema_version", "tool", "safety", "cases"],
             scenario_location(),
         )?;
-
-        if root.get("schema_version").and_then(Value::as_str) != Some(SCENARIO_SCHEMA_VERSION) {
-            return Err(ScenarioFailure::one(Finding::scenario_invalid(
-                scenario_location().field(LocationField::SchemaVersion),
-                RuleViolation::UnsupportedScenarioVersion,
-            )));
-        }
 
         let tool = required_nonempty_string(
             root.get("tool"),
@@ -156,37 +178,7 @@ impl ActiveScenario {
             }
         };
 
-        let mut target_env = Vec::new();
-        let mut target_names = BTreeSet::new();
-        if let Some(value) = root.get("target_env") {
-            let values = value.as_array().ok_or_else(|| {
-                shape_failure(
-                    scenario_location().field(LocationField::TargetEnv),
-                    ExpectedShape::Array,
-                    json_kind(Some(value)),
-                )
-            })?;
-            for (index, value) in values.iter().enumerate() {
-                let location = scenario_location()
-                    .field(LocationField::TargetEnv)
-                    .index(index);
-                let Some(name) = value.as_str() else {
-                    return Err(shape_failure(
-                        location,
-                        ExpectedShape::String,
-                        json_kind(Some(value)),
-                    ));
-                };
-                let identity = environment_identity(name);
-                if !valid_environment_name(name) || !target_names.insert(identity) {
-                    return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
-                        location,
-                        RuleViolation::InvalidEnvironmentReference,
-                    )));
-                }
-                target_env.push(name.to_owned());
-            }
-        }
+        let target_env = parse_target_environment(root)?;
 
         let cases_value = root.get("cases").expect("required fields were checked");
         let cases_array = cases_value.as_array().ok_or_else(|| {
@@ -317,10 +309,14 @@ impl ActiveScenario {
             };
 
             cases.push(ScenarioCase {
+                tool: tool.clone(),
                 arguments: arguments.clone(),
                 omit_arguments: false,
                 applicable: true,
                 secret_refs,
+                argument_refs: BTreeMap::new(),
+                captures: BTreeMap::new(),
+                cleanup: false,
                 expected,
                 output_validator,
                 reproduction: None,
@@ -328,11 +324,362 @@ impl ActiveScenario {
         }
 
         Ok(Self {
-            tool,
-            effects,
+            tools: BTreeSet::from([tool]),
+            side_effecting: effects == ScenarioEffects::SideEffecting,
             target_env,
             cases,
-            source: CaseSource::Reviewed,
+            source: CaseSource::ReviewedV1,
+            resolved_input_bytes: 0,
+        })
+    }
+
+    fn parse_workflow(root: &Map<String, Value>) -> Result<Self, ScenarioFailure> {
+        ensure_fields(
+            root,
+            &["schema_version", "target_env", "steps"],
+            &["schema_version", "steps"],
+            scenario_location(),
+        )?;
+        let target_env = parse_target_environment(root)?;
+        let steps_value = root.get("steps").expect("required fields were checked");
+        let steps = steps_value.as_array().ok_or_else(|| {
+            shape_failure(
+                scenario_location().field(LocationField::Steps),
+                ExpectedShape::Array,
+                json_kind(Some(steps_value)),
+            )
+        })?;
+        let maximum_steps = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        let maximum_items = usize::try_from(maximum_steps).unwrap_or(usize::MAX);
+        if target_env.len() > maximum_items
+            || target_env
+                .iter()
+                .any(|name| name.chars().count() > MAX_WORKFLOW_NAME_CHARS)
+        {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::TargetEnv),
+                RuleViolation::InvalidScenarioShape,
+            )));
+        }
+        if steps.is_empty() {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::Steps),
+                RuleViolation::InvalidScenarioShape,
+            )));
+        }
+        let observed_steps = u64::try_from(steps.len()).unwrap_or(u64::MAX);
+        if observed_steps > maximum_steps {
+            return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                SupportedRevision::CURRENT,
+                scenario_location().field(LocationField::Steps),
+                LimitViolation::new(LimitKind::ActiveCases, observed_steps, maximum_steps)
+                    .expect("the workflow step count exceeds its checked maximum"),
+            )));
+        }
+
+        let mut step_ids = BTreeSet::new();
+        let mut tools = BTreeSet::new();
+        let mut declared_captures = BTreeSet::new();
+        let mut total_captures = 0_u64;
+        let mut first_cleanup = None;
+        let mut side_effecting = false;
+        let mut cases = Vec::with_capacity(steps.len());
+        for (index, value) in steps.iter().enumerate() {
+            let base = workflow_step_location(index);
+            let object = required_object(Some(value), base.clone())?;
+            ensure_fields(
+                object,
+                &[
+                    "id",
+                    "tool",
+                    "safety",
+                    "cleanup",
+                    "arguments",
+                    "secret_refs",
+                    "argument_refs",
+                    "captures",
+                    "expect",
+                ],
+                &["id", "tool", "safety", "arguments", "expect"],
+                base.clone(),
+            )?;
+            let id =
+                required_nonempty_string(object.get("id"), base.clone().field(LocationField::Id))?;
+            if id.chars().count() > MAX_WORKFLOW_NAME_CHARS {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    base.clone().field(LocationField::Id),
+                    RuleViolation::InvalidScenarioShape,
+                )));
+            }
+            if !step_ids.insert(id.to_owned()) {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    base.clone().field(LocationField::Id),
+                    RuleViolation::DuplicateCaseId,
+                )));
+            }
+            let tool = required_nonempty_string(
+                object.get("tool"),
+                base.clone().field(LocationField::Tools),
+            )?
+            .to_owned();
+            if tool.chars().count() > MAX_WORKFLOW_NAME_CHARS {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    base.clone().field(LocationField::Tools),
+                    RuleViolation::InvalidScenarioShape,
+                )));
+            }
+            tools.insert(tool.clone());
+
+            let safety_location = base.clone().field(LocationField::Safety);
+            let safety = required_object(object.get("safety"), safety_location.clone())?;
+            ensure_fields(safety, &["effects"], &["effects"], safety_location.clone())?;
+            let effects = match safety.get("effects").and_then(Value::as_str) {
+                Some("read_only") => ScenarioEffects::ReadOnly,
+                Some("side_effecting") => ScenarioEffects::SideEffecting,
+                _ => {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        safety_location.field(LocationField::Effects),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+            };
+            side_effecting |= effects == ScenarioEffects::SideEffecting;
+
+            let cleanup = match object.get("cleanup") {
+                None | Some(Value::Bool(false)) => false,
+                Some(Value::Bool(true)) => true,
+                Some(value) => {
+                    return Err(shape_failure(
+                        base.clone().field(LocationField::Cleanup),
+                        ExpectedShape::Boolean,
+                        json_kind(Some(value)),
+                    ));
+                }
+            };
+            if cleanup {
+                first_cleanup.get_or_insert(index);
+            } else if first_cleanup.is_some() {
+                return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                    base.clone().field(LocationField::Cleanup),
+                    RuleViolation::InvalidScenarioShape,
+                )));
+            }
+
+            let arguments = object
+                .get("arguments")
+                .expect("required fields were checked");
+            if !arguments.is_object() {
+                return Err(shape_failure(
+                    base.clone().field(LocationField::Arguments),
+                    ExpectedShape::Object,
+                    json_kind(Some(arguments)),
+                ));
+            }
+            check_instance_bytes(arguments, base.clone().field(LocationField::Arguments))?;
+
+            let mut destination_pointers: Vec<String> = Vec::new();
+            let mut secret_refs = BTreeMap::new();
+            if let Some(value) = object.get("secret_refs") {
+                let references = value.as_object().ok_or_else(|| {
+                    shape_failure(
+                        base.clone().field(LocationField::SecretRefs),
+                        ExpectedShape::Object,
+                        json_kind(Some(value)),
+                    )
+                })?;
+                if references.len() > maximum_items {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        base.clone().field(LocationField::SecretRefs),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+                for (pointer, source) in references {
+                    let location = base.clone().field(LocationField::SecretRefs).wildcard();
+                    let Some(source) = source.as_str() else {
+                        return Err(shape_failure(
+                            location,
+                            ExpectedShape::String,
+                            json_kind(Some(source)),
+                        ));
+                    };
+                    if !valid_workflow_pointer(pointer)
+                        || !valid_workflow_name(source)
+                        || arguments.pointer(pointer) != Some(&Value::Null)
+                        || destination_pointers
+                            .iter()
+                            .any(|existing| pointers_overlap(existing, pointer))
+                    {
+                        return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                            location,
+                            RuleViolation::InvalidEnvironmentReference,
+                        )));
+                    }
+                    destination_pointers.push(pointer.clone());
+                    secret_refs.insert(pointer.clone(), source.to_owned());
+                }
+            }
+
+            let mut argument_refs = BTreeMap::new();
+            if let Some(value) = object.get("argument_refs") {
+                let references = value.as_object().ok_or_else(|| {
+                    shape_failure(
+                        base.clone().field(LocationField::ArgumentRefs),
+                        ExpectedShape::Object,
+                        json_kind(Some(value)),
+                    )
+                })?;
+                if references.len() > maximum_items {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        base.clone().field(LocationField::ArgumentRefs),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+                for (pointer, capture) in references {
+                    let location = base.clone().field(LocationField::ArgumentRefs).wildcard();
+                    let Some(capture) = capture.as_str() else {
+                        return Err(shape_failure(
+                            location,
+                            ExpectedShape::String,
+                            json_kind(Some(capture)),
+                        ));
+                    };
+                    if !valid_workflow_pointer(pointer)
+                        || !valid_workflow_name(capture)
+                        || !declared_captures.contains(capture)
+                        || arguments.pointer(pointer) != Some(&Value::Null)
+                        || destination_pointers
+                            .iter()
+                            .any(|existing| pointers_overlap(existing, pointer))
+                    {
+                        return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                            location,
+                            RuleViolation::InvalidScenarioShape,
+                        )));
+                    }
+                    destination_pointers.push(pointer.clone());
+                    argument_refs.insert(pointer.clone(), capture.to_owned());
+                }
+            }
+
+            let mut captures = BTreeMap::new();
+            if let Some(value) = object.get("captures") {
+                let declared = value.as_object().ok_or_else(|| {
+                    shape_failure(
+                        base.clone().field(LocationField::Captures),
+                        ExpectedShape::Object,
+                        json_kind(Some(value)),
+                    )
+                })?;
+                if declared.len() > maximum_items {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        base.clone().field(LocationField::Captures),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+                for (name, pointer) in declared {
+                    let location = base.clone().field(LocationField::Captures).wildcard();
+                    let Some(pointer) = pointer.as_str() else {
+                        return Err(shape_failure(
+                            location,
+                            ExpectedShape::String,
+                            json_kind(Some(pointer)),
+                        ));
+                    };
+                    if cleanup
+                        || !valid_workflow_name(name)
+                        || !valid_workflow_pointer(pointer)
+                        || !declared_captures.insert(name.clone())
+                    {
+                        return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                            location,
+                            RuleViolation::InvalidScenarioShape,
+                        )));
+                    }
+                    total_captures = total_captures.saturating_add(1);
+                    if total_captures > maximum_steps {
+                        return Err(ScenarioFailure::one(Finding::limit_exceeded(
+                            SupportedRevision::CURRENT,
+                            scenario_location().field(LocationField::Steps),
+                            LimitViolation::new(
+                                LimitKind::ActiveCases,
+                                total_captures,
+                                maximum_steps,
+                            )
+                            .expect("the workflow capture count exceeds its checked maximum"),
+                        )));
+                    }
+                    captures.insert(name.clone(), pointer.to_owned());
+                }
+            }
+
+            let expect_location = base.clone().field(LocationField::Expect);
+            let expect = required_object(object.get("expect"), expect_location.clone())?;
+            ensure_fields(
+                expect,
+                &["result", "structured_output_schema"],
+                &["result"],
+                expect_location.clone(),
+            )?;
+            let expected = match expect.get("result").and_then(Value::as_str) {
+                Some("success") => ExpectedResult::Success,
+                Some("tool_error") if !cleanup && captures.is_empty() => ExpectedResult::ToolError,
+                _ => {
+                    return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                        expect_location.clone().field(LocationField::Result),
+                        RuleViolation::InvalidScenarioShape,
+                    )));
+                }
+            };
+            let output_validator = if let Some(schema) = expect.get("structured_output_schema") {
+                let location = expect_location.field(LocationField::StructuredOutputSchema);
+                if !schema.is_object() {
+                    return Err(shape_failure(
+                        location,
+                        ExpectedShape::Object,
+                        json_kind(Some(schema)),
+                    ));
+                }
+                let findings = scenario_schema_findings(validate_local_schema(schema, location));
+                if !findings.is_empty() {
+                    return Err(ScenarioFailure { findings });
+                }
+                Some(
+                    LocalValidator::compile(schema)
+                        .expect("a validated workflow schema compiles without retrieval"),
+                )
+            } else {
+                None
+            };
+
+            cases.push(ScenarioCase {
+                tool,
+                arguments: arguments.clone(),
+                omit_arguments: false,
+                applicable: true,
+                secret_refs,
+                argument_refs,
+                captures,
+                cleanup,
+                expected,
+                output_validator,
+                reproduction: None,
+            });
+        }
+        let first_cleanup = first_cleanup.unwrap_or(cases.len());
+        if first_cleanup == 0 {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::Steps),
+                RuleViolation::InvalidScenarioShape,
+            )));
+        }
+
+        Ok(Self {
+            tools,
+            side_effecting,
+            target_env,
+            cases,
+            source: CaseSource::Workflow { first_cleanup },
+            resolved_input_bytes: 0,
         })
     }
 
@@ -359,18 +706,15 @@ impl ActiveScenario {
             )));
         }
         Ok(Self {
-            tool,
-            effects: if side_effecting {
-                ScenarioEffects::SideEffecting
-            } else {
-                ScenarioEffects::ReadOnly
-            },
+            tools: BTreeSet::from([tool]),
+            side_effecting,
             target_env: Vec::new(),
             cases: Vec::new(),
             source: CaseSource::Generated {
                 seed,
                 requested_cases,
             },
+            resolved_input_bytes: 0,
         })
     }
 
@@ -386,15 +730,12 @@ impl ActiveScenario {
             )));
         }
         Ok(Self {
-            tool,
-            effects: if side_effecting {
-                ScenarioEffects::SideEffecting
-            } else {
-                ScenarioEffects::ReadOnly
-            },
+            tools: BTreeSet::from([tool]),
+            side_effecting,
             target_env: Vec::new(),
             cases: Vec::new(),
             source: CaseSource::Rejection { seed },
+            resolved_input_bytes: 0,
         })
     }
 
@@ -403,16 +744,51 @@ impl ActiveScenario {
         allowed_tool: &str,
         allow_side_effects: bool,
     ) -> Result<(), ScenarioFailure> {
-        if allowed_tool != self.tool {
+        self.authorize_tools(std::iter::once(allowed_tool), allow_side_effects)
+    }
+
+    pub(crate) fn authorize_tools<'a>(
+        &self,
+        allowed_tools: impl IntoIterator<Item = &'a str>,
+        allow_side_effects: bool,
+    ) -> Result<(), ScenarioFailure> {
+        let mut authorized = BTreeSet::new();
+        let mut observed = 0_usize;
+        for tool in allowed_tools {
+            observed = observed.saturating_add(1);
+            authorized.insert(tool);
+        }
+        if observed != authorized.len()
+            || authorized.len() != self.tools.len()
+            || !self
+                .tools
+                .iter()
+                .all(|tool| authorized.contains(tool.as_str()))
+        {
             return Err(ScenarioFailure::one(Finding::tool_authorization_missing(
                 Location::root(LocationField::Authorization).field(LocationField::Tools),
             )));
         }
-        if self.effects == ScenarioEffects::SideEffecting && !allow_side_effects {
+        if self.side_effecting && !allow_side_effects {
             return Err(ScenarioFailure::one(Finding::side_effects_not_authorized(
                 Location::root(LocationField::Authorization)
                     .field(LocationField::Safety)
                     .field(LocationField::Effects),
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_revision(
+        &self,
+        revision: ActiveProtocolRevision,
+    ) -> Result<(), ScenarioFailure> {
+        if matches!(self.source, CaseSource::Workflow { .. })
+            && revision.as_supported() != SupportedRevision::CURRENT
+        {
+            return Err(ScenarioFailure::one(Finding::scenario_invalid(
+                scenario_location().field(LocationField::SchemaVersion),
+                RuleViolation::UnsupportedScenarioRevision,
             )));
         }
         Ok(())
@@ -430,15 +806,22 @@ impl ActiveScenario {
         F: FnMut(&str) -> Option<String>,
     {
         let mut aggregate_bytes = 0_u64;
+        let workflow = self.is_workflow();
         let maximum_aggregate = DiagnosticLimits::M1_DEFAULTS
             .values()
             .aggregate_output_bytes;
         for (case_index, case) in self.cases.iter_mut().enumerate() {
+            let case_location = if workflow {
+                workflow_step_location(case_index)
+            } else {
+                case_location(case_index)
+            };
             let mut replacements = Vec::with_capacity(case.secret_refs.len());
             for (pointer, source) in &case.secret_refs {
                 let Some(value) = lookup(source) else {
                     return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
-                        case_location(case_index)
+                        case_location
+                            .clone()
                             .field(LocationField::SecretRefs)
                             .wildcard(),
                         RuleViolation::MissingEnvironmentValue,
@@ -457,14 +840,18 @@ impl ActiveScenario {
             case.secret_refs.clear();
             check_instance_bytes(
                 &case.arguments,
-                case_location(case_index).field(LocationField::Arguments),
+                case_location.clone().field(LocationField::Arguments),
             )?;
             aggregate_bytes = aggregate_bytes
                 .saturating_add(u64::try_from(serialized_len(&case.arguments)).unwrap_or(u64::MAX));
             if aggregate_bytes > maximum_aggregate {
                 return Err(ScenarioFailure::one(Finding::limit_exceeded(
                     SupportedRevision::CURRENT,
-                    scenario_location().field(LocationField::Cases),
+                    scenario_location().field(if workflow {
+                        LocationField::Steps
+                    } else {
+                        LocationField::Cases
+                    }),
                     LimitViolation::new(
                         LimitKind::ActiveInputBytes,
                         aggregate_bytes,
@@ -474,6 +861,7 @@ impl ActiveScenario {
                 )));
             }
         }
+        self.resolved_input_bytes = aggregate_bytes;
         Ok(())
     }
 
@@ -496,7 +884,7 @@ impl ActiveScenario {
 
     pub(crate) fn case_count(&self) -> usize {
         match self.source {
-            CaseSource::Reviewed => self.cases.len(),
+            CaseSource::ReviewedV1 | CaseSource::Workflow { .. } => self.cases.len(),
             CaseSource::Generated {
                 requested_cases, ..
             } => requested_cases,
@@ -506,7 +894,7 @@ impl ActiveScenario {
 
     fn configuration_check(&self) -> CheckId {
         match self.source {
-            CaseSource::Reviewed => CheckId::ScenarioConfiguration,
+            CaseSource::ReviewedV1 | CaseSource::Workflow { .. } => CheckId::ScenarioConfiguration,
             CaseSource::Generated { .. } | CaseSource::Rejection { .. } => {
                 CheckId::GenerationConfiguration
             }
@@ -532,9 +920,35 @@ impl ActiveScenario {
         }
     }
 
+    fn is_workflow(&self) -> bool {
+        matches!(self.source, CaseSource::Workflow { .. })
+    }
+
+    fn first_cleanup(&self) -> usize {
+        match self.source {
+            CaseSource::Workflow { first_cleanup } => first_cleanup,
+            _ => self.cases.len(),
+        }
+    }
+
+    fn case_is_cleanup(&self, index: usize) -> bool {
+        self.cases.get(index).is_some_and(|case| case.cleanup)
+    }
+
+    fn case_check_id(&self, index: usize) -> CheckId {
+        match self.source {
+            CaseSource::Workflow { .. } if self.case_is_cleanup(index) => {
+                CheckId::RuntimeWorkflowCleanup(index)
+            }
+            CaseSource::Workflow { .. } => CheckId::RuntimeWorkflowStep(index),
+            _ => CheckId::RuntimeToolCase(index),
+        }
+    }
+
     fn case_location(&self, index: usize) -> Location {
         match self.source {
-            CaseSource::Reviewed => case_location(index),
+            CaseSource::ReviewedV1 => case_location(index),
+            CaseSource::Workflow { .. } => workflow_step_location(index),
             CaseSource::Generated { .. } | CaseSource::Rejection { .. } => generation_location()
                 .field(LocationField::Cases)
                 .index(index),
@@ -546,8 +960,14 @@ impl ActiveScenario {
         schema: &Value,
         validator: &LocalValidator,
     ) -> Result<(), GenerationFailure> {
+        let tool = self
+            .tools
+            .iter()
+            .next()
+            .expect("generated scenarios declare one tool")
+            .clone();
         match self.source {
-            CaseSource::Reviewed => {}
+            CaseSource::ReviewedV1 | CaseSource::Workflow { .. } => {}
             CaseSource::Generated {
                 seed,
                 requested_cases,
@@ -556,10 +976,14 @@ impl ActiveScenario {
                 self.cases = generated
                     .into_iter()
                     .map(|generated| ScenarioCase {
+                        tool: tool.clone(),
                         arguments: generated.arguments,
                         omit_arguments: false,
                         applicable: true,
                         secret_refs: BTreeMap::new(),
+                        argument_refs: BTreeMap::new(),
+                        captures: BTreeMap::new(),
+                        cleanup: false,
                         expected: ExpectedResult::Success,
                         output_validator: None,
                         reproduction: Some(generated.reproduction),
@@ -573,19 +997,27 @@ impl ActiveScenario {
                     .into_iter()
                     .map(|generated| match generated {
                         Some(generated) => ScenarioCase {
+                            tool: tool.clone(),
                             arguments: generated.arguments,
                             omit_arguments: generated.omit_arguments,
                             applicable: true,
                             secret_refs: BTreeMap::new(),
+                            argument_refs: BTreeMap::new(),
+                            captures: BTreeMap::new(),
+                            cleanup: false,
                             expected: ExpectedResult::InvalidArgumentsRejection,
                             output_validator: None,
                             reproduction: Some(generated.reproduction),
                         },
                         None => ScenarioCase {
+                            tool: tool.clone(),
                             arguments: Value::Null,
                             omit_arguments: false,
                             applicable: false,
                             secret_refs: BTreeMap::new(),
+                            argument_refs: BTreeMap::new(),
+                            captures: BTreeMap::new(),
+                            cleanup: false,
                             expected: ExpectedResult::InvalidArgumentsRejection,
                             output_validator: None,
                             reproduction: None,
@@ -624,7 +1056,11 @@ pub(crate) fn render_resolved_scenario_failure_for_revision(
     render_prestart_failure(
         failure,
         scenario.configuration_check(),
-        Some(scenario.case_count()),
+        Some(
+            (0..scenario.case_count())
+                .map(|index| scenario.case_check_id(index))
+                .collect(),
+        ),
         true,
         scenario.generates_cases(),
         transport,
@@ -640,11 +1076,12 @@ pub(crate) fn render_generation_configuration_failure_for_revision(
 ) -> Diagnostic {
     let maximum =
         usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
-    let case_count = (requested_cases > 0 && requested_cases <= maximum).then_some(requested_cases);
+    let case_checks = (requested_cases > 0 && requested_cases <= maximum)
+        .then(|| (0..requested_cases).map(CheckId::RuntimeToolCase).collect());
     render_prestart_failure(
         failure,
         CheckId::GenerationConfiguration,
-        case_count,
+        case_checks,
         false,
         true,
         transport,
@@ -655,7 +1092,7 @@ pub(crate) fn render_generation_configuration_failure_for_revision(
 fn render_prestart_failure(
     failure: ScenarioFailure,
     configuration_check: CheckId,
-    case_count: Option<usize>,
+    case_checks: Option<Vec<CheckId>>,
     authorization_passed: bool,
     generated: bool,
     transport: ReportTransport,
@@ -716,13 +1153,9 @@ fn render_prestart_failure(
             SkipReason::PrerequisiteFailed,
         ));
     }
-    if let Some(case_count) = case_count {
-        checks.extend((0..case_count).map(|index| {
-            CheckResult::skipped(
-                CheckId::RuntimeToolCase(index),
-                Requirement::Required,
-                SkipReason::PrerequisiteFailed,
-            )
+    if let Some(case_checks) = case_checks {
+        checks.extend(case_checks.into_iter().map(|id| {
+            CheckResult::skipped(id, Requirement::Required, SkipReason::PrerequisiteFailed)
         }));
     } else {
         checks.push(CheckResult::skipped(
@@ -795,7 +1228,7 @@ pub(crate) fn render_authorization_failure_for_revision(
     }
     checks.extend((0..scenario.case_count()).map(|index| {
         CheckResult::skipped(
-            CheckId::RuntimeToolCase(index),
+            scenario.case_check_id(index),
             Requirement::Required,
             SkipReason::AuthorizationFailed,
         )
@@ -837,10 +1270,12 @@ pub(crate) struct ActiveConversation {
     seen_names: BTreeSet<String>,
     seen_cursors: BTreeSet<String>,
     observed_items: u64,
-    selected_tool: Option<ToolContract>,
-    tool_validators: Option<ToolValidators>,
+    selected_names: BTreeSet<String>,
+    selected_tools: BTreeMap<String, ToolContract>,
+    tool_validators: BTreeMap<String, ToolValidators>,
     selected_schema_findings: Vec<Finding>,
-    selected_count: usize,
+    captured_values: BTreeMap<String, Value>,
+    captured_bytes: u64,
     next_case: usize,
     validate_http_headers: bool,
     negotiated_revision: Option<KnownRevision>,
@@ -946,10 +1381,12 @@ impl ActiveConversation {
             seen_names: BTreeSet::new(),
             seen_cursors: BTreeSet::new(),
             observed_items: 0,
-            selected_tool: None,
-            tool_validators: None,
+            selected_names: BTreeSet::new(),
+            selected_tools: BTreeMap::new(),
+            tool_validators: BTreeMap::new(),
             selected_schema_findings: Vec::new(),
-            selected_count: 0,
+            captured_values: BTreeMap::new(),
+            captured_bytes: 0,
             next_case: 0,
             validate_http_headers: false,
             negotiated_revision: None,
@@ -977,6 +1414,211 @@ impl ActiveConversation {
             .expect("bounded requests keep active request ids representable");
         self.pending = Some(pending);
         id
+    }
+
+    fn resolve_argument_refs(&mut self, index: usize) -> Result<(), ArgumentReferenceFailure> {
+        if self.scenario.cases[index].argument_refs.is_empty() {
+            return Ok(());
+        }
+        let replacements = self.scenario.cases[index]
+            .argument_refs
+            .iter()
+            .map(|(pointer, capture)| {
+                self.captured_values
+                    .get(capture)
+                    .map(|value| (pointer.clone(), capture.clone(), serialized_len(value)))
+                    .ok_or(ArgumentReferenceFailure::Unavailable)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let previous = u64::try_from(serialized_len(&self.scenario.cases[index].arguments))
+            .unwrap_or(u64::MAX);
+        let observed = replacements.iter().fold(previous, |total, (_, _, bytes)| {
+            total
+                .saturating_sub(u64::try_from(serialized_len(&Value::Null)).unwrap_or(u64::MAX))
+                .saturating_add(u64::try_from(*bytes).unwrap_or(u64::MAX))
+        });
+        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        if observed > values.instance_bytes {
+            return Err(ArgumentReferenceFailure::Limit(
+                LimitViolation::new(LimitKind::InstanceBytes, observed, values.instance_bytes)
+                    .expect("resolved workflow arguments exceed their checked maximum"),
+            ));
+        }
+        self.scenario.resolved_input_bytes = self
+            .scenario
+            .resolved_input_bytes
+            .saturating_sub(previous)
+            .saturating_add(observed);
+        if self.scenario.resolved_input_bytes > values.aggregate_output_bytes {
+            return Err(ArgumentReferenceFailure::Limit(
+                LimitViolation::new(
+                    LimitKind::ActiveInputBytes,
+                    self.scenario.resolved_input_bytes,
+                    values.aggregate_output_bytes,
+                )
+                .expect("resolved workflow inputs exceed their aggregate maximum"),
+            ));
+        }
+        for (pointer, capture, _) in replacements {
+            let value = self
+                .captured_values
+                .get(&capture)
+                .expect("validated workflow captures remain available")
+                .clone();
+            let destination = self.scenario.cases[index]
+                .arguments
+                .pointer_mut(&pointer)
+                .expect("validated workflow reference pointers remain present");
+            debug_assert!(destination.is_null());
+            *destination = value;
+        }
+        self.scenario.cases[index].argument_refs.clear();
+        debug_assert_eq!(
+            u64::try_from(serialized_len(&self.scenario.cases[index].arguments))
+                .unwrap_or(u64::MAX),
+            observed
+        );
+        Ok(())
+    }
+
+    fn capture_workflow_values(
+        &mut self,
+        index: usize,
+        structured: Option<&Value>,
+    ) -> Result<(), CaptureFailure> {
+        if self.scenario.cases[index].captures.is_empty() {
+            return Ok(());
+        }
+        let Some(structured) = structured else {
+            return Err(CaptureFailure::Missing);
+        };
+        let captures = self.scenario.cases[index]
+            .captures
+            .iter()
+            .map(|(name, pointer)| {
+                structured
+                    .pointer(pointer)
+                    .map(|value| (name.clone(), value))
+                    .ok_or(CaptureFailure::Missing)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let mut added_bytes = 0_u64;
+        for (_, value) in &captures {
+            let observed = u64::try_from(serialized_len(value)).unwrap_or(u64::MAX);
+            if observed > values.instance_bytes {
+                return Err(CaptureFailure::Limit(
+                    LimitViolation::new(LimitKind::InstanceBytes, observed, values.instance_bytes)
+                        .expect("a workflow capture exceeds its checked maximum"),
+                ));
+            }
+            added_bytes = added_bytes.saturating_add(observed);
+        }
+        let aggregate = self.captured_bytes.saturating_add(added_bytes);
+        if aggregate > values.aggregate_output_bytes {
+            return Err(CaptureFailure::Limit(
+                LimitViolation::new(
+                    LimitKind::AggregateOutputBytes,
+                    aggregate,
+                    values.aggregate_output_bytes,
+                )
+                .expect("retained workflow captures exceed their aggregate maximum"),
+            ));
+        }
+        for (name, value) in captures {
+            self.captured_values.insert(name, value.clone());
+        }
+        self.captured_bytes = aggregate;
+        self.scenario.cases[index].captures.clear();
+        Ok(())
+    }
+
+    fn findings_failed(findings: &[Finding]) -> bool {
+        findings
+            .iter()
+            .any(|finding| finding.severity().is_failure())
+    }
+
+    fn add_cleanup_failure(&self, index: usize, findings: &mut Vec<Finding>) {
+        if self.scenario.case_is_cleanup(index)
+            && !findings
+                .iter()
+                .any(|finding| finding.code() == FindingCode::WorkflowCleanupFailed)
+        {
+            findings.push(
+                Finding::workflow_cleanup_failed(
+                    self.scenario
+                        .case_location(index)
+                        .field(LocationField::Cleanup),
+                )
+                .with_revision(self.revision()),
+            );
+        }
+    }
+
+    fn stop_case(&mut self, index: usize, mut findings: Vec<Finding>, reason: SkipReason) {
+        self.add_cleanup_failure(index, &mut findings);
+        self.case_states[index] = CaseState::Performed(findings);
+        self.next_case = index.saturating_add(1);
+        self.stop_cases(reason);
+    }
+
+    fn complete_case(&mut self, index: usize, mut findings: Vec<Finding>) {
+        let failed = Self::findings_failed(&findings);
+        let cleanup = self.scenario.case_is_cleanup(index);
+        if failed {
+            self.add_cleanup_failure(index, &mut findings);
+        }
+        self.case_states[index] = CaseState::Performed(findings);
+        self.next_case = index.saturating_add(1);
+        if cleanup && failed {
+            self.stop_cases(SkipReason::PrerequisiteFailed);
+        } else if self.scenario.is_workflow() && failed {
+            self.start_workflow_cleanup(SkipReason::PrerequisiteFailed);
+        } else {
+            self.stage = Stage::Cases;
+        }
+    }
+
+    fn mark_incomplete(&mut self, index: usize, continue_v1: bool) {
+        if self.scenario.case_is_cleanup(index) {
+            self.complete_case(
+                index,
+                vec![
+                    Finding::workflow_cleanup_failed(
+                        self.scenario
+                            .case_location(index)
+                            .field(LocationField::Cleanup),
+                    )
+                    .with_revision(self.revision()),
+                ],
+            );
+            return;
+        }
+        self.case_states[index] = CaseState::Incomplete;
+        self.next_case = index.saturating_add(1);
+        if self.scenario.is_workflow() {
+            self.start_workflow_cleanup(SkipReason::InputRequired);
+        } else if !continue_v1 {
+            self.stop_cases(SkipReason::InputRequired);
+        } else {
+            self.stage = Stage::Cases;
+        }
+    }
+
+    fn start_workflow_cleanup(&mut self, reason: SkipReason) {
+        let first_cleanup = self.scenario.first_cleanup();
+        for state in &mut self.case_states[self.next_case..first_cleanup] {
+            if matches!(state, CaseState::Pending) {
+                *state = CaseState::Skipped(reason);
+            }
+        }
+        if first_cleanup < self.case_states.len() {
+            self.next_case = first_cleanup;
+            self.stage = Stage::Cases;
+        } else {
+            self.stage = Stage::Done;
+        }
     }
 
     fn next_outbound(&mut self) -> Option<ProbeRequest> {
@@ -1010,12 +1652,53 @@ impl ActiveConversation {
                         self.next_case += 1;
                         continue;
                     }
+                    match self.resolve_argument_refs(index) {
+                        Ok(()) => {}
+                        Err(ArgumentReferenceFailure::Unavailable) => {
+                            if self.scenario.case_is_cleanup(index) {
+                                self.stop_case(
+                                    index,
+                                    vec![
+                                        Finding::workflow_cleanup_failed(
+                                            self.scenario
+                                                .case_location(index)
+                                                .field(LocationField::Cleanup),
+                                        )
+                                        .with_revision(self.revision()),
+                                    ],
+                                    SkipReason::PrerequisiteFailed,
+                                );
+                            } else {
+                                self.case_states[index] =
+                                    CaseState::Skipped(SkipReason::PrerequisiteFailed);
+                                self.next_case = index.saturating_add(1);
+                                self.stop_cases(SkipReason::PrerequisiteFailed);
+                            }
+                            continue;
+                        }
+                        Err(ArgumentReferenceFailure::Limit(violation)) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.stop_case(
+                                index,
+                                vec![Finding::limit_exceeded(
+                                    self.revision(),
+                                    self.scenario
+                                        .case_location(index)
+                                        .field(LocationField::Arguments),
+                                    violation,
+                                )],
+                                SkipReason::LimitReached,
+                            );
+                            continue;
+                        }
+                    }
                     let expects_rejection = self.scenario.cases[index].expected
                         == ExpectedResult::InvalidArgumentsRejection;
                     let validation = {
-                        let validators = self.tool_validators.as_ref().expect(
-                            "case replay starts only after selecting a valid tool contract",
-                        );
+                        let validators = self
+                            .tool_validators
+                            .get(&self.scenario.cases[index].tool)
+                            .expect("case replay starts only after selecting its tool contract");
                         validators
                             .input
                             .validate(&self.scenario.cases[index].arguments)
@@ -1025,16 +1708,18 @@ impl ActiveConversation {
                         | (true, Err(InstanceValidationIssue::Mismatch { error_count: 1 })) => {}
                         (false, Err(InstanceValidationIssue::Mismatch { error_count })) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] = CaseState::Performed(vec![
-                                Finding::tool_arguments_mismatch(
-                                    self.scenario
-                                        .case_location(index)
-                                        .field(LocationField::Arguments),
-                                    error_count,
-                                )
-                                .with_revision(self.revision()),
-                            ]);
-                            self.next_case += 1;
+                            self.complete_case(
+                                index,
+                                vec![
+                                    Finding::tool_arguments_mismatch(
+                                        self.scenario
+                                            .case_location(index)
+                                            .field(LocationField::Arguments),
+                                        error_count,
+                                    )
+                                    .with_revision(self.revision()),
+                                ],
+                            );
                             continue;
                         }
                         (true, Ok(())) | (true, Err(InstanceValidationIssue::Mismatch { .. })) => {
@@ -1052,37 +1737,41 @@ impl ActiveConversation {
                         }
                         (_, Err(InstanceValidationIssue::Limit(violation))) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] =
-                                CaseState::Performed(vec![Finding::limit_exceeded(
+                            self.stop_case(
+                                index,
+                                vec![Finding::limit_exceeded(
                                     self.revision(),
                                     self.scenario
                                         .case_location(index)
                                         .field(LocationField::Arguments),
                                     violation,
-                                )]);
-                            self.next_case += 1;
-                            self.stop_cases(SkipReason::LimitReached);
+                                )],
+                                SkipReason::LimitReached,
+                            );
                             continue;
                         }
                         (_, Err(InstanceValidationIssue::InvalidSchema)) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] = CaseState::Performed(vec![
-                                Finding::tool_result_invalid(
-                                    self.scenario
-                                        .case_location(index)
-                                        .field(LocationField::InputSchema),
-                                )
-                                .with_revision(self.revision()),
-                            ]);
-                            self.next_case += 1;
-                            self.stop_cases(SkipReason::PrerequisiteFailed);
+                            self.stop_case(
+                                index,
+                                vec![
+                                    Finding::tool_result_invalid(
+                                        self.scenario
+                                            .case_location(index)
+                                            .field(LocationField::InputSchema),
+                                    )
+                                    .with_revision(self.revision()),
+                                ],
+                                SkipReason::PrerequisiteFailed,
+                            );
                             continue;
                         }
                     }
                     let mirrored_fields = {
-                        let validators = self.tool_validators.as_ref().expect(
-                            "case replay starts only after selecting a valid tool contract",
-                        );
+                        let validators = self
+                            .tool_validators
+                            .get(&self.scenario.cases[index].tool)
+                            .expect("case replay starts only after selecting its tool contract");
                         validators
                             .header_annotations
                             .iter()
@@ -1102,21 +1791,22 @@ impl ActiveConversation {
                         }
                         Err(()) => {
                             self.scenario.cases[index].arguments = Value::Null;
-                            self.case_states[index] =
-                                CaseState::Performed(vec![Finding::http_header_mapping_invalid(
+                            self.complete_case(
+                                index,
+                                vec![Finding::http_header_mapping_invalid(
                                     self.scenario
                                         .case_location(index)
                                         .field(LocationField::Arguments),
                                     RuleViolation::InvalidMirroredHeaderValue,
-                                )]);
-                            self.next_case += 1;
+                                )],
+                            );
                             continue;
                         }
                     };
                     let arguments = std::mem::take(&mut self.scenario.cases[index].arguments);
                     let arguments =
                         (!self.scenario.cases[index].omit_arguments).then_some(arguments);
-                    let tool = self.scenario.tool.clone();
+                    let tool = self.scenario.cases[index].tool.clone();
                     let id = self.begin_request(PendingRequest::Call(index));
                     return Some(self.adapter.tool_call_request(
                         id,
@@ -1530,10 +2220,10 @@ impl ActiveConversation {
                 ));
                 continue;
             }
-            if name != self.scenario.tool {
+            if !self.scenario.tools.contains(name) {
                 continue;
             }
-            self.selected_count += 1;
+            self.selected_names.insert(name.to_owned());
             match self.adapter.task_support(tool) {
                 ActiveTaskSupport::Immediate => {}
                 ActiveTaskSupport::Required => {
@@ -1631,11 +2321,14 @@ impl ActiveConversation {
             } else {
                 Vec::new()
             };
-            self.selected_tool = Some(ToolContract {
-                input_schema: input_schema.clone(),
-                output_schema,
-                header_annotations,
-            });
+            self.selected_tools.insert(
+                name.to_owned(),
+                ToolContract {
+                    input_schema: input_schema.clone(),
+                    output_schema,
+                    header_annotations,
+                },
+            );
         }
         if !findings.is_empty() {
             self.fail_discovery(
@@ -1678,7 +2371,7 @@ impl ActiveConversation {
             return;
         }
 
-        if self.selected_count != 1 {
+        if self.selected_names.len() != self.scenario.tools.len() {
             self.fail_discovery(
                 vec![
                     Finding::tool_not_found(Location::root(LocationField::Tools))
@@ -1690,7 +2383,7 @@ impl ActiveConversation {
         }
         self.discovery = PhaseState::Performed(Vec::new());
         let mut schema_findings = std::mem::take(&mut self.selected_schema_findings);
-        let Some(contract) = self.selected_tool.as_ref() else {
+        if self.selected_tools.len() != self.scenario.tools.len() {
             debug_assert!(!schema_findings.is_empty());
             self.schemas = PhaseState::Performed(cap_active_phase_findings(
                 schema_findings,
@@ -1700,56 +2393,83 @@ impl ActiveConversation {
             ));
             self.stop_cases(SkipReason::PrerequisiteFailed);
             return;
-        };
-        let input_location = Location::root(LocationField::Tools)
-            .wildcard()
-            .field(LocationField::InputSchema);
-        if contract.input_schema.get("type").and_then(Value::as_str) != Some("object") {
-            schema_findings.push(Finding::schema_contract_invalid(
-                revision,
-                input_location.clone().field(LocationField::Type),
-                RuleViolation::ExpectedInputSchemaRootObject {
-                    observed: json_kind(contract.input_schema.get("type")),
-                },
-            ));
         }
-        schema_findings.extend(
-            validate_local_schema_with_policy(
-                &contract.input_schema,
-                input_location,
-                self.adapter.schema_dialect_policy(),
-            )
-            .into_iter()
-            .map(|finding| finding.with_revision(revision)),
-        );
-        if let Some(output_schema) = &contract.output_schema {
+        for contract in self.selected_tools.values() {
+            let input_location = Location::root(LocationField::Tools)
+                .wildcard()
+                .field(LocationField::InputSchema);
+            if contract.input_schema.get("type").and_then(Value::as_str) != Some("object") {
+                schema_findings.push(Finding::schema_contract_invalid(
+                    revision,
+                    input_location.clone().field(LocationField::Type),
+                    RuleViolation::ExpectedInputSchemaRootObject {
+                        observed: json_kind(contract.input_schema.get("type")),
+                    },
+                ));
+            }
             schema_findings.extend(
                 validate_local_schema_with_policy(
-                    output_schema,
-                    Location::root(LocationField::Tools)
-                        .wildcard()
-                        .field(LocationField::OutputSchema),
+                    &contract.input_schema,
+                    input_location,
                     self.adapter.schema_dialect_policy(),
                 )
                 .into_iter()
                 .map(|finding| finding.with_revision(revision)),
             );
+            if let Some(output_schema) = &contract.output_schema {
+                schema_findings.extend(
+                    validate_local_schema_with_policy(
+                        output_schema,
+                        Location::root(LocationField::Tools)
+                            .wildcard()
+                            .field(LocationField::OutputSchema),
+                        self.adapter.schema_dialect_policy(),
+                    )
+                    .into_iter()
+                    .map(|finding| finding.with_revision(revision)),
+                );
+            }
         }
         if schema_findings.is_empty() {
-            let validators = ToolValidators {
-                input: LocalValidator::compile(&contract.input_schema)
-                    .expect("a validated advertised input schema compiles without retrieval"),
-                output: contract.output_schema.as_ref().map(|schema| {
-                    LocalValidator::compile(schema)
-                        .expect("a validated advertised output schema compiles without retrieval")
-                }),
-                header_annotations: contract.header_annotations.clone(),
-            };
+            self.tool_validators = self
+                .selected_tools
+                .iter()
+                .map(|(name, contract)| {
+                    (
+                        name.clone(),
+                        ToolValidators {
+                            input: LocalValidator::compile(&contract.input_schema).expect(
+                                "a validated advertised input schema compiles without retrieval",
+                            ),
+                            output: contract.output_schema.as_ref().map(|schema| {
+                                LocalValidator::compile(schema).expect(
+                                    "a validated advertised output schema compiles without retrieval",
+                                )
+                            }),
+                            header_annotations: contract.header_annotations.clone(),
+                        },
+                    )
+                })
+                .collect();
             if self.scenario.generates_cases() {
-                match self
+                let tool = self
                     .scenario
-                    .generate_cases(&contract.input_schema, &validators.input)
-                {
+                    .tools
+                    .iter()
+                    .next()
+                    .expect("generated scenarios declare one tool");
+                let input_schema = self
+                    .selected_tools
+                    .get(tool)
+                    .expect("the generated tool contract was selected")
+                    .input_schema
+                    .clone();
+                let input_validator = &self
+                    .tool_validators
+                    .get(tool)
+                    .expect("the generated tool validator was compiled")
+                    .input;
+                match self.scenario.generate_cases(&input_schema, input_validator) {
                     Ok(()) => {
                         self.generation = Some(PhaseState::Performed(Vec::new()));
                     }
@@ -1778,8 +2498,7 @@ impl ActiveConversation {
                     }
                 }
             }
-            self.tool_validators = Some(validators);
-            self.selected_tool = None;
+            self.selected_tools.clear();
             self.schemas = PhaseState::Performed(Vec::new());
             self.stage = Stage::Cases;
         } else {
@@ -1803,9 +2522,7 @@ impl ActiveConversation {
             if self.adapter.tool_result_kind() == ActiveToolResultKind::Legacy
                 && server_request_requires_input(object)
             {
-                self.case_states[index] = CaseState::Incomplete;
-                self.next_case = index.saturating_add(1);
-                self.stop_cases(SkipReason::InputRequired);
+                self.mark_incomplete(index, false);
             } else {
                 self.invalid_tool_result(index, LocationField::Request);
             }
@@ -1819,21 +2536,20 @@ impl ActiveConversation {
             if self.adapter.tool_result_kind() == ActiveToolResultKind::Legacy
                 && is_url_elicitation_required(object)
             {
-                self.case_states[index] = CaseState::Incomplete;
-                self.next_case = index.saturating_add(1);
-                self.stage = Stage::Cases;
+                self.mark_incomplete(index, true);
                 return;
             }
-            self.case_states[index] = CaseState::Performed(vec![
-                Finding::tool_call_rejected(
-                    self.scenario
-                        .case_location(index)
-                        .field(LocationField::Result),
-                )
-                .with_revision(self.revision()),
-            ]);
-            self.next_case = index.saturating_add(1);
-            self.stage = Stage::Cases;
+            self.complete_case(
+                index,
+                vec![
+                    Finding::tool_call_rejected(
+                        self.scenario
+                            .case_location(index)
+                            .field(LocationField::Result),
+                    )
+                    .with_revision(self.revision()),
+                ],
+            );
             return;
         }
         let Some(result) = object.get("result").and_then(Value::as_object) else {
@@ -1843,9 +2559,7 @@ impl ActiveConversation {
         if self.adapter.tool_result_kind() == ActiveToolResultKind::Modern {
             match result.get("resultType").and_then(Value::as_str) {
                 Some("input_required") => {
-                    self.case_states[index] = CaseState::Incomplete;
-                    self.next_case = index.saturating_add(1);
-                    self.stage = Stage::Cases;
+                    self.mark_incomplete(index, true);
                     return;
                 }
                 Some("complete") => {}
@@ -1900,7 +2614,7 @@ impl ActiveConversation {
 
         let advertised = self
             .tool_validators
-            .as_ref()
+            .get(&case.tool)
             .and_then(|validators| validators.output.as_ref());
         let scenario_validator = case.output_validator.as_ref();
         let mut advertised_mismatch = None;
@@ -1923,9 +2637,7 @@ impl ActiveConversation {
                     .field(LocationField::StructuredContent),
                 violation,
             ));
-            self.case_states[index] = CaseState::Performed(findings);
-            self.next_case = index.saturating_add(1);
-            self.stop_cases(SkipReason::LimitReached);
+            self.stop_case(index, findings, SkipReason::LimitReached);
             return;
         }
         if advertised_mismatch
@@ -1943,9 +2655,7 @@ impl ActiveConversation {
                 )
                 .with_revision(self.revision()),
             );
-            self.case_states[index] = CaseState::Performed(findings);
-            self.next_case = index.saturating_add(1);
-            self.stop_cases(SkipReason::PrerequisiteFailed);
+            self.stop_case(index, findings, SkipReason::PrerequisiteFailed);
             return;
         }
 
@@ -1975,9 +2685,33 @@ impl ActiveConversation {
             );
         }
 
-        self.case_states[index] = CaseState::Performed(findings);
-        self.next_case = index.saturating_add(1);
-        self.stage = Stage::Cases;
+        if findings.is_empty() && self.scenario.is_workflow() {
+            match self.capture_workflow_values(index, structured) {
+                Ok(()) => {}
+                Err(CaptureFailure::Missing) => findings.push(
+                    Finding::workflow_capture_missing(
+                        self.scenario
+                            .case_location(index)
+                            .field(LocationField::Captures)
+                            .wildcard(),
+                    )
+                    .with_revision(self.revision()),
+                ),
+                Err(CaptureFailure::Limit(violation)) => {
+                    findings.push(Finding::limit_exceeded(
+                        self.revision(),
+                        self.scenario
+                            .case_location(index)
+                            .field(LocationField::Captures),
+                        violation,
+                    ));
+                    self.stop_case(index, findings, SkipReason::LimitReached);
+                    return;
+                }
+            }
+        }
+
+        self.complete_case(index, findings);
     }
 
     fn process_invalid_arguments_rejection(&mut self, index: usize, response: &Map<String, Value>) {
@@ -2010,12 +2744,11 @@ impl ActiveConversation {
     }
 
     fn invalid_tool_result(&mut self, index: usize, field: LocationField) {
-        self.case_states[index] = CaseState::Performed(vec![
+        let findings = vec![
             Finding::tool_result_invalid(self.scenario.case_location(index).field(field))
                 .with_revision(self.revision()),
-        ]);
-        self.next_case = index.saturating_add(1);
-        self.stop_cases(SkipReason::PrerequisiteFailed);
+        ];
+        self.stop_case(index, findings, SkipReason::PrerequisiteFailed);
     }
 
     fn fail_discovery(&mut self, findings: Vec<Finding>, reason: SkipReason) {
@@ -2094,7 +2827,18 @@ impl ActiveConversation {
         let report_revision = self.revision();
         if transport_failed {
             if let Some(PendingRequest::Call(index)) = self.pending.take() {
-                self.case_states[index] = CaseState::Skipped(SkipReason::PrerequisiteFailed);
+                self.case_states[index] = if self.scenario.case_is_cleanup(index) {
+                    CaseState::Performed(vec![
+                        Finding::workflow_cleanup_failed(
+                            self.scenario
+                                .case_location(index)
+                                .field(LocationField::Cleanup),
+                        )
+                        .with_revision(report_revision),
+                    ])
+                } else {
+                    CaseState::Skipped(SkipReason::PrerequisiteFailed)
+                };
                 self.next_case = index.saturating_add(1);
             }
             self.stop_before_cases(SkipReason::PrerequisiteFailed);
@@ -2107,6 +2851,11 @@ impl ActiveConversation {
         self.fit_report_finding_budget(transport_finding_count);
         let configuration_check = self.scenario.configuration_check();
         let case_requirement = self.scenario.case_requirement();
+        let case_ids = (0..self.case_states.len())
+            .map(|index| self.scenario.case_check_id(index))
+            .collect::<Vec<_>>();
+        self.captured_values.clear();
+        self.captured_bytes = 0;
         let mut reproductions = (0..self.case_states.len())
             .map(|index| {
                 self.scenario
@@ -2137,26 +2886,22 @@ impl ActiveConversation {
         checks.extend(
             self.case_states
                 .into_iter()
-                .enumerate()
-                .map(|(index, state)| {
+                .zip(case_ids)
+                .map(|(state, check_id)| {
                     let check = match state {
-                        CaseState::Performed(findings) => CheckResult::performed(
-                            CheckId::RuntimeToolCase(index),
-                            case_requirement,
-                            findings,
-                        ),
+                        CaseState::Performed(findings) => {
+                            CheckResult::performed(check_id, case_requirement, findings)
+                        }
                         CaseState::Incomplete => CheckResult::skipped(
-                            CheckId::RuntimeToolCase(index),
+                            check_id,
                             case_requirement,
                             SkipReason::InputRequired,
                         ),
-                        CaseState::Skipped(reason) => CheckResult::skipped(
-                            CheckId::RuntimeToolCase(index),
-                            case_requirement,
-                            reason,
-                        ),
+                        CaseState::Skipped(reason) => {
+                            CheckResult::skipped(check_id, case_requirement, reason)
+                        }
                         CaseState::Pending => CheckResult::skipped(
-                            CheckId::RuntimeToolCase(index),
+                            check_id,
                             case_requirement,
                             SkipReason::PrerequisiteFailed,
                         ),
@@ -2508,6 +3253,10 @@ fn case_location(index: usize) -> Location {
     scenario_location().field(LocationField::Cases).index(index)
 }
 
+fn workflow_step_location(index: usize) -> Location {
+    scenario_location().field(LocationField::Steps).index(index)
+}
+
 fn shape_failure(
     location: Location,
     expected: ExpectedShape,
@@ -2563,6 +3312,41 @@ fn ensure_fields(
     Ok(())
 }
 
+fn parse_target_environment(root: &Map<String, Value>) -> Result<Vec<String>, ScenarioFailure> {
+    let mut target_env = Vec::new();
+    let mut target_names = BTreeSet::new();
+    if let Some(value) = root.get("target_env") {
+        let values = value.as_array().ok_or_else(|| {
+            shape_failure(
+                scenario_location().field(LocationField::TargetEnv),
+                ExpectedShape::Array,
+                json_kind(Some(value)),
+            )
+        })?;
+        for (index, value) in values.iter().enumerate() {
+            let location = scenario_location()
+                .field(LocationField::TargetEnv)
+                .index(index);
+            let Some(name) = value.as_str() else {
+                return Err(shape_failure(
+                    location,
+                    ExpectedShape::String,
+                    json_kind(Some(value)),
+                ));
+            };
+            let identity = environment_identity(name);
+            if !valid_environment_name(name) || !target_names.insert(identity) {
+                return Err(ScenarioFailure::one(Finding::secret_reference_invalid(
+                    location,
+                    RuleViolation::InvalidEnvironmentReference,
+                )));
+            }
+            target_env.push(name.to_owned());
+        }
+    }
+    Ok(target_env)
+}
+
 fn check_instance_bytes(value: &Value, location: Location) -> Result<(), ScenarioFailure> {
     let observed = u64::try_from(serialized_len(value)).unwrap_or(u64::MAX);
     let maximum = DiagnosticLimits::M1_DEFAULTS.values().instance_bytes;
@@ -2596,6 +3380,21 @@ fn valid_json_pointer(pointer: &str) -> bool {
     true
 }
 
+fn valid_workflow_pointer(pointer: &str) -> bool {
+    pointer.chars().count() <= MAX_WORKFLOW_POINTER_CHARS
+        && (pointer.is_empty() || valid_json_pointer(pointer))
+}
+
+fn pointers_overlap(left: &str, right: &str) -> bool {
+    left == right
+        || left
+            .strip_prefix(right)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+        || right
+            .strip_prefix(left)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 fn valid_environment_name(name: &str) -> bool {
     let mut bytes = name.bytes();
     let Some(first) = bytes.next() else {
@@ -2603,6 +3402,10 @@ fn valid_environment_name(name: &str) -> bool {
     };
     (first == b'_' || first.is_ascii_alphabetic())
         && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
+fn valid_workflow_name(name: &str) -> bool {
+    name.chars().count() <= MAX_WORKFLOW_NAME_CHARS && valid_environment_name(name)
 }
 
 fn environment_identity(name: &str) -> String {
@@ -2760,7 +3563,10 @@ where
 mod tests {
     use serde_json::{Map, Value, json};
 
-    use super::{is_url_elicitation_required, server_request_requires_input};
+    use super::{
+        ActiveConversation, ActiveProtocolRevision, ActiveScenario, ArgumentReferenceFailure,
+        CaptureFailure, LimitKind, is_url_elicitation_required, server_request_requires_input,
+    };
 
     fn object(value: &Value) -> &Map<String, Value> {
         value.as_object().expect("the fixture should be an object")
@@ -2842,6 +3648,167 @@ mod tests {
             json!({"method": "ping", "params": {}}),
         ] {
             assert!(!server_request_requires_input(object(&request)));
+        }
+    }
+
+    #[test]
+    fn workflow_capture_memory_is_bounded_before_retention() {
+        let document = json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "capture",
+                "tool": "synthetic.capture",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "captures": {"value": "/value"},
+                "expect": {"result": "success"}
+            }]
+        });
+        let bytes = serde_json::to_vec(&document).expect("the workflow should serialize");
+        let scenario = ActiveScenario::parse(&bytes)
+            .unwrap_or_else(|_| panic!("the bounded workflow should parse"));
+        let mut conversation =
+            ActiveConversation::for_revision(scenario, ActiveProtocolRevision::CURRENT);
+        let structured = json!({"value": "x".repeat(1_048_576)});
+
+        let failure = conversation
+            .capture_workflow_values(0, Some(&structured))
+            .expect_err("the oversized capture must fail before retention");
+        assert!(matches!(
+            failure,
+            CaptureFailure::Limit(violation) if violation.kind() == LimitKind::InstanceBytes
+        ));
+        assert!(conversation.captured_values.is_empty());
+        assert_eq!(conversation.captured_bytes, 0);
+
+        let captures = (0..9)
+            .map(|index| (format!("value_{index}"), Value::String("/value".to_owned())))
+            .collect::<Map<_, _>>();
+        let aggregate_document = json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "capture",
+                "tool": "synthetic.capture",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "captures": captures,
+                "expect": {"result": "success"}
+            }]
+        });
+        let bytes = serde_json::to_vec(&aggregate_document)
+            .expect("the aggregate workflow should serialize");
+        let scenario = ActiveScenario::parse(&bytes)
+            .unwrap_or_else(|_| panic!("the aggregate workflow should parse"));
+        let mut conversation =
+            ActiveConversation::for_revision(scenario, ActiveProtocolRevision::CURRENT);
+        let structured = json!({"value": "x".repeat(1_000_000)});
+
+        let failure = conversation
+            .capture_workflow_values(0, Some(&structured))
+            .expect_err("aggregate capture size must fail before retention");
+        assert!(matches!(
+            failure,
+            CaptureFailure::Limit(violation)
+                if violation.kind() == LimitKind::AggregateOutputBytes
+        ));
+        assert!(conversation.captured_values.is_empty());
+        assert_eq!(conversation.captured_bytes, 0);
+    }
+
+    #[test]
+    fn workflow_reference_size_is_proved_before_argument_replacement() {
+        let document = json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "capture",
+                "tool": "synthetic.capture",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "captures": {"value": "/value"},
+                "expect": {"result": "success"}
+            }, {
+                "id": "consume",
+                "tool": "synthetic.consume",
+                "safety": {"effects": "read_only"},
+                "arguments": {"value": null, "padding": "x".repeat(600_000)},
+                "argument_refs": {"/value": "value"},
+                "expect": {"result": "success"}
+            }]
+        });
+        let bytes = serde_json::to_vec(&document).expect("the workflow should serialize");
+        let mut scenario = ActiveScenario::parse(&bytes)
+            .unwrap_or_else(|_| panic!("the bounded workflow should parse"));
+        scenario
+            .resolve_argument_secrets(|_| None)
+            .unwrap_or_else(|_| panic!("the initial workflow arguments should fit"));
+        let mut conversation =
+            ActiveConversation::for_revision(scenario, ActiveProtocolRevision::CURRENT);
+        conversation
+            .captured_values
+            .insert("value".to_owned(), Value::String("y".repeat(600_000)));
+
+        let failure = conversation
+            .resolve_argument_refs(1)
+            .expect_err("the resolved arguments must remain within one instance bound");
+        assert!(matches!(
+            failure,
+            ArgumentReferenceFailure::Limit(violation)
+                if violation.kind() == LimitKind::InstanceBytes
+        ));
+        assert_eq!(
+            conversation.scenario.cases[1].arguments.pointer("/value"),
+            Some(&Value::Null)
+        );
+        assert!(!conversation.scenario.cases[1].argument_refs.is_empty());
+    }
+
+    #[test]
+    fn workflow_parser_rejects_future_data_flow_and_non_suffix_cleanup() {
+        let future_reference = json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "future",
+                "tool": "synthetic.read",
+                "safety": {"effects": "read_only"},
+                "arguments": {"id": null},
+                "argument_refs": {"/id": "later"},
+                "expect": {"result": "success"}
+            }, {
+                "id": "producer",
+                "tool": "synthetic.lookup",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "captures": {"later": "/id"},
+                "expect": {"result": "success"}
+            }]
+        });
+        let non_suffix_cleanup = json!({
+            "schema_version": "mcp-doctor.scenario/v2alpha1",
+            "steps": [{
+                "id": "main",
+                "tool": "synthetic.main",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "expect": {"result": "success"}
+            }, {
+                "id": "cleanup",
+                "tool": "synthetic.cleanup",
+                "safety": {"effects": "side_effecting"},
+                "cleanup": true,
+                "arguments": {},
+                "expect": {"result": "success"}
+            }, {
+                "id": "continued-main",
+                "tool": "synthetic.main",
+                "safety": {"effects": "read_only"},
+                "arguments": {},
+                "expect": {"result": "success"}
+            }]
+        });
+
+        for document in [future_reference, non_suffix_cleanup] {
+            let bytes = serde_json::to_vec(&document).expect("the workflow should serialize");
+            assert!(ActiveScenario::parse(&bytes).is_err());
         }
     }
 }
