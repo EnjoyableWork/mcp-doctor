@@ -1836,7 +1836,7 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_027_and_tracks_mcpd_028_in_progress() {
+fn project_records_completed_mcpd_027_and_mcpd_028() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
     let compatibility = repository_file("tests/compatibility/README.md");
@@ -1858,7 +1858,7 @@ fn project_records_completed_mcpd_027_and_tracks_mcpd_028_in_progress() {
         "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407549)",
         "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407803)",
         "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778427941)",
-        "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
+        "closed [issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
         "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
         "`OPEN-14` is accepted as `DEC-051`.",
         "`OPEN-15` is accepted as `DEC-052`",
@@ -1866,12 +1866,20 @@ fn project_records_completed_mcpd_027_and_tracks_mcpd_028_in_progress() {
         "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
         "| OPEN-16 | `MCPD-029` |",
         "`MCPD-027` established the shared active legacy boundary",
-        "that `MCPD-028` must consume",
+        "`MCPD-028`\nconsumed",
         "integration must reuse the settled active adapter if `MCPD-027` has begun",
         "The `MCPD-027` merged source implements the typed adapter",
         "controlled compatibility runner passed all four retained",
         "Native Windows PowerShell execution",
         "Therefore `MCPD-027` is Done",
+        "[PR 80](https://github.com/EnjoyableWork/mcp-doctor/pull/80)",
+        "[`e380b26`](https://github.com/EnjoyableWork/mcp-doctor/commit/e380b26c382ea2b83fefe41c153f00baea023db2)",
+        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031576)",
+        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031251)",
+        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031581)",
+        "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808063280)",
+        "The completed `MCPD-028` source selects MCP `2025-06-18`",
+        "Therefore `MCPD-028` is Done",
     ] {
         assert!(
             project.contains(contract),
@@ -1912,7 +1920,20 @@ fn project_records_completed_mcpd_027_and_tracks_mcpd_028_in_progress() {
         .lines()
         .find(|line| line.starts_with("| MCPD-028 |"))
         .expect("PROJECT.md should contain MCPD-028");
-    assert!(active_2025_06.contains("| In progress |"));
+    assert!(active_2025_06.contains("| Done |"));
+    for contract in [
+        "exact implementation head",
+        "merge commit",
+        "closed [issue #61]",
+        "exact-`main`",
+        "real-server compatibility",
+    ] {
+        assert!(
+            active_2025_06.contains(contract),
+            "MCPD-028 completion must retain {contract}"
+        );
+    }
+    assert!(!project.contains("`MCPD-028` remains In progress"));
 
     let later = project
         .lines()
