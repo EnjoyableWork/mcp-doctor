@@ -80,6 +80,24 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
     assert_eq!(manifest["product"]["name"], "mcp-doctor");
     assert_eq!(manifest["product"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(manifest["limits"]["output_bytes"], 65_536);
+    assert_eq!(
+        manifest["schema_versions"]["contract_snapshot"],
+        json!(["mcp-doctor.contract-snapshot/v1alpha1"])
+    );
+    assert_eq!(
+        manifest["schema_versions"]["contract_diff"],
+        json!(["mcp-doctor.contract-diff/v1alpha1"])
+    );
+    for transport in ["stdio", "streamable_http"] {
+        let revisions = manifest["protocol_support"]
+            .as_array()
+            .expect("protocol support should be an array")
+            .iter()
+            .find(|support| support["command"] == "inspect" && support["transport"] == transport)
+            .expect("inspect transport support should be declared")["revisions"]
+            .clone();
+        assert_eq!(revisions, json!(["2026-07-28", "2025-11-25", "2025-06-18"]));
+    }
     assert!(first.stdout.len() <= 65_536);
 
     manifest["product"]["version"] = json!("0.0.0-test");

@@ -10,20 +10,21 @@ use std::process::ExitCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
-use super::catalog::resolve_local_reference;
+use super::catalog::{DRAFT_2020_12, resolve_local_reference};
 use super::limits::DiagnosticLimits;
-use super::protocol::SupportedRevision;
+use super::protocol::{KnownRevision, SupportedRevision};
 use crate::transport::ProbeResponse;
 
 pub(crate) const SNAPSHOT_SCHEMA_VERSION: &str = "mcp-doctor.contract-snapshot/v1alpha1";
 pub(crate) const DIFF_SCHEMA_VERSION: &str = "mcp-doctor.contract-diff/v1alpha1";
-const PROTOCOL_REVISION: &str = "2026-07-28";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ContractSnapshot {
     schema_version: String,
     protocol_revision: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    negotiated_protocol_revision: Option<String>,
     capabilities: SnapshotCapabilities,
     catalogs: SnapshotCatalogs,
 }
@@ -37,6 +38,27 @@ struct SnapshotCapabilities {
     prompts: ListCapability,
     #[serde(default)]
     resources: ResourceCapability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    logging: Option<PresenceCapability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    completions: Option<PresenceCapability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tasks: Option<TaskCapability>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PresenceCapability {
+    advertised: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TaskCapability {
+    advertised: bool,
+    list: bool,
+    cancel: bool,
+    requests_tools_call: bool,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -99,7 +121,20 @@ struct ToolContract {
     behavior_hints: ToolBehaviorHints,
     input_schema: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
+    input_schema_dialect: Option<SnapshotSchemaDialect>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     output_schema: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_schema_dialect: Option<SnapshotSchemaDialect>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SnapshotSchemaDialect {
+    #[serde(rename = "draft_2020_12")]
+    Draft2020_12,
+    Ambiguous,
+    Unsupported,
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -168,6 +203,8 @@ enum SnapshotInputKind {
     Limit,
     ExternalReference,
     Correlation,
+    RevisionMismatch,
+    RevisionContract,
 }
 
 impl SnapshotInputKind {
@@ -179,6 +216,8 @@ impl SnapshotInputKind {
             Self::Limit => "MCP-SNAPSHOT-004",
             Self::ExternalReference => "MCP-SNAPSHOT-005",
             Self::Correlation => "MCP-SNAPSHOT-006",
+            Self::RevisionMismatch => "MCP-SNAPSHOT-007",
+            Self::RevisionContract => "MCP-SNAPSHOT-008",
         }
     }
 
@@ -192,6 +231,12 @@ impl SnapshotInputKind {
                 "The snapshot contains a prohibited external JSON Schema reference."
             }
             Self::Correlation => "The snapshot ordinal correlation is invalid.",
+            Self::RevisionMismatch => {
+                "The snapshot revision identities do not match the required scope."
+            }
+            Self::RevisionContract => {
+                "The snapshot revision-specific artifact contract is incompatible."
+            }
         }
     }
 }
@@ -218,7 +263,6 @@ impl Error for SnapshotInputError {}
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum SnapshotDestinationError {
     Authority,
-    Revision,
     InvalidPath,
     ExistingOutput,
     ParentUnavailable,
@@ -233,16 +277,13 @@ impl fmt::Display for SnapshotDestinationError {
             Self::Authority => {
                 "snapshot creation requires identical --snapshot and --allow-sensitive-snapshot paths"
             }
-            Self::Revision => {
-                "contract snapshots are supported only for passive MCP 2026-07-28 inspection"
-            }
             Self::InvalidPath => "the snapshot output path is not a valid new-file target",
             Self::ExistingOutput => "the snapshot output already exists; overwrite is not supported",
             Self::ParentUnavailable => {
                 "the snapshot output parent must already exist as a directory"
             }
             Self::Content => {
-                "the advertised contract cannot produce a bounded current-revision snapshot"
+                "the advertised contract cannot produce a bounded revision-correct snapshot"
             }
             Self::Create => "the new snapshot output could not be created safely",
             Self::Write => "the new snapshot output could not be written completely",
@@ -291,16 +332,12 @@ impl SnapshotDestination {
 pub(crate) fn prepare_snapshot_destination(
     snapshot: Option<PathBuf>,
     acknowledgement: Option<PathBuf>,
-    revision: SupportedRevision,
 ) -> Result<Option<SnapshotDestination>, SnapshotDestinationError> {
     let path = match (snapshot, acknowledgement) {
         (None, None) => return Ok(None),
         (Some(path), Some(acknowledged)) if path == acknowledged => path,
         _ => return Err(SnapshotDestinationError::Authority),
     };
-    if revision != SupportedRevision::CURRENT {
-        return Err(SnapshotDestinationError::Revision);
-    }
     if path.file_name().is_none() {
         return Err(SnapshotDestinationError::InvalidPath);
     }
@@ -317,35 +354,27 @@ pub(crate) fn prepare_snapshot_destination(
 }
 
 pub(crate) fn capture_contract_snapshot(
+    revision: SupportedRevision,
+    negotiated_revision: Option<KnownRevision>,
     responses: &[ProbeResponse],
 ) -> Result<Vec<u8>, SnapshotDestinationError> {
-    let mut snapshot =
-        snapshot_from_responses(responses).map_err(|_| SnapshotDestinationError::Content)?;
+    let mut snapshot = snapshot_from_responses(revision, negotiated_revision, responses)
+        .map_err(|_| SnapshotDestinationError::Content)?;
     normalize_and_validate(&mut snapshot).map_err(|_| SnapshotDestinationError::Content)?;
     encode_snapshot(&snapshot).map_err(|_| SnapshotDestinationError::Content)
 }
 
 fn snapshot_from_responses(
+    revision: SupportedRevision,
+    negotiated_revision: Option<KnownRevision>,
     responses: &[ProbeResponse],
 ) -> Result<ContractSnapshot, SnapshotInputError> {
     let discovery = responses
         .first()
         .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
     let discovery = response_result(discovery)?;
-    if discovery.get("resultType").and_then(Value::as_str) != Some("complete")
-        || !discovery
-            .get("supportedVersions")
-            .and_then(Value::as_array)
-            .is_some_and(|versions| {
-                versions
-                    .iter()
-                    .any(|revision| revision.as_str() == Some(PROTOCOL_REVISION))
-            })
-    {
-        return Err(SnapshotInputError::new(
-            SnapshotInputKind::UnsupportedRevision,
-        ));
-    }
+    let negotiated_protocol_revision =
+        snapshot_revision_identity(revision, negotiated_revision, &discovery)?;
     let capabilities = discovery
         .get("capabilities")
         .and_then(Value::as_object)
@@ -355,6 +384,9 @@ fn snapshot_from_responses(
         tools: list_capability(capabilities.get("tools"))?,
         prompts: list_capability(capabilities.get("prompts"))?,
         resources: resource_capability(capabilities.get("resources"))?,
+        logging: legacy_presence_capability(revision, capabilities.get("logging"))?,
+        completions: legacy_presence_capability(revision, capabilities.get("completions"))?,
+        tasks: legacy_task_capability(revision, capabilities.get("tasks"))?,
     };
 
     let mut catalogs = SnapshotCatalogs {
@@ -366,7 +398,7 @@ fn snapshot_from_responses(
     let mut response_index = 1;
     if snapshot_capabilities.tools.advertised {
         let items = consume_catalog_pages(responses, &mut response_index, "tools")?;
-        catalogs.tools = build_tool_catalog(items)?;
+        catalogs.tools = build_tool_catalog(items, revision)?;
     }
     if snapshot_capabilities.prompts.advertised {
         let items = consume_catalog_pages(responses, &mut response_index, "prompts")?;
@@ -384,10 +416,112 @@ fn snapshot_from_responses(
 
     Ok(ContractSnapshot {
         schema_version: SNAPSHOT_SCHEMA_VERSION.to_owned(),
-        protocol_revision: PROTOCOL_REVISION.to_owned(),
+        protocol_revision: revision.as_str().to_owned(),
+        negotiated_protocol_revision,
         capabilities: snapshot_capabilities,
         catalogs,
     })
+}
+
+fn snapshot_revision_identity(
+    revision: SupportedRevision,
+    negotiated_revision: Option<KnownRevision>,
+    discovery: &Map<String, Value>,
+) -> Result<Option<String>, SnapshotInputError> {
+    if revision.uses_initialize() {
+        if negotiated_revision.map(KnownRevision::as_str) != Some(revision.as_str())
+            || discovery.get("protocolVersion").and_then(Value::as_str) != Some(revision.as_str())
+        {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionMismatch));
+        }
+        return Ok(Some(revision.as_str().to_owned()));
+    }
+
+    if negotiated_revision.is_some() {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionMismatch));
+    }
+    if discovery.get("resultType").and_then(Value::as_str) != Some("complete")
+        || !discovery
+            .get("supportedVersions")
+            .and_then(Value::as_array)
+            .is_some_and(|versions| {
+                versions
+                    .iter()
+                    .any(|offered| offered.as_str() == Some(revision.as_str()))
+            })
+    {
+        return Err(SnapshotInputError::new(
+            SnapshotInputKind::UnsupportedRevision,
+        ));
+    }
+    Ok(None)
+}
+
+fn legacy_presence_capability(
+    revision: SupportedRevision,
+    value: Option<&Value>,
+) -> Result<Option<PresenceCapability>, SnapshotInputError> {
+    if !revision.uses_initialize() {
+        return Ok(None);
+    }
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    value
+        .as_object()
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    Ok(Some(PresenceCapability { advertised: true }))
+}
+
+fn legacy_task_capability(
+    revision: SupportedRevision,
+    value: Option<&Value>,
+) -> Result<Option<TaskCapability>, SnapshotInputError> {
+    if revision != SupportedRevision::V2025_11_25 {
+        return Ok(None);
+    }
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let tasks = value
+        .as_object()
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    let list = optional_object_present(tasks, "list")?;
+    let cancel = optional_object_present(tasks, "cancel")?;
+    let requests_tools_call = if let Some(requests) = optional_object(tasks, "requests")? {
+        if let Some(tools) = optional_object(requests, "tools")? {
+            optional_object_present(tools, "call")?
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    Ok(Some(TaskCapability {
+        advertised: true,
+        list,
+        cancel,
+        requests_tools_call,
+    }))
+}
+
+fn optional_object<'a>(
+    object: &'a Map<String, Value>,
+    name: &str,
+) -> Result<Option<&'a Map<String, Value>>, SnapshotInputError> {
+    object.get(name).map_or(Ok(None), |value| {
+        value
+            .as_object()
+            .map(Some)
+            .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))
+    })
+}
+
+fn optional_object_present(
+    object: &Map<String, Value>,
+    name: &str,
+) -> Result<bool, SnapshotInputError> {
+    optional_object(object, name).map(|value| value.is_some())
 }
 
 fn response_result(response: &ProbeResponse) -> Result<Map<String, Value>, SnapshotInputError> {
@@ -463,6 +597,7 @@ fn consume_catalog_pages(
 
 fn build_tool_catalog(
     items: Vec<Value>,
+    revision: SupportedRevision,
 ) -> Result<SnapshotCatalog<ToolContract>, SnapshotInputError> {
     let mut contracts = Vec::with_capacity(items.len());
     for item in items {
@@ -476,14 +611,40 @@ fn build_tool_catalog(
             .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
         let output_schema = object.get("outputSchema").cloned();
         let behavior_hints = tool_behavior_hints(object.get("annotations"))?;
+        let input_schema_dialect = artifact_schema_dialect(revision, &input_schema)?;
+        let output_schema_dialect = output_schema
+            .as_ref()
+            .map(|schema| artifact_schema_dialect(revision, schema))
+            .transpose()?
+            .flatten();
         contracts.push(ToolContract {
             name,
             behavior_hints,
             input_schema,
+            input_schema_dialect,
             output_schema,
+            output_schema_dialect,
         });
     }
     Ok(catalog_with_identity_correlation(contracts))
+}
+
+fn artifact_schema_dialect(
+    revision: SupportedRevision,
+    schema: &Value,
+) -> Result<Option<SnapshotSchemaDialect>, SnapshotInputError> {
+    if revision == SupportedRevision::CURRENT {
+        return Ok(None);
+    }
+    let declared = schema.as_object().and_then(|object| object.get("$schema"));
+    let dialect = match declared {
+        None if revision == SupportedRevision::V2025_06_18 => SnapshotSchemaDialect::Ambiguous,
+        None => SnapshotSchemaDialect::Draft2020_12,
+        Some(value) if value.as_str() == Some(DRAFT_2020_12) => SnapshotSchemaDialect::Draft2020_12,
+        Some(value) if value.is_string() => SnapshotSchemaDialect::Unsupported,
+        Some(_) => return Err(SnapshotInputError::new(SnapshotInputKind::Malformed)),
+    };
+    Ok(Some(dialect))
 }
 
 fn tool_behavior_hints(value: Option<&Value>) -> Result<ToolBehaviorHints, SnapshotInputError> {
@@ -616,11 +777,9 @@ fn normalize_and_validate(snapshot: &mut ContractSnapshot) -> Result<(), Snapsho
             SnapshotInputKind::UnsupportedVersion,
         ));
     }
-    if snapshot.protocol_revision != PROTOCOL_REVISION {
-        return Err(SnapshotInputError::new(
-            SnapshotInputKind::UnsupportedRevision,
-        ));
-    }
+    let revision = supported_snapshot_revision(&snapshot.protocol_revision)
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::UnsupportedRevision))?;
+    validate_artifact_revision_contract(snapshot, revision)?;
 
     let total_items = snapshot
         .catalogs
@@ -649,15 +808,59 @@ fn normalize_and_validate(snapshot: &mut ContractSnapshot) -> Result<(), Snapsho
         return Err(SnapshotInputError::new(SnapshotInputKind::Malformed));
     }
 
-    normalize_tool_catalog(&mut snapshot.catalogs.tools)?;
+    normalize_tool_catalog(&mut snapshot.catalogs.tools, revision)?;
     normalize_prompt_catalog(&mut snapshot.catalogs.prompts)?;
     normalize_resource_catalog(&mut snapshot.catalogs.resources)?;
     normalize_resource_template_catalog(&mut snapshot.catalogs.resource_templates)?;
     Ok(())
 }
 
+fn supported_snapshot_revision(value: &str) -> Option<SupportedRevision> {
+    match value {
+        "2026-07-28" => Some(SupportedRevision::V2026_07_28),
+        "2025-11-25" => Some(SupportedRevision::V2025_11_25),
+        "2025-06-18" => Some(SupportedRevision::V2025_06_18),
+        _ => None,
+    }
+}
+
+fn validate_artifact_revision_contract(
+    snapshot: &ContractSnapshot,
+    revision: SupportedRevision,
+) -> Result<(), SnapshotInputError> {
+    let negotiated = snapshot.negotiated_protocol_revision.as_deref();
+    if revision.uses_initialize() {
+        if negotiated != Some(revision.as_str()) {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionMismatch));
+        }
+    } else if negotiated.is_some() {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionMismatch));
+    }
+
+    for capability in [
+        snapshot.capabilities.logging.as_ref(),
+        snapshot.capabilities.completions.as_ref(),
+    ] {
+        if capability.is_some_and(|capability| !capability.advertised) {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+        }
+    }
+    if !revision.uses_initialize()
+        && (snapshot.capabilities.logging.is_some() || snapshot.capabilities.completions.is_some())
+    {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+    }
+    if let Some(tasks) = &snapshot.capabilities.tasks
+        && (revision != SupportedRevision::V2025_11_25 || !tasks.advertised)
+    {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+    }
+    Ok(())
+}
+
 fn normalize_tool_catalog(
     catalog: &mut SnapshotCatalog<ToolContract>,
+    revision: SupportedRevision,
 ) -> Result<(), SnapshotInputError> {
     validate_correlation(catalog.contracts.len(), &catalog.correlation)?;
     let mut names = BTreeSet::new();
@@ -665,12 +868,32 @@ fn normalize_tool_catalog(
         if !names.insert(contract.name.clone()) {
             return Err(SnapshotInputError::new(SnapshotInputKind::Malformed));
         }
+        validate_artifact_schema_dialect(
+            revision,
+            &contract.input_schema,
+            contract.input_schema_dialect,
+        )?;
         contract.input_schema = normalize_schema(&contract.input_schema)?;
         if let Some(schema) = &contract.output_schema {
+            validate_artifact_schema_dialect(revision, schema, contract.output_schema_dialect)?;
             contract.output_schema = Some(normalize_schema(schema)?);
+        } else if contract.output_schema_dialect.is_some() {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
         }
     }
     sort_catalog(catalog, |left, right| left.name.cmp(&right.name));
+    Ok(())
+}
+
+fn validate_artifact_schema_dialect(
+    revision: SupportedRevision,
+    schema: &Value,
+    stored: Option<SnapshotSchemaDialect>,
+) -> Result<(), SnapshotInputError> {
+    let expected = artifact_schema_dialect(revision, schema)?;
+    if stored != expected {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+    }
     Ok(())
 }
 
@@ -1076,15 +1299,74 @@ fn read_snapshot(path: &Path) -> Result<ContractSnapshot, SnapshotInputError> {
         .get("protocol_revision")
         .and_then(Value::as_str)
         .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
-    if revision != PROTOCOL_REVISION {
-        return Err(SnapshotInputError::new(
-            SnapshotInputKind::UnsupportedRevision,
-        ));
-    }
+    let revision = supported_snapshot_revision(revision)
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::UnsupportedRevision))?;
+    validate_raw_revision_contract(&value, revision)?;
     let mut snapshot: ContractSnapshot = serde_json::from_value(value)
         .map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
     normalize_and_validate(&mut snapshot)?;
     Ok(snapshot)
+}
+
+fn validate_raw_revision_contract(
+    value: &Value,
+    revision: SupportedRevision,
+) -> Result<(), SnapshotInputError> {
+    let root = value
+        .as_object()
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    if !revision.uses_initialize() && root.contains_key("negotiated_protocol_revision") {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionMismatch));
+    }
+
+    let capabilities = root
+        .get("capabilities")
+        .and_then(Value::as_object)
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    for name in ["logging", "completions", "tasks"] {
+        if capabilities.get(name).is_some_and(Value::is_null) {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+        }
+    }
+    if !revision.uses_initialize()
+        && ["logging", "completions", "tasks"]
+            .iter()
+            .any(|name| capabilities.contains_key(*name))
+    {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+    }
+    if revision != SupportedRevision::V2025_11_25 && capabilities.contains_key("tasks") {
+        return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+    }
+
+    let tools = root
+        .get("catalogs")
+        .and_then(Value::as_object)
+        .and_then(|catalogs| catalogs.get("tools"))
+        .and_then(Value::as_object)
+        .and_then(|tools| tools.get("contracts"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    for tool in tools {
+        let tool = tool
+            .as_object()
+            .ok_or_else(|| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+        let input_dialect = tool.get("input_schema_dialect");
+        let output_dialect = tool.get("output_schema_dialect");
+        if input_dialect.is_some_and(Value::is_null) || output_dialect.is_some_and(Value::is_null) {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+        }
+        if !revision.uses_initialize() && (input_dialect.is_some() || output_dialect.is_some()) {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+        }
+        if revision.uses_initialize()
+            && (input_dialect.is_none()
+                || tool.contains_key("output_schema") != output_dialect.is_some())
+        {
+            return Err(SnapshotInputError::new(SnapshotInputKind::RevisionContract));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -1096,7 +1378,7 @@ pub(crate) enum DiffFormat {
 #[derive(Serialize)]
 struct ContractDiffReport {
     schema_version: &'static str,
-    protocol_revision: &'static str,
+    protocol_revision: Option<&'static str>,
     outcome: DiffOutcome,
     exit_code: u8,
     summary: DiffSummary,
@@ -1192,19 +1474,26 @@ pub(crate) fn render_contract_diff(
 ) -> RenderedContractDiff {
     let before = match read_snapshot(before) {
         Ok(snapshot) => snapshot,
-        Err(error) => return render_invalid_diff(error, DiffInput::Before, format),
+        Err(error) => return render_invalid_diff(error, Some(DiffInput::Before), format),
     };
     let after = match read_snapshot(after) {
         Ok(snapshot) => snapshot,
-        Err(error) => return render_invalid_diff(error, DiffInput::After, format),
+        Err(error) => return render_invalid_diff(error, Some(DiffInput::After), format),
     };
+    if before.protocol_revision != after.protocol_revision {
+        return render_invalid_diff(
+            SnapshotInputError::new(SnapshotInputKind::RevisionMismatch),
+            None,
+            format,
+        );
+    }
     let report = compare_snapshots(&before, &after);
     render_diff_report(report, format)
 }
 
 fn render_invalid_diff(
     error: SnapshotInputError,
-    input: DiffInput,
+    input: Option<DiffInput>,
     format: DiffFormat,
 ) -> RenderedContractDiff {
     let finding = DiffFinding {
@@ -1214,11 +1503,11 @@ fn render_invalid_diff(
         catalog: None,
         before_ordinal: None,
         after_ordinal: None,
-        input: Some(input),
+        input,
     };
     let report = ContractDiffReport {
         schema_version: DIFF_SCHEMA_VERSION,
-        protocol_revision: PROTOCOL_REVISION,
+        protocol_revision: None,
         outcome: DiffOutcome::Invalid,
         exit_code: 2,
         summary: summarize_findings(std::slice::from_ref(&finding)),
@@ -1250,6 +1539,8 @@ fn skipped_check(id: &'static str, blocked_by: &'static str) -> DiffCheck {
 }
 
 fn compare_snapshots(before: &ContractSnapshot, after: &ContractSnapshot) -> ContractDiffReport {
+    let revision = supported_snapshot_revision(&before.protocol_revision)
+        .expect("validated snapshots have a supported revision");
     let mut findings = Vec::new();
     compare_capabilities(&before.capabilities, &after.capabilities, &mut findings);
     compare_tools(&before.catalogs.tools, &after.catalogs.tools, &mut findings);
@@ -1269,7 +1560,7 @@ fn compare_snapshots(before: &ContractSnapshot, after: &ContractSnapshot) -> Con
         &mut findings,
     );
     if diff_finding_limit_reached(&findings) {
-        return comparison_limit_report();
+        return comparison_limit_report(revision);
     }
     findings.sort_by(finding_order);
     let summary = summarize_findings(&findings);
@@ -1288,7 +1579,7 @@ fn compare_snapshots(before: &ContractSnapshot, after: &ContractSnapshot) -> Con
     ));
     ContractDiffReport {
         schema_version: DIFF_SCHEMA_VERSION,
-        protocol_revision: PROTOCOL_REVISION,
+        protocol_revision: Some(revision.as_str()),
         outcome,
         exit_code,
         summary,
@@ -1316,7 +1607,7 @@ fn diff_finding_limit_reached(findings: &[DiffFinding]) -> bool {
     findings.len() > maximum_diff_findings()
 }
 
-fn comparison_limit_report() -> ContractDiffReport {
+fn comparison_limit_report(revision: SupportedRevision) -> ContractDiffReport {
     let finding = DiffFinding {
         code: "MCP-SNAPSHOT-004",
         classification: DiffClassification::Invalid,
@@ -1328,7 +1619,7 @@ fn comparison_limit_report() -> ContractDiffReport {
     };
     ContractDiffReport {
         schema_version: DIFF_SCHEMA_VERSION,
-        protocol_revision: PROTOCOL_REVISION,
+        protocol_revision: Some(revision.as_str()),
         outcome: DiffOutcome::Invalid,
         exit_code: 2,
         summary: summarize_findings(std::slice::from_ref(&finding)),
@@ -1389,6 +1680,30 @@ fn compare_capabilities(
         (before.resources.advertised, after.resources.advertised),
         (before.resources.list_changed, after.resources.list_changed),
         (before.resources.subscribe, after.resources.subscribe),
+        (
+            presence_advertised(before.logging.as_ref()),
+            presence_advertised(after.logging.as_ref()),
+        ),
+        (
+            presence_advertised(before.completions.as_ref()),
+            presence_advertised(after.completions.as_ref()),
+        ),
+        (
+            task_setting(before.tasks.as_ref(), |tasks| tasks.advertised),
+            task_setting(after.tasks.as_ref(), |tasks| tasks.advertised),
+        ),
+        (
+            task_setting(before.tasks.as_ref(), |tasks| tasks.list),
+            task_setting(after.tasks.as_ref(), |tasks| tasks.list),
+        ),
+        (
+            task_setting(before.tasks.as_ref(), |tasks| tasks.cancel),
+            task_setting(after.tasks.as_ref(), |tasks| tasks.cancel),
+        ),
+        (
+            task_setting(before.tasks.as_ref(), |tasks| tasks.requests_tools_call),
+            task_setting(after.tasks.as_ref(), |tasks| tasks.requests_tools_call),
+        ),
     ] {
         if old != new {
             push_diff_finding(
@@ -1409,6 +1724,17 @@ fn compare_capabilities(
             );
         }
     }
+}
+
+fn presence_advertised(capability: Option<&PresenceCapability>) -> bool {
+    capability.is_some_and(|capability| capability.advertised)
+}
+
+fn task_setting(
+    capability: Option<&TaskCapability>,
+    select: impl FnOnce(&TaskCapability) -> bool,
+) -> bool {
+    capability.is_some_and(select)
 }
 
 fn compatible_finding(
@@ -1523,7 +1849,12 @@ fn compare_tools(
                 ),
             );
         }
-        let changes = classify_input_schema(&old.input_schema, &new.input_schema);
+        let changes = classify_input_schema_with_dialects(
+            &old.input_schema,
+            &new.input_schema,
+            old.input_schema_dialect,
+            new.input_schema_dialect,
+        );
         for change in changes {
             let finding = schema_finding(change, CatalogLabel::Tools);
             push_diff_finding(
@@ -1800,7 +2131,29 @@ fn schema_finding(change: SchemaChange, catalog: CatalogLabel) -> DiffFinding {
 }
 
 fn classify_input_schema(before: &Value, after: &Value) -> BTreeSet<SchemaChange> {
+    classify_input_schema_with_dialects(before, after, None, None)
+}
+
+fn classify_input_schema_with_dialects(
+    before: &Value,
+    after: &Value,
+    before_dialect: Option<SnapshotSchemaDialect>,
+    after_dialect: Option<SnapshotSchemaDialect>,
+) -> BTreeSet<SchemaChange> {
     let mut changes = BTreeSet::new();
+    if before == after && before_dialect == after_dialect {
+        return changes;
+    }
+    if !matches!(
+        before_dialect,
+        None | Some(SnapshotSchemaDialect::Draft2020_12)
+    ) || !matches!(
+        after_dialect,
+        None | Some(SnapshotSchemaDialect::Draft2020_12)
+    ) {
+        changes.insert(SchemaChange::Review);
+        return changes;
+    }
     compare_schema_value(before, after, &mut changes);
     changes
 }
@@ -2121,7 +2474,11 @@ fn render_human_diff(report: &ContractDiffReport) -> String {
 
     let mut output = String::new();
     let _ = writeln!(output, "mcp-doctor contract diff");
-    let _ = writeln!(output, "protocol revision: {}", report.protocol_revision);
+    if let Some(revision) = report.protocol_revision {
+        let _ = writeln!(output, "protocol revision: {revision}");
+    } else {
+        let _ = writeln!(output, "protocol revision: unavailable");
+    }
     let _ = writeln!(output, "outcome: {}", outcome_name(report.outcome));
     let _ = writeln!(output, "checks:");
     for check in &report.checks {
@@ -2220,8 +2577,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        DiffClassification, SchemaChange, SnapshotInputKind, classify_input_schema,
-        normalize_schema, normalize_schema_value,
+        DRAFT_2020_12, DiffClassification, SchemaChange, SnapshotInputKind, SnapshotSchemaDialect,
+        SupportedRevision, artifact_schema_dialect, classify_input_schema,
+        classify_input_schema_with_dialects, normalize_schema, normalize_schema_value,
     };
 
     #[test]
@@ -2299,6 +2657,69 @@ mod tests {
         let changes = classify_input_schema(&before, &after);
         assert_eq!(changes.len(), 1);
         assert!(changes.contains(&SchemaChange::Review));
+    }
+
+    #[test]
+    fn legacy_dialect_state_preserves_revision_defaults_and_conservative_comparison() {
+        assert_eq!(
+            artifact_schema_dialect(SupportedRevision::V2025_11_25, &json!({})),
+            Ok(Some(SnapshotSchemaDialect::Draft2020_12))
+        );
+        assert_eq!(
+            artifact_schema_dialect(SupportedRevision::V2025_06_18, &json!({})),
+            Ok(Some(SnapshotSchemaDialect::Ambiguous))
+        );
+        assert_eq!(
+            artifact_schema_dialect(
+                SupportedRevision::V2025_06_18,
+                &json!({"$schema": DRAFT_2020_12})
+            ),
+            Ok(Some(SnapshotSchemaDialect::Draft2020_12))
+        );
+        assert_eq!(
+            artifact_schema_dialect(
+                SupportedRevision::V2025_11_25,
+                &json!({"$schema": "synthetic-unsupported-dialect"})
+            ),
+            Ok(Some(SnapshotSchemaDialect::Unsupported))
+        );
+        assert_eq!(
+            artifact_schema_dialect(
+                SupportedRevision::CURRENT,
+                &json!({"$schema": DRAFT_2020_12})
+            ),
+            Ok(None)
+        );
+
+        let before = json!({"type": "string", "minLength": 1});
+        let after = json!({"type": "string", "minLength": 2});
+        assert_eq!(
+            classify_input_schema_with_dialects(
+                &before,
+                &after,
+                Some(SnapshotSchemaDialect::Draft2020_12),
+                Some(SnapshotSchemaDialect::Draft2020_12),
+            ),
+            BTreeSet::from([SchemaChange::Narrowed])
+        );
+        for dialect in [
+            SnapshotSchemaDialect::Ambiguous,
+            SnapshotSchemaDialect::Unsupported,
+        ] {
+            assert_eq!(
+                classify_input_schema_with_dialects(&before, &after, Some(dialect), Some(dialect),),
+                BTreeSet::from([SchemaChange::Review])
+            );
+            assert!(
+                classify_input_schema_with_dialects(
+                    &before,
+                    &before,
+                    Some(dialect),
+                    Some(dialect),
+                )
+                .is_empty()
+            );
+        }
     }
 
     #[test]

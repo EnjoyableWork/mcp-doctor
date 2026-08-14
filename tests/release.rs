@@ -1830,16 +1830,16 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_indexes_proposed_optional_issue_intake_without_support_claims() {
+fn project_indexes_accepted_mcpd_026_and_remaining_proposals_without_support_claims() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "proposed optional `MCPD-026` through `MCPD-029`",
-        "[Issue #56](https://github.com/EnjoyableWork/mcp-doctor/issues/56)",
+        "`MCPD-026` is accepted optional work for GitHub issue #56 and is in progress",
+        "[GitHub issue 56](https://github.com/EnjoyableWork/mcp-doctor/issues/56)",
         "[Issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
         "[Issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
         "[Issue #57](https://github.com/EnjoyableWork/mcp-doctor/issues/57)",
-        "| OPEN-14 | `MCPD-026` |",
+        "`OPEN-14` is accepted as `DEC-051`.",
         "| OPEN-15 | `MCPD-027`, `MCPD-028` |",
         "| OPEN-16 | `MCPD-029` |",
         "`MCPD-027` establishes the shared active legacy\nboundary and must complete before `MCPD-028`",
@@ -1851,7 +1851,13 @@ fn project_indexes_proposed_optional_issue_intake_without_support_claims() {
         );
     }
 
-    for ticket in ["MCPD-026", "MCPD-027", "MCPD-028", "MCPD-029"] {
+    let mcpd_026 = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-026 |"))
+        .expect("PROJECT.md should contain MCPD-026");
+    assert!(mcpd_026.contains("| In progress |"));
+
+    for ticket in ["MCPD-027", "MCPD-028", "MCPD-029"] {
         let row = project
             .lines()
             .find(|line| line.starts_with(&format!("| {ticket} |")))
@@ -1862,7 +1868,8 @@ fn project_indexes_proposed_optional_issue_intake_without_support_claims() {
         );
     }
 
-    for premature_decision in ["| DEC-051 |", "| DEC-052 |", "| DEC-053 |"] {
+    assert!(project.contains("| DEC-051 |"));
+    for premature_decision in ["| DEC-052 |", "| DEC-053 |"] {
         assert!(
             !project.contains(premature_decision),
             "PROJECT.md must not accept a proposed issue decision prematurely: {premature_decision}"

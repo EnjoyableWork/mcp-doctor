@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json",
   "title": "mcp-doctor sensitive MCP contract snapshot",
-  "description": "The explicitly requested, value-bearing mcp-doctor.contract-snapshot/v1alpha1 developer artifact. It is separate from ordinary redacted diagnostic reports and must be stored and shared as sensitive contract data.",
+  "description": "The explicitly requested, value-bearing mcp-doctor.contract-snapshot/v1alpha1 developer artifact for the current revision or one exact negotiated passive legacy revision. It is separate from ordinary redacted diagnostic reports and must be stored and shared as sensitive contract data.",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,7 +15,17 @@
       "const": "mcp-doctor.contract-snapshot/v1alpha1"
     },
     "protocol_revision": {
-      "const": "2026-07-28"
+      "enum": [
+        "2026-07-28",
+        "2025-11-25",
+        "2025-06-18"
+      ]
+    },
+    "negotiated_protocol_revision": {
+      "enum": [
+        "2025-11-25",
+        "2025-06-18"
+      ]
     },
     "capabilities": {
       "$ref": "#/$defs/capabilities"
@@ -24,6 +34,131 @@
       "$ref": "#/$defs/catalogs"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "protocol_revision": {
+            "const": "2026-07-28"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "negotiated_protocol_revision"
+          ]
+        },
+        "properties": {
+          "capabilities": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "logging"
+                  ]
+                },
+                {
+                  "required": [
+                    "completions"
+                  ]
+                },
+                {
+                  "required": [
+                    "tasks"
+                  ]
+                }
+              ]
+            }
+          },
+          "catalogs": {
+            "properties": {
+              "tools": {
+                "properties": {
+                  "contracts": {
+                    "items": {
+                      "$ref": "#/$defs/current_tool_contract"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "protocol_revision": {
+            "const": "2025-11-25"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "negotiated_protocol_revision"
+        ],
+        "properties": {
+          "negotiated_protocol_revision": {
+            "const": "2025-11-25"
+          },
+          "catalogs": {
+            "properties": {
+              "tools": {
+                "properties": {
+                  "contracts": {
+                    "items": {
+                      "$ref": "#/$defs/legacy_2025_11_25_tool_contract"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "protocol_revision": {
+            "const": "2025-06-18"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "negotiated_protocol_revision"
+        ],
+        "properties": {
+          "negotiated_protocol_revision": {
+            "const": "2025-06-18"
+          },
+          "capabilities": {
+            "not": {
+              "required": [
+                "tasks"
+              ]
+            }
+          },
+          "catalogs": {
+            "properties": {
+              "tools": {
+                "properties": {
+                  "contracts": {
+                    "items": {
+                      "$ref": "#/$defs/legacy_2025_06_18_tool_contract"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false,
   "$defs": {
     "identifier": {
@@ -62,6 +197,42 @@
       },
       "additionalProperties": false
     },
+    "presence_capability": {
+      "type": "object",
+      "required": [
+        "advertised"
+      ],
+      "properties": {
+        "advertised": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "task_capability": {
+      "type": "object",
+      "required": [
+        "advertised",
+        "list",
+        "cancel",
+        "requests_tools_call"
+      ],
+      "properties": {
+        "advertised": {
+          "const": true
+        },
+        "list": {
+          "type": "boolean"
+        },
+        "cancel": {
+          "type": "boolean"
+        },
+        "requests_tools_call": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "capabilities": {
       "type": "object",
       "properties": {
@@ -73,6 +244,15 @@
         },
         "resources": {
           "$ref": "#/$defs/resource_capability"
+        },
+        "logging": {
+          "$ref": "#/$defs/presence_capability"
+        },
+        "completions": {
+          "$ref": "#/$defs/presence_capability"
+        },
+        "tasks": {
+          "$ref": "#/$defs/task_capability"
         }
       },
       "additionalProperties": false
@@ -150,11 +330,114 @@
         "input_schema": {
           "$ref": "#/$defs/local_schema"
         },
+        "input_schema_dialect": {
+          "$ref": "#/$defs/schema_dialect"
+        },
         "output_schema": {
           "$ref": "#/$defs/local_schema"
+        },
+        "output_schema_dialect": {
+          "$ref": "#/$defs/schema_dialect"
         }
       },
       "additionalProperties": false
+    },
+    "schema_dialect": {
+      "enum": [
+        "draft_2020_12",
+        "ambiguous",
+        "unsupported"
+      ]
+    },
+    "current_tool_contract": {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "input_schema_dialect"
+            ]
+          },
+          {
+            "required": [
+              "output_schema_dialect"
+            ]
+          }
+        ]
+      }
+    },
+    "legacy_2025_11_25_tool_contract": {
+      "required": [
+        "input_schema_dialect"
+      ],
+      "properties": {
+        "input_schema_dialect": {
+          "enum": [
+            "draft_2020_12",
+            "unsupported"
+          ]
+        },
+        "output_schema_dialect": {
+          "enum": [
+            "draft_2020_12",
+            "unsupported"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "output_schema"
+            ]
+          },
+          "then": {
+            "required": [
+              "output_schema_dialect"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "output_schema_dialect"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "legacy_2025_06_18_tool_contract": {
+      "required": [
+        "input_schema_dialect"
+      ],
+      "properties": {
+        "input_schema_dialect": {
+          "$ref": "#/$defs/schema_dialect"
+        },
+        "output_schema_dialect": {
+          "$ref": "#/$defs/schema_dialect"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "output_schema"
+            ]
+          },
+          "then": {
+            "required": [
+              "output_schema_dialect"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "output_schema_dialect"
+              ]
+            }
+          }
+        }
+      ]
     },
     "prompt_argument": {
       "type": "object",

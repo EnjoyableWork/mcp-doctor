@@ -22,6 +22,8 @@ $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 )
 $smokeHome = Join-Path $smokeRoot 'home'
 $smokeSnapshot = Join-Path $smokeRoot 'contract.json'
+$smokeLegacy11Snapshot = Join-Path $smokeRoot 'contract-2025-11-25.json'
+$smokeLegacy06Snapshot = Join-Path $smokeRoot 'contract-2025-06-18.json'
 $smokeJsonArtifact = Join-Path $smokeRoot 'report-artifact.json'
 $smokeJunitArtifact = Join-Path $smokeRoot 'report-artifact.xml'
 $smokeAggregate = Join-Path $smokeRoot 'aggregate.json'
@@ -107,6 +109,8 @@ try {
         (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
         (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
+        (@($capabilities.schema_versions.contract_snapshot) -join ',') -ne 'mcp-doctor.contract-snapshot/v1alpha1' -or
+        (@($capabilities.schema_versions.contract_diff) -join ',') -ne 'mcp-doctor.contract-diff/v1alpha1' -or
         $capabilities.exit_semantics.version -ne 'mcp-doctor.exit/v1' -or
         ($exitCodes -join ',') -ne '0,1,2,3,4' -or
         $capabilities.platform.family -ne 'windows' -or
@@ -249,6 +253,90 @@ try {
     foreach ($check in @($diff.checks)) {
         if ($check.state -ne 'performed') {
             throw 'Installed offline contract diff did not perform every comparison check.'
+        }
+    }
+
+    $legacyCases = @(
+        @{
+            Revision = '2025-11-25'
+            Dialect = 'draft_2020_12'
+            Snapshot = $smokeLegacy11Snapshot
+        },
+        @{
+            Revision = '2025-06-18'
+            Dialect = 'ambiguous'
+            Snapshot = $smokeLegacy06Snapshot
+        }
+    )
+    foreach ($legacyCase in $legacyCases) {
+        $legacyReportOutput = Invoke-McpDoctor `
+            'inspect' '--format' 'json' `
+            '--protocol-version' $legacyCase.Revision `
+            '--snapshot' $legacyCase.Snapshot `
+            '--allow-sensitive-snapshot' $legacyCase.Snapshot `
+            '--' $resolvedFixture 'legacy-success'
+        $legacyReport = $legacyReportOutput | ConvertFrom-Json
+        if (
+            $legacyReport.schema_version -ne 'mcp-doctor.report/v1' -or
+            $legacyReport.protocol_revision -ne $legacyCase.Revision -or
+            $legacyReport.negotiated_protocol_revision -ne $legacyCase.Revision -or
+            $legacyReport.outcome -ne 'passed' -or
+            $legacyReport.exit_code -ne 0
+        ) {
+            throw 'Installed legacy passive diagnostic returned an unexpected report.'
+        }
+        if (-not (Test-Path -LiteralPath $legacyCase.Snapshot -PathType Leaf)) {
+            throw 'Installed legacy passive diagnostic did not create its snapshot.'
+        }
+        $legacySnapshot = Get-Content -LiteralPath $legacyCase.Snapshot -Raw | ConvertFrom-Json
+        $legacyTools = @($legacySnapshot.catalogs.tools.contracts)
+        if (
+            $legacySnapshot.schema_version -ne 'mcp-doctor.contract-snapshot/v1alpha1' -or
+            $legacySnapshot.protocol_revision -ne $legacyCase.Revision -or
+            $legacySnapshot.negotiated_protocol_revision -ne $legacyCase.Revision -or
+            -not $legacySnapshot.capabilities.tools.advertised -or
+            $legacyTools.Count -ne 1 -or
+            $legacyTools[0].input_schema_dialect -ne $legacyCase.Dialect -or
+            $legacyTools[0].output_schema_dialect -ne $legacyCase.Dialect
+        ) {
+            throw 'Installed legacy snapshot returned an unexpected revision contract.'
+        }
+        $capabilityNames = @($legacySnapshot.capabilities.PSObject.Properties.Name)
+        if ($legacyCase.Revision -eq '2025-11-25') {
+            if (
+                -not $legacySnapshot.capabilities.logging.advertised -or
+                -not $legacySnapshot.capabilities.tasks.advertised -or
+                -not $legacySnapshot.capabilities.tasks.list -or
+                -not $legacySnapshot.capabilities.tasks.cancel -or
+                -not $legacySnapshot.capabilities.tasks.requests_tools_call
+            ) {
+                throw 'Installed MCP 2025-11-25 snapshot omitted fixed capability evidence.'
+            }
+        }
+        elseif (
+            $capabilityNames -contains 'logging' -or
+            $capabilityNames -contains 'tasks'
+        ) {
+            throw 'Installed MCP 2025-06-18 snapshot inferred absent capabilities.'
+        }
+
+        $legacyDiffOutput = Invoke-McpDoctor `
+            'diff' '--format' 'json' $legacyCase.Snapshot $legacyCase.Snapshot
+        $legacyDiff = $legacyDiffOutput | ConvertFrom-Json
+        if (
+            $legacyDiff.schema_version -ne 'mcp-doctor.contract-diff/v1alpha1' -or
+            $legacyDiff.protocol_revision -ne $legacyCase.Revision -or
+            $legacyDiff.outcome -ne 'unchanged' -or
+            $legacyDiff.exit_code -ne 0 -or
+            $legacyDiff.summary.total -ne 0 -or
+            @($legacyDiff.findings).Count -ne 0
+        ) {
+            throw 'Installed legacy offline contract diff returned an unexpected result.'
+        }
+        foreach ($check in @($legacyDiff.checks)) {
+            if ($check.state -ne 'performed') {
+                throw 'Installed legacy diff did not perform every comparison check.'
+            }
         }
     }
 }
