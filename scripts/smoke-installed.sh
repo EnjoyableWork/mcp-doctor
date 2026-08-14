@@ -100,7 +100,7 @@ jq -e --arg version "${smoke_version}" '
     .revisions] == [["2026-07-28", "2025-11-25", "2025-06-18"]]) and
   ([.protocol_support[] |
     select(.command == "check" and .transport == "streamable_http") |
-    .revisions] == [["2026-07-28", "2025-11-25"]]) and
+    .revisions] == [["2026-07-28", "2025-11-25", "2025-06-18"]]) and
   .schema_versions.diagnostic_report == ["mcp-doctor.report/v1"] and
   .schema_versions.scenario == ["mcp-doctor.scenario/v1alpha1"] and
   .schema_versions.generator == ["mcp-doctor.generator/v1"] and
@@ -169,72 +169,74 @@ jq -n '
   }
 ' >"${smoke_legacy_scenario}"
 
-if ! run_mcp_doctor check \
-  --protocol-version 2025-11-25 \
-  --scenario "${smoke_legacy_scenario}" \
-  --allow-tool synthetic.reviewed \
-  --format json \
-  -- "${smoke_fixture}" legacy-active-success \
-  >"${smoke_legacy_check}" 2>"${smoke_stderr}"; then
-  echo "installed legacy check smoke failed" >&2
-  exit 1
-fi
-if [[ -s "${smoke_stderr}" ]]; then
-  echo "installed legacy check smoke wrote unexpected stderr" >&2
-  exit 1
-fi
+for smoke_active_revision in 2025-11-25 2025-06-18; do
+  if ! run_mcp_doctor check \
+    --protocol-version "${smoke_active_revision}" \
+    --scenario "${smoke_legacy_scenario}" \
+    --allow-tool synthetic.reviewed \
+    --format json \
+    -- "${smoke_fixture}" legacy-active-success \
+    >"${smoke_legacy_check}" 2>"${smoke_stderr}"; then
+    echo "installed ${smoke_active_revision} check smoke failed" >&2
+    exit 1
+  fi
+  if [[ -s "${smoke_stderr}" ]]; then
+    echo "installed ${smoke_active_revision} check smoke wrote unexpected stderr" >&2
+    exit 1
+  fi
 
-if ! run_mcp_doctor break \
-  --protocol-version 2025-11-25 \
-  --tool synthetic.generated \
-  --allow-tool synthetic.generated \
-  --effects read_only \
-  --cases 2 \
-  --seed 6027 \
-  --format json \
-  -- "${smoke_fixture}" legacy-break-success 2 \
-  >"${smoke_legacy_break}" 2>"${smoke_stderr}"; then
-  echo "installed legacy break smoke failed" >&2
-  exit 1
-fi
-if [[ -s "${smoke_stderr}" ]]; then
-  echo "installed legacy break smoke wrote unexpected stderr" >&2
-  exit 1
-fi
+  if ! run_mcp_doctor break \
+    --protocol-version "${smoke_active_revision}" \
+    --tool synthetic.generated \
+    --allow-tool synthetic.generated \
+    --effects read_only \
+    --cases 2 \
+    --seed 6027 \
+    --format json \
+    -- "${smoke_fixture}" legacy-break-success 2 \
+    >"${smoke_legacy_break}" 2>"${smoke_stderr}"; then
+    echo "installed ${smoke_active_revision} break smoke failed" >&2
+    exit 1
+  fi
+  if [[ -s "${smoke_stderr}" ]]; then
+    echo "installed ${smoke_active_revision} break smoke wrote unexpected stderr" >&2
+    exit 1
+  fi
 
-jq -e '
-  .schema_version == "mcp-doctor.report/v1" and
-  .protocol_revision == "2025-11-25" and
-  .negotiated_protocol_revision == "2025-11-25" and
-  .primary_diagnosis == null and
-  .independent_findings == [] and
-  .outcome == "passed" and
-  .exit_code == 0 and
-  .summary.required == 8 and
-  .summary.required_skipped == 0 and
-  .summary.failed == 0 and
-  ([.checks[] | select(.requirement == "required") |
-    (.state == "performed" and .outcome == "passed")] | all) and
-  ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) == 1
-' "${smoke_legacy_check}" >/dev/null
+  jq -e --arg revision "${smoke_active_revision}" '
+    .schema_version == "mcp-doctor.report/v1" and
+    .protocol_revision == $revision and
+    .negotiated_protocol_revision == $revision and
+    .primary_diagnosis == null and
+    .independent_findings == [] and
+    .outcome == "passed" and
+    .exit_code == 0 and
+    .summary.required == 8 and
+    .summary.required_skipped == 0 and
+    .summary.failed == 0 and
+    ([.checks[] | select(.requirement == "required") |
+      (.state == "performed" and .outcome == "passed")] | all) and
+    ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) == 1
+  ' "${smoke_legacy_check}" >/dev/null
 
-jq -e '
-  .schema_version == "mcp-doctor.report/v1" and
-  .protocol_revision == "2025-11-25" and
-  .negotiated_protocol_revision == "2025-11-25" and
-  .primary_diagnosis == null and
-  .independent_findings == [] and
-  .outcome == "passed" and
-  .exit_code == 0 and
-  .summary.required == 10 and
-  .summary.required_skipped == 0 and
-  .summary.failed == 0 and
-  ([.checks[] | select(.requirement == "required") |
-    (.state == "performed" and .outcome == "passed")] | all) and
-  ([.checks[] | select(.id == "generation.cases") |
-    (.state == "performed" and .outcome == "passed")] | all) and
-  ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) == 2
-' "${smoke_legacy_break}" >/dev/null
+  jq -e --arg revision "${smoke_active_revision}" '
+    .schema_version == "mcp-doctor.report/v1" and
+    .protocol_revision == $revision and
+    .negotiated_protocol_revision == $revision and
+    .primary_diagnosis == null and
+    .independent_findings == [] and
+    .outcome == "passed" and
+    .exit_code == 0 and
+    .summary.required == 10 and
+    .summary.required_skipped == 0 and
+    .summary.failed == 0 and
+    ([.checks[] | select(.requirement == "required") |
+      (.state == "performed" and .outcome == "passed")] | all) and
+    ([.checks[] | select(.id == "generation.cases") |
+      (.state == "performed" and .outcome == "passed")] | all) and
+    ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) == 2
+  ' "${smoke_legacy_break}" >/dev/null
+done
 
 for smoke_private_active_value in \
   synthetic.reviewed \

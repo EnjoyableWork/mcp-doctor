@@ -18,6 +18,18 @@
     "expected": "supported"
   },
   {
+    "command": "check",
+    "transport": "stdio",
+    "protocol_revision": "2025-06-18",
+    "expected": "supported"
+  },
+  {
+    "command": "break",
+    "transport": "streamable_http",
+    "protocol_revision": "2025-06-18",
+    "expected": "supported"
+  },
+  {
     "command": "inspect",
     "transport": "stdio",
     "protocol_revision": "2025-03-26",

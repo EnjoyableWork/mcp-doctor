@@ -81,6 +81,9 @@ function Assert-LegacyActiveReport {
         [object]$Report,
 
         [Parameter(Mandatory = $true)]
+        [string]$ExpectedRevision,
+
+        [Parameter(Mandatory = $true)]
         [int]$ExpectedRequired,
 
         [Parameter(Mandatory = $true)]
@@ -92,8 +95,8 @@ function Assert-LegacyActiveReport {
 
     if (
         $Report.schema_version -ne 'mcp-doctor.report/v1' -or
-        $Report.protocol_revision -ne '2025-11-25' -or
-        $Report.negotiated_protocol_revision -ne '2025-11-25' -or
+        $Report.protocol_revision -ne $ExpectedRevision -or
+        $Report.negotiated_protocol_revision -ne $ExpectedRevision -or
         $null -ne $Report.primary_diagnosis -or
         @($Report.independent_findings).Count -ne 0 -or
         $Report.outcome -ne 'passed' -or
@@ -152,7 +155,7 @@ try {
         $inspectStdio.Count -ne 1 -or
         (@($inspectStdio[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
         $checkHttp.Count -ne 1 -or
-        (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28,2025-11-25' -or
+        (@($checkHttp[0].revisions) -join ',') -ne '2026-07-28,2025-11-25,2025-06-18' -or
         (@($capabilities.schema_versions.diagnostic_report) -join ',') -ne 'mcp-doctor.report/v1' -or
         (@($capabilities.schema_versions.scenario) -join ',') -ne 'mcp-doctor.scenario/v1alpha1' -or
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
@@ -234,48 +237,52 @@ try {
         [System.Text.UTF8Encoding]::new($false)
     )
 
-    $legacyCheckOutput = Invoke-McpDoctor `
-        'check' '--protocol-version' '2025-11-25' `
-        '--scenario' $smokeLegacyScenario `
-        '--allow-tool' 'synthetic.reviewed' `
-        '--format' 'json' `
-        '--' $resolvedFixture 'legacy-active-success'
-    $legacyCheck = $legacyCheckOutput | ConvertFrom-Json
-    Assert-LegacyActiveReport `
-        -Report $legacyCheck `
-        -ExpectedRequired 8 `
-        -ExpectedCases 1 `
-        -ExpectGeneration $false
+    foreach ($activeRevision in @('2025-11-25', '2025-06-18')) {
+        $legacyCheckOutput = Invoke-McpDoctor `
+            'check' '--protocol-version' $activeRevision `
+            '--scenario' $smokeLegacyScenario `
+            '--allow-tool' 'synthetic.reviewed' `
+            '--format' 'json' `
+            '--' $resolvedFixture 'legacy-active-success'
+        $legacyCheck = $legacyCheckOutput | ConvertFrom-Json
+        Assert-LegacyActiveReport `
+            -Report $legacyCheck `
+            -ExpectedRevision $activeRevision `
+            -ExpectedRequired 8 `
+            -ExpectedCases 1 `
+            -ExpectGeneration $false
 
-    $legacyBreakOutput = Invoke-McpDoctor `
-        'break' '--protocol-version' '2025-11-25' `
-        '--tool' 'synthetic.generated' `
-        '--allow-tool' 'synthetic.generated' `
-        '--effects' 'read_only' `
-        '--cases' '2' `
-        '--seed' '6027' `
-        '--format' 'json' `
-        '--' $resolvedFixture 'legacy-break-success' '2'
-    $legacyBreak = $legacyBreakOutput | ConvertFrom-Json
-    Assert-LegacyActiveReport `
-        -Report $legacyBreak `
-        -ExpectedRequired 10 `
-        -ExpectedCases 2 `
-        -ExpectGeneration $true
-    foreach ($privateActiveValue in @(
-        'synthetic.reviewed',
-        'synthetic.generated',
-        'installed-legacy-case',
-        'synthetic-secret-payload-7f2c',
-        'synthetic_private_query_never_report_7f2c',
-        'synthetic_private_limit_never_report_7f2c',
-        'synthetic_private_flags_never_report_7f2c'
-    )) {
-        if (
-            $legacyCheckOutput.Contains($privateActiveValue) -or
-            $legacyBreakOutput.Contains($privateActiveValue)
-        ) {
-            throw 'Installed legacy active report disclosed a private value.'
+        $legacyBreakOutput = Invoke-McpDoctor `
+            'break' '--protocol-version' $activeRevision `
+            '--tool' 'synthetic.generated' `
+            '--allow-tool' 'synthetic.generated' `
+            '--effects' 'read_only' `
+            '--cases' '2' `
+            '--seed' '6027' `
+            '--format' 'json' `
+            '--' $resolvedFixture 'legacy-break-success' '2'
+        $legacyBreak = $legacyBreakOutput | ConvertFrom-Json
+        Assert-LegacyActiveReport `
+            -Report $legacyBreak `
+            -ExpectedRevision $activeRevision `
+            -ExpectedRequired 10 `
+            -ExpectedCases 2 `
+            -ExpectGeneration $true
+        foreach ($privateActiveValue in @(
+            'synthetic.reviewed',
+            'synthetic.generated',
+            'installed-legacy-case',
+            'synthetic-secret-payload-7f2c',
+            'synthetic_private_query_never_report_7f2c',
+            'synthetic_private_limit_never_report_7f2c',
+            'synthetic_private_flags_never_report_7f2c'
+        )) {
+            if (
+                $legacyCheckOutput.Contains($privateActiveValue) -or
+                $legacyBreakOutput.Contains($privateActiveValue)
+            ) {
+                throw 'Installed legacy active report disclosed a private value.'
+            }
         }
     }
     if (-not (Test-Path -LiteralPath $smokeJunitArtifact -PathType Leaf)) {

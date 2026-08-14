@@ -17,6 +17,15 @@ use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
 pub(super) const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
+const DRAFT_2020_12_VOCABULARIES: &[&str] = &[
+    "https://json-schema.org/draft/2020-12/vocab/core",
+    "https://json-schema.org/draft/2020-12/vocab/applicator",
+    "https://json-schema.org/draft/2020-12/vocab/unevaluated",
+    "https://json-schema.org/draft/2020-12/vocab/validation",
+    "https://json-schema.org/draft/2020-12/vocab/meta-data",
+    "https://json-schema.org/draft/2020-12/vocab/format-annotation",
+    "https://json-schema.org/draft/2020-12/vocab/content",
+];
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum CatalogKind {
@@ -1043,6 +1052,19 @@ impl Analyzer {
     }
 
     fn analyze_schema(&mut self, schema: &Value, base: Location) {
+        self.analyze_schema_with_policy(
+            schema,
+            base,
+            LocalSchemaDialectPolicy::RevisionDefaultDraft202012,
+        );
+    }
+
+    fn analyze_schema_with_policy(
+        &mut self,
+        schema: &Value,
+        base: Location,
+        policy: LocalSchemaDialectPolicy,
+    ) {
         let values = self.limits.values();
         let bytes = u64::try_from(serialized_len(schema)).unwrap_or(u64::MAX);
         if bytes > values.schema_bytes {
@@ -1053,18 +1075,30 @@ impl Analyzer {
         let Some(object) = schema.as_object() else {
             unreachable!("tool schema object shape was checked before schema analysis")
         };
-        if let Some(dialect) = object.get("$schema")
-            && dialect.as_str() != Some(DRAFT_2020_12)
-        {
-            self.push(
-                FindingBucket::Schema,
-                Finding::unsupported_schema_dialect(
-                    SupportedRevision::CURRENT,
-                    base.clone().field(LocationField::Schema),
-                    json_kind(Some(dialect)),
-                ),
-            );
-            return;
+        match object.get("$schema") {
+            Some(dialect) if dialect.as_str() != Some(DRAFT_2020_12) => {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::unsupported_schema_dialect(
+                        SupportedRevision::CURRENT,
+                        base.clone().field(LocationField::Schema),
+                        json_kind(Some(dialect)),
+                    ),
+                );
+                return;
+            }
+            None if policy == LocalSchemaDialectPolicy::RequireExactDraft202012 => {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::unsupported_schema_dialect(
+                        SupportedRevision::CURRENT,
+                        base.clone().field(LocationField::Schema),
+                        json_kind(None),
+                    ),
+                );
+                return;
+            }
+            Some(_) | None => {}
         }
 
         let mut stack = vec![(schema, 0_u64, base.clone())];
@@ -1072,6 +1106,8 @@ impl Analyzer {
         let mut work = 0_u64;
         let mut references = Vec::new();
         let mut external_reference = false;
+        let mut unsupported_dialect = false;
+        let mut unsupported_vocabulary = false;
         while let Some((value, depth, location)) = stack.pop() {
             nodes = nodes.saturating_add(1);
             work = work.saturating_add(1);
@@ -1105,7 +1141,42 @@ impl Analyzer {
                 }
                 Value::Object(values) => {
                     for (key, value) in values.iter().rev() {
-                        let child_location = schema_child_location(location.clone(), key);
+                        let child_location = if policy
+                            == LocalSchemaDialectPolicy::RequireExactDraft202012
+                            && key == "$vocabulary"
+                        {
+                            location.clone().field(LocationField::Vocabulary)
+                        } else {
+                            schema_child_location(location.clone(), key)
+                        };
+                        if policy == LocalSchemaDialectPolicy::RequireExactDraft202012
+                            && key == "$schema"
+                            && value.as_str() != Some(DRAFT_2020_12)
+                        {
+                            unsupported_dialect = true;
+                            self.push(
+                                FindingBucket::Schema,
+                                Finding::unsupported_schema_dialect(
+                                    SupportedRevision::CURRENT,
+                                    child_location.clone(),
+                                    json_kind(Some(value)),
+                                ),
+                            );
+                        }
+                        if policy == LocalSchemaDialectPolicy::RequireExactDraft202012
+                            && key == "$vocabulary"
+                            && has_unsupported_vocabulary(value)
+                        {
+                            unsupported_vocabulary = true;
+                            self.push(
+                                FindingBucket::Schema,
+                                Finding::schema_contract_invalid(
+                                    SupportedRevision::CURRENT,
+                                    child_location.clone(),
+                                    RuleViolation::UnsupportedSchemaVocabulary,
+                                ),
+                            );
+                        }
                         if matches!(key.as_str(), "$ref" | "$dynamicRef")
                             && let Some(reference) = value.as_str()
                         {
@@ -1174,7 +1245,11 @@ impl Analyzer {
             return;
         }
 
-        if external_reference || unresolved_reference {
+        if external_reference
+            || unresolved_reference
+            || unsupported_dialect
+            || unsupported_vocabulary
+        {
             return;
         }
 
@@ -1552,9 +1627,27 @@ fn optional_capability_object<'a>(
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum LocalSchemaDialectPolicy {
+    RevisionDefaultDraft202012,
+    RequireExactDraft202012,
+}
+
 pub(super) fn validate_local_schema(schema: &Value, base: Location) -> Vec<Finding> {
+    validate_local_schema_with_policy(
+        schema,
+        base,
+        LocalSchemaDialectPolicy::RevisionDefaultDraft202012,
+    )
+}
+
+pub(super) fn validate_local_schema_with_policy(
+    schema: &Value,
+    base: Location,
+    policy: LocalSchemaDialectPolicy,
+) -> Vec<Finding> {
     let mut analyzer = Analyzer::new(0, false);
-    analyzer.analyze_schema(schema, base.clone());
+    analyzer.analyze_schema_with_policy(schema, base.clone(), policy);
     if analyzer.finding_overflow {
         analyzer.schema.pop();
         let maximum = analyzer.limits.values().report_findings;
@@ -2570,6 +2663,14 @@ fn is_non_negative_number(value: &Value) -> bool {
     value.as_f64().is_some_and(|value| value >= 0.0)
 }
 
+fn has_unsupported_vocabulary(value: &Value) -> bool {
+    value.as_object().is_some_and(|vocabularies| {
+        vocabularies
+            .keys()
+            .any(|vocabulary| !DRAFT_2020_12_VOCABULARIES.contains(&vocabulary.as_str()))
+    })
+}
+
 fn schema_child_location(location: Location, key: &str) -> Location {
     let field = match key {
         "$schema" => Some(LocationField::Schema),
@@ -2813,10 +2914,11 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        CatalogKind, DRAFT_2020_12, PassiveCatalogConversation, RequestKind, encode_request,
-        percent_decode, resolve_local_reference, schema_child_location,
+        CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
+        RequestKind, encode_request, percent_decode, resolve_local_reference,
+        schema_child_location, validate_local_schema_with_policy,
     };
-    use crate::contract::model::{Location, LocationField};
+    use crate::contract::model::{FindingCode, Location, LocationField};
     use crate::contract::protocol::SupportedRevision;
 
     #[test]
@@ -2867,6 +2969,81 @@ mod tests {
             percent_decode("space%20value").as_deref(),
             Some("space value")
         );
+    }
+
+    #[test]
+    fn exact_draft_policy_rejects_missing_nested_and_vocabulary_ambiguity() {
+        let base = Location::root(LocationField::Tools)
+            .wildcard()
+            .field(LocationField::InputSchema);
+        let missing = validate_local_schema_with_policy(
+            &json!({"type": "object"}),
+            base.clone(),
+            LocalSchemaDialectPolicy::RequireExactDraft202012,
+        );
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].code(), FindingCode::UnsupportedSchemaDialect);
+        assert_eq!(
+            missing[0].location().to_string(),
+            "tools[*].inputSchema.$schema"
+        );
+
+        let exact = validate_local_schema_with_policy(
+            &json!({"$schema": DRAFT_2020_12, "type": "object"}),
+            base.clone(),
+            LocalSchemaDialectPolicy::RequireExactDraft202012,
+        );
+        assert!(exact.is_empty(), "{exact:?}");
+
+        let standard_vocabularies = validate_local_schema_with_policy(
+            &json!({
+                "$schema": DRAFT_2020_12,
+                "$vocabulary": {
+                    "https://json-schema.org/draft/2020-12/vocab/core": true,
+                    "https://json-schema.org/draft/2020-12/vocab/applicator": true,
+                    "https://json-schema.org/draft/2020-12/vocab/validation": true
+                },
+                "type": "object"
+            }),
+            base.clone(),
+            LocalSchemaDialectPolicy::RequireExactDraft202012,
+        );
+        assert!(
+            standard_vocabularies.is_empty(),
+            "{standard_vocabularies:?}"
+        );
+
+        let nested = validate_local_schema_with_policy(
+            &json!({
+                "$schema": DRAFT_2020_12,
+                "type": "object",
+                "$defs": {
+                    "private": {
+                        "$schema": "https://synthetic.invalid/unsupported-dialect",
+                        "type": "string"
+                    }
+                }
+            }),
+            base.clone(),
+            LocalSchemaDialectPolicy::RequireExactDraft202012,
+        );
+        assert!(
+            nested
+                .iter()
+                .any(|finding| finding.code() == FindingCode::UnsupportedSchemaDialect)
+        );
+
+        let vocabulary = validate_local_schema_with_policy(
+            &json!({
+                "$schema": DRAFT_2020_12,
+                "$vocabulary": {"https://synthetic.invalid/private-vocabulary": true},
+                "type": "object"
+            }),
+            base,
+            LocalSchemaDialectPolicy::RequireExactDraft202012,
+        );
+        assert_eq!(vocabulary.len(), 1);
+        assert_eq!(vocabulary[0].code(), FindingCode::SchemaContractInvalid);
     }
 
     #[test]

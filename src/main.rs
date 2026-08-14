@@ -317,6 +317,8 @@ enum ActiveProtocolVersion {
     Current,
     #[value(name = "2025-11-25")]
     V2025_11_25,
+    #[value(name = "2025-06-18")]
+    V2025_06_18,
 }
 
 impl From<ActiveProtocolVersion> for contract::ActiveProtocolRevision {
@@ -324,6 +326,7 @@ impl From<ActiveProtocolVersion> for contract::ActiveProtocolRevision {
         match version {
             ActiveProtocolVersion::Current => Self::V2026_07_28,
             ActiveProtocolVersion::V2025_11_25 => Self::V2025_11_25,
+            ActiveProtocolVersion::V2025_06_18 => Self::V2025_06_18,
         }
     }
 }

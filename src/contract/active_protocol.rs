@@ -1,6 +1,6 @@
 use serde_json::{Map, Value, json};
 
-use super::catalog::request_meta;
+use super::catalog::{LocalSchemaDialectPolicy, request_meta};
 use super::protocol::{ActiveProtocolRevision, SupportedRevision};
 use crate::transport::{MirroredField, ProbeRequest};
 
@@ -64,6 +64,17 @@ impl ActiveProtocolAdapter {
 
     pub(super) const fn permits_http_mappings(self) -> bool {
         !self.uses_initialize()
+    }
+
+    pub(super) const fn schema_dialect_policy(self) -> LocalSchemaDialectPolicy {
+        match self.revision {
+            ActiveProtocolRevision::V2025_06_18 => {
+                LocalSchemaDialectPolicy::RequireExactDraft202012
+            }
+            ActiveProtocolRevision::V2025_11_25 | ActiveProtocolRevision::V2026_07_28 => {
+                LocalSchemaDialectPolicy::RevisionDefaultDraft202012
+            }
+        }
     }
 
     pub(super) fn task_support(self, tool: &Map<String, Value>) -> ActiveTaskSupport {
@@ -176,6 +187,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{ActiveProtocolAdapter, ActiveStartKind, ActiveTaskSupport, ActiveToolResultKind};
+    use crate::contract::catalog::LocalSchemaDialectPolicy;
     use crate::contract::protocol::ActiveProtocolRevision;
     use crate::transport::MirroredField;
 
@@ -188,6 +200,10 @@ mod tests {
         let adapter = ActiveProtocolAdapter::new(ActiveProtocolRevision::CURRENT);
         assert_eq!(adapter.start_kind(), ActiveStartKind::Discover);
         assert_eq!(adapter.tool_result_kind(), ActiveToolResultKind::Modern);
+        assert_eq!(
+            adapter.schema_dialect_policy(),
+            LocalSchemaDialectPolicy::RevisionDefaultDraft202012
+        );
         assert!(adapter.initialized_notification().is_none());
         assert!(adapter.permits_http_mappings());
 
@@ -265,6 +281,10 @@ mod tests {
         let adapter = ActiveProtocolAdapter::new(ActiveProtocolRevision::V2025_11_25);
         assert_eq!(adapter.start_kind(), ActiveStartKind::Initialize);
         assert_eq!(adapter.tool_result_kind(), ActiveToolResultKind::Legacy);
+        assert_eq!(
+            adapter.schema_dialect_policy(),
+            LocalSchemaDialectPolicy::RevisionDefaultDraft202012
+        );
         assert!(!adapter.permits_http_mappings());
 
         let initialize = adapter.start_request(1);
@@ -336,5 +356,55 @@ mod tests {
             ),
             ActiveTaskSupport::InvalidTaskSupport
         );
+    }
+
+    #[test]
+    fn v2025_06_adapter_reuses_legacy_wire_contract_with_an_exact_schema_gate() {
+        let adapter = ActiveProtocolAdapter::new(ActiveProtocolRevision::V2025_06_18);
+        assert_eq!(adapter.start_kind(), ActiveStartKind::Initialize);
+        assert_eq!(adapter.tool_result_kind(), ActiveToolResultKind::Legacy);
+        assert_eq!(
+            adapter.schema_dialect_policy(),
+            LocalSchemaDialectPolicy::RequireExactDraft202012
+        );
+        assert!(!adapter.permits_http_mappings());
+
+        let initialize = adapter.start_request(1);
+        assert_eq!(initialize.method(), "initialize");
+        assert_eq!(
+            value(initialize.as_bytes()),
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "mcp-doctor",
+                        "version": env!("CARGO_PKG_VERSION"),
+                    },
+                },
+            })
+        );
+        assert_eq!(
+            adapter
+                .initialized_notification()
+                .expect("the selected legacy revision requires initialized")
+                .method(),
+            "notifications/initialized"
+        );
+        assert_eq!(
+            value(adapter.tools_request(2, None).as_bytes())["params"],
+            json!({})
+        );
+        let call = adapter.tool_call_request(
+            3,
+            "synthetic-tool".to_owned(),
+            json!({}),
+            vec![MirroredField::new("unsafe".to_owned(), "value".to_owned())],
+        );
+        assert!(value(call.as_bytes())["params"].get("_meta").is_none());
+        assert!(call.mirrored_fields().is_empty());
     }
 }

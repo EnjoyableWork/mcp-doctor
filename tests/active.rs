@@ -143,6 +143,65 @@ fn run_legacy_check_json(mode: &str) -> Output {
         .expect("the legacy JSON check should start")
 }
 
+fn v2025_06_check_command(
+    environment: &TestEnvironment,
+    scenario_path: &Path,
+    mode: &str,
+) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-06-18")
+        .arg("--scenario")
+        .arg(scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--")
+        .arg(fixture())
+        .arg(mode);
+    command
+}
+
+fn run_v2025_06_check(mode: &str, mode_arguments: &[&str], format: Option<&str>) -> Output {
+    run_v2025_06_scenario(
+        scenario("read_only", vec![reviewed_case(0, "success")]),
+        mode,
+        mode_arguments,
+        format,
+    )
+}
+
+fn run_v2025_06_scenario(
+    document: Value,
+    mode: &str,
+    mode_arguments: &[&str],
+    format: Option<&str>,
+) -> Output {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(&environment, "v2025-06-scenario.json", &document);
+    let mut command = environment.command();
+    command
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-06-18")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL);
+    if let Some(format) = format {
+        command.arg("--format").arg(format);
+    }
+    command
+        .arg("--")
+        .arg(fixture())
+        .arg(mode)
+        .args(mode_arguments);
+    command
+        .output()
+        .expect("the MCP 2025-06-18 check should start")
+}
+
 fn text(output: &Output) -> (&str, &str) {
     let stdout = std::str::from_utf8(&output.stdout).expect("STDOUT should be UTF-8");
     let stderr = std::str::from_utf8(&output.stderr).expect("STDERR should be UTF-8");
@@ -222,6 +281,374 @@ fn explicit_legacy_check_uses_initialize_and_legacy_results_with_reporter_parity
     assert!(junit.contains("protocol_revision=2025-11-25"));
     assert!(junit.contains("negotiated_protocol_revision=2025-11-25"));
     assert_redacted(&output, &[TOOL, "sequence"]);
+}
+
+#[test]
+fn explicit_v2025_06_check_requires_exact_schemas_and_preserves_reporter_parity() {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "v2025-06-success.json",
+        &scenario("read_only", vec![reviewed_case(0, "success")]),
+    );
+    let json_path = environment.artifact_path("v2025-06-report.json");
+    let junit_path = environment.artifact_path("v2025-06-report.xml");
+    let output = environment
+        .command()
+        .arg("check")
+        .arg("--protocol-version")
+        .arg("2025-06-18")
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--format")
+        .arg("json")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("legacy-active-success")
+        .output()
+        .expect("the MCP 2025-06-18 success journey should run");
+    let (_, stderr) = text(&output);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(stderr.is_empty(), "{stderr}");
+
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["protocol_revision"], "2025-06-18");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-06-18");
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(
+        parse_and_validate_report(
+            &fs::read(&json_path).expect("the MCP 2025-06-18 JSON artifact should exist")
+        ),
+        report
+    );
+    let (junit, summary) = parse_and_validate_junit(
+        &fs::read(&junit_path).expect("the MCP 2025-06-18 JUnit artifact should exist"),
+    );
+    assert_eq!(summary.failures, 0);
+    assert_eq!(summary.skipped, 0);
+    assert!(junit.contains("protocol_revision=2025-06-18"));
+    assert!(junit.contains("negotiated_protocol_revision=2025-06-18"));
+    assert_redacted(&output, &[TOOL, "sequence"]);
+
+    let human = run_v2025_06_check("legacy-active-success", &[], None);
+    let (stdout, stderr) = text(&human);
+    assert!(human.status.success(), "{stdout}\n{stderr}");
+    assert!(stdout.contains("mcp-doctor report · MCP 2025-06-18"));
+    assert!(stdout.contains("outcome passed · exit 0"));
+    assert!(!stdout.contains("MCP-SCHEMA-004"));
+    assert_redacted(&human, &[TOOL, "sequence"]);
+}
+
+#[test]
+fn v2025_06_schema_dialect_failures_are_typed_and_stop_before_tools_call() {
+    for (mode, code, rule, field) in [
+        (
+            "input-missing",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "inputSchema.$schema",
+        ),
+        (
+            "input-malformed",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "inputSchema.$schema",
+        ),
+        (
+            "input-wrong",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "inputSchema.$schema",
+        ),
+        (
+            "input-vocabulary",
+            "MCP-SCHEMA-001",
+            "unsupported_schema_vocabulary",
+            "inputSchema.$vocabulary",
+        ),
+        (
+            "output-missing",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "outputSchema.$schema",
+        ),
+        (
+            "output-malformed",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "outputSchema.$schema",
+        ),
+        (
+            "output-wrong",
+            "MCP-SCHEMA-002",
+            "unsupported_schema_dialect",
+            "outputSchema.$schema",
+        ),
+    ] {
+        let output = run_v2025_06_check("legacy-active-2025-06-schema", &[mode], Some("json"));
+        let (_, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{mode}: {stderr}");
+        assert!(stderr.is_empty(), "{mode}: {stderr}");
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["protocol_revision"], "2025-06-18");
+        assert_eq!(report["negotiated_protocol_revision"], "2025-06-18");
+        assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+        let schema_check = report["checks"]
+            .as_array()
+            .and_then(|checks| {
+                checks
+                    .iter()
+                    .find(|check| check["id"] == "schema.contracts")
+            })
+            .expect("the failed schema check should remain in the report");
+        let finding = &schema_check["findings"][0];
+        assert_eq!(finding["code"], code, "{mode}: {report:#}");
+        assert_eq!(finding["evidence"]["rule"], rule, "{mode}: {report:#}");
+        assert!(
+            finding["location"]
+                .as_str()
+                .is_some_and(|location| location.ends_with(field)),
+            "{mode}: {report:#}"
+        );
+        let runtime = report["checks"]
+            .as_array()
+            .and_then(|checks| {
+                checks
+                    .iter()
+                    .find(|check| check["id"] == "runtime.tools.case[0]")
+            })
+            .expect("the causally skipped case should remain in the report");
+        assert_eq!(runtime["state"], "skipped");
+        assert_eq!(runtime["blocked_by"]["check_id"], "schema.contracts");
+        assert_redacted(&output, &[TOOL, "synthetic.invalid", "private-vocabulary"]);
+    }
+}
+
+#[test]
+fn v2025_06_schema_failure_has_human_json_and_junit_causal_parity() {
+    let human = run_v2025_06_check("legacy-active-2025-06-schema", &["input-missing"], None);
+    let json = run_v2025_06_check(
+        "legacy-active-2025-06-schema",
+        &["input-missing"],
+        Some("json"),
+    );
+    let junit = run_v2025_06_check(
+        "legacy-active-2025-06-schema",
+        &["input-missing"],
+        Some("junit"),
+    );
+    for output in [&human, &json, &junit] {
+        let (_, stderr) = text(output);
+        assert_eq!(output.status.code(), Some(1), "{stderr}");
+        assert!(stderr.is_empty());
+        assert_redacted(output, &[TOOL]);
+    }
+
+    let (human_stdout, _) = text(&human);
+    assert!(human_stdout.contains("mcp-doctor report · MCP 2025-06-18"));
+    assert!(human_stdout.contains("PRIMARY DIAGNOSIS · schema.contracts"));
+    assert!(human_stdout.contains("MCP-SCHEMA-002"));
+    assert!(human_stdout.contains("blocked by schema.contracts"));
+    assert!(human_stdout.contains("outcome failed · exit 1"));
+
+    let report = parse_and_validate_report(&json.stdout);
+    assert_eq!(report["protocol_revision"], "2025-06-18");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-06-18");
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-SCHEMA-002"
+    );
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["exit_code"], 1);
+
+    let (document, summary) = parse_and_validate_junit(&junit.stdout);
+    assert_eq!(summary.failures, 1);
+    assert_eq!(summary.skipped, 1);
+    assert!(document.contains("protocol_revision=2025-06-18"));
+    assert!(document.contains("negotiated_protocol_revision=2025-06-18"));
+    assert!(document.contains("type=\"MCP-SCHEMA-002\""));
+    assert!(document.contains("primary=true"));
+    assert!(document.contains("blocked_by.check_id=schema.contracts"));
+    assert!(document.contains("report_outcome=failed\nexit_code=1"));
+}
+
+#[test]
+fn v2025_06_optional_and_exact_output_contracts_are_distinguished() {
+    let standard_vocabulary = run_v2025_06_check(
+        "legacy-active-2025-06-schema",
+        &["input-standard-vocabulary"],
+        Some("json"),
+    );
+    let (_, stderr) = text(&standard_vocabulary);
+    assert!(standard_vocabulary.status.success(), "{stderr}");
+
+    let omitted = run_v2025_06_check(
+        "legacy-active-2025-06-schema",
+        &["output-omitted"],
+        Some("json"),
+    );
+    let (_, stderr) = text(&omitted);
+    assert!(omitted.status.success(), "{stderr}");
+    let report = parse_and_validate_report(&omitted.stdout);
+    assert_eq!(report["outcome"], "passed");
+
+    let mismatch = run_v2025_06_check(
+        "legacy-active-2025-06-schema",
+        &["output-mismatch"],
+        Some("json"),
+    );
+    let (_, stderr) = text(&mismatch);
+    assert_eq!(mismatch.status.code(), Some(1), "{stderr}");
+    let report = parse_and_validate_report(&mismatch.stdout);
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-ACTIVE-005"
+    );
+    assert_redacted(
+        &mismatch,
+        &[TOOL, "synthetic-private-result-never-report-7f2c"],
+    );
+}
+
+#[test]
+fn v2025_06_external_and_over_limit_schemas_stop_before_activity() {
+    for (mode, code, limit) in [
+        ("input-external", "MCP-SCHEMA-003", None),
+        ("input-depth", "MCP-LIMIT-001", Some("schema_depth")),
+    ] {
+        let output = run_v2025_06_check("legacy-active-2025-06-schema", &[mode], Some("json"));
+        let (_, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{mode}: {stderr}");
+        assert!(stderr.is_empty(), "{mode}: {stderr}");
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["protocol_revision"], "2025-06-18");
+        assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"], code,
+            "{mode}: {report:#}"
+        );
+        if let Some(limit) = limit {
+            let schema = report["checks"]
+                .as_array()
+                .and_then(|checks| {
+                    checks
+                        .iter()
+                        .find(|check| check["id"] == "schema.contracts")
+                })
+                .expect("the failed schema check should remain in the report");
+            assert_eq!(
+                schema["findings"][0]["evidence"]["limit"], limit,
+                "{mode}: {report:#}"
+            );
+        }
+        let runtime = report["checks"]
+            .as_array()
+            .and_then(|checks| {
+                checks
+                    .iter()
+                    .find(|check| check["id"] == "runtime.tools.case[0]")
+            })
+            .expect("the blocked runtime case should remain in the report");
+        assert_eq!(runtime["state"], "skipped");
+        assert_eq!(runtime["blocked_by"]["check_id"], "schema.contracts");
+        assert_redacted(&output, &[TOOL, "synthetic.invalid", "private-schema"]);
+    }
+}
+
+#[test]
+fn v2025_06_legacy_result_and_additional_input_contracts_remain_value_free() {
+    let tool_error = run_v2025_06_scenario(
+        scenario("read_only", vec![reviewed_case(0, "tool_error")]),
+        "legacy-active-tool-error",
+        &[],
+        Some("json"),
+    );
+    let (_, stderr) = text(&tool_error);
+    assert!(tool_error.status.success(), "{stderr}");
+    assert_eq!(
+        parse_and_validate_report(&tool_error.stdout)["outcome"],
+        "passed"
+    );
+
+    let invalid = run_v2025_06_check("legacy-active-invalid-result", &[], None);
+    let (stdout, stderr) = text(&invalid);
+    assert_eq!(invalid.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stdout.contains("MCP-ACTIVE-006"));
+
+    for mode in [
+        "legacy-active-url-elicitation",
+        "legacy-active-server-request",
+    ] {
+        let output = run_v2025_06_check(mode, &[], Some("json"));
+        let (_, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(3), "{mode}: {stderr}");
+        assert!(stderr.is_empty());
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["outcome"], "incomplete");
+        assert_eq!(report["exit_code"], 3);
+        assert_redacted(
+            &output,
+            &[
+                TOOL,
+                "synthetic-server-request-never-report-7f2c",
+                "synthetic.invalid",
+            ],
+        );
+    }
+    assert_redacted(&tool_error, &[TOOL, "sequence"]);
+    assert_redacted(&invalid, &[TOOL]);
+}
+
+#[test]
+fn v2025_06_handshake_failures_stop_without_fallback() {
+    let mismatch = run_v2025_06_check("legacy-active-revision-mismatch", &[], Some("json"));
+    let (_, stderr) = text(&mismatch);
+    assert_eq!(mismatch.status.code(), Some(1), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&mismatch.stdout);
+    assert_eq!(report["protocol_revision"], "2025-06-18");
+    assert_eq!(report["negotiated_protocol_revision"], "2025-11-25");
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-PROTOCOL-005"
+    );
+
+    for (mode, expected) in [
+        ("legacy-malformed", "MCP-PROTOCOL-003"),
+        ("legacy-oversized", "message_bytes"),
+    ] {
+        let output = run_v2025_06_check(mode, &[], None);
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{mode}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert!(stdout.contains(expected), "{mode}: {stdout}");
+        assert!(stdout.contains("SKIP  runtime.tools.case[0]"));
+        assert_redacted(&output, &[TOOL]);
+    }
+
+    let started = Instant::now();
+    let timeout = run_v2025_06_check("legacy-timeout", &[], None);
+    let elapsed = started.elapsed();
+    let (stdout, stderr) = text(&timeout);
+    assert_eq!(timeout.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-LIMIT-001"));
+    assert!(stdout.contains("discovery_time"));
+    assert!(elapsed >= Duration::from_secs(9), "elapsed: {elapsed:?}");
+    assert!(elapsed < Duration::from_secs(20), "elapsed: {elapsed:?}");
+    assert_redacted(&timeout, &[TOOL]);
 }
 
 #[test]
@@ -585,6 +1012,32 @@ fn exact_tool_and_side_effect_gates_reject_before_starting_the_target() {
         assert!(!marker.exists(), "the rejected target was started");
         assert_redacted(&output, &[TOOL, allowed_tool]);
     }
+}
+
+#[test]
+fn v2025_06_side_effect_authority_is_required_before_target_start() {
+    let environment = TestEnvironment::new();
+    let path = write_scenario(
+        &environment,
+        "v2025-06-side-effects.json",
+        &scenario("side_effecting", vec![reviewed_case(0, "success")]),
+    );
+    let marker = environment.artifact_path("v2025-06-target-started");
+    let output = v2025_06_check_command(&environment, &path, "active-started-marker")
+        .arg(&marker)
+        .output()
+        .expect("the explicit 2025-06-18 authorization rejection should run");
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+    assert!(stdout.contains("MCP-AUTH-002"), "{stdout}");
+    assert!(stdout.contains("SKIP  transport.stdio"), "{stdout}");
+    assert!(
+        !marker.exists(),
+        "the rejected 2025-06-18 target was started"
+    );
+    assert_redacted(&output, &[TOOL]);
 }
 
 #[test]

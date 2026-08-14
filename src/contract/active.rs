@@ -12,6 +12,7 @@ use super::active_protocol::{
 use super::catalog::{
     InstanceValidationIssue, LocalValidator, validate_cacheable_result,
     validate_discovery_capabilities, validate_legacy_capabilities, validate_local_schema,
+    validate_local_schema_with_policy,
 };
 use super::generate::{GenerationFailure, generate_inputs};
 use super::http_headers::{HeaderAnnotation, validate_annotations};
@@ -1603,17 +1604,22 @@ impl ActiveConversation {
             ));
         }
         schema_findings.extend(
-            validate_local_schema(&contract.input_schema, input_location)
-                .into_iter()
-                .map(|finding| finding.with_revision(revision)),
+            validate_local_schema_with_policy(
+                &contract.input_schema,
+                input_location,
+                self.adapter.schema_dialect_policy(),
+            )
+            .into_iter()
+            .map(|finding| finding.with_revision(revision)),
         );
         if let Some(output_schema) = &contract.output_schema {
             schema_findings.extend(
-                validate_local_schema(
+                validate_local_schema_with_policy(
                     output_schema,
                     Location::root(LocationField::Tools)
                         .wildcard()
                         .field(LocationField::OutputSchema),
+                    self.adapter.schema_dialect_policy(),
                 )
                 .into_iter()
                 .map(|finding| finding.with_revision(revision)),

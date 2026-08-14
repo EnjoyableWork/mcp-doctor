@@ -208,7 +208,7 @@ fn legacy_revision_selection_is_exact_for_each_command() {
     assert!(stderr.contains("invalid value '2025-03-26'"), "{stderr}");
     assert!(!stderr.contains("No such file"));
 
-    let unsupported_active = run_cli(&[
+    let selected_v2025_06 = run_cli(&[
         "check",
         "--protocol-version",
         "2025-06-18",
@@ -219,12 +219,13 @@ fn legacy_revision_selection_is_exact_for_each_command() {
         "--",
         "synthetic-target-must-not-start",
     ]);
-    assert_eq!(unsupported_active.status.code(), Some(2));
-    assert!(unsupported_active.stdout.is_empty());
-    let stderr =
-        String::from_utf8(unsupported_active.stderr).expect("error output should be UTF-8");
-    assert!(stderr.contains("invalid value '2025-06-18'"), "{stderr}");
-    assert!(!stderr.contains("No such file"));
+    assert_eq!(selected_v2025_06.status.code(), Some(2));
+    assert!(selected_v2025_06.stderr.is_empty());
+    let stdout =
+        String::from_utf8(selected_v2025_06.stdout).expect("report output should be UTF-8");
+    assert!(stdout.contains("mcp-doctor report · MCP 2025-06-18"));
+    assert!(stdout.contains("MCP-SCENARIO-001"));
+    assert!(!stdout.contains("synthetic-target-must-not-start"));
 
     let selected_active = run_cli(&[
         "check",
@@ -290,7 +291,7 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
     assert!(stdout.contains("2026-07-28"));
     assert!(stdout.contains("2025-11-25"));
-    assert!(!stdout.contains("2025-06-18"));
+    assert!(stdout.contains("2025-06-18"));
     assert!(stdout.contains(
         "Usage: mcp-doctor check [OPTIONS] --scenario <PATH> --allow-tool <EXACT-NAME> <URL|TARGET>"
     ));
@@ -345,7 +346,7 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
     assert!(stdout.contains("2026-07-28"));
     assert!(stdout.contains("2025-11-25"));
-    assert!(!stdout.contains("2025-06-18"));
+    assert!(stdout.contains("2025-06-18"));
     assert!(stdout.contains("--allow-private-network <EXACT-URL>"));
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));

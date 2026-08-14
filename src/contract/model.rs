@@ -868,6 +868,7 @@ pub(super) enum LocationField {
     StructuredContent,
     IsError,
     Schema,
+    Vocabulary,
     Type,
     Properties,
     Defs,
@@ -959,6 +960,7 @@ impl LocationField {
             Self::StructuredContent => "structuredContent",
             Self::IsError => "isError",
             Self::Schema => "$schema",
+            Self::Vocabulary => "$vocabulary",
             Self::Type => "type",
             Self::Properties => "properties",
             Self::Defs => "$defs",
@@ -1254,6 +1256,7 @@ pub(super) enum RuleViolation {
     UnsupportedSchemaDialect {
         observed: JsonKind,
     },
+    UnsupportedSchemaVocabulary,
     ExternalSchemaReference,
     UnresolvedLocalReference,
     InvalidDraft202012 {
@@ -1346,6 +1349,7 @@ impl RuleViolation {
             Self::DuplicateIdentifier => "duplicate_identifier",
             Self::RepeatedCursor => "repeated_cursor",
             Self::UnsupportedSchemaDialect { .. } => "unsupported_schema_dialect",
+            Self::UnsupportedSchemaVocabulary => "unsupported_schema_vocabulary",
             Self::ExternalSchemaReference => "external_schema_reference",
             Self::UnresolvedLocalReference => "unresolved_local_reference",
             Self::InvalidDraft202012 { .. } => "invalid_draft_2020_12",
@@ -1418,6 +1422,7 @@ impl RuleViolation {
             | Self::ServerErrorResponse
             | Self::DuplicateIdentifier
             | Self::RepeatedCursor
+            | Self::UnsupportedSchemaVocabulary
             | Self::ExternalSchemaReference
             | Self::UnresolvedLocalReference
             | Self::InvalidDraft202012 { .. }
