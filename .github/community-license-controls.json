@@ -1,6 +1,6 @@
 {
   "schema_version": "mcp-doctor.github-community-license-controls/v1",
-  "reviewed_on": "2026-08-12",
+  "reviewed_on": "2026-08-13",
   "api_version": "2026-03-10",
   "organization": "EnjoyableWork",
   "project_repository": "EnjoyableWork/mcp-doctor",
@@ -89,11 +89,11 @@
     },
     {
       "channel": "canonical_release",
-      "uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0"
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0"
     },
     {
       "channel": "cargo_package",
-      "uri": "https://crates.io/crates/mcp-doctor/0.2.0"
+      "uri": "https://crates.io/crates/mcp-doctor/0.3.0"
     },
     {
       "channel": "homebrew_formula",
@@ -113,40 +113,40 @@
   "tap_contract": {
     "repository": "EnjoyableWork/homebrew-tap",
     "default_branch": "main",
-    "reviewed_commit": "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
+    "reviewed_commit": "2b62e11902c7461cddbc0b96075e3745fdf6f260",
     "readme_path": "README.md",
-    "readme_sha256": "beb65cf10033b2827c13cebd55d4f0467b0ef9f21be73d1b0a426f6df7fe4462",
+    "readme_sha256": "0136c1e4f43f5ce76b2a65780a56e78d2528197c8a79532c7e8ecc6b8e8360ed",
     "license_path": "LICENSE",
     "license_sha256": "32a82b79c71a3a633dc51fcb306f0d4768551aaff7c8862f67a5997a5f75faea",
     "formula_path": "Formula/mcp-doctor.rb",
-    "formula_sha256": "453e81299394302969aeaf2f9ec2a1d36a56328c0370413ede69dda071f12025",
+    "formula_sha256": "25ac053224e8eb687b8ca12323eca98610f4be6f47ef05f43530e7082cafbfd8",
     "formula_license": "MIT"
   },
   "release_license_contract": {
-    "version": "0.2.0",
-    "tag": "v0.2.0",
-    "tag_object": "ae2de3609312a85203a1d3502ea111d6a5299159",
-    "source_commit": "b0805a8f685e46814e358de368e2a270c21704af",
-    "published_at": "2026-08-11T19:53:02Z",
+    "version": "0.3.0",
+    "tag": "v0.3.0",
+    "tag_object": "6d3032426c4d9a7d624eb771fbbc30fe7605801b",
+    "source_commit": "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
+    "published_at": "2026-08-14T00:02:39Z",
     "spdx_expression": "MIT",
-    "github_release_uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0",
-    "cargo_api_uri": "https://crates.io/api/v1/crates/mcp-doctor/0.2.0",
-    "cargo_download_uri": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate",
+    "github_release_uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0",
+    "cargo_api_uri": "https://crates.io/api/v1/crates/mcp-doctor/0.3.0",
+    "cargo_download_uri": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate",
     "assets": [
       {
-        "name": "mcp-doctor-0.2.0.crate",
-        "bytes": 288071,
-        "sha256": "11b080bb9105008efc2065f79ae65cd1c052e3356e0dbf2cb2eea1b138b91b64",
+        "name": "mcp-doctor-0.3.0.crate",
+        "bytes": 480469,
+        "sha256": "f27ef1bfbe3eeed2f365065d44a95d5952f795c7d01c05a98372d770dc7953af",
         "classification": "software_package",
         "license_evidence": {
           "kind": "embedded_file",
-          "member": "mcp-doctor-0.2.0/LICENSE"
+          "member": "mcp-doctor-0.3.0/LICENSE"
         }
       },
       {
-        "name": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu.spdx.json",
+        "name": "mcp-doctor-v0.3.0-aarch64-unknown-linux-gnu.spdx.json",
         "bytes": 511408,
-        "sha256": "90006a4ca295a480165a684386581cc103de3d1dac42805906f2b544b4e1d260",
+        "sha256": "a68971007458c160b3d8aa0b2e238664a5db3652d77ba63cf17957170c38b321",
         "classification": "sbom_document",
         "license_evidence": {
           "kind": "spdx_document_data_license",
@@ -155,9 +155,9 @@
         }
       },
       {
-        "name": "mcp-doctor-v0.2.0-aarch64-unknown-linux-gnu.tar.gz",
-        "bytes": 4608258,
-        "sha256": "e8b17bbbd37315e773b7022d24f5ea3b0bb8be4887d8aa8cd75710350e815f25",
+        "name": "mcp-doctor-v0.3.0-aarch64-unknown-linux-gnu.tar.gz",
+        "bytes": 4957507,
+        "sha256": "06c7887fc0087384ac81af693ad66222d4a5d5c91373efa2adb93a033474c672",
         "classification": "software_archive",
         "license_evidence": {
           "kind": "embedded_file",
@@ -165,9 +165,9 @@
         }
       },
       {
-        "name": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu.spdx.json",
+        "name": "mcp-doctor-v0.3.0-x86_64-unknown-linux-gnu.spdx.json",
         "bytes": 511153,
-        "sha256": "841f5d64de80a9218ebab14eb23c84c4c74d659bbd6226896c7568ed3e7c2152",
+        "sha256": "a28f05cc5b179396bb56051b4f4f768c21422945f21e636f42bad29dbbea4346",
         "classification": "sbom_document",
         "license_evidence": {
           "kind": "spdx_document_data_license",
@@ -176,9 +176,9 @@
         }
       },
       {
-        "name": "mcp-doctor-v0.2.0-x86_64-unknown-linux-gnu.tar.gz",
-        "bytes": 4680753,
-        "sha256": "8b5c7ec5328d5afb747eca3b08495eb9d5d9cd5a8556b81c7528935adf98514d",
+        "name": "mcp-doctor-v0.3.0-x86_64-unknown-linux-gnu.tar.gz",
+        "bytes": 5033486,
+        "sha256": "e44b26e87dc68dc001ed0fb8cef8094e95c9e04240a13b47b0b6363112a83d08",
         "classification": "software_archive",
         "license_evidence": {
           "kind": "embedded_file",
@@ -188,7 +188,7 @@
       {
         "name": "mcp-doctor.rb",
         "bytes": 1844,
-        "sha256": "453e81299394302969aeaf2f9ec2a1d36a56328c0370413ede69dda071f12025",
+        "sha256": "25ac053224e8eb687b8ca12323eca98610f4be6f47ef05f43530e7082cafbfd8",
         "classification": "package_formula",
         "license_evidence": {
           "kind": "formula_declaration_and_tap_license",
@@ -198,7 +198,7 @@
       {
         "name": "SHA256SUMS",
         "bytes": 641,
-        "sha256": "157920438fc85b8c800df9719f84022f01954332d5872427a737de4aa994a16f",
+        "sha256": "3ae870041d6a58bd88b606d8abf95b1dbd5e735ebeb812aa09f7444eecf2fa92",
         "classification": "release_metadata",
         "license_evidence": {
           "kind": "accompanies_licensed_release_set"
@@ -210,7 +210,7 @@
     {
       "surface": "sbom_project_package_license",
       "state": "not_used_as_mit_evidence",
-      "reason": "The immutable v0.2.0 SPDX documents use CC0-1.0 for the document and NOASSERTION for the root package; exact embedded LICENSE files and package metadata provide the software-license evidence."
+      "reason": "The immutable v0.3.0 SPDX documents use CC0-1.0 for the document and NOASSERTION for the root package; exact embedded LICENSE files and package metadata provide the software-license evidence."
     },
     {
       "surface": "separate_organization_projects",

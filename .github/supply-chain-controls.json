@@ -1,7 +1,7 @@
 {
   "schema_version": "mcp-doctor.supply-chain-controls/v1",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-12",
+  "reviewed_on": "2026-08-13",
   "repository": "EnjoyableWork/mcp-doctor",
   "default_branch": "main",
   "dependency_updates": {
@@ -369,20 +369,20 @@
     "release_and_tool_outputs_tracked": false
   },
   "distribution_authentication": {
-    "version": "0.2.0",
-    "tag": "v0.2.0",
-    "tag_object": "ae2de3609312a85203a1d3502ea111d6a5299159",
-    "source_commit": "b0805a8f685e46814e358de368e2a270c21704af",
-    "github_release": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0",
+    "version": "0.3.0",
+    "tag": "v0.3.0",
+    "tag_object": "6d3032426c4d9a7d624eb771fbbc30fe7605801b",
+    "source_commit": "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
+    "github_release": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0",
     "immutable": true,
     "asset_manifest": ".github/community-license-controls.json#release_license_contract.assets",
     "attestation_signer_workflow": "EnjoyableWork/mcp-doctor/.github/workflows/release.yml",
-    "cargo_package": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate",
-    "homebrew_source": "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate",
+    "cargo_package": "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate",
+    "homebrew_source": "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate",
     "homebrew_repository": "EnjoyableWork/homebrew-tap",
-    "homebrew_commit": "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
+    "homebrew_commit": "2b62e11902c7461cddbc0b96075e3745fdf6f260",
     "homebrew_formula": "Formula/mcp-doctor.rb",
-    "homebrew_formula_sha256": "453e81299394302969aeaf2f9ec2a1d36a56328c0370413ede69dda071f12025"
+    "homebrew_formula_sha256": "25ac053224e8eb687b8ca12323eca98610f4be6f47ef05f43530e7082cafbfd8"
   },
   "mapped_controls": [
     "OSPS-BR-01.01",
@@ -397,7 +397,7 @@
     "At most three Syft acquisition attempts improve availability for the same immutable digest-pinned bytes; they do not retry or supply acceptance evidence for a build, test, SBOM generation, validation, publication, job, or workflow.",
     "Syft's prebuilt 276-package Go release graph is not independently rebuilt or audited by this repository; execution is limited to a repository-generated archive in a disposable process with ambient state removed and known network-backed and host-cache catalogers disabled, and Anchore's latest-only support policy makes every release or advisory a renewed-review trigger.",
     "A successful dependency proposal is review input, never evidence that the proposed source is safe or authority to merge it.",
-    "The authenticated distribution result covers only immutable v0.2.0 bytes and does not change, republish, or make a channel-wide claim about future releases.",
+    "The authenticated distribution result covers only immutable v0.3.0 bytes and does not change, republish, or make a channel-wide claim about future releases.",
     "MCPD-016 does not complete the OSPS baseline, SLSA evaluation, organization-access review, independent certification, regulatory compliance, or a warranty."
   ]
 }

@@ -396,11 +396,11 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
     assert_eq!(
         controls["distribution_authentication"]["cargo_package"],
-        "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate"
+        "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate"
     );
     assert_eq!(
         controls["distribution_authentication"]["homebrew_source"],
-        "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate"
+        "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate"
     );
 
     let deny_installer = repository_file("scripts/install-cargo-deny.sh");
@@ -621,7 +621,7 @@ fn project_records_mcpd_016_completion() {
         "Only `CI` and `Release preflight` execute a pull request's code.",
         "The former full-SHA `cargo-deny-action` still fetched a mutable release executable",
         "There are no binary exceptions.",
-        "Authenticate only canonical immutable `v0.2.0`",
+        "Authenticate only canonical immutable `v0.3.0`",
         "At that pre-activation point, no",
         "Dependabot proposal existed for this repository",
         "pull/26#issuecomment-5268391783",

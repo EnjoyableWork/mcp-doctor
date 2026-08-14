@@ -45,7 +45,7 @@ supply_hash() {
 if ! jq -e '
   .schema_version == "mcp-doctor.supply-chain-controls/v1" and
   .api_version == "2026-03-10" and
-  .reviewed_on == "2026-08-12" and
+  .reviewed_on == "2026-08-13" and
   .repository == "EnjoyableWork/mcp-doctor" and
   .default_branch == "main" and
   .dependency_updates.auto_merge == false and
@@ -142,11 +142,11 @@ if ! jq -e '
   .source_artifact_policy.binary_exceptions == [] and
   .source_artifact_policy.text_encoding == "UTF-8" and
   .source_artifact_policy.disallowed_ascii_controls == true and
-  .distribution_authentication.version == "0.2.0" and
-  .distribution_authentication.tag == "v0.2.0" and
+  .distribution_authentication.version == "0.3.0" and
+  .distribution_authentication.tag == "v0.3.0" and
   .distribution_authentication.immutable == true and
   .distribution_authentication.homebrew_source ==
-    "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.2.0/mcp-doctor-0.2.0.crate" and
+    "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate" and
   .mapped_controls == [
     "OSPS-BR-01.01",
     "OSPS-BR-01.03",

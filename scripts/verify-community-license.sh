@@ -65,7 +65,7 @@ community_sha256_file() {
 
 if ! jq -e '
   .schema_version == "mcp-doctor.github-community-license-controls/v1" and
-  .reviewed_on == "2026-08-12" and
+  .reviewed_on == "2026-08-13" and
   .api_version == "2026-03-10" and
   .organization == "EnjoyableWork" and
   .project_repository == "EnjoyableWork/mcp-doctor" and
@@ -142,11 +142,11 @@ if ! jq -e '
   (.official_channels | sort_by(.channel)) == [
     {
       "channel": "canonical_release",
-      "uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0"
+      "uri": "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0"
     },
     {
       "channel": "cargo_package",
-      "uri": "https://crates.io/crates/mcp-doctor/0.2.0"
+      "uri": "https://crates.io/crates/mcp-doctor/0.3.0"
     },
     {
       "channel": "homebrew_formula",
@@ -180,17 +180,17 @@ if ! jq -e '
   (.tap_contract.reviewed_commit | test("^[0-9a-f]{40}$")) and
   .tap_contract.formula_license == "MIT" and
   .tap_contract.license_sha256 == .source_license.license_sha256 and
-  .release_license_contract.version == "0.2.0" and
-  .release_license_contract.tag == "v0.2.0" and
+  .release_license_contract.version == "0.3.0" and
+  .release_license_contract.tag == "v0.3.0" and
   (.release_license_contract.tag_object | test("^[0-9a-f]{40}$")) and
   (.release_license_contract.source_commit | test("^[0-9a-f]{40}$")) and
   .release_license_contract.spdx_expression == "MIT" and
   .release_license_contract.github_release_uri ==
-    "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0" and
+    "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0" and
   .release_license_contract.cargo_api_uri ==
-    "https://crates.io/api/v1/crates/mcp-doctor/0.2.0" and
+    "https://crates.io/api/v1/crates/mcp-doctor/0.3.0" and
   .release_license_contract.cargo_download_uri ==
-    "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.2.0.crate" and
+    "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate" and
   (.release_license_contract.assets | length) == 7 and
   ([.release_license_contract.assets[].name] | unique | length) == 7 and
   all(.release_license_contract.assets[];
@@ -448,8 +448,8 @@ for community_expected_text in \
   grep -F "${community_expected_text}" "${community_conduct}" >/dev/null
 done
 for community_expected_text in \
-  'current public release is' \
-  '0.2.0' \
+  'This source tree represents' \
+  '0.3.0' \
   '01-bug-report.yml' \
   '02-feature-request.yml' \
   '[SECURITY.md](SECURITY.md)'; do

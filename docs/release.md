@@ -164,6 +164,36 @@ identity; two GNU/Linux archive smokes; four native Cargo smokes; and three
 native Homebrew smokes. This is the completion evidence for the retained path,
 not permission to weaken it for a later release.
 
+## v0.3.0 retained-path verification
+
+[`v0.3.0`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0)
+published the completed optional compatibility, contract-artifact, report-file,
+offline-aggregation, and structured protocol-rejection work without changing
+the retained release authority or making an M4 assurance claim. Protected
+[PR 54](https://github.com/EnjoyableWork/mcp-doctor/pull/54) passed
+first-attempt exact-head
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31746397550) and
+[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31746397557),
+then merged as exact release source
+[`d9b96bbeb84baccb8e5c890e9c655a559a12a474`](https://github.com/EnjoyableWork/mcp-doctor/commit/d9b96bbeb84baccb8e5c890e9c655a559a12a474).
+First-attempt exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31754685159) and
+[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31754685137)
+passed before the signed annotated tag was intentionally pushed.
+
+The protected [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31755736570)
+made the GitHub Release immutable, attested and re-downloaded all seven exact
+assets, and published the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.3.0) through OIDC.
+The tap-owned [publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31756253855)
+verified the release identity and committed the exact formula as
+[`2b62e11902c7461cddbc0b96075e3745fdf6f260`](https://github.com/EnjoyableWork/homebrew-tap/commit/2b62e11902c7461cddbc0b96075e3745fdf6f260).
+The credential-free [channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31756413098)
+then passed all ten jobs on their first attempts: immutable GitHub, crates.io,
+and Homebrew identity; two GNU/Linux archive installs; four native Cargo
+installs; and three native Homebrew installs. The release used no test, job,
+workflow, integrity, generation, validation, or publication retry.
+
 ### GitHub-controlled sequence
 
 Every later release keeps three deliberately separate write boundaries:
