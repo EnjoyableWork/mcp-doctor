@@ -20,7 +20,7 @@
   <a href="#the-promise">The promise</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#inspect-check-break-diff">Inspect. Check. Break. Diff.</a> ·
+  <a href="#inspect-check-break-diff-aggregate-capabilities">Commands</a> ·
   <a href="#bring-it-into-ci">CI</a> ·
   <a href="#safe-by-default">Safety</a>
 </p>
@@ -129,6 +129,35 @@ server requests, or enable legacy `check` or `break` behavior.
 | `2025-06-18` | Explicit only | Explicit only | Not supported | Synthetic diagnostics only |
 | `2025-03-26`, `2024-11-05`, or unknown | Rejected | Rejected | Rejected | No compatibility claim |
 
+Let an editor, wrapper, server repository, or CI job check the installed
+binary before it chooses a diagnostic:
+
+```bash
+mcp-doctor capabilities --format json
+```
+
+This command emits deterministic `mcp-doctor.capabilities/v1` JSON containing
+the product version; exact command, transport, and MCP revision matrix;
+recognized-unsupported revisions; report, scenario, generator, snapshot, diff,
+aggregate, and capability contract versions; reporter availability;
+`mcp-doctor.exit/v1`; named hard limit profiles; and compile-time process-tree
+and file-identity capabilities. It does not inspect user configuration or host
+inventory, read credentials, start a process, resolve DNS, connect to a target,
+retrieve a schema, or call a tool.
+An integration can classify a planned run as supported, unsupported, or unknown
+before it selects a target.
+
+Consumers request the representation exactly with
+`--schema-version mcp-doctor.capabilities/v1`. There is no discovery, fallback,
+or version downgrade. An unsupported request exits `2`; JSON output receives a
+value-free typed error listing the supported capability schema. Within stable
+`v1`, consumers ignore unknown optional fields and treat unknown command,
+transport, revision, reporter, contract, or profile values as unknown. Adding
+a new supported entry or optional field is compatible; removing support or
+changing a required field or existing meaning requires a new capability major.
+The checked-in [Draft 2020-12 schema](schemas/mcp-doctor.capabilities.v1.schema.json)
+is the validation contract.
+
 Advertised tool schemas are checked locally and without external retrieval.
 MCP `2025-11-25` defaults an omitted dialect to bounded JSON Schema Draft
 2020-12. Because MCP `2025-06-18` did not define a default, an omitted dialect
@@ -159,7 +188,7 @@ incomplete diagnostic still publishes both files when reporting succeeds and
 retains exit `1` or `3`; a render, write, publication, or cleanup failure cannot
 report success and exits `4`.
 
-## Inspect. Check. Break. Diff. Aggregate.
+## Inspect. Check. Break. Diff. Aggregate. Capabilities.
 
 Choose how much activity the target allows:
 
@@ -170,6 +199,7 @@ Choose how much activity the target allows:
 | **`break`** | Tries generated edge cases | Search one selected tool for failures you can repeat |
 | **`diff`** | Reads two local files only | Compare explicitly captured advertised contracts without starting or contacting a target |
 | **`aggregate`** | Reads explicit local files only | Combine stable diagnostic reports conservatively without rerunning or contacting a target |
+| **`capabilities`** | Uses compiled facts only | Select, skip, or defer a diagnostic without inspecting a host or target |
 
 ```bash
 # Passive: discover and validate without calling a tool
@@ -197,6 +227,9 @@ mcp-doctor diff --format json before.contract.json after.contract.json
 mcp-doctor aggregate \
   --output matrix.aggregate.json \
   reports/linux.json reports/macos.json reports/windows.json
+
+# Compiled only: decide whether this binary supports a planned diagnostic
+mcp-doctor capabilities --format json
 ```
 
 > [!CAUTION]
@@ -475,6 +508,9 @@ hide secrets.
 - Offline aggregates accept only explicit bounded stable reports, discard
   unknown optional values, preserve failures conservatively, and have no
   target, network, credential, retrieval, or tool surface.
+- Capability discovery reports only fixed compiled facts under a 64 KiB output
+  limit and has no configuration, host-inventory, credential, process, network,
+  target, retrieval, or tool surface.
 - Local server commands run directly, not through a shell. Before exiting,
   `mcp-doctor` closes every child process, stops it if needed, and waits for it
   to end.

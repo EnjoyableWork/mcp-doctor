@@ -17,6 +17,8 @@ const STABLE_REPORT_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.report
 const STABLE_REPORT_SCHEMA_ID: &str = "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.report.v1.schema.json";
 const STABLE_AGGREGATE_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.aggregate.v1.schema.json");
+const STABLE_CAPABILITIES_SCHEMA: &str =
+    include_str!("../../schemas/mcp-doctor.capabilities.v1.schema.json");
 const CONTRACT_SNAPSHOT_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json");
 const CONTRACT_DIFF_SCHEMA: &str =
@@ -73,6 +75,10 @@ pub fn parse_and_validate_aggregate(bytes: &[u8]) -> serde_json::Value {
         "stable aggregate schema rejected synthetic fields at {errors:?}"
     );
     aggregate
+}
+
+pub fn parse_and_validate_capabilities(bytes: &[u8]) -> serde_json::Value {
+    parse_and_validate_schema(bytes, STABLE_CAPABILITIES_SCHEMA, "capabilities response")
 }
 
 pub fn parse_and_validate_contract_snapshot(bytes: &[u8]) -> serde_json::Value {

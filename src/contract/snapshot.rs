@@ -15,8 +15,8 @@ use super::limits::DiagnosticLimits;
 use super::protocol::SupportedRevision;
 use crate::transport::ProbeResponse;
 
-const SNAPSHOT_SCHEMA_VERSION: &str = "mcp-doctor.contract-snapshot/v1alpha1";
-const DIFF_SCHEMA_VERSION: &str = "mcp-doctor.contract-diff/v1alpha1";
+pub(crate) const SNAPSHOT_SCHEMA_VERSION: &str = "mcp-doctor.contract-snapshot/v1alpha1";
+pub(crate) const DIFF_SCHEMA_VERSION: &str = "mcp-doctor.contract-diff/v1alpha1";
 const PROTOCOL_REVISION: &str = "2026-07-28";
 
 #[derive(Clone, Serialize, Deserialize)]

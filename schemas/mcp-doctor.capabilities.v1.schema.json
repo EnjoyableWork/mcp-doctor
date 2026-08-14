@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.capabilities.v1.schema.json",
+  "title": "mcp-doctor compiled capability response",
+  "description": "The stable mcp-doctor.capabilities/v1 contract. A successful document reports compiled product capabilities only. An unsupported exact schema request may return the value-free error branch with exit 2. Unknown optional properties are compatible within v1 and must be ignored.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "schema_stability"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.capabilities/v1"
+    },
+    "schema_stability": {
+      "const": "stable"
+    },
+    "product": {
+      "$ref": "#/$defs/product"
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    },
+    "protocol_revisions": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/protocol_revision"
+      }
+    },
+    "protocol_support": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/protocol_support"
+      }
+    },
+    "schema_versions": {
+      "$ref": "#/$defs/schema_versions"
+    },
+    "reporters": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/reporter"
+      }
+    },
+    "exit_semantics": {
+      "$ref": "#/$defs/exit_semantics"
+    },
+    "platform": {
+      "$ref": "#/$defs/platform"
+    },
+    "limit_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/limit_profile"
+      }
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "product",
+        "commands",
+        "protocol_revisions",
+        "protocol_support",
+        "schema_versions",
+        "reporters",
+        "exit_semantics",
+        "platform",
+        "limit_profiles",
+        "limits"
+      ],
+      "not": {
+        "required": [
+          "error"
+        ]
+      }
+    },
+    {
+      "required": [
+        "error"
+      ],
+      "not": {
+        "required": [
+          "product"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "maxLength": 64
+    },
+    "contract_version": {
+      "type": "string",
+      "pattern": "^mcp-doctor\\.[a-z][a-z0-9-]*/v[0-9]+(?:alpha[0-9]+)?$",
+      "maxLength": 128
+    },
+    "contract_versions": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/contract_version"
+      }
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "mcp-doctor"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+          "maxLength": 64
+        }
+      },
+      "additionalProperties": true
+    },
+    "command": {
+      "type": "object",
+      "required": [
+        "name",
+        "activity",
+        "reporters",
+        "input_schema_versions",
+        "output_schema_versions",
+        "generator_versions",
+        "limit_profile"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "activity": {
+          "$ref": "#/$defs/name"
+        },
+        "reporters": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "input_schema_versions": {
+          "$ref": "#/$defs/contract_versions"
+        },
+        "output_schema_versions": {
+          "$ref": "#/$defs/contract_versions"
+        },
+        "generator_versions": {
+          "$ref": "#/$defs/contract_versions"
+        },
+        "limit_profile": {
+          "$ref": "#/$defs/limit_profile_id"
+        }
+      },
+      "additionalProperties": true
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "maxLength": 10
+    },
+    "protocol_revision": {
+      "type": "object",
+      "required": [
+        "revision",
+        "recognition"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "recognition": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "additionalProperties": true
+    },
+    "protocol_support": {
+      "type": "object",
+      "required": [
+        "command",
+        "transport",
+        "revisions"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/name"
+        },
+        "transport": {
+          "$ref": "#/$defs/name"
+        },
+        "revisions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/revision"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "schema_versions": {
+      "type": "object",
+      "required": [
+        "aggregate",
+        "capabilities",
+        "contract_diff",
+        "contract_snapshot",
+        "diagnostic_report",
+        "generator",
+        "scenario"
+      ],
+      "properties": {
+        "aggregate": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "contract_diff": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "contract_snapshot": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "diagnostic_report": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "generator": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "scenario": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        }
+      },
+      "additionalProperties": true
+    },
+    "nonempty_contract_versions": {
+      "$ref": "#/$defs/contract_versions",
+      "minItems": 1
+    },
+    "reporter": {
+      "type": "object",
+      "required": [
+        "name",
+        "machine_readable"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "machine_readable": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "exit_semantics": {
+      "type": "object",
+      "required": [
+        "version",
+        "codes"
+      ],
+      "properties": {
+        "version": {
+          "const": "mcp-doctor.exit/v1"
+        },
+        "codes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/exit_code"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "exit_code": {
+      "type": "object",
+      "required": [
+        "code",
+        "meaning"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "meaning": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "additionalProperties": true
+    },
+    "platform": {
+      "type": "object",
+      "required": [
+        "family",
+        "process_tree_control",
+        "file_identity"
+      ],
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/name"
+        },
+        "process_tree_control": {
+          "$ref": "#/$defs/name"
+        },
+        "file_identity": {
+          "$ref": "#/$defs/name"
+        }
+      },
+      "additionalProperties": true
+    },
+    "limit_profile_id": {
+      "type": "string",
+      "pattern": "^mcp-doctor\\.limits/[a-z][a-z0-9-]*/v[0-9]+(?:alpha[0-9]+)?$",
+      "maxLength": 128
+    },
+    "limit_profile": {
+      "type": "object",
+      "required": [
+        "id",
+        "default_for",
+        "hard"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/limit_profile_id"
+        },
+        "default_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "hard": {
+          "const": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "output_bytes"
+      ],
+      "properties": {
+        "output_bytes": {
+          "const": 65536
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "supported_schema_versions"
+      ],
+      "properties": {
+        "code": {
+          "const": "unsupported_schema_version"
+        },
+        "supported_schema_versions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/contract_version"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

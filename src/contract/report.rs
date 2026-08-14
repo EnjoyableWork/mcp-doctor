@@ -12,7 +12,7 @@ use super::model::{
 use super::protocol::{KnownRevision, SupportedRevision};
 use super::redaction::REDACTION_MARKER;
 
-pub(super) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
+pub(crate) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
 const AGGREGATE_REPORT_BYTES: u64 = 8_388_608;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -196,7 +196,7 @@ impl OverallOutcome {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
-pub(super) enum ExitStatus {
+pub(crate) enum ExitStatus {
     Success = 0,
     DiagnosticFailure = 1,
     InvocationError = 2,
@@ -205,7 +205,7 @@ pub(super) enum ExitStatus {
 }
 
 impl ExitStatus {
-    pub(super) const fn code(self) -> u8 {
+    pub(crate) const fn code(self) -> u8 {
         self as u8
     }
 }
