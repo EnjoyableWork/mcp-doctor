@@ -834,6 +834,29 @@ fn write_human_reproduction(
         return;
     };
     let input = reproduction.input();
+    if let Some(mutation_kind) = reproduction.mutation_kind() {
+        writeln!(
+            output,
+            "      Reproduce: {} · seed={} · mutation={} · input={} bytes={} nodes={} depth={} · null={} boolean={} number={} string={} array={} array_items={} object={} object_members={}",
+            reproduction.generator(),
+            reproduction.seed(),
+            mutation_kind,
+            input.root().as_str(),
+            input.byte_count(),
+            input.node_count(),
+            input.maximum_depth(),
+            input.nulls(),
+            input.booleans(),
+            input.numbers(),
+            input.strings(),
+            input.arrays(),
+            input.array_items(),
+            input.objects(),
+            input.object_members(),
+        )
+        .expect("the bounded report writer records limit failures");
+        return;
+    }
     writeln!(
         output,
         "      Reproduce: {} · seed={} · input={} bytes={} nodes={} depth={} · null={} boolean={} number={} string={} array={} array_items={} object={} object_members={}",
@@ -1364,6 +1387,9 @@ fn write_junit_reproduction(
     write_xml_line(output, "reproduction.generator", reproduction.generator());
     writeln!(output, "reproduction.seed={}", reproduction.seed())
         .expect("the bounded report writer records limit failures");
+    if let Some(mutation_kind) = reproduction.mutation_kind() {
+        write_xml_line(output, "reproduction.mutation_kind", mutation_kind);
+    }
     write_xml_line(output, "reproduction.input.root", input.root().as_str());
     for (name, value) in [
         ("byte_count", input.byte_count()),
@@ -1683,6 +1709,8 @@ impl JsonCheck {
 struct JsonReproduction {
     generator: &'static str,
     seed: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mutation_kind: Option<&'static str>,
     input: JsonStructuralInput,
 }
 
@@ -1691,6 +1719,7 @@ impl From<&GeneratedCaseReproduction> for JsonReproduction {
         Self {
             generator: reproduction.generator(),
             seed: reproduction.seed(),
+            mutation_kind: reproduction.mutation_kind(),
             input: JsonStructuralInput::from(reproduction.input()),
         }
     }

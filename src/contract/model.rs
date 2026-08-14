@@ -185,6 +185,7 @@ pub(super) enum FindingCode {
     ToolOutputMismatch,
     ToolResultInvalid,
     ToolTaskRequired,
+    SchemaInvalidArgumentsAccepted,
 }
 
 impl FindingCode {
@@ -232,6 +233,7 @@ impl FindingCode {
             Self::ToolOutputMismatch => "MCP-ACTIVE-005",
             Self::ToolResultInvalid => "MCP-ACTIVE-006",
             Self::ToolTaskRequired => "MCP-ACTIVE-007",
+            Self::SchemaInvalidArgumentsAccepted => "MCP-ACTIVE-008",
         }
     }
 
@@ -276,7 +278,9 @@ impl FindingCode {
             | Self::ToolOutputMismatch
             | Self::ToolResultInvalid
             | Self::ToolTaskRequired => Severity::Error,
-            Self::CleanupFailed | Self::SessionCleanupFailed => Severity::Critical,
+            Self::CleanupFailed
+            | Self::SessionCleanupFailed
+            | Self::SchemaInvalidArgumentsAccepted => Severity::Critical,
         }
     }
 
@@ -377,6 +381,9 @@ impl FindingCode {
             }
             Self::ToolTaskRequired => {
                 "The selected tool requires task execution that this active run does not perform."
+            }
+            Self::SchemaInvalidArgumentsAccepted => {
+                "The server accepted schema-invalid tool arguments instead of rejecting them."
             }
         }
     }
@@ -494,6 +501,9 @@ impl FindingCode {
             }
             Self::ToolTaskRequired => {
                 "Calling this tool immediately would violate its advertised execution contract."
+            }
+            Self::SchemaInvalidArgumentsAccepted => {
+                "The defective server may have executed a call that its advertised input schema forbids."
             }
         }
     }
@@ -624,6 +634,9 @@ impl FindingCode {
             Self::ToolTaskRequired => {
                 "Active calls must use immediate execution; a tool requiring task augmentation is not called."
             }
+            Self::SchemaInvalidArgumentsAccepted => {
+                "MCP 2026-07-28 schema-invalid tool arguments must receive a matching JSON-RPC -32602 error before execution."
+            }
         }
     }
 
@@ -745,6 +758,9 @@ impl FindingCode {
             Self::ToolTaskRequired => {
                 "Advertise optional, forbidden, or omitted task support for this run, or use a task-capable client."
             }
+            Self::SchemaInvalidArgumentsAccepted => {
+                "Validate arguments against the advertised input schema before invoking tool logic, return JSON-RPC -32602, and rerun the same seed."
+            }
         }
     }
 
@@ -802,8 +818,9 @@ impl FindingCode {
             | Self::ToolResultMismatch
             | Self::ToolOutputMismatch
             | Self::ToolResultInvalid
-            | Self::ToolTaskRequired => {
-                "selected MCP revision tools contract and mcp-doctor MCPD-009/MCPD-011/MCPD-027 active contract"
+            | Self::ToolTaskRequired
+            | Self::SchemaInvalidArgumentsAccepted => {
+                "selected MCP revision tools contract and mcp-doctor MCPD-009/MCPD-011/MCPD-027/MCPD-029 active contract"
             }
         }
     }
@@ -1182,6 +1199,7 @@ pub(super) struct GeneratedCaseReproduction {
     generator: &'static str,
     seed: u64,
     input: StructuralInput,
+    mutation_kind: Option<&'static str>,
 }
 
 impl GeneratedCaseReproduction {
@@ -1190,7 +1208,13 @@ impl GeneratedCaseReproduction {
             generator,
             seed,
             input,
+            mutation_kind: None,
         }
+    }
+
+    pub(super) const fn with_mutation_kind(mut self, mutation_kind: &'static str) -> Self {
+        self.mutation_kind = Some(mutation_kind);
+        self
     }
 
     pub(super) const fn generator(&self) -> &'static str {
@@ -1203,6 +1227,10 @@ impl GeneratedCaseReproduction {
 
     pub(super) const fn input(&self) -> &StructuralInput {
         &self.input
+    }
+
+    pub(super) const fn mutation_kind(&self) -> Option<&'static str> {
+        self.mutation_kind
     }
 }
 
@@ -1980,6 +2008,15 @@ impl Finding {
             revision,
             location,
             FindingEvidence::RuleViolation(RuleViolation::TaskExecutionRequired),
+        )
+    }
+
+    pub(super) fn schema_invalid_arguments_accepted(location: Location) -> Self {
+        Self::new(
+            FindingCode::SchemaInvalidArgumentsAccepted,
+            SupportedRevision::CURRENT,
+            location,
+            FindingEvidence::None,
         )
     }
 

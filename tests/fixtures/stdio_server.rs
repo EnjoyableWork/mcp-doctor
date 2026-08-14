@@ -109,6 +109,20 @@ fn main() -> ExitCode {
         Some("break-aggregate-input") => break_aggregate_input(),
         Some("break-generation-steps") => break_generation_steps(),
         Some("break-resistant-child") => break_resistant_child(&remaining),
+        Some("reject-success") => reject_success(&remaining),
+        Some("reject-unsafe-success") => reject_unsafe_success(),
+        Some("reject-wrong-error") => reject_wrong_error(),
+        Some("reject-malformed-error") => reject_malformed_error(),
+        Some("reject-wrong-id") => reject_wrong_id(),
+        Some("reject-clean-exit") => reject_clean_exit(),
+        Some("reject-crash") => reject_crash(),
+        Some("reject-timeout") => reject_timeout(),
+        Some("reject-oversize") => reject_oversize(),
+        Some("reject-schema-invalid") => reject_schema_invalid(),
+        Some("reject-schema-external") => reject_schema_external(),
+        Some("reject-oversized-input") => reject_oversized_input(),
+        Some("reject-impossible") => reject_impossible(),
+        Some("reject-passive") => reject_passive(&remaining),
         Some("descendant") => descendant(&remaining),
         _ => ExitCode::from(2),
     }
@@ -1919,6 +1933,201 @@ fn break_resistant_child(arguments: &[OsString]) -> ExitCode {
     wait_with_child(descendant)
 }
 
+fn reject_success(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    for (ordinal, id) in (3_i64..=9).enumerate() {
+        let call = read_active_call(&mut input, id);
+        let arguments = call["params"].get("arguments");
+        match ordinal {
+            0 => assert!(arguments.is_none(), "the first case omits arguments"),
+            1 => assert!(arguments.is_some_and(Value::is_array)),
+            2 => assert!(
+                arguments
+                    .and_then(Value::as_object)
+                    .is_some_and(|value| !value.contains_key("sequence"))
+            ),
+            3 => assert!(arguments.and_then(Value::as_object).is_some_and(|value| {
+                value
+                    .get("sequence")
+                    .is_some_and(|value| !value.is_number())
+                    || value.get("secret").is_some_and(|value| !value.is_string())
+            })),
+            4 => assert!(
+                arguments
+                    .and_then(Value::as_object)
+                    .is_some_and(|value| value.values().any(Value::is_null))
+            ),
+            5 => assert!(
+                arguments
+                    .and_then(Value::as_object)
+                    .and_then(|value| value.get("synthetic_private_mode_never_report_7f2c"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !matches!(value, "safe" | "strict"))
+            ),
+            6 => {
+                assert!(
+                    arguments
+                        .and_then(Value::as_object)
+                        .is_some_and(|value| value.keys().any(|name| !matches!(
+                            name.as_str(),
+                            "sequence" | "secret" | "synthetic_private_mode_never_report_7f2c"
+                        )))
+                )
+            }
+            _ => unreachable!(),
+        }
+        write_invalid_params(id);
+    }
+    fs::write(marker, b"7").expect("the reject call-count marker should be writable");
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_unsafe_success() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    write_result(
+        3,
+        json!({
+            "resultType": "input_required",
+            "content": [{"type": "text", "text": REDACTION_SENTINEL}],
+            "isError": true
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_wrong_error() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    write_error(3);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_malformed_error() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "error": {"code": -32602, "message": [REDACTION_SENTINEL]}
+    }));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_wrong_id() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    write_invalid_params(4);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_clean_exit() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    ExitCode::SUCCESS
+}
+
+fn reject_crash() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    ExitCode::from(7)
+}
+
+fn reject_timeout() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    wait_forever()
+}
+
+fn reject_oversize() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    let _ = read_active_call(&mut input, 3);
+    let mut stdout = io::stdout().lock();
+    write_repeated(&mut stdout, b'x', MIB + 1);
+    stdout.flush().expect("STDOUT should flush");
+    wait_forever()
+}
+
+fn reject_schema_invalid() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": [REDACTION_SENTINEL]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_schema_external() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {"secret": {"$ref": "https://invalid.example/private"}}
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_oversized_input() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "synthetic_private_value_never_report_7f2c": {
+                    "type": "string",
+                    "minLength": MIB
+                }
+            },
+            "required": ["synthetic_private_value_never_report_7f2c"]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_impossible() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(&mut input, json!({"type": "object", "not": {}}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reject_passive(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    reject_begin(&mut input);
+    assert_eof(&mut input);
+    fs::write(marker, b"0").expect("the passive reject marker should be writable");
+    ExitCode::SUCCESS
+}
+
 fn generated_boundary_schema() -> Value {
     json!({
         "type": "object",
@@ -1989,6 +2198,40 @@ fn read_generated_call(input: &mut impl BufRead, expected_id: i64) -> Value {
 }
 
 fn active_begin(input: &mut impl BufRead) {
+    active_begin_with_input_schema(
+        input,
+        json!({
+            "type": "object",
+            "properties": {
+                "sequence": {"type": "integer"},
+                "secret": {"type": "string"}
+            },
+            "required": ["sequence"],
+            "additionalProperties": false
+        }),
+    );
+}
+
+fn reject_begin(input: &mut impl BufRead) {
+    active_begin_with_input_schema(
+        input,
+        json!({
+            "type": "object",
+            "properties": {
+                "sequence": {"type": "integer", "minimum": 1, "maximum": 5},
+                "secret": {"type": "string"},
+                "synthetic_private_mode_never_report_7f2c": {
+                    "type": "string",
+                    "enum": ["safe", "strict"]
+                }
+            },
+            "required": ["sequence"],
+            "additionalProperties": false
+        }),
+    );
+}
+
+fn active_begin_with_input_schema(input: &mut impl BufRead, input_schema: Value) {
     read_request(input, 1, "server/discover", None);
     write_discovery_response(json!({"tools": {}}));
     read_request(input, 2, "tools/list", None);
@@ -2004,15 +2247,7 @@ fn active_begin(input: &mut impl BufRead) {
                     "readOnlyHint": false,
                     "destructiveHint": true
                 },
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "sequence": {"type": "integer"},
-                        "secret": {"type": "string"}
-                    },
-                    "required": ["sequence"],
-                    "additionalProperties": false
-                },
+                "inputSchema": input_schema,
                 "outputSchema": {
                     "type": "object",
                     "properties": {"ok": {"type": "boolean"}},
@@ -2254,6 +2489,18 @@ fn write_error(id: i64) {
     .expect("the error response should be writable");
     stdout.write_all(b"\n").expect("the frame should terminate");
     stdout.flush().expect("STDOUT should flush");
+}
+
+fn write_invalid_params(id: i64) {
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": -32602,
+            "message": REDACTION_SENTINEL,
+            "data": {"secret": REDACTION_SENTINEL}
+        }
+    }));
 }
 
 fn assert_eof(input: &mut impl Read) {

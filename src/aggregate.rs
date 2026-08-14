@@ -841,6 +841,8 @@ struct StableCheck {
 struct Reproduction {
     generator: String,
     seed: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mutation_kind: Option<String>,
     input: StructuralInput,
 }
 

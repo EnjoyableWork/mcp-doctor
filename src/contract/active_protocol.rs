@@ -152,12 +152,14 @@ impl ActiveProtocolAdapter {
         self,
         id: i64,
         tool: String,
-        arguments: Value,
+        arguments: Option<Value>,
         mirrored_fields: Vec<MirroredField>,
     ) -> ProbeRequest {
         let mut params = Map::new();
         params.insert("name".to_owned(), Value::String(tool));
-        params.insert("arguments".to_owned(), arguments);
+        if let Some(arguments) = arguments {
+            params.insert("arguments".to_owned(), arguments);
+        }
         if !self.uses_initialize() {
             params.insert("_meta".to_owned(), request_meta());
         }
@@ -231,7 +233,7 @@ mod tests {
         let call = adapter.tool_call_request(
             3,
             "synthetic-tool".to_owned(),
-            json!({"safe": true}),
+            Some(json!({"safe": true})),
             vec![MirroredField::new("safe".to_owned(), "true".to_owned())],
         );
         assert_eq!(
@@ -273,6 +275,12 @@ mod tests {
                     },
                 },
             })
+        );
+        let omitted = adapter.tool_call_request(4, "synthetic-tool".to_owned(), None, Vec::new());
+        assert!(
+            value(omitted.as_bytes())["params"]
+                .as_object()
+                .is_some_and(|params| !params.contains_key("arguments"))
         );
     }
 
@@ -316,7 +324,7 @@ mod tests {
         let call = adapter.tool_call_request(
             3,
             "synthetic-tool".to_owned(),
-            json!({}),
+            Some(json!({})),
             vec![MirroredField::new("unsafe".to_owned(), "value".to_owned())],
         );
         assert!(value(call.as_bytes())["params"].get("_meta").is_none());
@@ -401,7 +409,7 @@ mod tests {
         let call = adapter.tool_call_request(
             3,
             "synthetic-tool".to_owned(),
-            json!({}),
+            Some(json!({})),
             vec![MirroredField::new("unsafe".to_owned(), "value".to_owned())],
         );
         assert!(value(call.as_bytes())["params"].get("_meta").is_none());

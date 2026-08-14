@@ -501,6 +501,18 @@
         "seed": {
           "$ref": "#/$defs/bounded_count"
         },
+        "mutation_kind": {
+          "type": "string",
+          "enum": [
+            "missing_arguments",
+            "wrong_root_type",
+            "omitted_required_property",
+            "wrong_property_type",
+            "forbidden_null",
+            "invalid_enum",
+            "unexpected_property"
+          ]
+        },
         "input": {
           "$ref": "#/$defs/structural_input"
         }

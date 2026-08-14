@@ -35,6 +35,8 @@ smoke_junit_artifact="${smoke_root}/report-artifact.xml"
 smoke_legacy_scenario="${smoke_root}/legacy-scenario.json"
 smoke_legacy_check="${smoke_root}/legacy-check.json"
 smoke_legacy_break="${smoke_root}/legacy-break.json"
+smoke_reject="${smoke_root}/reject.json"
+smoke_reject_marker="${smoke_root}/reject-count.txt"
 smoke_snapshot="${smoke_root}/contract.json"
 smoke_legacy_11_snapshot="${smoke_root}/contract-2025-11-25.json"
 smoke_legacy_06_snapshot="${smoke_root}/contract-2025-06-18.json"
@@ -93,7 +95,7 @@ jq -e --arg version "${smoke_version}" '
   .schema_stability == "stable" and
   .product == {name: "mcp-doctor", version: $version} and
   ([.commands[].name] == [
-    "aggregate", "break", "capabilities", "check", "diff", "inspect"
+    "aggregate", "break", "capabilities", "check", "diff", "inspect", "reject"
   ]) and
   ([.protocol_support[] |
     select(.command == "inspect" and .transport == "stdio") |
@@ -101,6 +103,12 @@ jq -e --arg version "${smoke_version}" '
   ([.protocol_support[] |
     select(.command == "check" and .transport == "streamable_http") |
     .revisions] == [["2026-07-28", "2025-11-25", "2025-06-18"]]) and
+  ([.protocol_support[] |
+    select(.command == "reject" and .transport == "stdio") |
+    .revisions] == [["2026-07-28"]]) and
+  ([.protocol_support[] |
+    select(.command == "reject" and .transport == "streamable_http") |
+    .revisions] == [["2026-07-28"]]) and
   .schema_versions.diagnostic_report == ["mcp-doctor.report/v1"] and
   .schema_versions.scenario == ["mcp-doctor.scenario/v1alpha1"] and
   .schema_versions.generator == ["mcp-doctor.generator/v1"] and
@@ -155,6 +163,56 @@ if ! cmp -s -- "${smoke_report}" "${smoke_json_artifact}"; then
   echo "installed diagnostic JSON artifact diverged from the stdout projection" >&2
   exit 1
 fi
+
+if ! run_mcp_doctor reject \
+  --tool synthetic.reviewed \
+  --allow-tool synthetic.reviewed \
+  --effects read_only \
+  --seed 7529 \
+  --format json \
+  -- "${smoke_fixture}" reject-success "${smoke_reject_marker}" \
+  >"${smoke_reject}" 2>"${smoke_stderr}"; then
+  echo "installed current-revision reject smoke failed" >&2
+  exit 1
+fi
+if [[ -s "${smoke_stderr}" ]]; then
+  echo "installed current-revision reject smoke wrote unexpected stderr" >&2
+  exit 1
+fi
+if [[ "$(cat -- "${smoke_reject_marker}")" != "7" ]]; then
+  echo "installed current-revision reject smoke sent an unexpected call count" >&2
+  exit 1
+fi
+jq -e '
+  .schema_version == "mcp-doctor.report/v1" and
+  .protocol_revision == "2026-07-28" and
+  .primary_diagnosis == null and
+  .independent_findings == [] and
+  .outcome == "passed" and
+  .exit_code == 0 and
+  .summary.failed == 0 and
+  ([.checks[] | select(.requirement == "required") |
+    (.state == "performed" and .outcome == "passed")] | all) and
+  ([.checks[] | select(.id == "generation.cases") |
+    (.state == "performed" and .outcome == "passed")] | all) and
+  ([.checks[] | select(.id | startswith("runtime.tools.case["))] | length) == 7 and
+  ([.checks[] | select(.id | startswith("runtime.tools.case[")) |
+    select(.state == "performed" and .outcome == "passed")] | length) == 7 and
+  ([.checks[] | select(.id | startswith("runtime.tools.case[")) |
+    select(.state == "skipped" and .skip_reason == "not_applicable")] | length) == 0
+' "${smoke_reject}" >/dev/null
+for smoke_private_reject_value in \
+  synthetic.reviewed \
+  synthetic-secret-payload-7f2c \
+  synthetic_private_mode_never_report_7f2c \
+  mcp-doctor-invalid-enum \
+  sequence \
+  secret; do
+  if grep -F -- "${smoke_private_reject_value}" "${smoke_reject}" >/dev/null; then
+    echo "installed current-revision reject report disclosed a private value" >&2
+    exit 1
+  fi
+done
 
 jq -n '
   {

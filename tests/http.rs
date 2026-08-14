@@ -214,6 +214,14 @@ impl PlannedExchange {
         }
     }
 
+    fn disconnect(expected: ExpectedRequest) -> Self {
+        Self {
+            expected: Some(RequestExpectation::Current(expected)),
+            response: None,
+            stall_for: None,
+        }
+    }
+
     fn handshake_only() -> Self {
         Self {
             expected: None,
@@ -807,6 +815,51 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
                     "additionalProperties": false
                 }
             }]
+        }
+    }))
+}
+
+fn reject_tools_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": TOOL,
+                "annotations": {"readOnlyHint": true, "destructiveHint": false},
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "region": {"type": "string"},
+                        "synthetic_private_mode_never_report_4a91": {
+                            "type": "string",
+                            "enum": ["safe", "strict"]
+                        }
+                    },
+                    "required": ["region"],
+                    "additionalProperties": false
+                },
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                    "additionalProperties": false
+                }
+            }]
+        }
+    }))
+}
+
+fn invalid_params_response(id: i64, message: &str) -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": -32602,
+            "message": message
         }
     }))
 }
@@ -3712,4 +3765,300 @@ fn authorized_remote_break_generates_for_only_the_same_exact_endpoint_and_tool()
         "authorization rejection connected"
     );
     assert_redacted(&output, &endpoint, &[TOOL, "synthetic.remote-other"]);
+}
+
+#[test]
+fn authorized_remote_reject_accepts_only_exact_invalid_params_without_retaining_prose() {
+    const REJECTION_PROSE: &str = "synthetic private invalid detail never report 4a91";
+    let mut exchanges = vec![
+        PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            discovery_response(json!({"tools": {}})),
+        ),
+        PlannedExchange::reply(
+            ExpectedRequest::method("tools/list"),
+            reject_tools_response(),
+        ),
+    ];
+    for id in 3..=9 {
+        exchanges.push(PlannedExchange::reply(
+            ExpectedRequest {
+                method: "tools/call",
+                name: Some(TOOL),
+                bearer: None,
+                custom: None,
+                mirrored: None,
+            },
+            invalid_params_response(id, REJECTION_PROSE),
+        ));
+    }
+    let server = FixtureServer::spawn(WireMode::Http, exchanges, true);
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "reject", &endpoint);
+    command
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--seed")
+        .arg(u64::MAX.to_string())
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    let (stdout, stderr) = text(&output);
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 9);
+    assert_eq!(outcome.valid_requests, 9);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["outcome"], "passed");
+    let cases = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|check| {
+            check["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("runtime.tools.case["))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(cases.len(), 7);
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|check| check["state"] == "performed" && check["outcome"] == "passed")
+            .count(),
+        7
+    );
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|check| check["state"] == "skipped")
+            .count(),
+        0
+    );
+    assert!(cases.iter().all(|check| match check["state"].as_str() {
+        Some("performed") => {
+            check["reproduction"]["mutation_kind"].is_string()
+                && check["reproduction"].get("arguments").is_none()
+        }
+        Some("skipped") => check.get("reproduction").is_none(),
+        _ => false,
+    }));
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[
+            TOOL,
+            REJECTION_PROSE,
+            "synthetic_private_mode_never_report_4a91",
+            "mcp-doctor-invalid-enum",
+        ],
+    );
+}
+
+#[test]
+fn remote_reject_disconnect_is_distinct_and_never_retried() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                reject_tools_response(),
+            ),
+            PlannedExchange::disconnect(ExpectedRequest {
+                method: "tools/call",
+                name: Some(TOOL),
+                bearer: None,
+                custom: None,
+                mirrored: None,
+            }),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "reject", &endpoint);
+    command
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--seed")
+        .arg("8082")
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{report:#}");
+    assert_eq!(report["outcome"], "failed");
+    assert!(report["checks"].as_array().unwrap().iter().any(|check| {
+        check["findings"].as_array().is_some_and(|findings| {
+            findings
+                .iter()
+                .any(|finding| finding["code"] == "MCP-HTTP-001")
+        })
+    }));
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_redacted(&output, &endpoint, &[TOOL]);
+}
+
+#[test]
+fn remote_reject_skips_a_locally_invalid_case_that_cannot_be_encoded_as_a_mapped_field() {
+    let mut exchanges = vec![
+        PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            discovery_response(json!({"tools": {}})),
+        ),
+        PlannedExchange::reply(ExpectedRequest::method("tools/list"), tools_response(true)),
+    ];
+    for id in 3..=7 {
+        exchanges.push(PlannedExchange::reply(
+            ExpectedRequest {
+                method: "tools/call",
+                name: Some(TOOL),
+                bearer: None,
+                custom: None,
+                mirrored: None,
+            },
+            invalid_params_response(id, "synthetic mapped rejection never report"),
+        ));
+    }
+    let server = FixtureServer::spawn(WireMode::Http, exchanges, true);
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "reject", &endpoint);
+    command
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--seed")
+        .arg("8081")
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    let report = parse_and_validate_report(&output.stdout);
+    assert!(output.status.success(), "{report:#}");
+    assert_eq!(outcome.accepted_connections, 7);
+    assert_eq!(outcome.valid_requests, 7);
+    assert_eq!(outcome.unexpected_connections, 0);
+    for (index, state) in [
+        "performed",
+        "performed",
+        "performed",
+        "skipped",
+        "performed",
+        "skipped",
+        "performed",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = format!("runtime.tools.case[{index}]");
+        let case = report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["id"] == id)
+            .unwrap();
+        assert_eq!(case["state"], state, "{id}: {case:#}");
+        if state == "skipped" {
+            assert_eq!(case["skip_reason"], "not_applicable");
+        }
+    }
+    assert_redacted(
+        &output,
+        &endpoint,
+        &[
+            TOOL,
+            "synthetic mapped rejection never report",
+            "mcp-param-region",
+        ],
+    );
+}
+
+#[test]
+fn remote_reject_treats_any_result_as_critical_and_stops_later_calls() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(ExpectedRequest::method("tools/list"), tools_response(false)),
+            PlannedExchange::reply(
+                ExpectedRequest {
+                    method: "tools/call",
+                    name: Some(TOOL),
+                    bearer: None,
+                    custom: None,
+                    mirrored: None,
+                },
+                FixtureResponse::json(json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "result": {
+                        "resultType": "input_required",
+                        "content": [{"type": "text", "text": "private accepted value 4a91"}],
+                        "isError": true
+                    }
+                })),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "reject", &endpoint);
+    command
+        .arg("--tool")
+        .arg(TOOL)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--effects")
+        .arg("read_only")
+        .arg("--seed")
+        .arg("8080")
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(report["outcome"], "failed");
+    let finding = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|check| check["findings"].as_array().into_iter().flatten())
+        .find(|finding| finding["code"] == "MCP-ACTIVE-008")
+        .expect("unsafe acceptance should have a dedicated finding");
+    assert_eq!(finding["severity"], "critical");
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_redacted(&output, &endpoint, &[TOOL, "private accepted value 4a91"]);
 }

@@ -29,8 +29,8 @@ use redaction::RedactedValue;
 use report::{DiagnosticReport, render_reports};
 
 pub(crate) use active::{
-    ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, SCENARIO_SCHEMA_VERSION,
-    ScenarioFailure, render_authorization_failure_for_revision,
+    ActiveConversation, ActiveScenario, MAX_SCENARIO_BYTES, REJECTION_CASE_COUNT,
+    SCENARIO_SCHEMA_VERSION, ScenarioFailure, render_authorization_failure_for_revision,
     render_generation_configuration_failure_for_revision,
     render_resolved_scenario_failure_for_revision, render_scenario_failure_for_revision,
     resolve_target_environment,

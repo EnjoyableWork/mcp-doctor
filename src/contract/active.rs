@@ -14,7 +14,9 @@ use super::catalog::{
     validate_discovery_capabilities, validate_legacy_capabilities, validate_local_schema,
     validate_local_schema_with_policy,
 };
-use super::generate::{GenerationFailure, generate_inputs};
+use super::generate::{
+    GenerationFailure, INVALID_MUTATION_KINDS, generate_inputs, generate_invalid_inputs,
+};
 use super::http_headers::{HeaderAnnotation, validate_annotations};
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
@@ -36,6 +38,7 @@ use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 pub(crate) const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
 pub(crate) const MAX_SCENARIO_BYTES: u64 = 1_048_576;
+pub(crate) const REJECTION_CASE_COUNT: usize = INVALID_MUTATION_KINDS.len();
 
 pub(crate) struct ScenarioFailure {
     findings: Vec<Finding>,
@@ -82,6 +85,8 @@ enum ScenarioEffects {
 
 struct ScenarioCase {
     arguments: Value,
+    omit_arguments: bool,
+    applicable: bool,
     secret_refs: BTreeMap<String, String>,
     expected: ExpectedResult,
     output_validator: Option<LocalValidator>,
@@ -92,12 +97,14 @@ struct ScenarioCase {
 enum CaseSource {
     Reviewed,
     Generated { seed: u64, requested_cases: usize },
+    Rejection { seed: u64 },
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ExpectedResult {
     Success,
     ToolError,
+    InvalidArgumentsRejection,
 }
 
 impl ActiveScenario {
@@ -311,6 +318,8 @@ impl ActiveScenario {
 
             cases.push(ScenarioCase {
                 arguments: arguments.clone(),
+                omit_arguments: false,
+                applicable: true,
                 secret_refs,
                 expected,
                 output_validator,
@@ -362,6 +371,30 @@ impl ActiveScenario {
                 seed,
                 requested_cases,
             },
+        })
+    }
+
+    pub(crate) fn rejection(
+        tool: String,
+        side_effecting: bool,
+        seed: u64,
+    ) -> Result<Self, ScenarioFailure> {
+        if tool.is_empty() {
+            return Err(ScenarioFailure::one(Finding::case_generation_failed(
+                generation_location(),
+                RuleViolation::InvalidGenerationConfiguration,
+            )));
+        }
+        Ok(Self {
+            tool,
+            effects: if side_effecting {
+                ScenarioEffects::SideEffecting
+            } else {
+                ScenarioEffects::ReadOnly
+            },
+            target_env: Vec::new(),
+            cases: Vec::new(),
+            source: CaseSource::Rejection { seed },
         })
     }
 
@@ -467,24 +500,42 @@ impl ActiveScenario {
             CaseSource::Generated {
                 requested_cases, ..
             } => requested_cases,
+            CaseSource::Rejection { .. } => REJECTION_CASE_COUNT,
         }
     }
 
     fn configuration_check(&self) -> CheckId {
         match self.source {
             CaseSource::Reviewed => CheckId::ScenarioConfiguration,
-            CaseSource::Generated { .. } => CheckId::GenerationConfiguration,
+            CaseSource::Generated { .. } | CaseSource::Rejection { .. } => {
+                CheckId::GenerationConfiguration
+            }
         }
     }
 
     fn generates_cases(&self) -> bool {
-        matches!(self.source, CaseSource::Generated { .. })
+        matches!(
+            self.source,
+            CaseSource::Generated { .. } | CaseSource::Rejection { .. }
+        )
+    }
+
+    fn expects_invalid_arguments_rejection(&self) -> bool {
+        matches!(self.source, CaseSource::Rejection { .. })
+    }
+
+    fn case_requirement(&self) -> Requirement {
+        if self.expects_invalid_arguments_rejection() {
+            Requirement::Optional
+        } else {
+            Requirement::Required
+        }
     }
 
     fn case_location(&self, index: usize) -> Location {
         match self.source {
             CaseSource::Reviewed => case_location(index),
-            CaseSource::Generated { .. } => generation_location()
+            CaseSource::Generated { .. } | CaseSource::Rejection { .. } => generation_location()
                 .field(LocationField::Cases)
                 .index(index),
         }
@@ -495,25 +546,55 @@ impl ActiveScenario {
         schema: &Value,
         validator: &LocalValidator,
     ) -> Result<(), GenerationFailure> {
-        let CaseSource::Generated {
-            seed,
-            requested_cases,
-        } = self.source
-        else {
-            return Ok(());
-        };
-        let generated = generate_inputs(schema, validator, seed, requested_cases)?;
-        self.cases = generated
-            .into_iter()
-            .map(|generated| ScenarioCase {
-                arguments: generated.arguments,
-                secret_refs: BTreeMap::new(),
-                expected: ExpectedResult::Success,
-                output_validator: None,
-                reproduction: Some(generated.reproduction),
-            })
-            .collect();
-        debug_assert_eq!(self.cases.len(), requested_cases);
+        match self.source {
+            CaseSource::Reviewed => {}
+            CaseSource::Generated {
+                seed,
+                requested_cases,
+            } => {
+                let generated = generate_inputs(schema, validator, seed, requested_cases)?;
+                self.cases = generated
+                    .into_iter()
+                    .map(|generated| ScenarioCase {
+                        arguments: generated.arguments,
+                        omit_arguments: false,
+                        applicable: true,
+                        secret_refs: BTreeMap::new(),
+                        expected: ExpectedResult::Success,
+                        output_validator: None,
+                        reproduction: Some(generated.reproduction),
+                    })
+                    .collect();
+                debug_assert_eq!(self.cases.len(), requested_cases);
+            }
+            CaseSource::Rejection { seed } => {
+                let generated = generate_invalid_inputs(schema, validator, seed)?;
+                self.cases = generated
+                    .into_iter()
+                    .map(|generated| match generated {
+                        Some(generated) => ScenarioCase {
+                            arguments: generated.arguments,
+                            omit_arguments: generated.omit_arguments,
+                            applicable: true,
+                            secret_refs: BTreeMap::new(),
+                            expected: ExpectedResult::InvalidArgumentsRejection,
+                            output_validator: None,
+                            reproduction: Some(generated.reproduction),
+                        },
+                        None => ScenarioCase {
+                            arguments: Value::Null,
+                            omit_arguments: false,
+                            applicable: false,
+                            secret_refs: BTreeMap::new(),
+                            expected: ExpectedResult::InvalidArgumentsRejection,
+                            output_validator: None,
+                            reproduction: None,
+                        },
+                    })
+                    .collect();
+                debug_assert_eq!(self.cases.len(), REJECTION_CASE_COUNT);
+            }
+        }
         Ok(())
     }
 }
@@ -924,6 +1005,13 @@ impl ActiveConversation {
                         continue;
                     }
                     let index = self.next_case;
+                    if !self.scenario.cases[index].applicable {
+                        self.case_states[index] = CaseState::Skipped(SkipReason::NotApplicable);
+                        self.next_case += 1;
+                        continue;
+                    }
+                    let expects_rejection = self.scenario.cases[index].expected
+                        == ExpectedResult::InvalidArgumentsRejection;
                     let validation = {
                         let validators = self.tool_validators.as_ref().expect(
                             "case replay starts only after selecting a valid tool contract",
@@ -932,9 +1020,10 @@ impl ActiveConversation {
                             .input
                             .validate(&self.scenario.cases[index].arguments)
                     };
-                    match validation {
-                        Ok(()) => {}
-                        Err(InstanceValidationIssue::Mismatch { error_count }) => {
+                    match (expects_rejection, validation) {
+                        (false, Ok(()))
+                        | (true, Err(InstanceValidationIssue::Mismatch { error_count: 1 })) => {}
+                        (false, Err(InstanceValidationIssue::Mismatch { error_count })) => {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] = CaseState::Performed(vec![
                                 Finding::tool_arguments_mismatch(
@@ -948,7 +1037,20 @@ impl ActiveConversation {
                             self.next_case += 1;
                             continue;
                         }
-                        Err(InstanceValidationIssue::Limit(violation)) => {
+                        (true, Ok(())) | (true, Err(InstanceValidationIssue::Mismatch { .. })) => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] = CaseState::Performed(vec![
+                                Finding::case_generation_failed(
+                                    self.scenario.case_location(index),
+                                    RuleViolation::NoValidBoundaryInput,
+                                )
+                                .with_revision(self.revision()),
+                            ]);
+                            self.next_case += 1;
+                            self.stop_cases(SkipReason::PrerequisiteFailed);
+                            continue;
+                        }
+                        (_, Err(InstanceValidationIssue::Limit(violation))) => {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
                                 CaseState::Performed(vec![Finding::limit_exceeded(
@@ -962,7 +1064,7 @@ impl ActiveConversation {
                             self.stop_cases(SkipReason::LimitReached);
                             continue;
                         }
-                        Err(InstanceValidationIssue::InvalidSchema) => {
+                        (_, Err(InstanceValidationIssue::InvalidSchema)) => {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] = CaseState::Performed(vec![
                                 Finding::tool_result_invalid(
@@ -992,6 +1094,12 @@ impl ActiveConversation {
                     };
                     let mirrored_fields = match mirrored_fields {
                         Ok(fields) => fields,
+                        Err(()) if expects_rejection => {
+                            self.scenario.cases[index].arguments = Value::Null;
+                            self.case_states[index] = CaseState::Skipped(SkipReason::NotApplicable);
+                            self.next_case += 1;
+                            continue;
+                        }
                         Err(()) => {
                             self.scenario.cases[index].arguments = Value::Null;
                             self.case_states[index] =
@@ -1006,6 +1114,8 @@ impl ActiveConversation {
                         }
                     };
                     let arguments = std::mem::take(&mut self.scenario.cases[index].arguments);
+                    let arguments =
+                        (!self.scenario.cases[index].omit_arguments).then_some(arguments);
                     let tool = self.scenario.tool.clone();
                     let id = self.begin_request(PendingRequest::Call(index));
                     return Some(self.adapter.tool_call_request(
@@ -1701,6 +1811,10 @@ impl ActiveConversation {
             }
             return;
         }
+        if self.scenario.cases[index].expected == ExpectedResult::InvalidArgumentsRejection {
+            self.process_invalid_arguments_rejection(index, object);
+            return;
+        }
         if object.contains_key("error") {
             if self.adapter.tool_result_kind() == ActiveToolResultKind::Legacy
                 && is_url_elicitation_required(object)
@@ -1866,6 +1980,35 @@ impl ActiveConversation {
         self.stage = Stage::Cases;
     }
 
+    fn process_invalid_arguments_rejection(&mut self, index: usize, response: &Map<String, Value>) {
+        if let Some(error) = response.get("error").and_then(Value::as_object) {
+            let accepted = error.get("code").and_then(Value::as_i64) == Some(-32602)
+                && error.get("message").is_some_and(Value::is_string);
+            if accepted {
+                self.case_states[index] = CaseState::Performed(Vec::new());
+                self.next_case = index.saturating_add(1);
+                self.stage = Stage::Cases;
+            } else {
+                self.invalid_tool_result(index, LocationField::Result);
+            }
+            return;
+        }
+        if response.contains_key("error") {
+            self.invalid_tool_result(index, LocationField::Result);
+            return;
+        }
+        self.case_states[index] = CaseState::Performed(vec![
+            Finding::schema_invalid_arguments_accepted(
+                self.scenario
+                    .case_location(index)
+                    .field(LocationField::Result),
+            )
+            .with_revision(self.revision()),
+        ]);
+        self.next_case = index.saturating_add(1);
+        self.stop_cases(SkipReason::PrerequisiteFailed);
+    }
+
     fn invalid_tool_result(&mut self, index: usize, field: LocationField) {
         self.case_states[index] = CaseState::Performed(vec![
             Finding::tool_result_invalid(self.scenario.case_location(index).field(field))
@@ -1963,6 +2106,7 @@ impl ActiveConversation {
             .sum();
         self.fit_report_finding_budget(transport_finding_count);
         let configuration_check = self.scenario.configuration_check();
+        let case_requirement = self.scenario.case_requirement();
         let mut reproductions = (0..self.case_states.len())
             .map(|index| {
                 self.scenario
@@ -1998,22 +2142,22 @@ impl ActiveConversation {
                     let check = match state {
                         CaseState::Performed(findings) => CheckResult::performed(
                             CheckId::RuntimeToolCase(index),
-                            Requirement::Required,
+                            case_requirement,
                             findings,
                         ),
                         CaseState::Incomplete => CheckResult::skipped(
                             CheckId::RuntimeToolCase(index),
-                            Requirement::Required,
+                            case_requirement,
                             SkipReason::InputRequired,
                         ),
                         CaseState::Skipped(reason) => CheckResult::skipped(
                             CheckId::RuntimeToolCase(index),
-                            Requirement::Required,
+                            case_requirement,
                             reason,
                         ),
                         CaseState::Pending => CheckResult::skipped(
                             CheckId::RuntimeToolCase(index),
-                            Requirement::Required,
+                            case_requirement,
                             SkipReason::PrerequisiteFailed,
                         ),
                     };

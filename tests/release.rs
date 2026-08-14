@@ -618,6 +618,61 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
 }
 
 #[test]
+fn project_and_readme_record_the_active_mcpd_029_rejection_boundary() {
+    let project = repository_file("PROJECT.md");
+    let readme = repository_file("README.md");
+    let agents = repository_file("AGENTS.md");
+
+    for contract in [
+        "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
+        "| MCPD-029 | Diagnose bounded schema-invalid tool-argument rejection for the current active revision | Optional active correctness | In progress |",
+        "[issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
+        "`missing_arguments`, `wrong_root_type`, `omitted_required_property`, `wrong_property_type`, `forbidden_null`, `invalid_enum`, and `unexpected_property`",
+        "integer code `-32602` and a string message",
+        "never match prose",
+        "including `isError: true` or `input_required`, is critical unsafe acceptance",
+        "represented installed smokes",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain the MCPD-029 boundary: {contract}"
+        );
+    }
+    assert!(
+        !project.lines().any(|line| line.starts_with("| OPEN-16 |")),
+        "accepted OPEN-16 should leave the open-decision table"
+    );
+
+    for contract in [
+        "### Schema-invalid `reject` cases",
+        "mcp-doctor reject",
+        "wrong root type",
+        "exactly `-32602`",
+        "including `isError: true` or `input_required`",
+        "An expected rejection is not an execution safeguard",
+        "Reports retain only the generator version, seed,",
+    ] {
+        assert!(
+            readme.contains(contract),
+            "README.md should describe the bounded reject contract: {contract}"
+        );
+    }
+
+    for contract in [
+        "`reject` uses only MCP `2026-07-28`",
+        "transmit a case only after the local validator proves exactly",
+        "integer code `-32602` and a string message",
+        "Treat any result—including `isError: true` or",
+        "`reject` never selects or",
+    ] {
+        assert!(
+            agents.contains(contract),
+            "AGENTS.md should retain the reject safety rule: {contract}"
+        );
+    }
+}
+
+#[test]
 fn readme_leads_with_a_portable_plain_language_diagnosis() {
     let readme = repository_file("README.md");
     let introduction = readme
@@ -1859,15 +1914,16 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
         "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407803)",
         "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778427941)",
         "closed [issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
-        "[Issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
+        "[issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
         "`OPEN-14` is accepted as `DEC-051`.",
         "`OPEN-15` is accepted as `DEC-052`",
+        "`OPEN-16` is accepted as `DEC-053`",
         "| DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted |",
         "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
-        "| OPEN-16 | `MCPD-029` |",
+        "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
         "`MCPD-027` established the shared active legacy boundary",
         "`MCPD-028`\nconsumed",
-        "integration must reuse the settled active adapter if `MCPD-027` has begun",
+        "any overlapping active-engine integration must consume or rebase",
         "The `MCPD-027` merged source implements the typed adapter",
         "controlled compatibility runner passed all four retained",
         "Native Windows PowerShell execution",
@@ -1939,11 +1995,11 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
         .lines()
         .find(|line| line.starts_with("| MCPD-029 |"))
         .expect("PROJECT.md should contain MCPD-029");
-    assert!(later.contains("| Proposed |"));
+    assert!(later.contains("| In progress |"));
 
     for contract in [
         "--protocol-version 2025-06-18",
-        "| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only |",
+        "| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only | Not supported |",
         "every advertised output schema that `mcp-doctor` interprets",
         "Active MCP `2025-06-18`",
         "No broad legacy ecosystem claim follows",
@@ -1959,7 +2015,7 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
     assert!(agents.contains("`DEC-052` additionally permits"));
     assert!(agents.contains("exact supported Draft\n  2020-12 declaration"));
 
-    for accepted_open in ["OPEN-14", "OPEN-15"] {
+    for accepted_open in ["OPEN-14", "OPEN-15", "OPEN-16"] {
         assert!(
             !project
                 .lines()
@@ -1967,19 +2023,17 @@ fn project_records_completed_mcpd_027_and_mcpd_028() {
             "{accepted_open} should be removed after its decision accepts it"
         );
     }
-    for accepted_decision in ["| DEC-051 |", "| DEC-052 |"] {
+    for accepted_decision in ["| DEC-051 |", "| DEC-052 |", "| DEC-053 |"] {
         assert!(project.contains(accepted_decision));
     }
     assert!(
         !project.contains("https://github.com/EnjoyableWork/mcp-doctor/issues/56"),
         "PROJECT.md must not retain a dead public issue link"
     );
-    for premature_decision in ["| DEC-053 |", "| DEC-054 |"] {
-        assert!(
-            !project.contains(premature_decision),
-            "PROJECT.md must not accept a proposed issue decision prematurely: {premature_decision}"
-        );
-    }
+    assert!(
+        !project.contains("| DEC-054 |"),
+        "PROJECT.md must not accept proposed DEC-054 prematurely"
+    );
 }
 
 #[test]
