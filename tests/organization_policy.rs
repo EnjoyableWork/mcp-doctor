@@ -19,7 +19,7 @@ fn controls() -> Value {
 }
 
 #[test]
-fn canonical_projection_preserves_the_verified_premerge_boundary() {
+fn canonical_projection_preserves_the_verified_boundary() {
     let controls = controls();
 
     assert_eq!(
@@ -243,11 +243,11 @@ fn canonical_projection_preserves_the_verified_premerge_boundary() {
 }
 
 #[test]
-fn project_records_open_10_and_open_11_without_claiming_exact_main_completion() {
+fn project_records_mcpd_017_completion_without_public_assurance_claim() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-016A` is Done and `MCPD-017` is In progress",
+        "`MCPD-017` is Done and `MCPD-018` is Ready",
         "### Accepted organization access, credential, continuity, and recovery contract",
         "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
         "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",
@@ -259,16 +259,25 @@ fn project_records_open_10_and_open_11_without_claiming_exact_main_completion() 
         "members or outside\ncollaborators. The remaining outside-collaborator invitation",
         "classic PATs are blocked from every\nEnjoyableWork API and Git-over-HTTPS resource",
         "A clean private\nbrowser session then signed in through an existing passkey",
-        "`MCPD-017` remains In progress because the changed verifier",
+        "The 2026-08-15 closure audit found that the owner-only App-installation setting",
+        "sharing `homebrew-tap` therefore did not cause the drift",
+        "repository administrators can no longer install GitHub Apps",
+        "verifier token must be passed only as an invocation-local `GH_TOKEN`",
+        "confirmed unusable by a rejected API request",
+        "`MCPD-017` is Done. Exact `main`",
+        "canonical_sha256=8f3b2c3db5f81a174d93bbcdaa8341e816b15c6ae059329fe5d61925c91a8111",
+        "This accepted policy and completion evidence are not an achieved\nOSPS result",
+        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Done |",
+        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Ready |",
         "| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency",
-        "exact-`main` evidence and verifier-token revocation remain open under `MCPD-017`",
+        "Mitigated for the completed `MCPD-017` scope",
     ] {
         assert!(
             project.contains(contract),
-            "PROJECT.md should preserve the OPEN-10 and OPEN-11 resolutions: {contract}"
+            "PROJECT.md should preserve the completed MCPD-017 contract: {contract}"
         );
     }
-    for stale_or_premature in [
+    for stale_or_overbroad in [
         "| OPEN-10 |",
         "| OPEN-11 |",
         "`MCPD-017` is Ready but has not begun",
@@ -276,11 +285,16 @@ fn project_records_open_10_and_open_11_without_claiming_exact_main_completion() 
         "Completion blockers remain.",
         "The canonical lifecycle, App identity, and recovery date remain deliberately",
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready |",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Done |",
+        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | In progress |",
+        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed |",
+        "`MCPD-017` remains In progress",
+        "`MCPD-017` remains incomplete",
+        "scheduled for revocation after the exact-`main` run",
+        "exact-`main` evidence and verifier-token revocation remain open under `MCPD-017`",
     ] {
         assert!(
-            !project.contains(stale_or_premature),
-            "PROJECT.md must not retain {stale_or_premature}"
+            !project.contains(stale_or_overbroad),
+            "PROJECT.md must not retain {stale_or_overbroad}"
         );
     }
 }

@@ -931,7 +931,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-016A` is Done and `MCPD-017` is In progress |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` is Done and `MCPD-018` is Ready |",
         "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -1576,7 +1576,7 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-016A` is Done and `MCPD-017` is In progress",
+        "`MCPD-017` is Done and `MCPD-018` is Ready",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
