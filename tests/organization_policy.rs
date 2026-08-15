@@ -247,7 +247,7 @@ fn project_records_mcpd_017_completion_without_public_assurance_claim() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-017` is Done and `MCPD-018` is Ready",
+        "`MCPD-017` and `MCPD-018` are Done",
         "### Accepted organization access, credential, continuity, and recovery contract",
         "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
         "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",
@@ -268,7 +268,7 @@ fn project_records_mcpd_017_completion_without_public_assurance_claim() {
         "canonical_sha256=8f3b2c3db5f81a174d93bbcdaa8341e816b15c6ae059329fe5d61925c91a8111",
         "This accepted policy and completion evidence are not an achieved\nOSPS result",
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Done |",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Ready |",
+        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Done |",
         "| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency",
         "Mitigated for the completed `MCPD-017` scope",
     ] {
@@ -287,6 +287,8 @@ fn project_records_mcpd_017_completion_without_public_assurance_claim() {
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready |",
         "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | In progress |",
         "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed |",
+        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Ready |",
+        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | In progress |",
         "`MCPD-017` remains In progress",
         "`MCPD-017` remains incomplete",
         "scheduled for revocation after the exact-`main` run",

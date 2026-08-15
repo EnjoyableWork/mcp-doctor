@@ -11,6 +11,8 @@ keywords = ["mcp", "testing", "diagnostics", "cli", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
+    "/.bestpractices.json",
+    "/.github/assurance-controls.json",
     "/.github/ci-tools.json",
     "/.github/community-license-controls.json",
     "/.github/dependabot.yml",

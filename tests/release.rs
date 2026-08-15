@@ -60,6 +60,8 @@ fn release_identity_and_toolchain_are_exact() {
         "version = \"0.3.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
+        "\"/.bestpractices.json\"",
+        "\"/.github/assurance-controls.json\"",
         "\"/.github/community-license-controls.json\"",
         "\"/.github/organization-controls.json\"",
         "\"/.github/security-controls.json\"",
@@ -705,6 +707,40 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
 }
 
 #[test]
+fn readme_exposes_simple_verified_installation_channels() {
+    let readme = repository_file("README.md");
+    let installation = readme
+        .split_once("## Install")
+        .and_then(|(_, remainder)| remainder.split_once("## Quick start"))
+        .map(|(section, _)| section)
+        .expect("README should present installation before the quick start");
+
+    for contract in [
+        "| Homebrew | macOS, GNU/Linux | `brew install EnjoyableWork/tap/mcp-doctor` |",
+        "| Cargo | macOS, GNU/Linux, Windows | `cargo install mcp-doctor` |",
+        "| GitHub Releases | GNU/Linux (ARM64, x64) | [Download the latest archive]",
+        "for exact-version installs\nand artifact verification",
+    ] {
+        assert!(
+            installation.contains(contract),
+            "README installation should preserve {contract}"
+        );
+    }
+
+    for unnecessary_or_unpublished in [
+        "--build-from-source",
+        "--version",
+        "--locked",
+        "winget install",
+    ] {
+        assert!(
+            !installation.contains(unnecessary_or_unpublished),
+            "README installation should not present {unnecessary_or_unpublished}"
+        );
+    }
+}
+
+#[test]
 fn project_records_the_completed_protocol_correction_and_v030_release() {
     let project = repository_file("PROJECT.md");
 
@@ -931,7 +967,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` is Done and `MCPD-018` is Ready |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done |",
         "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -1576,7 +1612,7 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-017` is Done and `MCPD-018` is Ready",
+        "`MCPD-017` and `MCPD-018` are Done",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
