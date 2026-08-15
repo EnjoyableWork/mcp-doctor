@@ -13,12 +13,15 @@
   <a href="https://github.com/EnjoyableWork/mcp-doctor/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/EnjoyableWork/mcp-doctor/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://docs.rs/crate/mcp-doctor/latest"><img alt="crates.io version" src="https://img.shields.io/crates/v/mcp-doctor.svg?logo=rust&amp;logoColor=white"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://www.bestpractices.dev/en/projects/14096/baseline-1"><img alt="OpenSSF OSPS Baseline v2026.02.19 Level 1" src="https://www.bestpractices.dev/projects/14096/baseline"></a>
   <img alt="MCP transports: STDIO and Streamable HTTP" src="https://img.shields.io/badge/MCP-STDIO_%2B_HTTP-6f42c1.svg">
 </p>
 
 <p align="center">
   <a href="#the-promise">The promise</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#assurance">Assurance</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#inspect-check-break-reject-diff-aggregate-capabilities">Commands</a> ·
   <a href="#bring-it-into-ci">CI</a> ·
@@ -72,33 +75,45 @@ unless you ask it to.
 | **Runtime** | Timeouts, crashes, early exits, bad output, oversized messages, and failed shutdown |
 | **Repeatability** | Failures that change between runs, with the seed and input shape needed to run them again |
 
+## Install
+
+Choose the channel that fits your platform and workflow:
+
+| Channel | Platforms | Install |
+| --- | --- | --- |
+| Homebrew | macOS, GNU/Linux | `brew install EnjoyableWork/tap/mcp-doctor` |
+| Cargo | macOS, GNU/Linux, Windows | `cargo install mcp-doctor` |
+| GitHub Releases | GNU/Linux (ARM64, x64) | [Download the latest archive](https://github.com/EnjoyableWork/mcp-doctor/releases/latest) |
+
+Every immutable release includes SHA-256 checksums, SPDX SBOMs, and build
+provenance. See the [release guide](docs/release.md) for exact-version installs
+and artifact verification.
+
+## Assurance
+
+As of 2026-08-15, `mcp-doctor` has an
+[official-hosted, scoped self-assessment](https://www.bestpractices.dev/en/projects/14096/baseline-1)
+for all 24 OpenSSF OSPS Baseline `v2026.02.19` Level 1 controls. The
+[dated crosswalk](docs/assurance/osps-v2026.02.19-level-1.md) records the exact
+repository, organization, release, evidence, and limitation boundaries. This
+is a project self-assessment, not an independent certification or regulatory
+compliance claim.
+
+Every named asset in the immutable `v0.3.0` GitHub Release also passed a scoped
+[SLSA `v1.2` Build L2 evaluation](docs/assurance/slsa-v1.2-build-l2.md) against
+its exact digest and signed provenance. That result does not cover registry or
+Homebrew operations, dependencies, unlisted assets, or future releases.
+
 ## Quick start
 
-Install with Homebrew or Cargo:
-
-```bash
-# macOS or Linux
-brew install --build-from-source EnjoyableWork/tap/mcp-doctor
-
-# Any supported Rust host
-cargo install mcp-doctor --version '=0.3.0' --locked
-```
-
-Or download a native GNU/Linux archive from
-[GitHub Releases](https://github.com/EnjoyableWork/mcp-doctor/releases/latest).
-
-Release archives, the exact Cargo package, the Homebrew formula, checksums,
-SPDX SBOMs, and build attestations are published together. See the
-[release guide](docs/release.md) to verify what you install.
-
-Inspect a local STDIO server by placing its executable and arguments after
-`--`:
+Inspect a local STDIO server without calling any of its tools. Put the command
+you already use to start the server after `--`:
 
 ```bash
 mcp-doctor inspect -- node ./dist/server.js --stdio
 ```
 
-Inspect a Streamable HTTP endpoint by URL:
+For Streamable HTTP, pass the endpoint URL:
 
 ```bash
 mcp-doctor inspect https://mcp.example.com/mcp

@@ -1,0 +1,115 @@
+{
+  "schema_version": "mcp-doctor.assurance-controls/v1",
+  "reviewed_on": "2026-08-15",
+  "repository": "EnjoyableWork/mcp-doctor",
+  "organization": "EnjoyableWork",
+  "assessed_main_commit": "21b189f9fd9ed97f1fcaf9d47c75b4f120678689",
+  "osps": {
+    "framework": "OpenSSF OSPS Baseline",
+    "version": "v2026.02.19",
+    "level": 1,
+    "controls_total": 24,
+    "met": 24,
+    "not_applicable": 0,
+    "crosswalk": "docs/assurance/osps-v2026.02.19-level-1.md",
+    "proposal": ".bestpractices.json",
+    "upstream_source_commit": "b834f71d9cc9463631578556c90fffe922d9c4bb",
+    "badgeapp_source_commit": "2a9478f85b9cbcc404ac15cb1d0ccd75ed43cc16",
+    "badgeapp": {
+      "project_id": 14096,
+      "project_url": "https://www.bestpractices.dev/en/projects/14096",
+      "project_json_url": "https://www.bestpractices.dev/projects/14096.json",
+      "baseline_badge_url": "https://www.bestpractices.dev/projects/14096/baseline",
+      "baseline_entry_url": "https://www.bestpractices.dev/en/projects/14096/baseline-1",
+      "publication_state": "verified",
+      "achieved_at": "2026-08-15T22:14:15.614Z"
+    },
+    "controls": [
+      "OSPS-AC-01.01",
+      "OSPS-AC-02.01",
+      "OSPS-AC-03.01",
+      "OSPS-AC-03.02",
+      "OSPS-BR-01.01",
+      "OSPS-BR-01.03",
+      "OSPS-BR-03.01",
+      "OSPS-BR-03.02",
+      "OSPS-BR-07.01",
+      "OSPS-DO-01.01",
+      "OSPS-DO-02.01",
+      "OSPS-GV-02.01",
+      "OSPS-GV-03.01",
+      "OSPS-LE-02.01",
+      "OSPS-LE-02.02",
+      "OSPS-LE-03.01",
+      "OSPS-LE-03.02",
+      "OSPS-QA-01.01",
+      "OSPS-QA-01.02",
+      "OSPS-QA-02.01",
+      "OSPS-QA-04.01",
+      "OSPS-QA-05.01",
+      "OSPS-QA-05.02",
+      "OSPS-VM-02.01"
+    ]
+  },
+  "slsa": {
+    "version": "v1.2",
+    "build_level": 2,
+    "crosswalk": "docs/assurance/slsa-v1.2-build-l2.md",
+    "predicate_type": "https://slsa.dev/provenance/v1",
+    "release": {
+      "version": "0.3.0",
+      "tag": "v0.3.0",
+      "tag_object": "6d3032426c4d9a7d624eb771fbbc30fe7605801b",
+      "source_commit": "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
+      "workflow": ".github/workflows/release.yml",
+      "run_id": 31755736570,
+      "run_attempt": 1,
+      "published_at": "2026-08-14T00:02:39Z",
+      "immutable": true
+    },
+    "verifier": {
+      "name": "GitHub CLI",
+      "version": "2.97.0",
+      "repository": "cli/cli",
+      "tag": "v2.97.0",
+      "source_commit": "55dbb4dc6b7edb10b48e3d7fc5bccd32318d1b55",
+      "source_commit_verified": true,
+      "release_immutable": true,
+      "published_at": "2026-07-31T02:04:00Z",
+      "checksums_asset": "gh_2.97.0_checksums.txt",
+      "checksums_asset_bytes": 1950,
+      "checksums_asset_sha256": "61905c69ec8660f310814ec98395cdd0c2d07aabf024c597ec45813984a02334",
+      "assets": [
+        {
+          "host": "aarch64-apple-darwin",
+          "archive": "gh_2.97.0_macOS_arm64.zip",
+          "bytes": 13845290,
+          "sha256": "a58b8fd77b417a38f47a0b54d1370c59b0fcdb324ccc9ca002b0998f7c4c999e",
+          "directory": "gh_2.97.0_macOS_arm64"
+        },
+        {
+          "host": "x86_64-unknown-linux-gnu",
+          "archive": "gh_2.97.0_linux_amd64.tar.gz",
+          "bytes": 14770812,
+          "sha256": "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112",
+          "directory": "gh_2.97.0_linux_amd64"
+        }
+      ],
+      "reviewed_on": "2026-08-15"
+    }
+  },
+  "maintenance": {
+    "cadence": "at_least_annually",
+    "next_scheduled_review_by": "2027-08-15",
+    "event_triggers": [
+      "framework_version_or_requirement_change",
+      "badgeapp_version_issuer_route_or_record_change",
+      "repository_security_or_default_branch_control_change",
+      "organization_access_or_recovery_control_change",
+      "workflow_action_dependency_or_release_pipeline_change",
+      "canonical_release_asset_digest_or_attestation_change",
+      "public_repository_channel_license_or_evidence_change"
+    ],
+    "failure_action": "correct_or_remove_public_claim_and_badge_immediately"
+  }
+}
