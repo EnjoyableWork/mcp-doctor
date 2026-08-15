@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::Value;
 
@@ -256,6 +255,7 @@ fn verifier_is_exact_bounded_and_value_minimizing() {
         "--cert-oidc-issuer https://token.actions.githubusercontent.com",
         "--deny-self-hosted-runners",
         "--predicate-type https://slsa.dev/provenance/v1",
+        "the exact assurance verifier has no reviewed asset for this host",
         "badgeapp_project=%s release=%s assets=%s result=PASS",
     ] {
         assert!(
@@ -272,14 +272,20 @@ fn verifier_is_exact_bounded_and_value_minimizing() {
         assert!(!verifier.contains(forbidden));
     }
 
-    let invalid = Command::new("bash")
-        .arg(repository_root().join("scripts/verify-assurance-evidence.sh"))
-        .arg("--unknown")
-        .output()
-        .expect("invalid verifier invocation should run");
-    assert_eq!(invalid.status.code(), Some(2));
-    assert!(invalid.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&invalid.stderr).contains("usage:"));
+    // The executable verifier intentionally supports only its reviewed macOS
+    // and GNU/Linux hosts. Windows still proves the static safety contract
+    // above without depending on an incidental Bash installation.
+    #[cfg(not(windows))]
+    {
+        let invalid = std::process::Command::new("bash")
+            .arg(repository_root().join("scripts/verify-assurance-evidence.sh"))
+            .arg("--unknown")
+            .output()
+            .expect("invalid verifier invocation should run");
+        assert_eq!(invalid.status.code(), Some(2));
+        assert!(invalid.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&invalid.stderr).contains("usage:"));
+    }
 }
 
 #[test]
