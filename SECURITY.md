@@ -54,6 +54,41 @@ identifies affected and fixed versions, mitigations, and reporter credit, and
 will request a CVE through GitHub when warranted. The project does not operate
 a bug-bounty program and cannot promise payment or other compensation.
 
+## Maintainer advisory lifecycle
+
+Maintainers apply the public policy above through this non-disclosing lifecycle:
+
+1. Keep each suspected vulnerability, reproducer, discussion, and correction
+   private while its impact is unknown.
+2. Reproduce it with synthetic evidence and determine the exact affected
+   released versions. A provisional severity or version range is not a public
+   claim.
+3. If the evidence does not reproduce or does not cross a security boundary,
+   record the rationale privately and close the draft instead of publishing it.
+   Open an ordinary public issue only after it cannot disclose a vulnerability.
+4. If a confirmed defect affects only unreleased source, correct and verify it
+   privately, record the release-scope decision, and normally close the draft
+   after the correction rather than publishing an advisory for unaffected
+   users.
+5. Correct a confirmed released vulnerability privately and verify a
+   deterministic regression plus the normal release gates. Do not expose the
+   correction in a public branch, issue, pull request, or progress document
+   before coordinated disclosure.
+6. Coordinate the public merge, patched release, and advisory publication so a
+   supported safe version is available before or with disclosure when
+   practical. Active exploitation or an independently necessary mitigation may
+   require earlier notice.
+7. Before publication, replace provisional data with exact affected and fixed
+   versions, impact, severity, mitigation, credit, and the CVE decision.
+8. Publish the advisory when users have a safe upgrade or verified mitigation,
+   then link the public advisory from release notes and the non-sensitive
+   completion record in `PROJECT.md`.
+
+Keep independent root causes in separate draft advisories even when their fixes
+share one coordinated release. Active advisory identifiers, exploit details,
+private branches, and correction status do not belong in public project
+documentation.
+
 ## Supported versions
 
 Only the latest published minor release line receives security fixes. Reports
