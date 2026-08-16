@@ -487,6 +487,11 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "without following a symbolic link or Windows reparse",
         "Custom CA material is now read and validated",
         "resolution, DNS, or connection activity",
+        "report artifact publication",
+        "before\nlinking",
+        "immediately\nafter linking",
+        "Cleanup and rollback remove only paths",
+        "JSON, JUnit, and\naggregate output",
         "Users of `0.2.0` or `0.3.0` should upgrade",
         "cargo install mcp-doctor --version '=0.3.1' --locked",
     ] {
@@ -2193,6 +2198,27 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
             "MCPD-031 completion must retain {contract}"
         );
     }
+
+    let identity_correction = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-034 |"))
+        .expect("PROJECT.md should contain MCPD-034");
+    assert!(identity_correction.contains("| In progress |"));
+    for contract in [
+        "DEC-058",
+        "report artifact publication",
+        "opened stage identity before linking",
+        "destination identity immediately afterward",
+        "no-foreign-delete",
+        "SSE and schema-work drafts",
+    ] {
+        assert!(
+            identity_correction.contains(contract),
+            "MCPD-034 must retain the two-advisory boundary: {contract}"
+        );
+    }
+    assert!(project.contains("| DEC-058 | Batch only the two related native-identity"));
+    assert!(project.contains("| RISK-32 | A report stage or destination path changes"));
 
     for contract in [
         "--protocol-version 2025-06-18",

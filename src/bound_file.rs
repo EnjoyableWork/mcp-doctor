@@ -47,6 +47,39 @@ pub(crate) enum FileIdentity {
     Unsupported,
 }
 
+impl FileIdentity {
+    pub(crate) fn for_file(file: &File) -> io::Result<Self> {
+        let metadata = file.metadata()?;
+        if !is_regular_non_link(&metadata) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "opened handle is not a regular file",
+            ));
+        }
+        file_identity(file, &metadata)
+    }
+
+    pub(crate) fn matches_path(&self, path: &Path) -> io::Result<Option<bool>> {
+        let verification = match open_no_follow(path) {
+            Ok(file) => file,
+            Err(error) => {
+                return match fs::symlink_metadata(path) {
+                    Err(metadata_error) if metadata_error.kind() == io::ErrorKind::NotFound => {
+                        Ok(None)
+                    }
+                    Ok(metadata) if !is_regular_non_link(&metadata) => Ok(Some(false)),
+                    _ => Err(error),
+                };
+            }
+        };
+        let metadata = verification.metadata()?;
+        if !is_regular_non_link(&metadata) {
+            return Ok(Some(false));
+        }
+        Ok(Some(&file_identity(&verification, &metadata)? == self))
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct BoundFile {
     file: File,
@@ -75,18 +108,12 @@ impl BoundFile {
 
         after_initial_open().map_err(|_| BoundFileError::new(BoundFileErrorKind::Unavailable))?;
 
-        let verification = open_no_follow(path)
-            .map_err(|_| BoundFileError::new(BoundFileErrorKind::IdentityChanged))?;
-        let verification_metadata = verification
-            .metadata()
-            .map_err(|_| BoundFileError::new(BoundFileErrorKind::Unavailable))?;
-        if !is_regular_non_link(&verification_metadata) {
-            return Err(BoundFileError::new(BoundFileErrorKind::IdentityChanged));
-        }
-        let verification_identity = file_identity(&verification, &verification_metadata)
-            .map_err(|_| BoundFileError::new(BoundFileErrorKind::Unavailable))?;
-        if verification_identity != identity {
-            return Err(BoundFileError::new(BoundFileErrorKind::IdentityChanged));
+        match identity.matches_path(path) {
+            Ok(Some(true)) => {}
+            Ok(Some(false) | None) => {
+                return Err(BoundFileError::new(BoundFileErrorKind::IdentityChanged));
+            }
+            Err(_) => return Err(BoundFileError::new(BoundFileErrorKind::Unavailable)),
         }
 
         Ok(Self {
@@ -253,18 +280,30 @@ mod windows_file_identity {
 
 #[cfg(feature = "internal-test-fixtures")]
 fn internal_test_identity_gate(path: &Path) -> io::Result<()> {
+    internal_test_path_gate(
+        path,
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE",
+    )
+}
+
+#[cfg(feature = "internal-test-fixtures")]
+pub(crate) fn internal_test_path_gate(
+    path: &Path,
+    selected_path_variable: &str,
+    gate_variable: &str,
+) -> io::Result<()> {
     use std::io::{Read as _, Write as _};
     use std::net::{SocketAddr, TcpStream};
     use std::time::Duration;
 
     if std::env::var_os("MCP_DOCTOR_TEST_MODE").as_deref() != Some(std::ffi::OsStr::new("1"))
-        || std::env::var_os("MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH").as_deref()
-            != Some(path.as_os_str())
+        || std::env::var_os(selected_path_variable).as_deref() != Some(path.as_os_str())
     {
         return Ok(());
     }
 
-    let address = std::env::var("MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE")
+    let address = std::env::var(gate_variable)
         .ok()
         .and_then(|value| value.parse::<SocketAddr>().ok())
         .filter(|address| address.ip().is_loopback())
@@ -287,6 +326,15 @@ fn internal_test_identity_gate(path: &Path) -> io::Result<()> {
 
 #[cfg(not(feature = "internal-test-fixtures"))]
 fn internal_test_identity_gate(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(feature = "internal-test-fixtures"))]
+pub(crate) fn internal_test_path_gate(
+    _path: &Path,
+    _selected_path_variable: &str,
+    _gate_variable: &str,
+) -> io::Result<()> {
     Ok(())
 }
 

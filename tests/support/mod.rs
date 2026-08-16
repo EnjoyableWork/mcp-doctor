@@ -35,26 +35,83 @@ pub fn run_with_bound_file_mutation(
     selected_path: &Path,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> Output {
+    run_with_path_mutation_gate(
+        command,
+        selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE",
+        "bound-file",
+        mutate,
+    )
+}
+
+pub fn run_with_report_publication_mutation(
+    command: &mut Command,
+    output_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let selected_path = canonical_report_output_path(output_path);
+    run_with_path_mutation_gate(
+        command,
+        &selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_GATE",
+        "report-publication",
+        mutate,
+    )
+}
+
+pub fn run_with_report_link_mutation(
+    command: &mut Command,
+    output_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let selected_path = canonical_report_output_path(output_path);
+    run_with_path_mutation_gate(
+        command,
+        &selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_GATE",
+        "report-link",
+        mutate,
+    )
+}
+
+fn canonical_report_output_path(output_path: &Path) -> PathBuf {
+    let output_name = output_path
+        .file_name()
+        .expect("a report output path should have a filename");
+    let output_parent = output_path.parent().unwrap_or_else(|| Path::new("."));
+    fs::canonicalize(output_parent)
+        .expect("the report output parent should have a canonical identity")
+        .join(output_name)
+}
+
+fn run_with_path_mutation_gate(
+    command: &mut Command,
+    selected_path: &Path,
+    selected_path_variable: &str,
+    gate_variable: &str,
+    gate_name: &str,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
     let listener = TcpListener::bind("127.0.0.1:0")
-        .expect("the bound-file event gate should bind to loopback");
-    let address = listener
-        .local_addr()
-        .expect("the bound-file event gate should have an address");
+        .unwrap_or_else(|error| panic!("the {gate_name} event gate should bind: {error}"));
+    let address = listener.local_addr().unwrap_or_else(|error| {
+        panic!("the {gate_name} event gate should have an address: {error}")
+    });
     command
-        .env("MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH", selected_path)
-        .env(
-            "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE",
-            address.to_string(),
-        )
+        .env(selected_path_variable, selected_path)
+        .env(gate_variable, address.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = command
-        .spawn()
-        .expect("the command under the bound-file gate should start");
+    let mut child = command.spawn().unwrap_or_else(|error| {
+        panic!("the command under the {gate_name} gate should start: {error}")
+    });
     let accept_listener = listener
         .try_clone()
-        .expect("the bound-file event gate should clone");
+        .unwrap_or_else(|error| panic!("the {gate_name} event gate should clone: {error}"));
     let (accepted_sender, accepted_receiver) = mpsc::sync_channel(1);
     let acceptor = thread::spawn(move || {
         let accepted = accept_listener.accept().map(|(stream, _)| stream);
@@ -66,45 +123,49 @@ pub fn run_with_bound_file_mutation(
         Ok(Err(error)) => {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("the bound-file event gate should accept: {error}");
+            panic!("the {gate_name} event gate should accept: {error}");
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             let _ = child.kill();
             let _ = child.wait();
             let _ = TcpStream::connect(address);
             let _ = acceptor.join();
-            panic!("the command did not reach the bound-file event gate");
+            panic!("the command did not reach the {gate_name} event gate");
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("the bound-file event gate disconnected");
+            panic!("the {gate_name} event gate disconnected");
         }
     };
     acceptor
         .join()
-        .expect("the bound-file event gate should not panic");
+        .unwrap_or_else(|_| panic!("the {gate_name} event gate should not panic"));
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
-        .expect("the bound-file readiness read should have an outer watchdog");
+        .unwrap_or_else(|error| panic!("the {gate_name} readiness watchdog should set: {error}"));
     stream
         .set_write_timeout(Some(Duration::from_secs(10)))
-        .expect("the bound-file acknowledgement should have an outer watchdog");
+        .unwrap_or_else(|error| {
+            panic!("the {gate_name} acknowledgement watchdog should set: {error}")
+        });
     let mut readiness = [0_u8; 1];
     if stream.read_exact(&mut readiness).is_err() || readiness != [1] {
         let _ = child.kill();
         let _ = child.wait();
-        panic!("the command emitted an invalid bound-file readiness event");
+        panic!("the command emitted an invalid {gate_name} readiness event");
     }
 
     let mutation = mutate();
     stream
         .write_all(&[2])
-        .expect("the bound-file mutation acknowledgement should be writable");
-    let output = child
-        .wait_with_output()
-        .expect("the command under the bound-file gate should return");
-    mutation.expect("the deterministic bound-file mutation should succeed");
+        .unwrap_or_else(|error| panic!("the {gate_name} acknowledgement should write: {error}"));
+    let output = child.wait_with_output().unwrap_or_else(|error| {
+        panic!("the command under the {gate_name} gate should return: {error}")
+    });
+    mutation.unwrap_or_else(|error| {
+        panic!("the deterministic {gate_name} mutation should succeed: {error}")
+    });
     output
 }
 

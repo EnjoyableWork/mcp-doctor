@@ -198,11 +198,17 @@ workflow, integrity, generation, validation, or publication retry.
 ## v0.3.1 security patch preparation
 
 `v0.3.1` is the coordinated patch candidate for authority-bearing local file
-reads. It binds selected scenario, custom-CA, snapshot, and aggregate inputs to
-the exact no-follow regular-file handle that is validated and consumed, and it
-fails closed if the selected path no longer identifies that file. The trust
-file is also read and validated before credential environment resolution, DNS,
-or connection activity.
+reads and report artifact publication. It binds selected scenario, custom-CA,
+snapshot, and aggregate inputs to the exact no-follow regular-file handle that
+is validated and consumed, and it fails closed if the selected path no longer
+identifies that file. The trust file is also read and validated before
+credential environment resolution, DNS, or connection activity.
+
+The same complete native identity now binds every opened JSON, JUnit, and
+aggregate stage to publication: the stage path must still identify the opened
+handle before linking, the destination must identify it immediately after,
+and cleanup or rollback removes only an identity-owned path. A foreign stage
+or destination is never accepted or deleted.
 
 The candidate preserves every existing endpoint, credential, tool, effect,
 side-effect, schema, byte, redaction, and cleanup gate. It does not add a retry,
