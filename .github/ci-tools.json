@@ -1,6 +1,6 @@
 {
   "schema_version": "mcp-doctor.ci-tools/v1",
-  "reviewed_on": "2026-08-14",
+  "reviewed_on": "2026-08-16",
   "rust_toolchain": {
     "channel": "1.97.1",
     "source": "rust-toolchain.toml",
@@ -30,6 +30,7 @@
         "bash",
         "cargo",
         "curl",
+        "gh",
         "git",
         "jq",
         "rustc",

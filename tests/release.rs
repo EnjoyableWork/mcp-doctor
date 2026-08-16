@@ -2151,8 +2151,9 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
         .lines()
         .find(|line| line.starts_with("| MCPD-031 |"))
         .expect("PROJECT.md should contain MCPD-031");
-    assert!(release_correction.contains("| Proposed |"));
+    assert!(release_correction.contains("| In progress |"));
     assert!(release_correction.contains("Before a successor to `v0.3.0`"));
+    assert!(release_correction.contains("never retry publication"));
 
     for contract in [
         "--protocol-version 2025-06-18",
