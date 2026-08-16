@@ -934,6 +934,7 @@ dependencies = [
  "base64",
  "clap",
  "jsonschema",
+ "libc",
  "process-wrap",
  "quick-xml",
  "rcgen",

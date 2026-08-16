@@ -9,9 +9,13 @@ use std::collections::BTreeMap;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 use tempfile::TempDir;
 
 const STABLE_REPORT_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.report.v1.schema.json");
@@ -25,6 +29,84 @@ const CONTRACT_SNAPSHOT_SCHEMA: &str =
 const CONTRACT_DIFF_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-diff.v1alpha1.schema.json");
 const DESCENDANT_READY_MARKER: &[u8] = b"descendant-ready\n";
+
+pub fn run_with_bound_file_mutation(
+    command: &mut Command,
+    selected_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .expect("the bound-file event gate should bind to loopback");
+    let address = listener
+        .local_addr()
+        .expect("the bound-file event gate should have an address");
+    command
+        .env("MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH", selected_path)
+        .env(
+            "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE",
+            address.to_string(),
+        )
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .expect("the command under the bound-file gate should start");
+    let accept_listener = listener
+        .try_clone()
+        .expect("the bound-file event gate should clone");
+    let (accepted_sender, accepted_receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let accepted = accept_listener.accept().map(|(stream, _)| stream);
+        let _ = accepted_sender.send(accepted);
+    });
+
+    let mut stream = match accepted_receiver.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(error)) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the bound-file event gate should accept: {error}");
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = TcpStream::connect(address);
+            let _ = acceptor.join();
+            panic!("the command did not reach the bound-file event gate");
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the bound-file event gate disconnected");
+        }
+    };
+    acceptor
+        .join()
+        .expect("the bound-file event gate should not panic");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("the bound-file readiness read should have an outer watchdog");
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .expect("the bound-file acknowledgement should have an outer watchdog");
+    let mut readiness = [0_u8; 1];
+    if stream.read_exact(&mut readiness).is_err() || readiness != [1] {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("the command emitted an invalid bound-file readiness event");
+    }
+
+    let mutation = mutate();
+    stream
+        .write_all(&[2])
+        .expect("the bound-file mutation acknowledgement should be writable");
+    let output = child
+        .wait_with_output()
+        .expect("the command under the bound-file gate should return");
+    mutation.expect("the deterministic bound-file mutation should succeed");
+    output
+}
 
 pub fn assert_descendant_was_ready_and_terminated(path: &Path) {
     let mut marker = OpenOptions::new()

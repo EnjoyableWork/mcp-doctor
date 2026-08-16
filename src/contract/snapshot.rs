@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -13,6 +13,7 @@ use serde_json::{Map, Number, Value};
 use super::catalog::{DRAFT_2020_12, resolve_local_reference};
 use super::limits::DiagnosticLimits;
 use super::protocol::{KnownRevision, SupportedRevision};
+use crate::bound_file::BoundFile;
 use crate::transport::ProbeResponse;
 
 pub(crate) const SNAPSHOT_SCHEMA_VERSION: &str = "mcp-doctor.contract-snapshot/v1alpha1";
@@ -1264,19 +1265,15 @@ fn collect_references(
 }
 
 fn read_snapshot(path: &Path) -> Result<ContractSnapshot, SnapshotInputError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(SnapshotInputError::new(SnapshotInputKind::Malformed));
-    }
+    let bound =
+        BoundFile::open(path).map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
     let maximum = DiagnosticLimits::M1_DEFAULTS
         .values()
         .aggregate_output_bytes;
-    if metadata.len() > maximum {
+    if bound.metadata().len() > maximum {
         return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
     }
-    let file =
-        File::open(path).map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
+    let file = bound.into_file();
     let mut bytes = Vec::new();
     file.take(maximum.saturating_add(1))
         .read_to_end(&mut bytes)
