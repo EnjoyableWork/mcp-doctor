@@ -67,7 +67,8 @@ cleanup_release_control() {
 trap cleanup_release_control EXIT
 
 registry_status=$(
-  curl --silent --show-error --location --retry 5 \
+  curl --silent --show-error --location --retry 0 \
+    --connect-timeout 10 --max-time 60 \
     --output "${registry_response}" \
     --write-out '%{http_code}' \
     --header 'User-Agent: mcp-doctor-release-control/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \

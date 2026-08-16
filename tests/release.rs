@@ -135,6 +135,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     for contract in [
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
+        "default: 0.3.0",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
         "published_stable_versions",
@@ -160,6 +161,8 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         "name: release",
         "Reject crates.io OIDC without the protected environment",
         "Revalidate current main and annotated tag authority",
+        "REHEARSED_VERSION: ${{ needs.rehearse.outputs.version }}",
+        "REQUESTED_VERSION: ${{ inputs.rehearsal_version }}",
     ] {
         assert!(
             workflow.contains(contract),
@@ -173,6 +176,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         );
     }
     assert!(workflow.contains("no publish command exists in this job"));
+    assert!(!workflow.contains("reuses only immutable v0.1.0"));
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -368,6 +372,8 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["published", "v0.1.0", "0.1.0"],
         &["published", "v12.34.56", "12.34.56"],
         &["rehearsal", "v0.1.0", "0.1.0"],
+        &["rehearsal", "v0.3.0", "0.3.0"],
+        &["rehearsal", "v12.34.56", "12.34.56"],
     ];
     for arguments in accepted {
         assert_release_version_case(arguments, true);
@@ -384,7 +390,9 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v1.2.3-rc.1", "1.2.3-rc.1", "0.1.0"],
         &["future", "v1.2.3", "1.2.3", "not-stable"],
         &["published", "v0.0.99", "0.0.99"],
-        &["rehearsal", "v0.1.1", "0.1.1"],
+        &["rehearsal", "v0.0.99", "0.0.99"],
+        &["rehearsal", "v0.3.0", "0.3.1"],
+        &["rehearsal", "v0.3.0", "0.3.0", "0.3.0"],
         &["unknown", "v1.0.0", "1.0.0"],
     ];
     for arguments in rejected {
@@ -421,6 +429,12 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("Workflow filename | `release.yml`"));
     assert!(release.contains("Environment | `release`"));
     assert!(release.contains("No publish command exists in the authorization job"));
+    assert!(
+        release.contains(
+            "currently represented identically across GitHub Releases, Cargo, and Homebrew"
+        )
+    );
+    assert!(release.contains("`0.3.0` at this review"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
@@ -2151,8 +2165,9 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
         .lines()
         .find(|line| line.starts_with("| MCPD-031 |"))
         .expect("PROJECT.md should contain MCPD-031");
-    assert!(release_correction.contains("| Proposed |"));
+    assert!(release_correction.contains("| In progress |"));
     assert!(release_correction.contains("Before a successor to `v0.3.0`"));
+    assert!(release_correction.contains("never retry publication"));
 
     for contract in [
         "--protocol-version 2025-06-18",
