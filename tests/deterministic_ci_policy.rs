@@ -133,24 +133,31 @@ fn operational_sleeps_and_positive_retries_match_the_owned_inventory() {
 
     assert_eq!(
         sleeps,
-        BTreeMap::from([
-            (".github/workflows/release.yml".to_owned(), 2),
-            ("scripts/install-syft.sh".to_owned(), 1),
-        ])
+        BTreeMap::from([("scripts/install-syft.sh".to_owned(), 1)])
     );
-    assert_eq!(
-        retries,
-        BTreeMap::from([
-            (".github/workflows/release-channels.yml".to_owned(), 3),
-            (".github/workflows/release.yml".to_owned(), 5),
-            (
-                "scripts/verify-release-repository-controls.sh".to_owned(),
-                1,
-            ),
-        ])
-    );
+    assert!(retries.is_empty(), "positive curl retries are prohibited");
     assert!(AUDIT.contains("`DEC-043` acquisition exception"));
-    assert!(AUDIT.contains("`MCPD-031` prepublication gate"));
+    assert!(AUDIT.contains("`MCPD-031` completion"));
+
+    let release = read(&repository_root().join(".github/workflows/release.yml"));
+    let channels = read(&repository_root().join(".github/workflows/release-channels.yml"));
+    let release_controls =
+        read(&repository_root().join("scripts/verify-release-repository-controls.sh"));
+    assert_eq!(release.matches("--retry 0").count(), 6);
+    assert_eq!(channels.matches("--retry 0").count(), 3);
+    assert_eq!(release_controls.matches("--retry 0").count(), 1);
+    for source in [&release, &channels, &release_controls] {
+        assert!(source.contains("--connect-timeout 10"));
+        assert!(source.contains("--max-time "));
+    }
+    for source in [&release, &channels] {
+        assert!(!source.contains("sleep 5"));
+        assert!(!source.contains("for _ in {1..60}"));
+    }
+    assert!(release.contains("timeout 60 gh api"));
+    assert!(release.contains("timeout 60 gh release verify"));
+    assert!(release.contains(".immutable == true"));
+    assert!(release.contains("cmp --silent"));
 }
 
 #[test]
@@ -158,7 +165,7 @@ fn nonstandard_ci_commands_are_declared_and_incidental_tools_are_rejected() {
     let inventory: Value =
         serde_json::from_str(CI_TOOLS).expect("CI tool inventory should be JSON");
     assert_eq!(inventory["schema_version"], "mcp-doctor.ci-tools/v1");
-    assert_eq!(inventory["reviewed_on"], "2026-08-14");
+    assert_eq!(inventory["reviewed_on"], "2026-08-16");
     assert_eq!(inventory["rust_toolchain"]["channel"], "1.97.1");
     assert!(RUST_TOOLCHAIN.contains("channel = \"1.97.1\""));
 
@@ -269,6 +276,40 @@ fn nonstandard_ci_commands_are_declared_and_incidental_tools_are_rejected() {
         2
     );
     assert!(AUDIT.contains("immediately after checkout"));
+
+    let release = read(&repository_root().join(".github/workflows/release.yml"));
+    assert_eq!(release.matches("uses: actions/checkout@").count(), 6);
+    assert_eq!(
+        release
+            .matches("- name: Verify declared runner tools")
+            .count(),
+        6
+    );
+    assert_eq!(release.matches("./scripts/verify-ci-tools.sh").count(), 6);
+
+    let channels = read(&repository_root().join(".github/workflows/release-channels.yml"));
+    assert_eq!(
+        channels
+            .matches("- name: Check out the exact runner contract")
+            .count(),
+        5
+    );
+    assert_eq!(
+        channels
+            .matches("- name: Verify declared runner tools")
+            .count(),
+        5
+    );
+    assert_eq!(
+        channels
+            .matches("- name: Check out the immutable release tag")
+            .count(),
+        5
+    );
+    assert_eq!(channels.matches("./scripts/verify-ci-tools.sh").count(), 4);
+    assert_eq!(channels.matches("./scripts/verify-ci-tools.ps1").count(), 1);
+    assert!(channels.contains("test \"$GITHUB_REF\" = refs/heads/main"));
+    assert!(channels.contains("ref: ${{ github.sha }}"));
 }
 
 fn declared_commands(inventory: &Value) -> BTreeSet<&str> {

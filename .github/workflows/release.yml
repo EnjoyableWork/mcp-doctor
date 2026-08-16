@@ -39,6 +39,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Validate tag, source, revision, registry, and successful preflight
         id: contract
         env:
@@ -58,7 +61,8 @@ jobs:
 
           registry_response="$RUNNER_TEMP/mcp-doctor-crates.json"
           registry_status="$(
-            curl --silent --show-error --location --retry 5 \
+            curl --silent --show-error --location --retry 0 \
+              --connect-timeout 10 --max-time 60 \
               --output "$registry_response" \
               --write-out '%{http_code}' \
               --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
@@ -177,6 +181,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Package and verify deterministic source channels
         run: |
           set -euo pipefail
@@ -251,6 +258,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ${{ matrix.runner }}
 
       - name: Verify native host and build release executable plus fixture
         run: |
@@ -351,6 +361,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Download the complete release payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -434,24 +447,17 @@ jobs:
       - name: Require immutable release state and release attestation
         run: |
           set -euo pipefail
-          immutable=false
-          for _ in {1..60}; do
-            immutable="$(
-              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
-                -H 'X-GitHub-Api-Version: 2026-03-10' \
-                --jq '.immutable'
-            )"
-            if [[ "$immutable" == true ]] &&
-              gh release verify "$GITHUB_REF_NAME" --format json >/dev/null 2>&1; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$immutable" != true ]]; then
-            echo "published release did not become immutable" >&2
-            exit 1
-          fi
-          gh release verify "$GITHUB_REF_NAME" --format json >/dev/null
+          release_state="$RUNNER_TEMP/published-release.json"
+          timeout 60 gh api \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' >"$release_state"
+          jq -e \
+            --arg tag "$GITHUB_REF_NAME" \
+            '.tag_name == $tag and .draft == false and
+             .prerelease == false and .immutable == true' \
+            "$release_state" >/dev/null
+          timeout 60 gh release verify \
+            "$GITHUB_REF_NAME" --format json >/dev/null
 
       - name: Re-download and verify the immutable release
         run: |
@@ -487,6 +493,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
 
       - name: Re-verify immutable GitHub bytes and provenance
         run: |
@@ -545,7 +554,8 @@ jobs:
         run: |
           set -euo pipefail
           registry_state="$RUNNER_TEMP/registry-state.json"
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 60 \
             --output "$registry_state" \
             --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
             'https://crates.io/api/v1/crates/mcp-doctor'
@@ -554,7 +564,8 @@ jobs:
             'any(.versions[]; .num == $version)' \
             "$registry_state" >/dev/null; then
             registry_package="$RUNNER_TEMP/mcp-doctor-$RELEASE_VERSION.crate"
-            curl --fail --silent --show-error --location --retry 5 \
+            curl --fail --silent --show-error --location --retry 0 \
+              --connect-timeout 10 --max-time 120 \
               --output "$registry_package" \
               --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
               "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download"
@@ -581,24 +592,14 @@ jobs:
         run: |
           set -euo pipefail
           registry_package="$RUNNER_TEMP/published-mcp-doctor-$RELEASE_VERSION.crate"
-          registry_matches=false
-          for _ in {1..60}; do
-            if curl --fail --silent --show-error --location \
-              --output "$registry_package" \
-              --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
-              "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download" &&
-              cmp --silent \
-                "immutable-release/mcp-doctor-$RELEASE_VERSION.crate" \
-                "$registry_package"; then
-              registry_matches=true
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$registry_matches" != true ]]; then
-            echo "crates.io did not expose the exact immutable source package" >&2
-            exit 1
-          fi
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 120 \
+            --output "$registry_package" \
+            --header 'User-Agent: mcp-doctor-release/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+            "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download"
+          cmp --silent \
+            "immutable-release/mcp-doctor-$RELEASE_VERSION.crate" \
+            "$registry_package"
 
           {
             echo "The immutable GitHub and crates.io bytes match."
@@ -625,6 +626,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
 
       - name: Restrict the live rehearsal to immutable v0.1.0 from main
         id: contract
@@ -676,11 +680,13 @@ jobs:
               --format json >/dev/null
           done
 
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 120 \
             --output "public-handoffs/mcp-doctor-$RELEASE_VERSION.crate" \
             --header 'User-Agent: mcp-doctor-release-rehearsal/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
             "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download"
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 60 \
             --output public-handoffs/mcp-doctor.rb \
             'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-doctor.rb'
 

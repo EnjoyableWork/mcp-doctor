@@ -28,6 +28,19 @@ jobs:
       version: ${{ steps.version.outputs.value }}
 
     steps:
+      - name: Check out the exact runner contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify declared runner tools
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./scripts/verify-ci-tools.sh ubuntu-24.04
+
       - name: Validate the release version input
         id: version
         env:
@@ -97,7 +110,8 @@ jobs:
 
           registry_response="$RUNNER_TEMP/mcp-doctor-crates.json"
           registry_status="$(
-            curl --silent --show-error --location --retry 5 \
+            curl --silent --show-error --location --retry 0 \
+              --connect-timeout 10 --max-time 60 \
               --output "$registry_response" \
               --write-out '%{http_code}' \
               --header 'User-Agent: mcp-doctor-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
@@ -111,7 +125,8 @@ jobs:
             "$registry_response" >/dev/null
 
           registry_package="$RUNNER_TEMP/mcp-doctor-$RELEASE_VERSION.crate"
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 120 \
             --output "$registry_package" \
             --header 'User-Agent: mcp-doctor-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
             "https://crates.io/api/v1/crates/mcp-doctor/$RELEASE_VERSION/download"
@@ -120,7 +135,8 @@ jobs:
             "$registry_package"
 
           published_formula="$RUNNER_TEMP/mcp-doctor.rb"
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 60 \
             --output "$published_formula" \
             'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-doctor.rb'
           cmp --silent "$release_assets/mcp-doctor.rb" "$published_formula"
@@ -148,6 +164,15 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
+      - name: Check out the exact runner contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ${{ matrix.runner }}
+
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -220,6 +245,15 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
+      - name: Check out the exact runner contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ${{ matrix.runner }}
+
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +290,16 @@ jobs:
       RUST_TARGET: x86_64-pc-windows-msvc
 
     steps:
+      - name: Check out the exact runner contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify declared runner tools
+        shell: pwsh
+        run: ./scripts/verify-ci-tools.ps1 -RunnerLabel windows-2025
+
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -314,6 +358,15 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
+      - name: Check out the exact runner contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ${{ matrix.runner }}
+
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
