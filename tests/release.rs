@@ -584,7 +584,7 @@ fn project_keeps_mcpd_010_network_boundary_explicit() {
 #[test]
 fn project_keeps_mcpd_011_generation_boundary_explicit() {
     let project = repository_file("PROJECT.md");
-    let readme = repository_file("README.md");
+    let commands = repository_file("docs/commands.md");
 
     for contract in [
         "| DEC-031 | Generate only versioned, bounded, schema-valid cases for one redundantly authorized tool | Accepted |",
@@ -610,19 +610,19 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
         "--cases 50",
         "--seed 4242",
         "A `side_effecting` run also requires `--allow-side-effects`",
-        "reports never contain raw generated arguments or tool results",
+        "reports never contain raw generated\narguments or tool results",
     ] {
         assert!(
-            readme.contains(contract),
-            "README.md should describe the bounded break contract: {contract}"
+            commands.contains(contract),
+            "the command guide should describe the bounded break contract: {contract}"
         );
     }
 }
 
 #[test]
-fn project_and_readme_record_the_completed_mcpd_029_rejection_boundary() {
+fn project_and_command_guide_record_the_completed_mcpd_029_rejection_boundary() {
     let project = repository_file("PROJECT.md");
-    let readme = repository_file("README.md");
+    let commands = repository_file("docs/commands.md");
     let agents = repository_file("AGENTS.md");
 
     for contract in [
@@ -650,7 +650,7 @@ fn project_and_readme_record_the_completed_mcpd_029_rejection_boundary() {
     );
 
     for contract in [
-        "### Schema-invalid `reject` cases",
+        "## Schema-invalid `reject` cases",
         "mcp-doctor reject",
         "wrong root type",
         "exactly `-32602`",
@@ -659,8 +659,8 @@ fn project_and_readme_record_the_completed_mcpd_029_rejection_boundary() {
         "Reports retain only the generator version, seed,",
     ] {
         assert!(
-            readme.contains(contract),
-            "README.md should describe the bounded reject contract: {contract}"
+            commands.contains(contract),
+            "the command guide should describe the bounded reject contract: {contract}"
         );
     }
 
@@ -682,7 +682,7 @@ fn project_and_readme_record_the_completed_mcpd_029_rejection_boundary() {
 fn readme_leads_with_a_portable_plain_language_diagnosis() {
     let readme = repository_file("README.md");
     let introduction = readme
-        .split("## The promise")
+        .split("## Install")
         .next()
         .expect("README should have an introductory diagnosis");
 
@@ -702,6 +702,22 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
         assert!(
             !introduction.contains(terminal_artifact),
             "README introduction should not depend on {terminal_artifact}"
+        );
+    }
+
+    assert!(
+        readme.lines().count() <= 250,
+        "README should remain an onboarding page rather than a full manual"
+    );
+    for guide in [
+        "docs/commands.md",
+        "docs/protocol-support.md",
+        "docs/automation.md",
+        "docs/safety.md",
+    ] {
+        assert!(
+            readme.contains(guide),
+            "README should route detailed material to {guide}"
         );
     }
 }
@@ -769,7 +785,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
 #[test]
 fn project_records_completed_compiled_capability_discovery_without_target_authority() {
     let project = repository_file("PROJECT.md");
-    let readme = repository_file("README.md");
+    let automation = repository_file("docs/automation.md");
     let implementation = repository_file("src/capabilities.rs");
     let schema = repository_file("schemas/mcp-doctor.capabilities.v1.schema.json");
     let posix_smoke = repository_file("scripts/smoke-installed.sh");
@@ -802,13 +818,13 @@ fn project_records_completed_compiled_capability_discovery_without_target_author
         "mcp-doctor capabilities --format json",
         "mcp-doctor.capabilities/v1",
         "supported, unsupported, or unknown",
-        "does not inspect user configuration or host\ninventory",
+        "does not inspect user configuration or host inventory",
         "schemas/mcp-doctor.capabilities.v1.schema.json",
         "Capability discovery reports only fixed compiled facts",
     ] {
         assert!(
-            readme.contains(contract),
-            "README should preserve capability-discovery contract: {contract}"
+            automation.contains(contract),
+            "the automation guide should preserve capability-discovery contract: {contract}"
         );
     }
 
@@ -871,6 +887,75 @@ fn project_records_completed_compiled_capability_discovery_without_target_author
 }
 
 #[test]
+fn readme_revision_matrix_uses_two_semantic_support_states() {
+    let readme = repository_file("README.md");
+    assert!(readme.contains("**Legend:** ✅ = supported; ❌ = not supported."));
+    assert!(readme.contains("`mcp-doctor capabilities --format json` remains authoritative."));
+
+    let mut lines = readme.lines();
+    let header = lines
+        .find(|line| line.starts_with("| MCP revision |"))
+        .expect("README should contain the MCP revision matrix");
+    assert!(header.contains("`inspect`") && header.contains("`reject`"));
+    let separator = lines
+        .next()
+        .expect("the revision matrix should have a separator");
+    assert!(separator.starts_with("| --- |"));
+
+    let rows = lines
+        .take_while(|line| line.starts_with('|'))
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 7, "the revision matrix inventory drifted");
+    for row in rows {
+        let cells = row.split('|').map(str::trim).collect::<Vec<_>>();
+        assert_eq!(cells.len(), 9, "revision matrix column count drifted");
+        for status in &cells[2..8] {
+            assert!(
+                matches!(
+                    *status,
+                    "✅ <!-- mcp-doctor-support=supported -->"
+                        | "❌ <!-- mcp-doctor-support=unsupported -->"
+                ),
+                "revision support must use one of two semantic states: {status}"
+            );
+        }
+    }
+}
+
+#[test]
+fn automation_guide_exit_table_matches_the_stable_contract() {
+    let automation = repository_file("docs/automation.md");
+    let mut lines = automation.lines();
+    lines
+        .find(|line| *line == "| Exit | Stable meaning | In practice |")
+        .expect("the automation guide should contain the exit-code table");
+    assert_eq!(
+        lines.next(),
+        Some("| ---: | --- | --- |"),
+        "the exit-code table should retain its three columns"
+    );
+
+    let actual = lines
+        .take_while(|line| line.starts_with('|'))
+        .map(|row| {
+            let cells = row.split('|').map(str::trim).collect::<Vec<_>>();
+            assert_eq!(cells.len(), 5, "exit-code table column count drifted");
+            (cells[1], cells[2])
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        [
+            ("`0`", "`success`"),
+            ("`1`", "`unsuccessful_result`"),
+            ("`2`", "`invalid_invocation_or_input`"),
+            ("`3`", "`incomplete_evidence`"),
+            ("`4`", "`internal_or_output_failure`"),
+        ]
+    );
+}
+
+#[test]
 fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_scope() {
     let project = repository_file("PROJECT.md");
 
@@ -899,9 +984,9 @@ fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_
 }
 
 #[test]
-fn project_and_readme_define_conservative_offline_report_aggregation() {
+fn project_and_automation_guide_define_conservative_offline_report_aggregation() {
     let project = repository_file("PROJECT.md");
-    let readme = repository_file("README.md");
+    let automation = repository_file("docs/automation.md");
     let posix_smoke = repository_file("scripts/smoke-installed.sh");
     let powershell_smoke = repository_file("scripts/smoke-installed.ps1");
 
@@ -937,7 +1022,7 @@ fn project_and_readme_define_conservative_offline_report_aggregation() {
     }
 
     for contract in [
-        "**`aggregate`**",
+        "`aggregate` combines",
         "mcp-doctor.aggregate/v1",
         "Members are identified only by zero-based input ordinal",
         "There is no waiver, score, baseline",
@@ -946,8 +1031,8 @@ fn project_and_readme_define_conservative_offline_report_aggregation() {
         "must not retrieve either\nat runtime",
     ] {
         assert!(
-            readme.contains(contract),
-            "README.md should describe offline aggregation: {contract}"
+            automation.contains(contract),
+            "the automation guide should describe offline aggregation: {contract}"
         );
     }
     for (name, smoke) in [("POSIX", posix_smoke), ("PowerShell", powershell_smoke)] {
@@ -1933,7 +2018,7 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 #[test]
 fn project_records_completed_mcpd_027_through_mcpd_030() {
     let project = repository_file("PROJECT.md");
-    let readme = repository_file("README.md");
+    let protocol_support = repository_file("docs/protocol-support.md");
     let compatibility = repository_file("tests/compatibility/README.md");
     let agents = repository_file("AGENTS.md");
 
@@ -2071,17 +2156,17 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
 
     for contract in [
         "--protocol-version 2025-06-18",
-        "| `2025-06-18` | 8.1% | Explicit only | Explicit only | Supported offline | Explicit only | Explicit only | Not supported |",
+        "| `2025-06-18` | 8.1% | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ❌ <!-- mcp-doctor-support=unsupported --> |",
         "every advertised output schema that `mcp-doctor` interprets",
         "Active MCP `2025-06-18`",
         "No broad legacy ecosystem claim follows",
     ] {
         assert!(
-            readme.contains(contract),
-            "README should retain the scoped MCPD-028 source contract: {contract}"
+            protocol_support.contains(contract),
+            "the protocol guide should retain the scoped MCPD-028 source contract: {contract}"
         );
     }
-    assert!(!readme.contains("MCP `2025-06-18` remains passive-only"));
+    assert!(!protocol_support.contains("MCP `2025-06-18` remains passive-only"));
     assert!(compatibility.contains("### Active MCP 2025-06-18"));
     assert!(compatibility.contains("does not add a `2025-06-18` case"));
     assert!(agents.contains("`DEC-052` additionally permits"));
