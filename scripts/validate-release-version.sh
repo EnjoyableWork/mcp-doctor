@@ -106,8 +106,9 @@ case "${release_version_mode}" in
       echo "release rehearsal does not accept a registry inventory" >&2
       exit 2
     fi
-    if [[ "${release_package_version}" != 0.1.0 ]]; then
-      echo "the nonpublishing live rehearsal reuses only immutable v0.1.0" >&2
+    if [[ "${release_package_version}" != 0.1.0 ]] &&
+      ! release_semver_greater_than "${release_package_version}" 0.1.0; then
+      echo "release rehearsal refuses versions before v0.1.0" >&2
       exit 1
     fi
     ;;

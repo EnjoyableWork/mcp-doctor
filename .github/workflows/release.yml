@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       rehearsal_version:
-        description: Existing immutable version used only for a nonpublishing rehearsal
+        description: Published stable version represented by every public source handoff
         required: true
-        default: 0.1.0
+        default: 0.3.0
         type: string
 
 permissions: {}
@@ -630,7 +630,7 @@ jobs:
       - name: Verify declared runner tools
         run: ./scripts/verify-ci-tools.sh ubuntu-24.04
 
-      - name: Restrict the live rehearsal to immutable v0.1.0 from main
+      - name: Restrict the live rehearsal to one immutable stable version from main
         id: contract
         env:
           REHEARSAL_VERSION: ${{ inputs.rehearsal_version }}
@@ -724,10 +724,13 @@ jobs:
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
       - name: Confirm the authorized path remains nonpublishing
+        env:
+          REHEARSED_VERSION: ${{ needs.rehearse.outputs.version }}
+          REQUESTED_VERSION: ${{ inputs.rehearsal_version }}
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
-          test "${{ needs.rehearse.outputs.version }}" = 0.1.0
+          test "$REHEARSED_VERSION" = "$REQUESTED_VERSION"
           echo "OIDC authorization succeeded; no publish command exists in this job." >>"$GITHUB_STEP_SUMMARY"
 
   rehearse-denied-environment:
@@ -766,9 +769,11 @@ jobs:
 
     steps:
       - name: Record the rehearsed handoff boundary
+        env:
+          RELEASE_VERSION: ${{ needs.rehearse.outputs.version }}
         run: |
           {
-            echo "The immutable v0.1.0 bytes, Cargo handoff, Homebrew handoff,"
+            echo "The immutable v$RELEASE_VERSION bytes, Cargo handoff, Homebrew handoff,"
             echo "authorized OIDC exchange, and rejected missing-environment exchange passed."
             echo "No tag, release, crate, formula, or stored credential was created or changed."
           } >>"$GITHUB_STEP_SUMMARY"

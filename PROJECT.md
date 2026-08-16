@@ -170,6 +170,17 @@ source-checkout runner verification to `MCPD-031`. That ticket is now in
 progress as the prepublication prerequisite for another public version; it
 changes no product runtime or immutable historical release.
 
+Protected [PR 90](https://github.com/EnjoyableWork/mcp-doctor/pull/90) merged
+the release-state, retry, and runner-tool correction as exact `main`
+[`4aaf3a4`](https://github.com/EnjoyableWork/mcp-doctor/commit/4aaf3a4180c97f8a6b55c90ec3d1f4d82877428f)
+after all 15 exact-head checks passed on their first attempts. The first
+exact-`main` nonpublishing [rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31971756990)
+then failed deterministically because its fixed immutable `v0.1.0` selection
+could not match the rolling Homebrew formula, which correctly represented
+`v0.3.0`. The failed attempt is preserved rather than rerun; `MCPD-031`
+remains in progress while a focused reviewed correction makes one explicitly
+selected current stable version govern every rehearsed public handoff.
+
 `MCPD-032` completed optional runtime ergonomics work for resolved GitHub issue
 #65 under `DEC-055`. Protected [PR 85](https://github.com/EnjoyableWork/mcp-doctor/pull/85),
 exact implementation head [`565ece0`](https://github.com/EnjoyableWork/mcp-doctor/commit/565ece032b637374e770a092219f346de63238d9),
