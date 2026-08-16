@@ -139,3 +139,13 @@ the fixed `v0.1.0` selection no longer matched the rolling Homebrew formula,
 which correctly represented `v0.3.0`. This is a deterministic stale-contract
 failure, not availability variance; it must be corrected on new reviewed
 source and must never be accepted through a rerun.
+
+Focused [PR 91](https://github.com/EnjoyableWork/mcp-doctor/pull/91) corrected
+the selector on new source. Its first-attempt exact-head CI, CodeQL, and release
+preflight passed, and exact `main` commit
+[`f897049`](https://github.com/EnjoyableWork/mcp-doctor/commit/f8970496e416d85f17a018a3bcae262518418581)
+then passed first-attempt [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31972737294),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31972737006),
+[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31972737323),
+and the protected nonpublishing [release and OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31972748664).
+No failed workflow, test, job, publication, or integrity operation was retried.
