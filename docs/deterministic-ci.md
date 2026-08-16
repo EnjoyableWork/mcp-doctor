@@ -127,7 +127,15 @@ claim may satisfy that gate.
 `MCPD-031` completion additionally requires the enforced zero-positive-retry
 and zero-release-sleep inventories, checkout-to-verifier coverage, complete
 local gates, first-attempt exact-head hosted checks, and one successful
-`workflow_dispatch` rehearsal of the immutable `v0.1.0` GitHub, Cargo,
-Homebrew, provenance, and OIDC handoffs. That rehearsal has no tag, release,
-crate, formula, or stored-credential write path. Existing immutable release
-bytes and their historical source trees remain unchanged.
+`workflow_dispatch` rehearsal of one explicitly selected immutable stable
+version represented identically by the current GitHub, Cargo, and Homebrew
+source channels, plus its provenance and OIDC handoffs. That rehearsal has no
+tag, release, crate, formula, or stored-credential write path. Existing
+immutable release bytes and their historical source trees remain unchanged.
+
+The first exact-`main` attempt on 2026-08-16 is preserved as failed
+[run 31971756990](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31971756990):
+the fixed `v0.1.0` selection no longer matched the rolling Homebrew formula,
+which correctly represented `v0.3.0`. This is a deterministic stale-contract
+failure, not availability variance; it must be corrected on new reviewed
+source and must never be accepted through a rerun.

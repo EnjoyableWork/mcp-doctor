@@ -259,21 +259,24 @@ Before any later tag is allowed, run these workflows from their exact default
 branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
-   `0.1.0`. It reuses the existing immutable release, compares the real Cargo
-   and Homebrew bytes, rejects synthetic provenance and mutated byte fixtures,
-   obtains and revokes one short-lived token through the authorized workflow
-   and environment, and proves the same workflow is rejected without the
-   environment. No publish command exists in the authorization job.
+   currently represented identically across GitHub Releases, Cargo, and Homebrew
+   (`0.3.0` at this review). It reuses that existing immutable release, compares
+   the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
+   byte fixtures, obtains and revokes one short-lived token through the
+   authorized workflow and environment, and proves the same workflow is
+   rejected without the environment. No publish command exists in the authorization job.
+   An older version is not a valid current-channel rehearsal after the rolling
+   Homebrew formula advances.
 2. Dispatch `Verify crates.io workflow authorization boundary`. Approve the
    same environment and require crates.io to reject it because its workflow
    filename is not `release.yml`.
 3. Dispatch the tap's `Publish verified mcp-doctor formula` workflow with
-   version `0.1.0` and `rehearse` mode. The write-capable job is structurally
-   skipped; immutable, provenance, checksum, formula, and negative mismatch
-   checks still run.
-4. Dispatch `Verify published release channels` for `0.1.0`. This confirms the
-   generalized verifier remains credential-free and all existing public
-   channel bytes and installed diagnostic smokes still pass.
+   the same selected version and `rehearse` mode. The write-capable job is
+   structurally skipped; immutable, provenance, checksum, formula, and negative
+   mismatch checks still run.
+4. Dispatch `Verify published release channels` for the same selected version.
+   This confirms the generalized verifier remains credential-free and all
+   existing public channel bytes and installed diagnostic smokes still pass.
 
 `PROJECT.md` records the initial four successful run links, exact
 environment-policy readback, and trusted-publisher readback. Repeat and record
