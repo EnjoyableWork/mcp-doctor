@@ -1,16 +1,21 @@
 # MCPD-035 Agent Skill evidence
 
-Status: in progress as of 2026-08-17. The host observations below ran on
-2026-08-16 and are scoped to the exact `mcp-doctor` `0.3.2` source and canonical
-Agent Skill whose SHA-256 is
+Status: implementation and publication complete on 2026-08-17; ticket closure
+remains in progress until the advanced `0.3.2` rehearsal default passes on
+protected `main`. The host observations below ran on 2026-08-16 and are scoped
+to the exact `mcp-doctor` `0.3.2` source and canonical Agent Skill whose SHA-256 is
 `f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51`.
 This is not a universal agent-compatibility, deterministic model-correctness,
-or adoption claim. Publication and represented installed-channel evidence
-remain required before `MCPD-035` can close.
+or adoption claim. The only host support claim established here is the exact
+Codex CLI `0.147.0` route described below.
 
 Protected [PR 95](https://github.com/EnjoyableWork/mcp-doctor/pull/95)
-starts from exact implementation head
-[`3f4c422`](https://github.com/EnjoyableWork/mcp-doctor/commit/3f4c4226813b313eba85baee25d1a0f65e659798).
+contains exact implementation head
+[`3f4c422`](https://github.com/EnjoyableWork/mcp-doctor/commit/3f4c4226813b313eba85baee25d1a0f65e659798),
+retains the focused Windows correction at
+[`c27b82a`](https://github.com/EnjoyableWork/mcp-doctor/commit/c27b82a41e4ae60d6ad882fbfaf4e85b47bc4d4a),
+and merged as exact release source
+[`d117cf4`](https://github.com/EnjoyableWork/mcp-doctor/commit/d117cf4c7cbbd5bfb6dd43c01af2607ae64cc1d2).
 
 ## Repository-controlled evidence
 
@@ -54,6 +59,49 @@ all portable assertions on every host and restricts only execution of the two
 POSIX verification scripts to Unix, without adding WSL, Git Bash, a runner-tool
 assumption, or a weaker product contract.
 
+The corrected exact head passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994756702),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994753470),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994756706).
+Exact release source `d117cf4` then passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534219),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534040),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534224)
+on protected `main`.
+
+## Immutable release and installed-channel evidence
+
+Before tagging, the protected nonpublishing
+[release and OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996320198),
+[wrong-workflow OIDC rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996322032),
+tap-owned [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31996325240),
+and existing-version [ten-job channel rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996323697)
+all passed. Credential inventories before and after found no crates.io token,
+release-workflow secret reference, or stored source or tap release-environment
+secret.
+
+The signed annotated `v0.3.2` tag identifies exact `d117cf4`. The protected
+[release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996837111)
+published and reverified an immutable eight-asset
+[GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.2)
+plus the byte-identical crates.io package through short-lived OIDC. GitHub
+records SHA-256
+`21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341`
+for `mcp-doctor-agent-skill-v0.3.2.tar.gz`; its sole instruction file retains
+the canonical SHA-256 above.
+
+The tap-owned
+[publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31997316851)
+committed only the authenticated formula as
+[`b3bfd0d`](https://github.com/EnjoyableWork/homebrew-tap/commit/b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302).
+Its SHA-256
+`495e791b1fe2142190fa18ea1692367bed713a2b6c7d5ff073745d43017cf18b`
+matches the immutable release asset. The final credential-free
+[ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31997406753)
+passed immutable release, registry, formula, provenance, Agent Skill, installed
+top-level help, two GitHub archive, four Cargo, and three Homebrew checks across
+the represented native hosts.
+
 ## Synthetic forward-tests
 
 Every counted observation used a disposable workspace, the final canonical
@@ -94,8 +142,9 @@ The [public matrix](../agents.md#dated-host-evidence) is the canonical concise
 projection. The implementation review produced these scoped outcomes:
 
 - Codex CLI `0.147.0`: clean discovery, explicit seven-case suite, and one
-  implicit passive observation passed. The public support claim remains pending
-  the immutable `v0.3.2` skill and installed-channel help evidence.
+  implicit passive observation passed. Immutable `v0.3.2` publication and the
+  represented installed-channel help route now establish this exact scoped
+  support claim.
 - Claude Code `2.1.220`: the first clean `--bare`, project-scoped explicit
   `/mcp-doctor` request returned `Unknown command`; the host is not claimed and
   was not rerun into acceptance.
@@ -110,6 +159,5 @@ projection. The implementation review produced these scoped outcomes:
   webhook, heartbeat, App, synthesized skill, persistent lesson, background
   task, unattended workflow, or cross-surface Crew behavior was attempted.
 
-Exact protected-head checks, immutable publication, represented install
-smokes, and final release links will be added only after those external gates
-pass.
+No other host, unattended behavior, independent adoption, or deterministic
+model-correctness claim follows from this completion record.

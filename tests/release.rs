@@ -138,7 +138,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     for contract in [
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
-        "default: 0.3.1",
+        "default: 0.3.2",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
         "published_stable_versions",
@@ -468,7 +468,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "currently represented identically across GitHub Releases, Cargo, and Homebrew"
         )
     );
-    assert!(release.contains("`0.3.1` at this review"));
+    assert!(release.contains("`0.3.2` at this review"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
@@ -494,6 +494,17 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "31985219134",
         "31985523936",
         "31985595470",
+        "d117cf4c7cbbd5bfb6dd43c01af2607ae64cc1d2",
+        "31996320198",
+        "31996322032",
+        "31996325240",
+        "31996323697",
+        "31996837111",
+        "b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302",
+        "31997316851",
+        "31997406753",
+        "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
+        "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
         "passed all ten jobs",
     ] {
         assert!(
@@ -868,7 +879,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
         "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "| Public release | `mcp-doctor` `v0.3.1` — signed annotated tag, immutable GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
+        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
         "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
         "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
         "31755736570",
@@ -1153,7 +1164,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
 
     for contract in [
         "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done |",
-        "| Public release | `mcp-doctor` `v0.3.1` — signed annotated tag, immutable GitHub Release",
+        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",

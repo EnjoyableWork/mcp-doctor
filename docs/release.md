@@ -266,6 +266,42 @@ download, verify, install, discover, and remove the companion explicitly under
 the [coding-agent guide](agents.md). The skill grants no terminal permission or
 active target authority and refuses `check`, `break`, and `reject`.
 
+Protected [PR 95](https://github.com/EnjoyableWork/mcp-doctor/pull/95) merged as
+exact release source
+[`d117cf4`](https://github.com/EnjoyableWork/mcp-doctor/commit/d117cf4c7cbbd5bfb6dd43c01af2607ae64cc1d2).
+That exact `main` commit passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534219),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534040),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534224).
+The required nonpublishing
+[release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996320198),
+[wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996322032),
+tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31996325240),
+and [existing-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996323697)
+also passed before the tag, with clean before-and-after credential inventories.
+
+The signed annotated
+[`v0.3.2` tag](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.2)
+drove the protected
+[release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996837111),
+which published and independently reverified the immutable eight-asset GitHub
+Release and the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.3.2). The portable
+Agent Skill archive has SHA-256
+`21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341`,
+and its canonical `SKILL.md` has SHA-256
+`f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51`.
+
+The tap-owned
+[publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31997316851)
+committed the exact formula as
+[`b3bfd0d`](https://github.com/EnjoyableWork/homebrew-tap/commit/b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302).
+The credential-free
+[channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31997406753)
+then passed all ten jobs: immutable release, registry, formula, provenance, and
+Agent Skill identity; two GitHub archive installs; four native Cargo installs;
+three native Homebrew installs; and the installed top-level help route.
+
 ### GitHub-controlled sequence
 
 Every later release keeps three deliberately separate write boundaries:
@@ -331,7 +367,7 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
    currently represented identically across GitHub Releases, Cargo, and Homebrew
-   (`0.3.1` at this review). It reuses that existing immutable release, compares
+   (`0.3.2` at this review). It reuses that existing immutable release, compares
    the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
    byte fixtures, obtains and revokes one short-lived token through the
    authorized workflow and environment, and proves the same workflow is

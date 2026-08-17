@@ -176,9 +176,15 @@ first-attempt explicit invocation uses a synthetic PATH-preferred
 `mcp-doctor` recorder. A missing, failed, or variant observation withholds that
 host claim; it is not rerun into acceptance.
 
+The only currently supported host route is Codex CLI `0.147.0` paired with the
+exact `mcp-doctor` `0.3.2` CLI and companion skill. That claim is scoped to the
+synthetic passive and refusal observations below plus the immutable and
+represented installed-channel evidence; it is not a claim about later Codex
+versions or independent adoption.
+
 | Host | Exact version | Discovery | Explicit invocation | Implicit observation |
 | --- | --- | --- | --- | --- |
-| Codex CLI | `0.147.0` | 2026-08-16 clean headless discovery pass; release claim pending | Seven explicit synthetic cases passed; release claim pending | Passive case selected the skill and passed; best-effort observation only |
+| Codex CLI | `0.147.0` | 2026-08-16 clean headless discovery passed; exact `0.3.2` route supported | Seven explicit synthetic cases passed; exact `0.3.2` route supported | Passive case selected the skill and passed; best-effort observation only |
 | Claude Code | `2.1.220` | Clean bare `/mcp-doctor` returned `Unknown command` | Variant; not claimed | Not evaluated after explicit variant |
 | Cursor Agent | `2026.05.20-2b5dd59` | First headless invocation required authentication despite successful status | Not reached; not claimed | Not evaluated |
 | VS Code / GitHub Copilot | Not installed on the review host | Not claimed | Not claimed | Not claimed |

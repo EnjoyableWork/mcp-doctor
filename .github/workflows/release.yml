@@ -9,7 +9,7 @@ on:
       rehearsal_version:
         description: Published stable version represented by every public source handoff
         required: true
-        default: 0.3.1
+        default: 0.3.2
         type: string
 
 permissions: {}
