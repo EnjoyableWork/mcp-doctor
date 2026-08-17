@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::error::Error;
 use std::fmt;
 
 use jsonschema::paths::LocationSegment as SchemaLocationSegment;
-use jsonschema::{Retrieve, Uri};
 use serde_json::{Map, Value, json};
 
 use super::http_headers::validate_annotations;
@@ -13,6 +11,9 @@ use super::model::{
     RuleViolation, SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
+use super::schema_budget::{
+    BudgetedValidator, SchemaWorkBudget, SchemaWorkIssue, validate_meta_schema,
+};
 use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
@@ -1253,57 +1254,74 @@ impl Analyzer {
             return;
         }
 
-        let maximum_errors = values.validation_errors;
-        let meta_validator = jsonschema::draft202012::meta::validator();
-        let mut errors = meta_validator.iter_errors(schema).take(
-            usize::try_from(maximum_errors)
-                .unwrap_or(usize::MAX)
-                .saturating_add(1),
-        );
-        let first_error = errors.next();
-        let error_location = first_error.as_ref().map_or_else(
-            || base.clone(),
-            |error| append_schema_error_location(base.clone(), error.instance_path()),
-        );
-        let error_count = if first_error.is_some() {
-            u64::try_from(errors.count())
-                .unwrap_or(u64::MAX)
-                .saturating_add(1)
-        } else {
-            0
-        };
-        if error_count > 0 {
-            self.push(
-                FindingBucket::Schema,
-                Finding::schema_contract_invalid(
-                    SupportedRevision::CURRENT,
-                    error_location,
-                    RuleViolation::InvalidDraft202012 { error_count },
-                ),
-            );
-            if error_count > maximum_errors {
-                self.schema_limit(
-                    base,
-                    LimitKind::ValidationErrors,
-                    error_count,
-                    maximum_errors,
-                );
+        let budget = SchemaWorkBudget::with_observed(values.schema_evaluation_steps, work);
+        match validate_meta_schema(schema, budget.clone(), values.validation_errors) {
+            Ok(()) => {}
+            Err(SchemaWorkIssue::Limit(limit)) => {
+                self.schema_limit(base, limit.kind(), limit.observed(), limit.maximum());
+                return;
             }
-            return;
+            Err(SchemaWorkIssue::Invalid {
+                location,
+                error_count,
+            }) => {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::schema_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        append_schema_error_location(base.clone(), &location),
+                        RuleViolation::InvalidDraft202012 { error_count },
+                    ),
+                );
+                if error_count > values.validation_errors {
+                    self.schema_limit(
+                        base,
+                        LimitKind::ValidationErrors,
+                        error_count,
+                        values.validation_errors,
+                    );
+                }
+                return;
+            }
+            Err(SchemaWorkIssue::UnsupportedPattern { location }) => {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::schema_contract_invalid(
+                        SupportedRevision::CURRENT,
+                        append_schema_error_location(base, &location),
+                        RuleViolation::UnsupportedLinearPattern,
+                    ),
+                );
+                return;
+            }
         }
 
-        if let Err(error) = jsonschema::draft202012::options()
-            .with_retriever(NoExternalRetrieval)
-            .build(schema)
-        {
-            self.push(
-                FindingBucket::Schema,
-                Finding::schema_contract_invalid(
-                    SupportedRevision::CURRENT,
-                    append_schema_error_location(base, error.instance_path()),
-                    RuleViolation::InvalidDraft202012 { error_count: 1 },
-                ),
-            );
+        if let Err(issue) = BudgetedValidator::compile_with_budget(schema, budget) {
+            match issue {
+                SchemaWorkIssue::Limit(limit) => {
+                    self.schema_limit(base, limit.kind(), limit.observed(), limit.maximum());
+                }
+                SchemaWorkIssue::Invalid { location, .. } => {
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::schema_contract_invalid(
+                            SupportedRevision::CURRENT,
+                            append_schema_error_location(base, &location),
+                            RuleViolation::InvalidDraft202012 { error_count: 1 },
+                        ),
+                    );
+                }
+                SchemaWorkIssue::UnsupportedPattern { location } => {
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::schema_contract_invalid(
+                            SupportedRevision::CURRENT,
+                            append_schema_error_location(base, &location),
+                            RuleViolation::UnsupportedLinearPattern,
+                        ),
+                    );
+                }
+            }
         }
     }
 
@@ -1673,15 +1691,21 @@ pub(super) enum InstanceValidationIssue {
 }
 
 pub(super) struct LocalValidator {
-    validator: jsonschema::Validator,
+    validator: BudgetedValidator,
 }
 
 impl LocalValidator {
     pub(super) fn compile(schema: &Value) -> Result<Self, InstanceValidationIssue> {
-        let validator = jsonschema::draft202012::options()
-            .with_retriever(NoExternalRetrieval)
-            .build(schema)
-            .map_err(|_| InstanceValidationIssue::InvalidSchema)?;
+        let maximum = DiagnosticLimits::M1_DEFAULTS
+            .values()
+            .schema_evaluation_steps;
+        let validator =
+            BudgetedValidator::compile(schema, maximum).map_err(|issue| match issue {
+                SchemaWorkIssue::Limit(limit) => InstanceValidationIssue::Limit(limit),
+                SchemaWorkIssue::Invalid { .. } | SchemaWorkIssue::UnsupportedPattern { .. } => {
+                    InstanceValidationIssue::InvalidSchema
+                }
+            })?;
         Ok(Self { validator })
     }
 
@@ -1697,6 +1721,7 @@ impl LocalValidator {
 
         let mut stack = vec![(instance, 0_u64)];
         let mut work = 0_u64;
+        let mut text_work = 0_u64;
         while let Some((value, depth)) = stack.pop() {
             work = work.saturating_add(1);
             if work > values.schema_evaluation_steps {
@@ -1716,6 +1741,13 @@ impl LocalValidator {
                 ));
             }
             match value {
+                Value::String(value) => {
+                    text_work = text_work.saturating_add(
+                        u64::try_from(value.len())
+                            .unwrap_or(u64::MAX)
+                            .saturating_add(1),
+                    );
+                }
                 Value::Array(values) => {
                     stack.extend(
                         values
@@ -1725,6 +1757,13 @@ impl LocalValidator {
                     );
                 }
                 Value::Object(values) => {
+                    for key in values.keys() {
+                        text_work = text_work.saturating_add(
+                            u64::try_from(key.len())
+                                .unwrap_or(u64::MAX)
+                                .saturating_add(1),
+                        );
+                    }
                     stack.extend(
                         values
                             .values()
@@ -1736,22 +1775,24 @@ impl LocalValidator {
             }
         }
 
-        let maximum_errors = values.validation_errors;
-        let error_count = u64::try_from(
-            self.validator
-                .iter_errors(instance)
-                .take(
-                    usize::try_from(maximum_errors)
-                        .unwrap_or(usize::MAX)
-                        .saturating_add(1),
-                )
-                .count(),
-        )
-        .unwrap_or(u64::MAX);
-        if error_count > maximum_errors {
+        let error_count = self
+            .validator
+            .error_count(
+                instance,
+                values.schema_evaluation_steps,
+                work,
+                text_work,
+                values.validation_errors,
+            )
+            .map_err(InstanceValidationIssue::Limit)?;
+        if error_count > values.validation_errors {
             return Err(InstanceValidationIssue::Limit(
-                LimitViolation::new(LimitKind::ValidationErrors, error_count, maximum_errors)
-                    .expect("the validation error count exceeds its checked maximum"),
+                LimitViolation::new(
+                    LimitKind::ValidationErrors,
+                    error_count,
+                    values.validation_errors,
+                )
+                .expect("the validation error count exceeds its checked maximum"),
             ));
         }
         if error_count > 0 {
@@ -2675,6 +2716,7 @@ fn schema_child_location(location: Location, key: &str) -> Location {
     let field = match key {
         "$schema" => Some(LocationField::Schema),
         "type" => Some(LocationField::Type),
+        "pattern" => Some(LocationField::Pattern),
         "properties" => Some(LocationField::Properties),
         "$defs" => Some(LocationField::Defs),
         "$ref" => Some(LocationField::Ref),
@@ -2886,26 +2928,6 @@ fn collect_local_references(
             Value::Array(values) => stack.extend(values),
             _ => {}
         }
-    }
-}
-
-#[derive(Debug)]
-struct RetrievalDisabled;
-
-impl fmt::Display for RetrievalDisabled {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("external JSON Schema retrieval is disabled")
-    }
-}
-
-impl Error for RetrievalDisabled {}
-
-#[derive(Debug)]
-struct NoExternalRetrieval;
-
-impl Retrieve for NoExternalRetrieval {
-    fn retrieve(&self, _uri: &Uri<String>) -> Result<Value, Box<dyn Error + Send + Sync>> {
-        Err(Box::new(RetrievalDisabled))
     }
 }
 

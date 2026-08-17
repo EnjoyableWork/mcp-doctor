@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CURRENT_RELEASE_VERSION: &str = "0.3.2";
+const CANDIDATE_RELEASE_VERSION: &str = "0.3.3";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,7 +57,7 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.3.2\"",
+        "version = \"0.3.3\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.bestpractices.json\"",
@@ -393,6 +393,9 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v0.1.1", "0.1.1", "0.1.0"],
         &["future", "v0.1.1", "0.1.1", "0.1.0", "0.1.1"],
         &["future", "v0.2.0", "0.2.0", "0.1.0", "0.1.9"],
+        &[
+            "future", "v0.3.3", "0.3.3", "0.1.0", "0.2.0", "0.3.0", "0.3.1", "0.3.2",
+        ],
         &["future", "v1.0.0", "1.0.0", "0.1.0", "0.99.99"],
         &[
             "future",
@@ -416,6 +419,7 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v0.0.9", "0.0.9", "0.1.0"],
         &["future", "v0.1.1", "0.1.2", "0.1.0"],
         &["future", "v0.1.1", "0.1.1", "0.2.0"],
+        &["future", "v0.3.3", "0.3.3", "0.3.4"],
         &["future", "0.1.1", "0.1.1", "0.1.0"],
         &["future", "v01.2.3", "01.2.3", "0.1.0"],
         &["future", "v1.2.3-rc.1", "1.2.3-rc.1", "0.1.0"],
@@ -452,7 +456,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let retained_notes = repository_file("docs/releases/v0.2.0.md");
     let expanded_notes = repository_file("docs/releases/v0.3.0.md");
     let security_notes = repository_file("docs/releases/v0.3.1.md");
-    let current_notes = repository_file("docs/releases/v0.3.2.md");
+    let agent_notes = repository_file("docs/releases/v0.3.2.md");
+    let current_notes = repository_file("docs/releases/v0.3.3.md");
     let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
@@ -472,7 +477,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents `mcp-doctor` `0.3.2`",
+        "This source tree represents the `mcp-doctor` `0.3.3` release candidate",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -567,10 +572,28 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "cargo install mcp-doctor --version '=0.3.2' --locked",
     ] {
         assert!(
-            current_notes.contains(contract),
+            agent_notes.contains(contract),
             "v0.3.2 release notes should preserve {contract}"
         );
     }
+    for contract in [
+        "security patch",
+        "Fragmented request-scoped SSE",
+        "schema_evaluation_steps",
+        "unsupported_linear_pattern",
+        "separate advisory\nrecords",
+        "post-publication closure update",
+        "cargo install mcp-doctor --version '=0.3.3' --locked",
+    ] {
+        assert!(
+            current_notes.contains(contract),
+            "v0.3.3 release notes should preserve {contract}"
+        );
+    }
+    assert!(
+        !current_notes.contains("/security/advisories/GHSA-"),
+        "an unpublished candidate must not expose active advisory identifiers"
+    );
     for contract in [
         "MCPD-034 coordinated security-release record",
         "MCPD-034-SECURITY-20260817-02",
@@ -1171,7 +1194,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done |",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done; `MCPD-036` is an in-progress security correction |",
         "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
@@ -1727,7 +1750,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "This source tree represents `0.3.2`",
+        "This source tree represents `0.3.3`",
         "a version\nis publicly available only when its canonical GitHub Release and channel\nevidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
@@ -1739,7 +1762,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.2 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.3 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -2406,5 +2429,5 @@ fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[Pa
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.2");
+    assert_eq!(CANDIDATE_RELEASE_VERSION, "0.3.3");
 }

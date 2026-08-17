@@ -45,7 +45,7 @@ supply_hash() {
 if ! jq -e '
   .schema_version == "mcp-doctor.supply-chain-controls/v1" and
   .api_version == "2026-03-10" and
-  .reviewed_on == "2026-08-13" and
+  .reviewed_on == "2026-08-17" and
   .repository == "EnjoyableWork/mcp-doctor" and
   .default_branch == "main" and
   .dependency_updates.auto_merge == false and
@@ -53,7 +53,7 @@ if ! jq -e '
   .dependency_updates.locked_graph == true and
   (.dependency_updates.ecosystems | map(.name)) == ["cargo", "github-actions"] and
   (.dependency_updates.review_dimensions | length) == 12 and
-  (.direct_dependencies | length) == 12 and
+  (.direct_dependencies | length) == 16 and
   all(.direct_dependencies[];
     (.scope == "runtime" or .scope == "development") and
     (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and

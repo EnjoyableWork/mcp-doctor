@@ -44,11 +44,13 @@ fn main() -> ExitCode {
         Some("catalog-duplicate") => catalog_duplicate(),
         Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
         Some("schema-invalid") => schema_invalid(),
+        Some("schema-unsupported-pattern") => schema_unsupported_pattern(),
         Some("schema-external") => schema_external(&remaining),
         Some("schema-depth-limit") => schema_depth_limit(),
         Some("schema-node-limit") => schema_node_limit(),
         Some("schema-ref-depth-limit") => schema_ref_depth_limit(),
         Some("schema-evaluation-limit") => schema_evaluation_limit(),
+        Some("schema-validator-work-limit") => schema_validator_work_limit(),
         Some("schema-error-limit") => schema_error_limit(),
         Some("catalog-item-limit") => catalog_item_limit(),
         Some("report-finding-limit") => report_finding_limit(),
@@ -84,6 +86,8 @@ fn main() -> ExitCode {
         Some("active-report-single-run") => active_report_single_run(&remaining),
         Some("active-output-instance-depth") => active_output_instance_depth(),
         Some("active-output-evaluation-limit") => active_output_evaluation_limit(),
+        Some("active-input-evaluation-limit") => active_input_evaluation_limit(),
+        Some("active-input-pattern-evaluation-limit") => active_input_pattern_evaluation_limit(),
         Some("active-mismatch-continue") => active_mismatch_continue(&remaining),
         Some("active-input-required") => active_input_required(),
         Some("active-tool-rejection") => active_tool_rejection(&remaining),
@@ -115,7 +119,7 @@ fn main() -> ExitCode {
         Some("break-impossible") => break_impossible(),
         Some("break-schema-external") => break_schema_external(),
         Some("break-oversized-input") => break_oversized_input(),
-        Some("break-aggregate-input") => break_aggregate_input(),
+        Some("break-shared-schema-input") => break_shared_schema_input(),
         Some("break-generation-steps") => break_generation_steps(),
         Some("break-resistant-child") => break_resistant_child(&remaining),
         Some("reject-success") => reject_success(&remaining),
@@ -1081,6 +1085,19 @@ fn schema_invalid() -> ExitCode {
     )
 }
 
+fn schema_unsupported_pattern() -> ExitCode {
+    let result = single_tool_result(json!({
+        "type": "object",
+        "properties": {
+            "synthetic-private-property-never-report-7f2c": {
+                "type": "string",
+                "pattern": "^(?!private)"
+            }
+        }
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
 fn snapshot_correlation() -> ExitCode {
     const EXCLUDED: &str = "synthetic-snapshot-excluded-never-persist-36";
 
@@ -1252,6 +1269,17 @@ fn schema_evaluation_limit() -> ExitCode {
     serve_single_catalog_value("tools", "tools/list", result)
 }
 
+fn schema_validator_work_limit() -> ExitCode {
+    let properties = (0..4_096)
+        .map(|index| (format!("synthetic_{index:04}"), json!({"type": "string"})))
+        .collect::<serde_json::Map<_, _>>();
+    let result = single_tool_result(json!({
+        "type": "object",
+        "properties": properties
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
 fn schema_error_limit() -> ExitCode {
     let invalid = (0..101)
         .map(|_| json!({"type": "synthetic-secret-type-never-report-7f2c"}))
@@ -1373,6 +1401,49 @@ fn active_output_instance_depth() -> ExitCode {
 
 fn active_output_evaluation_limit() -> ExitCode {
     active_single_structured_result(json!({"values": vec![Value::Null; 100_001]}))
+}
+
+fn active_input_evaluation_limit() -> ExitCode {
+    let branches = (0..64)
+        .map(|value| json!({"const": value}))
+        .collect::<Vec<_>>();
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "sequence": {
+                    "type": "array",
+                    "items": {"allOf": branches}
+                }
+            },
+            "required": ["sequence"],
+            "additionalProperties": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn active_input_pattern_evaluation_limit() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    active_begin_with_input_schema(
+        &mut input,
+        json!({
+            "type": "object",
+            "properties": {
+                "sequence": {
+                    "type": "string",
+                    "pattern": "^(a{1000})+$"
+                }
+            },
+            "required": ["sequence"],
+            "additionalProperties": false
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
 }
 
 fn active_single_structured_result(structured: Value) -> ExitCode {
@@ -2036,8 +2107,11 @@ fn break_oversized_input() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn break_aggregate_input() -> ExitCode {
+fn break_shared_schema_input() -> ExitCode {
     let mut input = io::BufReader::new(io::stdin().lock());
+    // Compilation and validation are each below 100,000 steps in isolation,
+    // but one 90,000-byte string exceeds the operation budget when those
+    // phases are correctly combined. The tool must never be called.
     generated_begin(
         &mut input,
         json!({
@@ -2045,8 +2119,7 @@ fn break_aggregate_input() -> ExitCode {
             "properties": {
                 "synthetic_private_value_never_report": {
                     "type": "string",
-                    "minLength": 100_000,
-                    "maxLength": 100_000
+                    "minLength": 90_000
                 }
             },
             "required": ["synthetic_private_value_never_report"],

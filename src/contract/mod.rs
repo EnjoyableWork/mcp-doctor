@@ -13,6 +13,7 @@ mod model;
 mod protocol;
 mod redaction;
 mod report;
+mod schema_budget;
 mod snapshot;
 
 use crate::transport::ProbeResponse;

@@ -608,7 +608,7 @@ impl FindingCode {
                 "Each nextCursor must advance the catalog or end pagination."
             }
             Self::SchemaContractInvalid => {
-                "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects."
+                "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects whose patterns use the supported linear-time subset."
             }
             Self::UnsupportedSchemaDialect => {
                 "Local schemas must resolve to JSON Schema Draft 2020-12 through the selected revision's default or an exact $schema declaration."
@@ -626,7 +626,7 @@ impl FindingCode {
                 "Every reference must name an existing invoking-process environment value and every argument pointer must target an existing null placeholder."
             }
             Self::ScenarioSchemaInvalid => {
-                "Scenario output schemas must be bounded local JSON Schema Draft 2020-12 objects."
+                "Scenario output schemas must be bounded local JSON Schema Draft 2020-12 objects whose patterns use the supported linear-time subset."
             }
             Self::CaseGenerationFailed => {
                 "The selected input schema must admit at least one bounded object that mcp-doctor.generator/v1 can reproduce."
@@ -740,7 +740,7 @@ impl FindingCode {
                 "Return a new cursor for the next page or omit nextCursor on the final page."
             }
             Self::SchemaContractInvalid => {
-                "Correct the schema at the reported structural location and validate it as Draft 2020-12."
+                "Correct the schema at the reported structural location and validate it as Draft 2020-12; use the supported linear-time subset for patterns."
             }
             Self::UnsupportedSchemaDialect => {
                 "For MCP 2025-06-18, declare the Draft 2020-12 URI; otherwise remove an unsupported declaration only when the selected revision defines that default, or declare Draft 2020-12 explicitly."
@@ -756,7 +756,7 @@ impl FindingCode {
                 "Correct the environment reference or null placeholder, provide the value, and rerun check."
             }
             Self::ScenarioSchemaInvalid => {
-                "Correct or bound the local output schema, then rerun check."
+                "Correct or bound the local output schema, including any unsupported pattern, then rerun check."
             }
             Self::CaseGenerationFailed => {
                 "Expose a bounded object schema with usable const, enum, default, or structural boundaries, or replay reviewed arguments with check."
@@ -933,6 +933,7 @@ pub(super) enum LocationField {
     Schema,
     Vocabulary,
     Type,
+    Pattern,
     Properties,
     Defs,
     Ref,
@@ -1029,6 +1030,7 @@ impl LocationField {
             Self::Schema => "$schema",
             Self::Vocabulary => "$vocabulary",
             Self::Type => "type",
+            Self::Pattern => "pattern",
             Self::Properties => "properties",
             Self::Defs => "$defs",
             Self::Ref => "$ref",
@@ -1335,6 +1337,7 @@ pub(super) enum RuleViolation {
         observed: JsonKind,
     },
     UnsupportedSchemaVocabulary,
+    UnsupportedLinearPattern,
     ExternalSchemaReference,
     UnresolvedLocalReference,
     InvalidDraft202012 {
@@ -1429,6 +1432,7 @@ impl RuleViolation {
             Self::RepeatedCursor => "repeated_cursor",
             Self::UnsupportedSchemaDialect { .. } => "unsupported_schema_dialect",
             Self::UnsupportedSchemaVocabulary => "unsupported_schema_vocabulary",
+            Self::UnsupportedLinearPattern => "unsupported_linear_pattern",
             Self::ExternalSchemaReference => "external_schema_reference",
             Self::UnresolvedLocalReference => "unresolved_local_reference",
             Self::InvalidDraft202012 { .. } => "invalid_draft_2020_12",
@@ -1503,6 +1507,7 @@ impl RuleViolation {
             | Self::DuplicateIdentifier
             | Self::RepeatedCursor
             | Self::UnsupportedSchemaVocabulary
+            | Self::UnsupportedLinearPattern
             | Self::ExternalSchemaReference
             | Self::UnresolvedLocalReference
             | Self::InvalidDraft202012 { .. }

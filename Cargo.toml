@@ -1,6 +1,6 @@
 [package]
 name = "mcp-doctor"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "Diagnose protocol, schema, and runtime failures in MCP servers"
 license = "MIT"
@@ -53,12 +53,18 @@ path = "src/main.rs"
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 clap = { version = "=4.6.6", features = ["derive"] }
 jsonschema = { version = "=0.49.9", default-features = false }
+jsonschema-regex = { version = "=0.49.9", default-features = false }
 libc = { version = "=0.2.189", default-features = false }
 process-wrap = { version = "=9.1.0", default-features = false, features = [
     "job-object",
     "kill-on-drop",
     "process-group",
     "tokio1",
+] }
+referencing = { version = "=0.49.9", default-features = false }
+regex-syntax = { version = "=0.8.11", default-features = false, features = [
+    "std",
+    "unicode",
 ] }
 reqwest = { version = "=0.13.4", default-features = false, features = [
     "rustls-no-provider",

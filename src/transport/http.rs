@@ -1992,41 +1992,29 @@ async fn collect_sse_response(
     limits: HttpLimits,
     response_budget: &mut ResponseBudget,
 ) -> Result<Vec<u8>, HttpFailure> {
-    let mut body = Vec::new();
+    let mut decoder = SseDecoder::new(
+        request_id,
+        allow_empty_priming_event,
+        accept_server_requests,
+        limits,
+        response_budget.message_count,
+    );
     loop {
         match response.body.next_chunk().await? {
             Some(chunk) => {
                 response_budget.observe_output(chunk.len(), limits)?;
-                body.extend_from_slice(&chunk);
-                if let Some((response, message_count)) = parse_sse_events(
-                    &body,
-                    request_id,
-                    allow_empty_priming_event,
-                    accept_server_requests,
-                    limits,
-                    response_budget.message_count,
-                    false,
-                )? {
-                    for _ in 0..message_count {
+                if let Some(response) = decoder.push(&chunk)? {
+                    for _ in 0..decoder.message_count() {
                         response_budget.observe_message(limits)?;
                     }
                     return Ok(response);
                 }
             }
             None => {
-                let Some((response, message_count)) = parse_sse_events(
-                    &body,
-                    request_id,
-                    allow_empty_priming_event,
-                    accept_server_requests,
-                    limits,
-                    response_budget.message_count,
-                    true,
-                )?
-                else {
+                let Some(response) = decoder.finish()? else {
                     return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
                 };
-                for _ in 0..message_count {
+                for _ in 0..decoder.message_count() {
                     response_budget.observe_message(limits)?;
                 }
                 return Ok(response);
@@ -2115,109 +2103,255 @@ fn is_unsupported_protocol_version(
         .unwrap_or(false)
 }
 
-fn parse_sse_events(
-    bytes: &[u8],
+struct SseDecoder {
     request_id: i64,
     allow_empty_priming_event: bool,
     accept_server_requests: bool,
     limits: HttpLimits,
     prior_messages: u64,
-    eof: bool,
-) -> Result<Option<(Vec<u8>, u64)>, HttpFailure> {
-    let text = match std::str::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(error) if !eof && error.error_len().is_none() => return Ok(None),
-        Err(_) => return Err(HttpFailure::Response(ResponseFailure::InvalidSse)),
-    };
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut start = 0;
-    let mut message_count = 0_u64;
-    loop {
-        let remaining = &normalized[start..];
-        let boundary = remaining.find("\n\n");
-        let event = match boundary {
-            Some(index) => &remaining[..index],
-            None if eof && !remaining.is_empty() => remaining,
-            None => {
-                let observed = u64::try_from(remaining.len()).unwrap_or(u64::MAX);
-                if observed > limits.message_bytes {
-                    return Err(HttpFailure::limit(
-                        HttpLimit::MessageBytes,
-                        observed,
-                        limits.message_bytes,
-                    ));
-                }
-                return Ok(None);
+    line: Vec<u8>,
+    event_bytes: u64,
+    event_has_lines: bool,
+    data: Vec<u8>,
+    has_data: bool,
+    data_all_empty: bool,
+    id_nonempty: bool,
+    pending_cr: bool,
+    message_count: u64,
+    #[cfg(test)]
+    scanned_bytes: u64,
+    #[cfg(test)]
+    line_bytes_processed: u64,
+    #[cfg(test)]
+    payload_bytes_parsed: u64,
+    #[cfg(test)]
+    peak_retained_bytes: u64,
+}
+
+impl SseDecoder {
+    fn new(
+        request_id: i64,
+        allow_empty_priming_event: bool,
+        accept_server_requests: bool,
+        limits: HttpLimits,
+        prior_messages: u64,
+    ) -> Self {
+        Self {
+            request_id,
+            allow_empty_priming_event,
+            accept_server_requests,
+            limits,
+            prior_messages,
+            line: Vec::new(),
+            event_bytes: 0,
+            event_has_lines: false,
+            data: Vec::new(),
+            has_data: false,
+            data_all_empty: true,
+            id_nonempty: false,
+            pending_cr: false,
+            message_count: 0,
+            #[cfg(test)]
+            scanned_bytes: 0,
+            #[cfg(test)]
+            line_bytes_processed: 0,
+            #[cfg(test)]
+            payload_bytes_parsed: 0,
+            #[cfg(test)]
+            peak_retained_bytes: 0,
+        }
+    }
+
+    fn push(&mut self, bytes: &[u8]) -> Result<Option<Vec<u8>>, HttpFailure> {
+        for &byte in bytes {
+            #[cfg(test)]
+            {
+                self.scanned_bytes = self.scanned_bytes.saturating_add(1);
             }
-        };
-        let event_bytes = u64::try_from(event.len()).unwrap_or(u64::MAX);
-        if event_bytes > limits.message_bytes {
+            if self.pending_cr {
+                self.pending_cr = false;
+                if let Some(response) = self.finish_line()? {
+                    return Ok(Some(response));
+                }
+                if byte == b'\n' {
+                    continue;
+                }
+            }
+            match byte {
+                b'\r' => self.pending_cr = true,
+                b'\n' => {
+                    if let Some(response) = self.finish_line()? {
+                        return Ok(Some(response));
+                    }
+                }
+                _ => {
+                    self.line.push(byte);
+                    self.observe_current_event_size()?;
+                    self.observe_retained();
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn finish(&mut self) -> Result<Option<Vec<u8>>, HttpFailure> {
+        if self.pending_cr {
+            self.pending_cr = false;
+            if let Some(response) = self.finish_line()? {
+                return Ok(Some(response));
+            }
+        }
+        if !self.line.is_empty()
+            && let Some(response) = self.finish_line()?
+        {
+            return Ok(Some(response));
+        }
+        if self.event_has_lines {
+            self.dispatch_event()
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn message_count(&self) -> u64 {
+        self.message_count
+    }
+
+    fn observe_current_event_size(&self) -> Result<(), HttpFailure> {
+        let separator = u64::from(self.event_has_lines && !self.line.is_empty());
+        let line_bytes = u64::try_from(self.line.len()).unwrap_or(u64::MAX);
+        let observed = self
+            .event_bytes
+            .saturating_add(separator)
+            .saturating_add(line_bytes);
+        if observed > self.limits.message_bytes {
             return Err(HttpFailure::limit(
                 HttpLimit::MessageBytes,
-                event_bytes,
-                limits.message_bytes,
+                observed,
+                self.limits.message_bytes,
             ));
         }
-        let data = event
-            .split('\n')
-            .filter(|line| !line.starts_with(':'))
-            .filter_map(|line| {
-                let (field, value) = line.split_once(':').unwrap_or((line, ""));
-                (field == "data").then(|| value.strip_prefix(' ').unwrap_or(value))
-            })
-            .collect::<Vec<_>>();
-        if !data.is_empty() {
-            message_count = message_count.saturating_add(1);
-            let observed_messages = prior_messages.saturating_add(message_count);
-            if observed_messages > limits.message_count {
-                return Err(HttpFailure::limit(
-                    HttpLimit::MessageCount,
-                    observed_messages,
-                    limits.message_count,
-                ));
-            }
-            let priming_event = allow_empty_priming_event
-                && data.iter().all(|value| value.is_empty())
-                && event.lines().any(|line| {
-                    line.split_once(':').is_some_and(|(field, value)| {
-                        field == "id" && !value.strip_prefix(' ').unwrap_or(value).is_empty()
-                    })
-                });
-            if priming_event {
-                match boundary {
-                    Some(index) => start = start.saturating_add(index).saturating_add(2),
-                    None => return Ok(None),
+        Ok(())
+    }
+
+    fn finish_line(&mut self) -> Result<Option<Vec<u8>>, HttpFailure> {
+        if self.line.is_empty() {
+            return self.dispatch_event();
+        }
+        #[cfg(test)]
+        {
+            self.line_bytes_processed = self
+                .line_bytes_processed
+                .saturating_add(u64::try_from(self.line.len()).unwrap_or(u64::MAX));
+        }
+        let separator = u64::from(self.event_has_lines);
+        self.event_bytes = self
+            .event_bytes
+            .saturating_add(separator)
+            .saturating_add(u64::try_from(self.line.len()).unwrap_or(u64::MAX));
+        if self.event_bytes > self.limits.message_bytes {
+            return Err(HttpFailure::limit(
+                HttpLimit::MessageBytes,
+                self.event_bytes,
+                self.limits.message_bytes,
+            ));
+        }
+        self.event_has_lines = true;
+        let line = std::str::from_utf8(&self.line)
+            .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
+        if !line.starts_with(':') {
+            let (field, value) = line.split_once(':').unwrap_or((line, ""));
+            let value = value.strip_prefix(' ').unwrap_or(value);
+            if field == "data" {
+                if self.has_data {
+                    self.data.push(b'\n');
                 }
-                continue;
+                self.data.extend_from_slice(value.as_bytes());
+                self.has_data = true;
+                self.data_all_empty &= value.is_empty();
+            } else if field == "id" && !value.is_empty() {
+                self.id_nonempty = true;
             }
-            let payload = data.join("\n");
-            let value: Value = serde_json::from_str(&payload)
-                .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
-            let object = value
-                .as_object()
-                .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
-            if object.get("method").is_some() {
-                if object.contains_key("result")
-                    || object.contains_key("error")
-                    || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
-                {
+        }
+        self.line.clear();
+        self.observe_retained();
+        Ok(None)
+    }
+
+    fn dispatch_event(&mut self) -> Result<Option<Vec<u8>>, HttpFailure> {
+        if !self.has_data {
+            self.reset_event();
+            return Ok(None);
+        }
+        self.message_count = self.message_count.saturating_add(1);
+        let observed_messages = self.prior_messages.saturating_add(self.message_count);
+        if observed_messages > self.limits.message_count {
+            return Err(HttpFailure::limit(
+                HttpLimit::MessageCount,
+                observed_messages,
+                self.limits.message_count,
+            ));
+        }
+        if self.allow_empty_priming_event && self.data_all_empty && self.id_nonempty {
+            self.reset_event();
+            return Ok(None);
+        }
+
+        let payload = std::mem::take(&mut self.data);
+        #[cfg(test)]
+        {
+            self.payload_bytes_parsed = self
+                .payload_bytes_parsed
+                .saturating_add(u64::try_from(payload.len()).unwrap_or(u64::MAX));
+        }
+        let value: Value = serde_json::from_slice(&payload)
+            .map_err(|_| HttpFailure::Response(ResponseFailure::InvalidSse))?;
+        let object = value
+            .as_object()
+            .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
+        if object.get("method").is_some() {
+            if object.contains_key("result")
+                || object.contains_key("error")
+                || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+            {
+                return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
+            }
+            if object.contains_key("id") {
+                if !self.accept_server_requests || !valid_server_request(object) {
                     return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
                 }
-                if object.contains_key("id") {
-                    if !accept_server_requests || !valid_server_request(object) {
-                        return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
-                    }
-                    return Ok(Some((payload.into_bytes(), message_count)));
-                }
-            } else {
-                validate_json_response(payload.as_bytes(), request_id, false)?;
-                return Ok(Some((payload.into_bytes(), message_count)));
+                return Ok(Some(payload));
             }
+        } else {
+            validate_json_response(&payload, self.request_id, false)?;
+            return Ok(Some(payload));
         }
-        match boundary {
-            Some(index) => start = start.saturating_add(index).saturating_add(2),
-            None => return Ok(None),
-        }
+        self.reset_event();
+        Ok(None)
+    }
+
+    fn reset_event(&mut self) {
+        self.event_bytes = 0;
+        self.event_has_lines = false;
+        // Drop capacity retained from consumed comments, priming material, and
+        // notifications. A later event cannot make the decoder retain both a
+        // prior event's allocation and its own bounded payload allocation.
+        self.line = Vec::new();
+        self.data = Vec::new();
+        self.has_data = false;
+        self.data_all_empty = true;
+        self.id_nonempty = false;
+        self.observe_retained();
+    }
+
+    #[cfg(not(test))]
+    fn observe_retained(&mut self) {}
+
+    #[cfg(test)]
+    fn observe_retained(&mut self) {
+        let retained =
+            u64::try_from(self.line.len().saturating_add(self.data.len())).unwrap_or(u64::MAX);
+        self.peak_retained_bytes = self.peak_retained_bytes.max(retained);
     }
 }
 
@@ -2255,7 +2389,7 @@ mod tests {
     use super::{
         AddressClass, BodyFuture, Connector, ConnectorRequest, ConnectorResponse, HttpFailure,
         HttpLimit, HttpLimits, HttpTarget, HttpTransport, RemoteOptions, ResolutionFailure,
-        Resolver, ResponseBody, ResponseFailure, TargetFailure, classify_address,
+        Resolver, ResponseBody, ResponseFailure, SseDecoder, TargetFailure, classify_address,
         collect_resolver_addresses, connection_candidates, encode_mcp_value,
         is_unsupported_protocol_version, parse_endpoint, read_trust_file,
         remaining_connection_time, reserved_field, valid_bearer_token, valid_custom_value,
@@ -3244,6 +3378,159 @@ mod tests {
             "2026-07-28",
             32,
         ));
+    }
+
+    fn decode_sse_fixture(
+        body: &[u8],
+        widths: &[usize],
+        allow_empty_priming_event: bool,
+        accept_server_requests: bool,
+        limits: HttpLimits,
+    ) -> (Result<Option<Vec<u8>>, HttpFailure>, SseDecoder) {
+        assert!(!widths.is_empty());
+        assert!(widths.iter().all(|width| *width > 0));
+        let mut decoder = SseDecoder::new(
+            7,
+            allow_empty_priming_event,
+            accept_server_requests,
+            limits,
+            0,
+        );
+        let mut offset = 0;
+        let mut width_index = 0;
+        while offset < body.len() {
+            let end = offset
+                .saturating_add(widths[width_index % widths.len()])
+                .min(body.len());
+            match decoder.push(&body[offset..end]) {
+                Ok(Some(response)) => return (Ok(Some(response)), decoder),
+                Ok(None) => {}
+                Err(error) => return (Err(error), decoder),
+            }
+            offset = end;
+            width_index = width_index.saturating_add(1);
+        }
+        let result = decoder.finish();
+        (result, decoder)
+    }
+
+    #[test]
+    fn incremental_sse_decoding_is_fragmentation_invariant_and_linear() {
+        let expected = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"label\":\"snowman ☃\"}}";
+        let mut body = concat!(
+            ": synthetic comment ☃\r\n",
+            "id: synthetic-priming\r",
+            "data:\r\n",
+            "\r\n",
+            "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
+            "data: "
+        )
+        .as_bytes()
+        .to_vec();
+        body.extend_from_slice(expected.as_bytes());
+
+        for widths in [vec![body.len()], vec![2, 7, 1, 11, 3, 5], vec![1]] {
+            let (result, decoder) = decode_sse_fixture(&body, &widths, true, false, limits());
+            assert_eq!(result, Ok(Some(expected.as_bytes().to_vec())));
+            assert_eq!(decoder.message_count(), 3);
+            assert_eq!(decoder.scanned_bytes, u64::try_from(body.len()).unwrap());
+            let parser_work = decoder
+                .scanned_bytes
+                .saturating_add(decoder.line_bytes_processed)
+                .saturating_add(decoder.payload_bytes_parsed);
+            assert!(
+                parser_work <= u64::try_from(body.len()).unwrap().saturating_mul(3),
+                "parser work {parser_work} exceeded the fixed linear factor"
+            );
+            assert!(decoder.peak_retained_bytes <= limits().message_bytes);
+            assert!(decoder.line.is_empty());
+            assert!(decoder.data.is_empty());
+        }
+    }
+
+    #[test]
+    fn incremental_sse_failures_and_server_requests_are_fragmentation_invariant() {
+        let incomplete_utf8 = b"data: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\"\xe2\x98";
+        for widths in [vec![incomplete_utf8.len()], vec![3, 1, 2], vec![1]] {
+            let (result, _) = decode_sse_fixture(incomplete_utf8, &widths, false, false, limits());
+            assert_eq!(
+                result,
+                Err(HttpFailure::Response(ResponseFailure::InvalidSse))
+            );
+        }
+
+        let invalid_json_rpc = b"data: synthetic-invalid-json\n\n";
+        for widths in [vec![invalid_json_rpc.len()], vec![4, 1, 7], vec![1]] {
+            let (result, _) = decode_sse_fixture(invalid_json_rpc, &widths, false, false, limits());
+            assert_eq!(
+                result,
+                Err(HttpFailure::Response(ResponseFailure::InvalidSse))
+            );
+        }
+
+        let mut comments = b":".to_vec();
+        comments.extend(std::iter::repeat_n(b'x', 4_096));
+        comments.extend_from_slice(b"\r\n\r\n");
+        for widths in [vec![comments.len()], vec![19, 2, 5], vec![1]] {
+            let (result, decoder) = decode_sse_fixture(&comments, &widths, false, false, limits());
+            assert_eq!(result, Ok(None));
+            assert_eq!(
+                decoder.scanned_bytes,
+                u64::try_from(comments.len()).unwrap()
+            );
+            assert_eq!(decoder.line.capacity(), 0);
+            assert_eq!(decoder.data.capacity(), 0);
+        }
+
+        let mut event_limits = limits();
+        event_limits.message_bytes = 5;
+        for widths in [vec![6], vec![2, 1], vec![1]] {
+            let (result, _) = decode_sse_fixture(b":12345", &widths, false, false, event_limits);
+            assert_eq!(
+                result,
+                Err(HttpFailure::Limit {
+                    kind: HttpLimit::MessageBytes,
+                    observed: 6,
+                    maximum: 5,
+                })
+            );
+        }
+
+        let events = concat!(
+            "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
+            "data: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\n\n"
+        );
+        let mut message_limits = limits();
+        message_limits.message_count = 1;
+        for widths in [vec![events.len()], vec![5, 2, 9], vec![1]] {
+            let (result, _) =
+                decode_sse_fixture(events.as_bytes(), &widths, false, false, message_limits);
+            assert_eq!(
+                result,
+                Err(HttpFailure::Limit {
+                    kind: HttpLimit::MessageCount,
+                    observed: 2,
+                    maximum: 1,
+                })
+            );
+        }
+
+        let server_request =
+            b"data: {\"jsonrpc\":\"2.0\",\"id\":\"synthetic\",\"method\":\"sampling/createMessage\"}\n\n";
+        let (rejected, _) = decode_sse_fixture(server_request, &[1], false, false, limits());
+        assert_eq!(
+            rejected,
+            Err(HttpFailure::Response(ResponseFailure::InvalidSse))
+        );
+        let (accepted, decoder) = decode_sse_fixture(server_request, &[1], false, true, limits());
+        assert_eq!(
+            accepted,
+            Ok(Some(
+                b"{\"jsonrpc\":\"2.0\",\"id\":\"synthetic\",\"method\":\"sampling/createMessage\"}"
+                    .to_vec()
+            ))
+        );
+        assert_eq!(decoder.message_count(), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]

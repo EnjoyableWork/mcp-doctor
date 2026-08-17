@@ -135,6 +135,20 @@ pub(super) fn generate_inputs(
         return Err(GenerationFailure::Unavailable);
     }
 
+    select_generated_inputs(
+        &candidates,
+        base_seed,
+        case_count,
+        limits.aggregate_output_bytes,
+    )
+}
+
+fn select_generated_inputs(
+    candidates: &[(Value, u64)],
+    base_seed: u64,
+    case_count: usize,
+    maximum_input_bytes: u64,
+) -> Result<Vec<GeneratedInput>, GenerationFailure> {
     let mut aggregate_input_bytes = 0_u64;
     let mut generated = Vec::with_capacity(case_count);
     for index in 0..case_count {
@@ -142,12 +156,12 @@ pub(super) fn generate_inputs(
         let candidate_index = bounded_index(stable_mix(case_seed), candidates.len());
         let (arguments, byte_count) = &candidates[candidate_index];
         aggregate_input_bytes = aggregate_input_bytes.saturating_add(*byte_count);
-        if aggregate_input_bytes > limits.aggregate_output_bytes {
+        if aggregate_input_bytes > maximum_input_bytes {
             return Err(GenerationFailure::Limit(
                 LimitViolation::new(
                     LimitKind::ActiveInputBytes,
                     aggregate_input_bytes,
-                    limits.aggregate_output_bytes,
+                    maximum_input_bytes,
                 )
                 .expect("aggregate generated inputs exceed their maximum"),
             ));
@@ -1206,7 +1220,9 @@ const fn stable_mix(mut value: u64) -> u64 {
 mod tests {
     use serde_json::json;
 
-    use super::{GenerationFailure, generate_inputs, generate_invalid_inputs};
+    use super::{
+        GenerationFailure, generate_inputs, generate_invalid_inputs, select_generated_inputs,
+    };
     use crate::contract::catalog::{InstanceValidationIssue, LocalValidator};
     use crate::contract::limits::LimitKind;
 
@@ -1399,6 +1415,29 @@ mod tests {
             generate_inputs(&ordinary, &validator, 1, 101),
             Err(GenerationFailure::Limit(violation))
                 if violation.kind() == LimitKind::ActiveCases
+        ));
+    }
+
+    #[test]
+    fn aggregate_generated_input_bytes_stop_before_case_retention() {
+        let maximum = 8_388_608_u64;
+        let case_count = 100_usize;
+        let exact_case_bytes = maximum / u64::try_from(case_count).unwrap();
+        let candidates = vec![(json!({}), exact_case_bytes)];
+        assert_eq!(
+            select_generated_inputs(&candidates, 7, case_count, maximum)
+                .expect("the exact aggregate boundary should remain valid")
+                .len(),
+            case_count
+        );
+
+        let oversized = vec![(json!({}), exact_case_bytes.saturating_add(1))];
+        assert!(matches!(
+            select_generated_inputs(&oversized, 7, case_count, maximum),
+            Err(GenerationFailure::Limit(violation))
+                if violation.kind() == LimitKind::ActiveInputBytes
+                    && violation.observed() > maximum
+                    && violation.maximum() == maximum
         ));
     }
 }

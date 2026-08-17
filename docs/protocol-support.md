@@ -95,3 +95,14 @@ before scenario validation, generation, or a tool call. Missing, malformed,
 unsupported, external, ambiguous, unsupported-vocabulary, or over-limit
 contracts fail closed. An omitted advertised output schema remains optional
 rather than being inferred.
+
+Across supported revisions, schema evaluation uses a bounded linear-time
+regular-expression subset. Patterns requiring backtracking-only constructs,
+including look-around and backreferences, receive the typed
+`unsupported_linear_pattern` diagnostic at their structural location. This is
+a deliberate resource-safety subset of Draft 2020-12 pattern syntax; all
+accepted patterns retain the same local, no-retrieval validation boundary.
+Before matching, the translated pattern's bounded structural complexity,
+including counted-repetition expansion and character-class ranges, is charged
+against all potentially inspected instance text under
+`schema_evaluation_steps`.

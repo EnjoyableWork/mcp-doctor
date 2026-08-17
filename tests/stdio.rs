@@ -866,6 +866,23 @@ fn invalid_and_unsupported_tool_schemas_have_distinct_corrections() {
 }
 
 #[test]
+fn unsupported_backtracking_patterns_receive_a_typed_local_diagnostic() {
+    let output = run_mode("schema-unsupported-pattern");
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-SCHEMA-001"), "{stdout}");
+    assert!(stdout.contains("unsupported_linear_pattern"), "{stdout}");
+    assert!(
+        stdout.contains("tools[0].inputSchema.properties[*].pattern"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("synthetic-private-property"), "{stdout}");
+    assert!(!stdout.contains("?!private"), "{stdout}");
+}
+
+#[test]
 fn external_schema_references_are_rejected_without_retrieval() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a disposable listener should bind");
     listener
@@ -905,6 +922,7 @@ fn schema_depth_and_catalog_item_bounds_stop_with_named_findings() {
         ("schema-node-limit", "schema_nodes"),
         ("schema-ref-depth-limit", "schema_ref_depth"),
         ("schema-evaluation-limit", "schema_evaluation_steps"),
+        ("schema-validator-work-limit", "schema_evaluation_steps"),
         ("schema-error-limit", "validation_errors"),
         ("catalog-item-limit", "catalog_items"),
         ("report-finding-limit", "report_findings"),

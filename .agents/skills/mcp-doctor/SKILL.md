@@ -48,13 +48,13 @@ mcp-doctor --version
 mcp-doctor capabilities --format json
 ```
 
-Continue only with `mcp-doctor 0.3.2` and a capability document whose
+Continue only with `mcp-doctor 0.3.3` and a capability document whose
 `schema_version` is `mcp-doctor.capabilities/v1`, whose product name and version
 match, and whose `inspect` entry says `activity: "passive"`. If the executable is
 missing, the version differs, the document is malformed, or passive inspection
 is not advertised for the selected transport and revision, stop. Point the user
-to the exact `v0.3.2` coding-agent guide at
-`https://github.com/EnjoyableWork/mcp-doctor/blob/v0.3.2/docs/agents.md`. When an
+to the exact `v0.3.3` coding-agent guide at
+`https://github.com/EnjoyableWork/mcp-doctor/blob/v0.3.3/docs/agents.md`. When an
 executable is present, also point to `mcp-doctor --help`; do not install or upgrade software.
 
 For a literal STDIO command and arguments selected by the user or by an exact

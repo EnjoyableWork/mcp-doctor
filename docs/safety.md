@@ -49,6 +49,24 @@ accept them. An invalid name is rejected before target preparation.
   metadata discovery.
 - Hard limits cover time, bytes, messages, schema work, cases, retries,
   redirects, and concurrency.
+- Request-scoped SSE is decoded incrementally. Accepted bytes are scanned in
+  order without reparsing prior chunks; only bounded current-line,
+  current-event, and JSON payload state is retained under the per-message and
+  aggregate-output limits.
+- `schema_evaluation_steps` is one deterministic operation budget spanning the
+  preliminary schema/instance walk, Draft 2020-12 meta-validation, validator
+  construction, local-reference fan-out, and actual instance access. String,
+  pattern, equality, collection, combinator, and uniqueness work either fits
+  that budget or stops with `MCP-LIMIT-001` before the affected tool call.
+- Pattern evaluation uses the validator's linear-time regular-expression
+  engine with fixed 100,000-byte compiled-size and DFA-cache limits. The same
+  ECMA-262 translation is inspected as maintained HIR before construction;
+  counted repetitions, character-class ranges, reachable pattern fan-out, and
+  all potential instance text form a conservative product charged before any
+  match starts. Draft 2020-12 patterns requiring backtracking features such as
+  look-around or backreferences fail locally with the typed
+  `unsupported_linear_pattern` rule; they are never passed to a backtracking
+  engine.
 - Legacy HTTP session IDs come only from initialization, stay bounded and
   run-local, repeat exactly, and receive one bounded teardown. Session loss
   never reinitializes or downgrades; teardown failure stays visible.

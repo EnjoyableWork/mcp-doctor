@@ -1960,6 +1960,25 @@ fn advertised_and_scenario_schemas_are_local_bounded_and_checked_before_activity
     assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
     assert!(stdout.contains("schema_depth"), "{stdout}");
     assert!(stdout.contains("SKIP  runtime.tools.case[0]"), "{stdout}");
+
+    let environment = TestEnvironment::new();
+    let mut document = scenario("read_only", vec![reviewed_case(0, "success")]);
+    document["cases"][0]["expect"]["structured_output_schema"] = json!({
+        "type": "string",
+        "pattern": "a".repeat(100_001)
+    });
+    let path = write_scenario(&environment, "schema-work-before-target.json", &document);
+    let marker = environment.artifact_path("schema-work-target-started");
+    let output = check_command(&environment, &path, TOOL, "active-started-marker")
+        .arg(&marker)
+        .output()
+        .expect("schema work exhaustion should be rejected before target preparation");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
+    assert!(stdout.contains("schema_evaluation_steps"), "{stdout}");
+    assert!(!marker.exists());
 }
 
 #[test]
@@ -2050,6 +2069,93 @@ fn invalid_case_arguments_are_reported_without_calling_the_tool() {
     assert!(stdout.contains("MCP-ACTIVE-002"), "{stdout}");
     assert!(stdout.contains("the case was not called"), "{stdout}");
     assert!(!stdout.contains("private-invalid-value"));
+}
+
+#[test]
+fn schema_operation_exhaustion_stops_before_the_reviewed_tool_call() {
+    let mut case = reviewed_case(0, "success");
+    case["arguments"]["sequence"] =
+        Value::Array((0..2_000).map(|_| json!(999)).collect::<Vec<_>>());
+    let output = run_check(
+        scenario("read_only", vec![case]),
+        "active-input-evaluation-limit",
+    );
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
+    assert!(stdout.contains("schema_evaluation_steps"), "{stdout}");
+    assert!(stdout.contains("FAIL  runtime.tools.case[0]"), "{stdout}");
+    assert_redacted(&output, &[TOOL]);
+
+    let mut pattern_case = reviewed_case(0, "success");
+    pattern_case["arguments"]["sequence"] = Value::String("a".repeat(100));
+    let output = run_check(
+        scenario("read_only", vec![pattern_case]),
+        "active-input-pattern-evaluation-limit",
+    );
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
+    assert!(stdout.contains("schema_evaluation_steps"), "{stdout}");
+    assert!(stdout.contains("FAIL  runtime.tools.case[0]"), "{stdout}");
+    assert_redacted(&output, &[TOOL]);
+
+    let environment = TestEnvironment::new();
+    let mut case = reviewed_case(0, "success");
+    case["arguments"]["sequence"] =
+        Value::Array((0..2_000).map(|_| json!(999)).collect::<Vec<_>>());
+    let path = write_scenario(
+        &environment,
+        "schema-work-artifacts.json",
+        &scenario("read_only", vec![case]),
+    );
+    let json_path = environment.artifact_path("schema-work-report.json");
+    let junit_path = environment.artifact_path("schema-work-report.xml");
+    let output = environment
+        .command()
+        .arg("check")
+        .arg("--scenario")
+        .arg(&path)
+        .arg("--allow-tool")
+        .arg(TOOL)
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("active-input-evaluation-limit")
+        .output()
+        .expect("schema work exhaustion should produce all reports without a tool call");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("schema_evaluation_steps"), "{stdout}");
+
+    let json_report = fs::read(&json_path).expect("the JSON report artifact should exist");
+    assert!(!String::from_utf8_lossy(&json_report).contains(TOOL));
+    let report = parse_and_validate_report(&json_report);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"],
+        "runtime.tools.case[0]"
+    );
+    assert_eq!(
+        report_check(&report, "runtime.tools.case[0]")["findings"][0]["evidence"]["limit"],
+        "schema_evaluation_steps"
+    );
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["exit_code"], 1);
+
+    let junit_report = fs::read(&junit_path).expect("the JUnit report artifact should exist");
+    assert!(!String::from_utf8_lossy(&junit_report).contains(TOOL));
+    let (junit, summary) = parse_and_validate_junit(&junit_report);
+    assert_eq!(summary.failures, 1);
+    assert!(junit.contains("runtime.tools.case[0]"));
+    assert!(junit.contains("schema_evaluation_steps"));
+    assert_redacted(&output, &[TOOL]);
 }
 
 #[test]
