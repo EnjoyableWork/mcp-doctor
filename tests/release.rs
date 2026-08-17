@@ -135,7 +135,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     for contract in [
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
-        "default: 0.3.0",
+        "default: 0.3.1",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
         "published_stable_versions",
@@ -421,6 +421,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let retained_notes = repository_file("docs/releases/v0.2.0.md");
     let expanded_notes = repository_file("docs/releases/v0.3.0.md");
     let current_notes = repository_file("docs/releases/v0.3.1.md");
+    let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -435,7 +436,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "currently represented identically across GitHub Releases, Cargo, and Homebrew"
         )
     );
-    assert!(release.contains("`0.3.0` at this review"));
+    assert!(release.contains("`0.3.1` at this review"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
@@ -457,6 +458,10 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "31756253855",
         "2b62e11902c7461cddbc0b96075e3745fdf6f260",
         "31756413098",
+        "d4db369a2789f7b6f89b2daad4adc1b6f4900f7e",
+        "31985219134",
+        "31985523936",
+        "31985595470",
         "passed all ten jobs",
     ] {
         assert!(
@@ -493,11 +498,27 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "Cleanup and rollback remove only paths",
         "JSON, JUnit, and\naggregate output",
         "Users of `0.2.0` or `0.3.0` should upgrade",
+        "GHSA-92m2-749h-2gv5",
+        "GHSA-8r6p-qf9j-vpvx",
         "cargo install mcp-doctor --version '=0.3.1' --locked",
     ] {
         assert!(
             current_notes.contains(contract),
             "v0.3.1 release notes should preserve {contract}"
+        );
+    }
+    for contract in [
+        "MCPD-034 coordinated security-release record",
+        "MCPD-034-SECURITY-20260817-02",
+        "31981850276",
+        "No unchanged-source workflow",
+        "3aabbbd31b54b81d42531918766a6d2794259fb6",
+        "GHSA-92m2-749h-2gv5",
+        "GHSA-8r6p-qf9j-vpvx",
+    ] {
+        assert!(
+            security_record.contains(contract),
+            "MCPD-034 completion record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
@@ -802,7 +823,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
         "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release, crates.io, `EnjoyableWork/tap/mcp-doctor`, and all ten represented installed-channel jobs verified |",
+        "| Public release | `mcp-doctor` `v0.3.1` — signed annotated tag, immutable GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
         "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
         "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
         "31755736570",
@@ -1087,7 +1108,7 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
 
     for contract in [
         "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done |",
-        "| Public release | `mcp-doctor` `v0.3.0` — immutable GitHub Release",
+        "| Public release | `mcp-doctor` `v0.3.1` — signed annotated tag, immutable GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
@@ -2203,14 +2224,19 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
         .lines()
         .find(|line| line.starts_with("| MCPD-034 |"))
         .expect("PROJECT.md should contain MCPD-034");
-    assert!(identity_correction.contains("| In progress |"));
+    assert!(identity_correction.contains("| Done |"));
     for contract in [
         "DEC-058",
-        "report artifact publication",
-        "opened stage identity before linking",
-        "destination identity immediately afterward",
+        "[PR 92]",
+        "[PR 93]",
+        "31981850276",
+        "d4db369a2789f7b6f89b2daad4adc1b6f4900f7e",
+        "31985219134",
+        "31985523936",
+        "31985595470",
         "no-foreign-delete",
-        "SSE and schema-work drafts",
+        "GHSA-92m2-749h-2gv5",
+        "GHSA-8r6p-qf9j-vpvx",
     ] {
         assert!(
             identity_correction.contains(contract),

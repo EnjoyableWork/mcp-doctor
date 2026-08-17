@@ -195,9 +195,9 @@ and Homebrew identity; two GNU/Linux archive installs; four native Cargo
 installs; and three native Homebrew installs. The release used no test, job,
 workflow, integrity, generation, validation, or publication retry.
 
-## v0.3.1 security patch preparation
+## v0.3.1 coordinated security-patch verification
 
-`v0.3.1` is the coordinated patch candidate for authority-bearing local file
+`v0.3.1` is the coordinated security patch for authority-bearing local file
 reads and report artifact publication. It binds selected scenario, custom-CA,
 snapshot, and aggregate inputs to the exact no-follow regular-file handle that
 is validated and consumed, and it fails closed if the selected path no longer
@@ -210,13 +210,39 @@ handle before linking, the destination must identify it immediately after,
 and cleanup or rollback removes only an identity-owned path. A foreign stage
 or destination is never accepted or deleted.
 
-The candidate preserves every existing endpoint, credential, tool, effect,
+The release preserves every existing endpoint, credential, tool, effect,
 side-effect, schema, byte, redaction, and cleanup gate. It does not add a retry,
 fallback, broader protocol claim, new installation channel, or new native
-binary. `0.2.0` and `0.3.0` remain the affected published versions until the
-immutable `v0.3.1` release, byte-identical Cargo and Homebrew handoffs,
-represented installed-channel verification, and coordinated advisory
-publication are complete.
+binary. Published versions `0.2.0` and `0.3.0` are affected by the
+authority-file issue, and `0.3.0` is affected by the report-publication issue.
+Users should upgrade to `0.3.1` or later.
+
+Exact release commit
+[`d4db369`](https://github.com/EnjoyableWork/mcp-doctor/commit/d4db369a2789f7b6f89b2daad4adc1b6f4900f7e)
+passed first-attempt corrected-source
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532369),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532095),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532388).
+The signed annotated
+[`v0.3.1` tag](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.1)
+then drove the protected
+[release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985219134),
+which published an immutable seven-asset GitHub Release and the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.3.1) through OIDC.
+The tap-owned
+[publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31985523936)
+committed only the verified formula, and the credential-free
+[ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985595470)
+passed every represented Cargo, Homebrew, and GitHub archive install on its
+first attempt.
+
+The coordinated
+[authority-file advisory](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-92m2-749h-2gv5)
+and
+[report-publication advisory](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-8r6p-qf9j-vpvx)
+were published together only after those installed-channel gates completed.
+The non-sensitive merge, correction, release, and restoration record is
+[retained separately](assurance/mcpd-034-security-release.md).
 
 ### GitHub-controlled sequence
 
@@ -283,7 +309,7 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
    currently represented identically across GitHub Releases, Cargo, and Homebrew
-   (`0.3.0` at this review). It reuses that existing immutable release, compares
+   (`0.3.1` at this review). It reuses that existing immutable release, compares
    the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
    byte fixtures, obtains and revokes one short-lived token through the
    authorized workflow and environment, and proves the same workflow is
@@ -294,9 +320,11 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    same environment and require crates.io to reject it because its workflow
    filename is not `release.yml`.
 3. Dispatch the tap's `Publish verified mcp-doctor formula` workflow with
-   the same selected version and `rehearse` mode. The write-capable job is
-   structurally skipped; immutable, provenance, checksum, formula, and negative
-   mismatch checks still run.
+   version `0.1.0` and `rehearse` mode. This retained no-write authorization
+   fixture intentionally reuses the first immutable handoff; the write-capable
+   job is structurally skipped, while immutable, provenance, checksum, formula,
+   and negative mismatch checks still run. Current rolling bytes are covered by
+   the source-repository rehearsal and the channel verifier.
 4. Dispatch `Verify published release channels` for the same selected version.
    This confirms the generalized verifier remains credential-free and all
    existing public channel bytes and installed diagnostic smokes still pass.
