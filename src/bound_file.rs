@@ -411,6 +411,7 @@ mod tests {
         assert_eq!(error.kind(), BoundFileErrorKind::IdentityChanged);
     }
 
+    #[cfg(unix)]
     #[test]
     fn parent_entry_replacement_between_open_and_verification_fails_closed() {
         let root = TempDir::new().expect("a disposable root should be created");
@@ -427,6 +428,37 @@ mod tests {
         let error = BoundFile::open_with_hook(&path, || {
             std::fs::rename(&selected_parent, &retained_parent)?;
             std::fs::rename(&replacement_parent, &selected_parent)
+        })
+        .expect_err("a replaced parent entry must fail identity verification");
+
+        assert_eq!(error.kind(), BoundFileErrorKind::IdentityChanged);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn parent_entry_replacement_between_open_and_verification_fails_closed() {
+        use std::os::windows::fs::symlink_dir;
+
+        let root = TempDir::new().expect("a disposable root should be created");
+        let selected_parent = root.path().join("selected");
+        let original_parent = root.path().join("original");
+        let replacement_parent = root.path().join("replacement");
+        std::fs::create_dir(&original_parent).expect("the original parent should be created");
+        std::fs::create_dir(&replacement_parent).expect("the replacement parent should be created");
+        std::fs::write(original_parent.join("input.json"), b"same bytes")
+            .expect("the selected fixture should be written");
+        std::fs::write(replacement_parent.join("input.json"), b"same bytes")
+            .expect("the replacement fixture should be written");
+        symlink_dir(&original_parent, &selected_parent)
+            .expect("the selected parent link should be created");
+        let path = selected_parent.join("input.json");
+
+        let error = BoundFile::open_with_hook(&path, || {
+            // Rebinding the parent link forces the intended path transition
+            // without relying on Windows to rename a directory that contains
+            // the still-open selected file.
+            std::fs::remove_dir(&selected_parent)?;
+            symlink_dir(&replacement_parent, &selected_parent)
         })
         .expect_err("a replaced parent entry must fail identity verification");
 
