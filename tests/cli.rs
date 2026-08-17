@@ -24,6 +24,11 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("diff"));
     assert!(stdout.contains("aggregate"));
     assert!(stdout.contains("reject"));
+    assert!(stdout.contains(&format!(
+        "Coding agents: https://github.com/EnjoyableWork/mcp-doctor/blob/v{}/docs/agents.md",
+        env!("CARGO_PKG_VERSION")
+    )));
+    assert!(!stdout.contains("configure mcp-doctor as an MCP server"));
 }
 
 #[test]

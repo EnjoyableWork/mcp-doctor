@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CURRENT_RELEASE_VERSION: &str = "0.3.1";
+const CURRENT_RELEASE_VERSION: &str = "0.3.2";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,10 +57,11 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.3.1\"",
+        "version = \"0.3.2\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.bestpractices.json\"",
+        "\"/.agents/skills/**\"",
         "\"/.github/assurance-controls.json\"",
         "\"/.github/community-license-controls.json\"",
         "\"/.github/organization-controls.json\"",
@@ -90,11 +91,13 @@ fn preflight_is_secretless_nonpublishing_and_covers_every_source_host() {
     for contract in [
         "cargo package --locked",
         "scripts/generate-release-channels.sh",
+        "scripts/package-agent-skill.sh",
         "scripts/package-release.sh",
         "scripts/smoke-installed.sh",
         "scripts/smoke-installed.ps1",
         "scripts/smoke-archive.sh",
         "scripts/verify-release-assets.sh",
+        "scripts/verify-agent-skill.sh",
         "scripts/verify-published-release.sh",
         "scripts/rehearse-release-handoffs.sh",
         "synthetic-rehearsal",
@@ -143,6 +146,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         "cargo package --locked",
         "cargo publish --locked --package mcp-doctor",
         "scripts/generate-release-channels.sh",
+        "scripts/package-agent-skill.sh",
         "scripts/create-release-handoff.sh",
         "scripts/verify-release-handoff.sh",
         "scripts/rehearse-release-handoffs.sh",
@@ -260,6 +264,8 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
     let asset_verifier = repository_file("scripts/verify-release-assets.sh");
     let published_verifier = repository_file("scripts/verify-published-release.sh");
     let archive_packager = repository_file("scripts/package-release.sh");
+    let agent_skill_packager = repository_file("scripts/package-agent-skill.sh");
+    let agent_skill_verifier = repository_file("scripts/verify-agent-skill.sh");
     let handoff_creator = repository_file("scripts/create-release-handoff.sh");
     let handoff_verifier = repository_file("scripts/verify-release-handoff.sh");
     let handoff_rehearsal = repository_file("scripts/rehearse-release-handoffs.sh");
@@ -297,6 +303,31 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
     }
     assert!(archive_packager.contains("--sort=name"));
     assert!(archive_packager.contains("gzip -n -9"));
+    for contract in [
+        "mcp-doctor-agent-skill-v${agent_package_version}.tar.gz",
+        "--sort=name",
+        "--format=ustar",
+        "gzip -n -9",
+        "verify-agent-skill.sh",
+    ] {
+        assert!(
+            agent_skill_packager.contains(contract),
+            "Agent Skill packager should enforce {contract}"
+        );
+    }
+    for contract in [
+        "[source root]",
+        "canonical Agent Skill must contain only SKILL.md",
+        "allowed-tools:",
+        "mcp-doctor check --",
+        "mcp-doctor-agent-skill-v${agent_skill_version}.tar.gz",
+        "mcp-doctor/SKILL.md",
+    ] {
+        assert!(
+            agent_skill_verifier.contains(contract),
+            "Agent Skill verifier should enforce {contract}"
+        );
+    }
 
     for contract in [
         "mcp-doctor.release-handoff/v1",
@@ -420,7 +451,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let first_notes = repository_file("docs/releases/v0.1.0.md");
     let retained_notes = repository_file("docs/releases/v0.2.0.md");
     let expanded_notes = repository_file("docs/releases/v0.3.0.md");
-    let current_notes = repository_file("docs/releases/v0.3.1.md");
+    let security_notes = repository_file("docs/releases/v0.3.1.md");
+    let current_notes = repository_file("docs/releases/v0.3.2.md");
     let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
@@ -440,7 +472,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents `mcp-doctor` `0.3.1`",
+        "This source tree represents `mcp-doctor` `0.3.2`",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -503,8 +535,21 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "cargo install mcp-doctor --version '=0.3.1' --locked",
     ] {
         assert!(
-            current_notes.contains(contract),
+            security_notes.contains(contract),
             "v0.3.1 release notes should preserve {contract}"
+        );
+    }
+    for contract in [
+        "Portable Agent Skill",
+        "mcp-doctor-agent-skill-v0.3.2.tar.gz",
+        "mcp-doctor --help",
+        "do not modify any coding-agent host",
+        "refuses inferred targets, installations, secrets, `check`, `break`, and",
+        "cargo install mcp-doctor --version '=0.3.2' --locked",
+    ] {
+        assert!(
+            current_notes.contains(contract),
+            "v0.3.2 release notes should preserve {contract}"
         );
     }
     for contract in [
@@ -1663,7 +1708,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "This source tree represents `0.3.1`",
+        "This source tree represents `0.3.2`",
         "a version\nis publicly available only when its canonical GitHub Release and channel\nevidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
@@ -1675,7 +1720,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.1 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.2 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -2342,5 +2387,5 @@ fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[Pa
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.1");
+    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.2");
 }

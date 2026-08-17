@@ -20,6 +20,7 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#use-with-coding-agents">Coding agents</a> ·
   <a href="#choose-a-diagnostic">Commands</a> ·
   <a href="#mcp-revision-support">MCP support</a> ·
   <a href="#documentation">Documentation</a> ·
@@ -71,6 +72,13 @@ mcp-doctor inspect https://mcp.example.com/mcp
 `inspect` connects, validates the MCP conversation, checks advertised features
 and schemas, reports the earliest actionable failure, and cleans up. It never
 calls a tool.
+
+## Use with coding agents
+
+Install `mcp-doctor` first, then optionally install its portable Agent Skill so
+a coding agent starts with the same passive, exact-target workflow. The agent
+uses your terminal to run the CLI; `mcp-doctor` is not configured as an MCP
+server. [Install and verify the skill](docs/agents.md).
 
 ## Why mcp-doctor?
 
@@ -137,6 +145,7 @@ automation, `mcp-doctor capabilities --format json` remains authoritative.
 
 | I want to… | Read |
 | --- | --- |
+| Diagnose through a coding agent | [Coding-agent guide](docs/agents.md) |
 | Run scenarios, generated cases, rejection checks, or diffs | [Diagnostic commands](docs/commands.md) |
 | Select an MCP revision or understand compatibility evidence | [MCP revision support](docs/protocol-support.md) |
 | Produce JSON/JUnit, interpret exits, aggregate reports, or configure CI | [Automation and CI](docs/automation.md) |

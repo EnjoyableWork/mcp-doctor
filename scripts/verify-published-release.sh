@@ -31,6 +31,15 @@ published_release_payload=(
   "${published_release_prefix}-x86_64-unknown-linux-gnu.tar.gz"
   "${published_release_prefix}-x86_64-unknown-linux-gnu.spdx.json"
 )
+IFS=. read -r published_release_major published_release_minor published_release_patch \
+  <<<"${published_release_version}"
+if (( 10#${published_release_major} > 0 )) ||
+  (( 10#${published_release_minor} > 3 )) ||
+  (( 10#${published_release_minor} == 3 && 10#${published_release_patch} >= 2 )); then
+  published_release_payload+=(
+    "mcp-doctor-agent-skill-v${published_release_version}.tar.gz"
+  )
+fi
 published_release_expected=(SHA256SUMS "${published_release_payload[@]}")
 
 published_release_observed=$(

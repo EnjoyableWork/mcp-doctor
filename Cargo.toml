@@ -1,6 +1,6 @@
 [package]
 name = "mcp-doctor"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "Diagnose protocol, schema, and runtime failures in MCP servers"
 license = "MIT"
@@ -11,6 +11,7 @@ keywords = ["mcp", "testing", "diagnostics", "cli", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 publish = ["crates-io"]
 include = [
+    "/.agents/skills/**",
     "/.bestpractices.json",
     "/.github/assurance-controls.json",
     "/.github/ci-tools.json",

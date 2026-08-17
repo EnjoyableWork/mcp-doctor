@@ -54,3 +54,18 @@ otherwise ready scoped work, and it must never be presented as validation.
 The closed public GitHub checkpoint issue is the dated record of the zero-report
 baseline and the nonblocking decision. Future feedback may be recorded in a new
 issue that references it without rewriting this conclusion.
+
+## Optional coding-agent evidence
+
+When a user voluntarily reports the Agent Skill workflow, record only the exact
+host product and version, explicit or implicit invocation, passive diagnosis or
+existing-report triage, CLI version, transport class, and whether the safe
+structural report led to a correction. Do not collect prompts, target commands,
+endpoints, repository or user identity, paths, model output, report payloads,
+arguments, results, environment names or values, credentials, or telemetry.
+
+A download, star, CLI or skill installation, vendor documentation claim,
+compatibility listing, project-owned synthetic forward-test, or host discovery
+result is not independent adoption or proof that an agent followed the skill.
+Forward-tests belong in the dated MCPD-035 integration matrix and identify their
+exact host and workflow; they do not change the zero-report adoption baseline.

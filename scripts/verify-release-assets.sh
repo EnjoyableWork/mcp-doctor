@@ -24,6 +24,7 @@ fi
 release_asset_directory=$(cd -- "${release_asset_directory}" && pwd)
 release_asset_prefix="mcp-doctor-v${release_asset_version}"
 release_cargo_package="mcp-doctor-${release_asset_version}.crate"
+release_agent_skill="mcp-doctor-agent-skill-v${release_asset_version}.tar.gz"
 release_targets=(
   aarch64-unknown-linux-gnu
   x86_64-unknown-linux-gnu
@@ -32,6 +33,15 @@ release_expected_assets=(
   "${release_cargo_package}"
   mcp-doctor.rb
 )
+IFS=. read -r release_asset_major release_asset_minor release_asset_patch \
+  <<<"${release_asset_version}"
+release_asset_has_agent_skill=false
+if (( 10#${release_asset_major} > 0 )) ||
+  (( 10#${release_asset_minor} > 3 )) ||
+  (( 10#${release_asset_minor} == 3 && 10#${release_asset_patch} >= 2 )); then
+  release_asset_has_agent_skill=true
+  release_expected_assets+=("${release_agent_skill}")
+fi
 for release_target in "${release_targets[@]}"; do
   release_expected_assets+=(
     "${release_asset_prefix}-${release_target}.tar.gz"
@@ -83,6 +93,19 @@ cmp --silent \
 cmp --silent \
   "${release_asset_directory}/mcp-doctor.rb" \
   "${release_generated}/homebrew/Formula/mcp-doctor.rb"
+
+if [[ "${release_asset_has_agent_skill}" == true ]]; then
+  release_agent_source_stage="${release_temp}/agent-source"
+  mkdir -p -- "${release_agent_source_stage}"
+  tar -xzf \
+    "${release_asset_directory}/${release_cargo_package}" \
+    -C "${release_agent_source_stage}"
+  release_agent_source_root="${release_agent_source_stage}/mcp-doctor-${release_asset_version}"
+  "${release_verify_script_directory}/verify-agent-skill.sh" \
+    "${release_asset_version}" \
+    "${release_asset_directory}/${release_agent_skill}" \
+    "${release_agent_source_root}"
+fi
 
 release_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then

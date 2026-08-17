@@ -18,9 +18,20 @@ use clap::error::ErrorKind as ClapErrorKind;
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use transport::http::RemoteOptions;
 
+const AGENT_GUIDE_HELP: &str = concat!(
+    "Coding agents: https://github.com/EnjoyableWork/mcp-doctor/blob/v",
+    env!("CARGO_PKG_VERSION"),
+    "/docs/agents.md"
+);
+
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
 #[derive(Debug, Parser)]
-#[command(name = "mcp-doctor", bin_name = "mcp-doctor", version)]
+#[command(
+    name = "mcp-doctor",
+    bin_name = "mcp-doctor",
+    version,
+    after_help = AGENT_GUIDE_HELP
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
