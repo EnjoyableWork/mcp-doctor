@@ -100,6 +100,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
     let guide = repository_file("docs/agents.md");
     let evidence = repository_file("docs/assurance/mcpd-035-agent-skill.md");
     let readme = repository_file("README.md");
+    let project = repository_file("PROJECT.md");
 
     for contract in [
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
@@ -128,6 +129,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "Kiro IDE | `1.0.288`",
         "Kiro Crew | `0.1.3`",
         "assurance/mcpd-035-agent-skill.md",
+        "only currently supported host route is Codex CLI `0.147.0`",
     ] {
         assert!(guide.contains(contract), "guide should preserve {contract}");
     }
@@ -153,11 +155,26 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "stopped at `Authentication required`",
         "Kiro IDE `1.0.288` and Kiro Crew `0.1.3`",
         "was not rerun into acceptance",
-        "Publication and represented installed-channel evidence",
+        "Status: implementation and publication complete on 2026-08-17",
+        "31996837111",
+        "31997316851",
+        "31997406753",
+        "No other host, unattended behavior, independent adoption",
     ] {
         assert!(
             evidence.contains(contract),
             "evidence should preserve {contract}"
+        );
+    }
+    for contract in [
+        "| D-25 | Safe portable coding-agent diagnostic workflow | Optional adoption UX | In progress |",
+        "| MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | In progress |",
+        "Mitigated for the exact `v0.3.2` and Codex CLI `0.147.0` scope",
+        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should preserve {contract}"
         );
     }
 }
