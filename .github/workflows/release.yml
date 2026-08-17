@@ -184,7 +184,7 @@ jobs:
       - name: Verify declared runner tools
         run: ./scripts/verify-ci-tools.sh ubuntu-24.04
 
-      - name: Package and verify deterministic source channels
+      - name: Package and verify deterministic source channels and Agent Skill
         run: |
           set -euo pipefail
           cargo package --locked
@@ -204,6 +204,22 @@ jobs:
             generated-release-channels-second
           diff -ru generated-release-channels generated-release-channels-second
 
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          scripts/verify-agent-skill.sh "$RELEASE_VERSION"
+          mkdir -p agent-skill-first agent-skill-second
+          first_agent_skill="$(
+            scripts/package-agent-skill.sh \
+              "$RELEASE_VERSION" \
+              agent-skill-first
+          )"
+          second_agent_skill="$(
+            scripts/package-agent-skill.sh \
+              "$RELEASE_VERSION" \
+              agent-skill-second
+          )"
+          cmp --silent "$first_agent_skill" "$second_agent_skill"
+
           mkdir -p release-assets
           install -m 0644 \
             "generated-release-channels/cargo/mcp-doctor-$RELEASE_VERSION.crate" \
@@ -211,6 +227,7 @@ jobs:
           install -m 0644 \
             generated-release-channels/homebrew/Formula/mcp-doctor.rb \
             release-assets/
+          install -m 0644 "$first_agent_skill" release-assets/
 
       - name: Attest the Cargo source package
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -221,6 +238,11 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/mcp-doctor.rb
+
+      - name: Attest the portable Agent Skill archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-doctor-agent-skill-v${{ env.RELEASE_VERSION }}.tar.gz
 
       - name: Upload the source payload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

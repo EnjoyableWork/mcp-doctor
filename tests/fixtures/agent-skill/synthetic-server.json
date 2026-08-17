@@ -1,0 +1,12 @@
+{
+  "name": "synthetic-weather",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string"
+      }
+    },
+    "required": "city"
+  }
+}

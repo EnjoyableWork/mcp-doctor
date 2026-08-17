@@ -134,6 +134,12 @@ try {
         throw 'Installed executable reported an unexpected version.'
     }
 
+    $agentGuide = "https://github.com/EnjoyableWork/mcp-doctor/blob/v$ExpectedVersion/docs/agents.md"
+    $helpOutput = Invoke-McpDoctor '--help'
+    if (-not $helpOutput.Contains("Coding agents: $agentGuide")) {
+        throw 'Installed executable omitted its exact-version coding-agent guide.'
+    }
+
     $capabilitiesOutput = Invoke-McpDoctor 'capabilities' '--format' 'json'
     $capabilities = $capabilitiesOutput | ConvertFrom-Json
     $commandNames = @($capabilities.commands | ForEach-Object name)

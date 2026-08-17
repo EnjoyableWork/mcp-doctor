@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents `mcp-doctor` `0.3.1` and its canonical release tag
-`v0.3.1`. GitHub Releases determines whether a version has completed public
+This source tree represents `mcp-doctor` `0.3.2` and its canonical release tag
+`v0.3.2`. GitHub Releases determines whether a version has completed public
 publication. crates.io and the `EnjoyableWork/tap/mcp-doctor` Homebrew formula
 must install the exact source package held by the corresponding release. The
 sections below retain the first-release record and the reusable later-release
@@ -243,6 +243,28 @@ and
 were published together only after those installed-channel gates completed.
 The non-sensitive merge, correction, release, and restoration record is
 [retained separately](assurance/mcpd-034-security-release.md).
+
+## v0.3.2 Agent Skill payload contract
+
+`v0.3.2` adds one instruction-only Agent Skill companion to the existing seven
+release assets. Its exact eight-asset payload is the `.crate`, Homebrew formula,
+two represented GNU/Linux archives, their two SPDX documents, the versioned
+`mcp-doctor-agent-skill-v0.3.2.tar.gz`, and `SHA256SUMS`.
+
+The companion archive contains only `mcp-doctor/SKILL.md` at mode `0644`.
+Deterministic packaging binds it byte-for-byte to the repository-owned
+`.agents/skills/mcp-doctor/SKILL.md`; the release workflow attests the archive,
+includes its digest in `SHA256SUMS`, and verifies the archive again after draft
+and immutable publication downloads. Historical verification compares the
+archive to the canonical skill and guide inside that same release's `.crate`,
+not a later checkout. It is documentation, not an executable or an MCP server.
+
+Cargo, Homebrew, and binary-archive installation do not install or update the
+skill. Every represented installed CLI smoke instead verifies that top-level
+`mcp-doctor --help` points to the exact `v0.3.2` coding-agent guide. Users then
+download, verify, install, discover, and remove the companion explicitly under
+the [coding-agent guide](agents.md). The skill grants no terminal permission or
+active target authority and refuses `check`, `break`, and `reject`.
 
 ### GitHub-controlled sequence
 

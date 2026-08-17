@@ -83,6 +83,13 @@ if [[ "${version_output}" != "mcp-doctor ${smoke_version}" ]]; then
   exit 1
 fi
 
+smoke_agent_guide="https://github.com/EnjoyableWork/mcp-doctor/blob/v${smoke_version}/docs/agents.md"
+help_output=$(run_mcp_doctor --help)
+if ! grep -F -- "Coding agents: ${smoke_agent_guide}" <<<"${help_output}" >/dev/null; then
+  echo "installed executable omitted its exact-version coding-agent guide" >&2
+  exit 1
+fi
+
 if ! run_mcp_doctor capabilities --format json \
   >"${smoke_capabilities}" 2>"${smoke_stderr}"; then
   echo "installed compiled-capability smoke failed" >&2
