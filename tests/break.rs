@@ -412,10 +412,10 @@ fn unsatisfiable_and_generation_limit_schemas_never_reach_tools_call() {
             Some("instance_bytes"),
         ),
         (
-            "break-aggregate-input",
+            "break-shared-schema-input",
             100,
             "MCP-LIMIT-001",
-            Some("active_input_bytes"),
+            Some("schema_evaluation_steps"),
         ),
         (
             "break-generation-steps",

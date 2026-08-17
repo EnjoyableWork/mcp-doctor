@@ -1,11 +1,12 @@
 # Release and installation integrity
 
-This source tree represents `mcp-doctor` `0.3.2` and its canonical release tag
-`v0.3.2`. GitHub Releases determines whether a version has completed public
-publication. crates.io and the `EnjoyableWork/tap/mcp-doctor` Homebrew formula
-must install the exact source package held by the corresponding release. The
-sections below retain the first-release record and the reusable later-release
-procedure.
+This source tree represents the `mcp-doctor` `0.3.3` release candidate and its
+intended canonical release tag `v0.3.3`.
+GitHub Releases determines whether a version has completed public
+publication. crates.io and the
+`EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source
+package held by the corresponding release. The sections below retain the
+first-release record and the reusable later-release procedure.
 
 ## v0.1.0 first-release record
 
@@ -318,6 +319,31 @@ then passed from the protected source and tap heads. Clean before-and-after
 inventories found no Cargo registry token, release-workflow secret reference,
 or stored source or tap release-environment secret. This is the completed
 current-channel rehearsal for `v0.3.2`.
+
+## v0.3.3 bounded-work security candidate
+
+The `v0.3.3` candidate coordinates two independent CWE-400 corrections. Its
+request-scoped SSE decoder consumes accepted bytes incrementally instead of
+reparsing the accumulated body after every fragment. Its Draft 2020-12 schema
+path charges preliminary traversal, meta-validation, compilation, reference
+fan-out, instance access, collection and equality work, and the complete
+pattern-by-text product to `schema_evaluation_steps`; exhaustion stops locally
+before an affected tool call.
+
+Pattern evaluation uses the validator's bounded linear-time engine. Patterns
+requiring backtracking-only constructs such as look-around or backreferences
+receive the typed `unsupported_linear_pattern` diagnostic rather than entering
+an execution path whose actual work cannot be charged. Existing protocol,
+transport, authorization, redaction, cleanup, and reporter contracts remain
+unchanged.
+
+The candidate retains the eight-asset release shape introduced by `v0.3.2` and
+reissues the canonical instruction-only Agent Skill with exact `0.3.3`
+identity. That version-bound skill has no new host-support claim until its
+separate exact-version observation passes. Nothing in this section is
+publication evidence: clean protected source, represented native preflight,
+immutable release, downstream handoffs, installed-channel verification, and
+coordinated advisory publication remain required.
 
 ### GitHub-controlled sequence
 

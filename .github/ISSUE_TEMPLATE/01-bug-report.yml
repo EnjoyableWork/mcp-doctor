@@ -13,7 +13,7 @@ body:
     attributes:
       label: Version or commit
       description: Provide `mcp-doctor --version` output or the exact commit.
-      placeholder: mcp-doctor 0.3.2 or commit SHA
+      placeholder: mcp-doctor 0.3.3 or commit SHA
     validations:
       required: true
   - type: dropdown

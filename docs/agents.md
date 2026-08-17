@@ -14,15 +14,15 @@ even when a host does not follow an instruction.
 
 ## Release identity
 
-This guide and the canonical skill belong to `mcp-doctor` `0.3.2`:
+This guide and the canonical skill belong to `mcp-doctor` `0.3.3`:
 
 | Item | Exact identity |
 | --- | --- |
-| CLI | `mcp-doctor 0.3.2` |
-| Release | [`v0.3.2`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.2) |
-| Companion archive | `mcp-doctor-agent-skill-v0.3.2.tar.gz` |
+| CLI | `mcp-doctor 0.3.3` |
+| Release | [`v0.3.3`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.3) |
+| Companion archive | `mcp-doctor-agent-skill-v0.3.3.tar.gz` |
 | Archive manifest | `SHA256SUMS` from the same immutable release |
-| Canonical `SKILL.md` | SHA-256 `f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51` |
+| Canonical `SKILL.md` | SHA-256 `4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf` |
 
 Do not combine the skill from one release with a different CLI version. The
 skill checks the installed version and compiled capabilities before a new
@@ -40,9 +40,9 @@ Verify the archive before extracting it.
 On macOS or GNU/Linux:
 
 ```bash
-archive=mcp-doctor-agent-skill-v0.3.2.tar.gz
+archive=mcp-doctor-agent-skill-v0.3.3.tar.gz
 expected_archive=$(sed -n \
-  's/^\([[:xdigit:]]\{64\}\)  mcp-doctor-agent-skill-v0\.3\.2\.tar\.gz$/\1/p' \
+  's/^\([[:xdigit:]]\{64\}\)  mcp-doctor-agent-skill-v0\.3\.3\.tar\.gz$/\1/p' \
   SHA256SUMS)
 test "${#expected_archive}" = 64
 actual_archive=$(shasum -a 256 "$archive" | awk '{print $1}')
@@ -51,13 +51,13 @@ mkdir mcp-doctor-skill-stage
 tar -xzf "$archive" -C mcp-doctor-skill-stage
 test "$(shasum -a 256 mcp-doctor-skill-stage/mcp-doctor/SKILL.md \
   | awk '{print $1}')" = \
-  f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51
+  4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$archive = 'mcp-doctor-agent-skill-v0.3.2.tar.gz'
+$archive = 'mcp-doctor-agent-skill-v0.3.3.tar.gz'
 $checksumLines = @(Get-Content -LiteralPath SHA256SUMS | Where-Object {
     $_.EndsWith("  $archive", [StringComparison]::Ordinal)
 })
@@ -73,7 +73,7 @@ tar -xzf $archive -C mcp-doctor-skill-stage
 if ($LASTEXITCODE -ne 0) { throw 'Could not extract the Agent Skill archive.' }
 $skillFile = 'mcp-doctor-skill-stage\mcp-doctor\SKILL.md'
 $actualSkill = (Get-FileHash -Algorithm SHA256 -LiteralPath $skillFile).Hash.ToLowerInvariant()
-if ($actualSkill -ne 'f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51') {
+if ($actualSkill -ne '4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf') {
     throw 'Canonical SKILL.md digest mismatch.'
 }
 ```
@@ -147,7 +147,7 @@ Remove only the exact unmodified file installed above. On macOS or GNU/Linux:
 MCP_DOCTOR_SKILLS_ROOT="$HOME/.agents/skills"
 test "$(shasum -a 256 "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor/SKILL.md" \
   | awk '{print $1}')" = \
-  f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51
+  4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf
 rm "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor/SKILL.md"
 rmdir "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor"
 ```
@@ -158,7 +158,7 @@ and now-empty directory:
 ```powershell
 $installedSkill = Join-Path $destination 'SKILL.md'
 $installedDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $installedSkill).Hash.ToLowerInvariant()
-if ($installedDigest -ne 'f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51') {
+if ($installedDigest -ne '4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf') {
     throw 'Installed skill was modified; refusing documented removal.'
 }
 Remove-Item -LiteralPath $installedSkill
@@ -176,11 +176,10 @@ first-attempt explicit invocation uses a synthetic PATH-preferred
 `mcp-doctor` recorder. A missing, failed, or variant observation withholds that
 host claim; it is not rerun into acceptance.
 
-The only currently supported host route is Codex CLI `0.147.0` paired with the
-exact `mcp-doctor` `0.3.2` CLI and companion skill. That claim is scoped to the
-synthetic passive and refusal observations below plus the immutable and
-represented installed-channel evidence; it is not a claim about later Codex
-versions or independent adoption.
+The `0.3.3` candidate has not yet completed a new host observation. The last
+verified route is Codex CLI `0.147.0` paired with the exact `mcp-doctor` `0.3.2`
+CLI and companion skill. That remains historical evidence for `0.3.2`, not a
+support claim for `0.3.3`, a later Codex version, or independent adoption.
 
 | Host | Exact version | Discovery | Explicit invocation | Implicit observation |
 | --- | --- | --- | --- | --- |

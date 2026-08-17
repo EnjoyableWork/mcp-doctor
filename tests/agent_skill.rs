@@ -10,8 +10,10 @@ use std::process::Command;
 use serde::Deserialize;
 
 #[cfg(unix)]
-const RELEASE_VERSION: &str = "0.3.2";
-const SKILL_SHA256: &str = "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51";
+const RELEASE_VERSION: &str = "0.3.3";
+const CURRENT_SKILL_SHA256: &str =
+    "4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf";
+const V032_SKILL_SHA256: &str = "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51";
 
 fn repository_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -51,7 +53,7 @@ fn canonical_skill_is_one_portable_passive_instruction_file() {
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
         "mcp-doctor --version",
         "mcp-doctor capabilities --format json",
-        "Continue only with `mcp-doctor 0.3.2`",
+        "Continue only with `mcp-doctor 0.3.3`",
         "mcp-doctor inspect --format json -- <exact-command> <literal-arguments>",
         "mcp-doctor inspect --format json <exact-endpoint>",
         "schema_version: \"mcp-doctor.report/v1\"",
@@ -104,9 +106,9 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
 
     for contract in [
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
-        "mcp-doctor-agent-skill-v0.3.2.tar.gz",
+        "mcp-doctor-agent-skill-v0.3.3.tar.gz",
         "SHA256SUMS",
-        SKILL_SHA256,
+        CURRENT_SKILL_SHA256,
         "never changes an agent host",
         "never replace it silently",
         "Explicit invocation is the supported route",
@@ -129,7 +131,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "Kiro IDE | `1.0.288`",
         "Kiro Crew | `0.1.3`",
         "assurance/mcpd-035-agent-skill.md",
-        "only currently supported host route is Codex CLI `0.147.0`",
+        "last\nverified route is Codex CLI `0.147.0`",
     ] {
         assert!(guide.contains(contract), "guide should preserve {contract}");
     }
@@ -148,7 +150,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
     assert!(!guide.contains("universal agent support"));
 
     for contract in [
-        SKILL_SHA256,
+        V032_SKILL_SHA256,
         "Codex CLI `0.147.0` passed",
         "one separately labeled implicit passive request",
         "returned `Unknown command`",
@@ -179,13 +181,19 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "| MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | Done |",
         "Mitigated for the exact `v0.3.2` and Codex CLI `0.147.0` scope",
         "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
-        "no main-story ticket is in progress",
+        "| MCPD-036 | Correct fragmented-SSE and JSON Schema resource amplification in one coordinated patch candidate | Security correction | In progress |",
     ] {
         assert!(
             project.contains(contract),
             "PROJECT.md should preserve {contract}"
         );
     }
+    let active_main_story_tickets = project
+        .lines()
+        .filter(|line| line.starts_with("| MCPD-") && line.contains("| In progress |"))
+        .filter_map(|line| line.split('|').nth(1).map(str::trim))
+        .collect::<Vec<_>>();
+    assert_eq!(active_main_story_tickets, ["MCPD-036"]);
 }
 
 #[test]
@@ -304,7 +312,7 @@ fn exercise_posix_recorder() {
     assert!(version.status.success());
     assert_eq!(
         String::from_utf8(version.stdout).unwrap(),
-        "mcp-doctor 0.3.2\n"
+        "mcp-doctor 0.3.3\n"
     );
 
     let capabilities = run_recorder(&recorder, &log, &["capabilities", "--format", "json"]);
