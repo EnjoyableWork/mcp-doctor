@@ -8,6 +8,10 @@ This is not a universal agent-compatibility, deterministic model-correctness,
 or adoption claim. Publication and represented installed-channel evidence
 remain required before `MCPD-035` can close.
 
+Protected [PR 95](https://github.com/EnjoyableWork/mcp-doctor/pull/95)
+starts from exact implementation head
+[`3f4c422`](https://github.com/EnjoyableWork/mcp-doctor/commit/3f4c4226813b313eba85baee25d1a0f65e659798).
+
 ## Repository-controlled evidence
 
 - The canonical `.agents/skills/mcp-doctor/SKILL.md` contains only portable
@@ -37,6 +41,18 @@ all-feature test suite, and `cargo deny --all-features --locked check` passed in
 the required disposable user environment. `actionlint`, focused `shellcheck`,
 PowerShell parsing, the complete packaged POSIX install smoke, and explicit
 POSIX and PowerShell skill install/digest/remove round trips also passed.
+
+The first protected-head
+[CI run](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994190833)
+passed dependency policy plus GNU/Linux and macOS quality gates but failed its
+native Windows quality gate. Two new integration assertions invoked `bash`;
+Windows resolved that name to the WSL launcher, whose correctly minimal hosted
+runner had no installed Linux distribution. The portable skill, guide,
+release-path, and fixture assertions had passed before that subprocess boundary.
+The run was preserved and was not retried. The lowest-level correction keeps
+all portable assertions on every host and restricts only execution of the two
+POSIX verification scripts to Unix, without adding WSL, Git Bash, a runner-tool
+assumption, or a weaker product contract.
 
 ## Synthetic forward-tests
 

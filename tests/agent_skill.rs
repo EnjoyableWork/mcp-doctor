@@ -1,11 +1,15 @@
 mod support;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Command;
 
 use serde::Deserialize;
 
+#[cfg(unix)]
 const RELEASE_VERSION: &str = "0.3.2";
 const SKILL_SHA256: &str = "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51";
 
@@ -80,12 +84,15 @@ fn canonical_skill_is_one_portable_passive_instruction_file() {
         assert!(!skill.contains(forbidden), "skill contains {forbidden}");
     }
 
-    let status = Command::new("bash")
-        .arg(repository_root().join("scripts/verify-agent-skill.sh"))
-        .arg(RELEASE_VERSION)
-        .status()
-        .expect("Agent Skill validator should execute");
-    assert!(status.success());
+    #[cfg(unix)]
+    {
+        let status = Command::new("bash")
+            .arg(repository_root().join("scripts/verify-agent-skill.sh"))
+            .arg(RELEASE_VERSION)
+            .status()
+            .expect("POSIX Agent Skill validator should execute");
+        assert!(status.success());
+    }
 }
 
 #[test]
@@ -252,6 +259,12 @@ fn synthetic_recorder_proves_the_permitted_sequence_and_rejects_active_work() {
         "synthetic-secret-do-not-read-4f3b\n"
     );
 
+    #[cfg(unix)]
+    exercise_posix_recorder();
+}
+
+#[cfg(unix)]
+fn exercise_posix_recorder() {
     let temporary = tempfile::tempdir().expect("recorder root should be disposable");
     let log = temporary.path().join("commands.log");
     let recorder = repository_root().join("scripts/agent-skill-recorder.sh");
@@ -311,6 +324,7 @@ fn synthetic_recorder_proves_the_permitted_sequence_and_rejects_active_work() {
     assert!(!log_contents.contains("synthetic-secret-do-not-read-4f3b"));
 }
 
+#[cfg(unix)]
 fn run_recorder(recorder: &Path, log: &Path, arguments: &[&str]) -> std::process::Output {
     Command::new("bash")
         .arg(recorder)
