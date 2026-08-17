@@ -2,7 +2,6 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::fs::File;
 use std::future::Future;
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -22,6 +21,7 @@ use serde_json::Value;
 use tokio::time::Instant;
 
 use super::{Conversation, ProbeRequest, ProbeResponse};
+use crate::bound_file::BoundFile;
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
 const JSON_MEDIA_TYPE: &str = "application/json";
@@ -479,8 +479,8 @@ impl HttpTarget {
                 TargetFailure::CredentialAuthorizationRequired,
             ));
         }
-        let credentials = resolve_credentials(&options, &endpoint, limits)?;
         let trust = read_trust_file(options.tls_ca_file.as_deref(), limits)?;
+        let credentials = resolve_credentials(&options, &endpoint, limits)?;
         ignore_tls_trust_environment();
 
         let startup_deadline = started + Duration::from_millis(limits.startup_ms);
@@ -895,26 +895,16 @@ fn read_trust_file(
     let Some(path) = path else {
         return Ok(Vec::new());
     };
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| HttpFailure::Target(TargetFailure::InvalidTrustFile))?;
-    if !metadata.file_type().is_file() {
-        return Err(HttpFailure::Target(TargetFailure::InvalidTrustFile));
-    }
-    if metadata.len() > limits.trust_bytes {
+    let bound =
+        BoundFile::open(path).map_err(|_| HttpFailure::Target(TargetFailure::InvalidTrustFile))?;
+    if bound.metadata().len() > limits.trust_bytes {
         return Err(HttpFailure::limit(
             HttpLimit::TrustBytes,
-            metadata.len(),
+            bound.metadata().len(),
             limits.trust_bytes,
         ));
     }
-    let file =
-        File::open(path).map_err(|_| HttpFailure::Target(TargetFailure::InvalidTrustFile))?;
-    let opened_metadata = file
-        .metadata()
-        .map_err(|_| HttpFailure::Target(TargetFailure::InvalidTrustFile))?;
-    if !opened_metadata.is_file() {
-        return Err(HttpFailure::Target(TargetFailure::InvalidTrustFile));
-    }
+    let file = bound.into_file();
     let mut bytes = Vec::new();
     file.take(limits.trust_bytes.saturating_add(1))
         .read_to_end(&mut bytes)

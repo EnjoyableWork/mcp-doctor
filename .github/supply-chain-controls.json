@@ -1,7 +1,7 @@
 {
   "schema_version": "mcp-doctor.supply-chain-controls/v1",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-13",
+  "reviewed_on": "2026-08-16",
   "repository": "EnjoyableWork/mcp-doctor",
   "default_branch": "main",
   "dependency_updates": {
@@ -59,6 +59,13 @@
       "name": "jsonschema",
       "scope": "runtime",
       "version": "0.49.9",
+      "default_features": false,
+      "features": []
+    },
+    {
+      "name": "libc",
+      "scope": "runtime",
+      "version": "0.2.189",
       "default_features": false,
       "features": []
     },

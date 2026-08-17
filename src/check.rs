@@ -1,8 +1,8 @@
 use std::ffi::OsString;
-use std::fs::{self, File};
 use std::io::Read as _;
 use std::path::Path;
 
+use crate::bound_file::BoundFile;
 use crate::contract::{
     ActiveConversation, ActiveProtocolRevision, ActiveScenario, Diagnostic, DiagnosticLimitProfile,
     MAX_SCENARIO_BYTES, ReportTransport, ScenarioFailure, diagnostic_http_limit_profile,
@@ -224,14 +224,11 @@ fn http_limits(selected: DiagnosticLimitProfile) -> HttpLimits {
 }
 
 fn read_scenario(path: &Path) -> Result<Vec<u8>, ScenarioFailure> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| ScenarioFailure::unreadable())?;
-    if !metadata.file_type().is_file() {
-        return Err(ScenarioFailure::unreadable());
+    let bound = BoundFile::open(path).map_err(|_| ScenarioFailure::unreadable())?;
+    if bound.metadata().len() > MAX_SCENARIO_BYTES {
+        return Err(ScenarioFailure::file_limit(bound.metadata().len()));
     }
-    if metadata.len() > MAX_SCENARIO_BYTES {
-        return Err(ScenarioFailure::file_limit(metadata.len()));
-    }
-    let file = File::open(path).map_err(|_| ScenarioFailure::unreadable())?;
+    let file = bound.into_file();
     let mut bytes = Vec::new();
     file.take(MAX_SCENARIO_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)

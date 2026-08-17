@@ -5,6 +5,7 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::bound_file::FileIdentity;
 use crate::contract::{RenderedReportArtifact, ReportArtifactFormat};
 
 const STAGE_CREATE_ATTEMPTS: u64 = 16;
@@ -21,6 +22,7 @@ pub(crate) enum ReportArtifactError {
     Create,
     Write,
     Publish,
+    PublishCleanup,
     Cleanup,
     RenderContract,
     OperationLimit,
@@ -43,7 +45,12 @@ impl fmt::Display for ReportArtifactError {
             }
             Self::Create => "report destinations could not be prepared safely",
             Self::Write => "requested report artifacts could not be written completely",
-            Self::Publish => "requested report artifacts could not be published without overwrite",
+            Self::Publish => {
+                "requested report artifacts could not be published from their verified stages"
+            }
+            Self::PublishCleanup => {
+                "report artifact publication failed and foreign-path-safe cleanup did not complete"
+            }
             Self::Cleanup => "requested report artifact cleanup did not complete",
             Self::RenderContract => "rendered report artifacts did not match the requested formats",
             Self::OperationLimit => {
@@ -61,6 +68,7 @@ struct Destination {
     path: PathBuf,
     stage_path: PathBuf,
     stage: Option<File>,
+    stage_identity: FileIdentity,
     published: bool,
     committed: bool,
 }
@@ -74,7 +82,7 @@ impl Drop for Destination {
             let _ = fs::remove_file(&self.path);
         }
         self.stage.take();
-        let _ = fs::remove_file(&self.stage_path);
+        let _ = cleanup_owned_stage(self);
     }
 }
 
@@ -117,12 +125,13 @@ impl ReportArtifactDestinations {
                 return Err(ReportArtifactError::AliasedDestination);
             }
             reject_existing_output(&identity)?;
-            let (stage_path, stage) = create_stage(&identity)?;
+            let (stage_path, stage, stage_identity) = create_stage(&identity)?;
             destinations.push(Destination {
                 format,
                 path: identity,
                 stage_path,
                 stage: Some(stage),
+                stage_identity,
                 published: false,
                 committed: false,
             });
@@ -193,13 +202,12 @@ impl ReportArtifactDestinations {
         }
 
         for index in 0..self.destinations.len() {
-            {
-                let destination = &mut self.destinations[index];
-                if fs::hard_link(&destination.stage_path, &destination.path).is_err() {
-                    self.rollback()?;
-                    return Err(ReportArtifactError::Publish);
-                }
-                destination.published = true;
+            if self.publish_destination(index, true).is_err() {
+                return Err(if self.rollback().is_err() {
+                    ReportArtifactError::PublishCleanup
+                } else {
+                    ReportArtifactError::Publish
+                });
             }
             self.require_within_limit(&mut within_limit)?;
         }
@@ -207,7 +215,7 @@ impl ReportArtifactDestinations {
         for index in 0..self.destinations.len() {
             {
                 let destination = &mut self.destinations[index];
-                if fs::remove_file(&destination.stage_path).is_err() {
+                if remove_owned_stage_for_commit(destination).is_err() {
                     self.rollback()?;
                     return Err(ReportArtifactError::Cleanup);
                 }
@@ -240,14 +248,57 @@ impl ReportArtifactDestinations {
         self.rollback()
     }
 
+    fn publish_destination(
+        &mut self,
+        index: usize,
+        run_internal_test_gate: bool,
+    ) -> Result<(), ReportArtifactError> {
+        let destination = &mut self.destinations[index];
+        if run_internal_test_gate
+            && crate::bound_file::internal_test_path_gate(
+                &destination.path,
+                "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_PATH",
+                "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_GATE",
+            )
+            .is_err()
+        {
+            return Err(ReportArtifactError::Publish);
+        }
+        if !matches!(
+            destination
+                .stage_identity
+                .matches_path(&destination.stage_path),
+            Ok(Some(true))
+        ) {
+            return Err(ReportArtifactError::Publish);
+        }
+        if fs::hard_link(&destination.stage_path, &destination.path).is_err() {
+            return Err(ReportArtifactError::Publish);
+        }
+        destination.published = true;
+        if run_internal_test_gate
+            && crate::bound_file::internal_test_path_gate(
+                &destination.path,
+                "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_PATH",
+                "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_GATE",
+            )
+            .is_err()
+        {
+            return Err(ReportArtifactError::Publish);
+        }
+        if !matches!(output_is_owned(destination), Ok(Some(true))) {
+            return Err(ReportArtifactError::Publish);
+        }
+        Ok(())
+    }
+
     fn prove_distinct_no_clobber_paths(
         &mut self,
         reserved_identities: &[PathBuf],
     ) -> Result<(), ReportArtifactError> {
         for index in 0..self.destinations.len() {
-            let destination = &mut self.destinations[index];
-            if fs::hard_link(&destination.stage_path, &destination.path).is_err() {
-                let error = if fs::symlink_metadata(&destination.path).is_ok() {
+            if self.publish_destination(index, false).is_err() {
+                let error = if fs::symlink_metadata(&self.destinations[index].path).is_ok() {
                     ReportArtifactError::AliasedDestination
                 } else {
                     ReportArtifactError::Create
@@ -255,7 +306,6 @@ impl ReportArtifactDestinations {
                 self.rollback_without_hook()?;
                 return Err(error);
             }
-            destination.published = true;
             if reserved_identities
                 .iter()
                 .any(|reserved| fs::symlink_metadata(reserved).is_ok())
@@ -282,10 +332,8 @@ impl ReportArtifactDestinations {
         let mut stages_clean = true;
         for destination in &mut self.destinations {
             destination.stage.take();
-            match fs::remove_file(&destination.stage_path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(_) => stages_clean = false,
+            if cleanup_owned_stage(destination).is_err() {
+                stages_clean = false;
             }
         }
         if outputs.is_err() || !stages_clean {
@@ -329,29 +377,35 @@ impl ReportArtifactDestinations {
 }
 
 fn output_is_owned(destination: &Destination) -> io::Result<Option<bool>> {
-    let Some(stage) = destination.stage.as_ref() else {
-        return Ok(Some(false));
-    };
-    let stage = stage.metadata()?;
-    let output = match fs::metadata(&destination.path) {
-        Ok(output) => output,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
-    };
+    destination.stage_identity.matches_path(&destination.path)
+}
 
-    #[cfg(unix)]
+fn cleanup_owned_stage(destination: &Destination) -> io::Result<()> {
+    match destination
+        .stage_identity
+        .matches_path(&destination.stage_path)?
     {
-        use std::os::unix::fs::MetadataExt as _;
-        Ok(Some(
-            stage.dev() == output.dev() && stage.ino() == output.ino(),
-        ))
+        Some(true) => match fs::remove_file(&destination.stage_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        },
+        Some(false) | None => Ok(()),
     }
+}
 
-    #[cfg(not(unix))]
+fn remove_owned_stage_for_commit(destination: &Destination) -> io::Result<()> {
+    if destination
+        .stage_identity
+        .matches_path(&destination.stage_path)?
+        != Some(true)
     {
-        let _ = (stage, output);
-        Ok(Some(true))
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "owned report stage is unavailable",
+        ));
     }
+    fs::remove_file(&destination.stage_path)
 }
 
 fn reject_existing_output(path: &Path) -> Result<(), ReportArtifactError> {
@@ -390,7 +444,7 @@ fn identities_alias(left: &Path, right: &Path) -> bool {
                 }))
 }
 
-fn create_stage(identity: &Path) -> Result<(PathBuf, File), ReportArtifactError> {
+fn create_stage(identity: &Path) -> Result<(PathBuf, File, FileIdentity), ReportArtifactError> {
     if internal_test_create_failure() {
         return Err(ReportArtifactError::Create);
     }
@@ -411,7 +465,11 @@ fn create_stage(identity: &Path) -> Result<(PathBuf, File), ReportArtifactError>
             options.mode(0o600);
         }
         match options.open(&stage_path) {
-            Ok(stage) => return Ok((stage_path, stage)),
+            Ok(stage) => {
+                let stage_identity =
+                    FileIdentity::for_file(&stage).map_err(|_| ReportArtifactError::Create)?;
+                return Ok((stage_path, stage, stage_identity));
+            }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
             Err(_) => return Err(ReportArtifactError::Create),
         }
@@ -613,6 +671,105 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&junit).expect("the raced destination should remain"),
             "external"
+        );
+        assert_no_stages(root.path());
+    }
+
+    #[test]
+    fn a_replaced_stage_fails_before_publication_without_deleting_the_replacement() {
+        let root = TempDir::new().expect("a disposable root should be created");
+        let output = root.path().join("report.json");
+        let retained = root.path().join("retained-stage");
+        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
+            .expect("the report destination should prepare");
+        let stage = destinations.destinations[0].stage_path.clone();
+        fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
+        fs::write(&stage, "external replacement")
+            .expect("a distinct replacement should occupy the stage path");
+
+        assert_eq!(
+            destinations
+                .persist(vec![artifacts().remove(0)])
+                .expect_err("a replaced stage path must not publish"),
+            ReportArtifactError::Publish
+        );
+        assert!(
+            !output.exists(),
+            "a replacement must not become report output"
+        );
+        assert_eq!(
+            fs::read_to_string(&stage).expect("the replacement should remain"),
+            "external replacement"
+        );
+        assert_eq!(
+            fs::read_to_string(retained).expect("the opened stage should receive rendered bytes"),
+            "{\"synthetic\":true}\n"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn a_symlink_or_reparse_stage_substitution_is_rejected_without_deleting_its_target() {
+        let root = TempDir::new().expect("a disposable root should be created");
+        let output = root.path().join("report.json");
+        let retained = root.path().join("retained-stage");
+        let target = root.path().join("external-target");
+        fs::write(&target, "external target").expect("the external target should be written");
+        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
+            .expect("the report destination should prepare");
+        let stage = destinations.destinations[0].stage_path.clone();
+        fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &stage)
+            .expect("the symbolic replacement should be created");
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&target, &stage)
+            .expect("the reparse replacement should be created");
+
+        assert_eq!(
+            destinations
+                .persist(vec![artifacts().remove(0)])
+                .expect_err("a symlink or reparse replacement must not publish"),
+            ReportArtifactError::Publish
+        );
+        assert!(
+            !output.exists(),
+            "a followed target must not become report output"
+        );
+        assert!(
+            fs::symlink_metadata(&stage)
+                .expect("the foreign stage entry should remain")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(target).expect("the external target should remain"),
+            "external target"
+        );
+    }
+
+    #[test]
+    fn a_same_identity_hard_link_stage_remains_publishable() {
+        let root = TempDir::new().expect("a disposable root should be created");
+        let output = root.path().join("report.json");
+        let retained = root.path().join("retained-stage");
+        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
+            .expect("the report destination should prepare");
+        let stage = destinations.destinations[0].stage_path.clone();
+        fs::rename(&stage, &retained).expect("the opened stage should move");
+        fs::hard_link(&retained, &stage).expect("the stage name should regain the same identity");
+
+        destinations
+            .persist(vec![artifacts().remove(0)])
+            .expect("a same-identity stage link should publish");
+
+        assert_eq!(
+            fs::read_to_string(output).expect("the report output should be readable"),
+            "{\"synthetic\":true}\n"
+        );
+        assert_eq!(
+            fs::read_to_string(retained).expect("the retained hard link should be readable"),
+            "{\"synthetic\":true}\n"
         );
         assert_no_stages(root.path());
     }

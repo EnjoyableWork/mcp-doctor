@@ -3,7 +3,7 @@
 ## Usage and development questions
 
 Review [README.md](README.md), [PROJECT.md](PROJECT.md), and existing issues
-before opening a new question. This source tree represents `0.3.0`; a version
+before opening a new question. This source tree represents `0.3.1`; a version
 is publicly available only when its canonical GitHub Release and channel
 evidence exist. Only behavior proved by code, tests, and release evidence
 should be treated as available.

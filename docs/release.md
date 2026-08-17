@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents `mcp-doctor` `0.3.0` and its canonical release tag
-`v0.3.0`. GitHub Releases determines whether a version has completed public
+This source tree represents `mcp-doctor` `0.3.1` and its canonical release tag
+`v0.3.1`. GitHub Releases determines whether a version has completed public
 publication. crates.io and the `EnjoyableWork/tap/mcp-doctor` Homebrew formula
 must install the exact source package held by the corresponding release. The
 sections below retain the first-release record and the reusable later-release
@@ -194,6 +194,29 @@ then passed all ten jobs on their first attempts: immutable GitHub, crates.io,
 and Homebrew identity; two GNU/Linux archive installs; four native Cargo
 installs; and three native Homebrew installs. The release used no test, job,
 workflow, integrity, generation, validation, or publication retry.
+
+## v0.3.1 security patch preparation
+
+`v0.3.1` is the coordinated patch candidate for authority-bearing local file
+reads and report artifact publication. It binds selected scenario, custom-CA,
+snapshot, and aggregate inputs to the exact no-follow regular-file handle that
+is validated and consumed, and it fails closed if the selected path no longer
+identifies that file. The trust file is also read and validated before
+credential environment resolution, DNS, or connection activity.
+
+The same complete native identity now binds every opened JSON, JUnit, and
+aggregate stage to publication: the stage path must still identify the opened
+handle before linking, the destination must identify it immediately after,
+and cleanup or rollback removes only an identity-owned path. A foreign stage
+or destination is never accepted or deleted.
+
+The candidate preserves every existing endpoint, credential, tool, effect,
+side-effect, schema, byte, redaction, and cleanup gate. It does not add a retry,
+fallback, broader protocol claim, new installation channel, or new native
+binary. `0.2.0` and `0.3.0` remain the affected published versions until the
+immutable `v0.3.1` release, byte-identical Cargo and Homebrew handoffs,
+represented installed-channel verification, and coordinated advisory
+publication are complete.
 
 ### GitHub-controlled sequence
 

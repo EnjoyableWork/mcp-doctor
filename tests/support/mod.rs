@@ -9,9 +9,13 @@ use std::collections::BTreeMap;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 use tempfile::TempDir;
 
 const STABLE_REPORT_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.report.v1.schema.json");
@@ -25,6 +29,145 @@ const CONTRACT_SNAPSHOT_SCHEMA: &str =
 const CONTRACT_DIFF_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-diff.v1alpha1.schema.json");
 const DESCENDANT_READY_MARKER: &[u8] = b"descendant-ready\n";
+
+pub fn run_with_bound_file_mutation(
+    command: &mut Command,
+    selected_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    run_with_path_mutation_gate(
+        command,
+        selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_BOUND_FILE_GATE",
+        "bound-file",
+        mutate,
+    )
+}
+
+pub fn run_with_report_publication_mutation(
+    command: &mut Command,
+    output_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let selected_path = canonical_report_output_path(output_path);
+    run_with_path_mutation_gate(
+        command,
+        &selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_PUBLISH_GATE",
+        "report-publication",
+        mutate,
+    )
+}
+
+pub fn run_with_report_link_mutation(
+    command: &mut Command,
+    output_path: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let selected_path = canonical_report_output_path(output_path);
+    run_with_path_mutation_gate(
+        command,
+        &selected_path,
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_PATH",
+        "MCP_DOCTOR_INTERNAL_TEST_REPORT_LINK_GATE",
+        "report-link",
+        mutate,
+    )
+}
+
+fn canonical_report_output_path(output_path: &Path) -> PathBuf {
+    let output_name = output_path
+        .file_name()
+        .expect("a report output path should have a filename");
+    let output_parent = output_path.parent().unwrap_or_else(|| Path::new("."));
+    fs::canonicalize(output_parent)
+        .expect("the report output parent should have a canonical identity")
+        .join(output_name)
+}
+
+fn run_with_path_mutation_gate(
+    command: &mut Command,
+    selected_path: &Path,
+    selected_path_variable: &str,
+    gate_variable: &str,
+    gate_name: &str,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> Output {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .unwrap_or_else(|error| panic!("the {gate_name} event gate should bind: {error}"));
+    let address = listener.local_addr().unwrap_or_else(|error| {
+        panic!("the {gate_name} event gate should have an address: {error}")
+    });
+    command
+        .env(selected_path_variable, selected_path)
+        .env(gate_variable, address.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command.spawn().unwrap_or_else(|error| {
+        panic!("the command under the {gate_name} gate should start: {error}")
+    });
+    let accept_listener = listener
+        .try_clone()
+        .unwrap_or_else(|error| panic!("the {gate_name} event gate should clone: {error}"));
+    let (accepted_sender, accepted_receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let accepted = accept_listener.accept().map(|(stream, _)| stream);
+        let _ = accepted_sender.send(accepted);
+    });
+
+    let mut stream = match accepted_receiver.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(error)) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the {gate_name} event gate should accept: {error}");
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = TcpStream::connect(address);
+            let _ = acceptor.join();
+            panic!("the command did not reach the {gate_name} event gate");
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the {gate_name} event gate disconnected");
+        }
+    };
+    acceptor
+        .join()
+        .unwrap_or_else(|_| panic!("the {gate_name} event gate should not panic"));
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap_or_else(|error| panic!("the {gate_name} readiness watchdog should set: {error}"));
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .unwrap_or_else(|error| {
+            panic!("the {gate_name} acknowledgement watchdog should set: {error}")
+        });
+    let mut readiness = [0_u8; 1];
+    if stream.read_exact(&mut readiness).is_err() || readiness != [1] {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("the command emitted an invalid {gate_name} readiness event");
+    }
+
+    let mutation = mutate();
+    stream
+        .write_all(&[2])
+        .unwrap_or_else(|error| panic!("the {gate_name} acknowledgement should write: {error}"));
+    let output = child.wait_with_output().unwrap_or_else(|error| {
+        panic!("the command under the {gate_name} gate should return: {error}")
+    });
+    mutation.unwrap_or_else(|error| {
+        panic!("the deterministic {gate_name} mutation should succeed: {error}")
+    });
+    output
+}
 
 pub fn assert_descendant_was_ready_and_terminated(path: &Path) {
     let mut marker = OpenOptions::new()

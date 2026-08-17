@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CURRENT_RELEASE_VERSION: &str = "0.3.0";
+const CURRENT_RELEASE_VERSION: &str = "0.3.1";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,7 +57,7 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.3.0\"",
+        "version = \"0.3.1\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.bestpractices.json\"",
@@ -419,7 +419,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let release = repository_file("docs/release.md");
     let first_notes = repository_file("docs/releases/v0.1.0.md");
     let retained_notes = repository_file("docs/releases/v0.2.0.md");
-    let current_notes = repository_file("docs/releases/v0.3.0.md");
+    let expanded_notes = repository_file("docs/releases/v0.3.0.md");
+    let current_notes = repository_file("docs/releases/v0.3.1.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -438,7 +439,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents `mcp-doctor` `0.3.0`",
+        "This source tree represents `mcp-doctor` `0.3.1`",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -476,8 +477,27 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "become a general security scanner",
     ] {
         assert!(
+            expanded_notes.contains(contract),
+            "v0.3.0 release notes should preserve {contract}"
+        );
+    }
+    for contract in [
+        "security patch",
+        "scenario, custom-CA, snapshot, and aggregate",
+        "without following a symbolic link or Windows reparse",
+        "Custom CA material is now read and validated",
+        "resolution, DNS, or connection activity",
+        "report artifact publication",
+        "before\nlinking",
+        "immediately\nafter linking",
+        "Cleanup and rollback remove only paths",
+        "JSON, JUnit, and\naggregate output",
+        "Users of `0.2.0` or `0.3.0` should upgrade",
+        "cargo install mcp-doctor --version '=0.3.1' --locked",
+    ] {
+        assert!(
             current_notes.contains(contract),
-            "current release notes should preserve {contract}"
+            "v0.3.1 release notes should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
@@ -1622,7 +1642,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "This source tree represents `0.3.0`",
+        "This source tree represents `0.3.1`",
         "a version\nis publicly available only when its canonical GitHub Release and channel\nevidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
@@ -1634,7 +1654,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.0 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.1 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -2165,9 +2185,40 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
         .lines()
         .find(|line| line.starts_with("| MCPD-031 |"))
         .expect("PROJECT.md should contain MCPD-031");
-    assert!(release_correction.contains("| In progress |"));
-    assert!(release_correction.contains("Before a successor to `v0.3.0`"));
-    assert!(release_correction.contains("never retry publication"));
+    assert!(release_correction.contains("| Done |"));
+    for contract in [
+        "[PR 90]",
+        "[PR 91]",
+        "31971756990",
+        "31972748664",
+        "without retrying publication",
+    ] {
+        assert!(
+            release_correction.contains(contract),
+            "MCPD-031 completion must retain {contract}"
+        );
+    }
+
+    let identity_correction = project
+        .lines()
+        .find(|line| line.starts_with("| MCPD-034 |"))
+        .expect("PROJECT.md should contain MCPD-034");
+    assert!(identity_correction.contains("| In progress |"));
+    for contract in [
+        "DEC-058",
+        "report artifact publication",
+        "opened stage identity before linking",
+        "destination identity immediately afterward",
+        "no-foreign-delete",
+        "SSE and schema-work drafts",
+    ] {
+        assert!(
+            identity_correction.contains(contract),
+            "MCPD-034 must retain the two-advisory boundary: {contract}"
+        );
+    }
+    assert!(project.contains("| DEC-058 | Batch only the two related native-identity"));
+    assert!(project.contains("| RISK-32 | A report stage or destination path changes"));
 
     for contract in [
         "--protocol-version 2025-06-18",
@@ -2265,5 +2316,5 @@ fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[Pa
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.0");
+    assert_eq!(CURRENT_RELEASE_VERSION, "0.3.1");
 }

@@ -49,6 +49,7 @@ fn every_direct_registry_dependency_has_an_exact_version() {
             "base64",
             "clap",
             "jsonschema",
+            "libc",
             "process-wrap",
             "reqwest",
             "rustls",

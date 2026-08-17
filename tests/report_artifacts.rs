@@ -7,10 +7,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use serde_json::{Value, json};
-use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
+use support::{
+    TestEnvironment, parse_and_validate_junit, parse_and_validate_report,
+    run_with_report_link_mutation, run_with_report_publication_mutation,
+};
 
 const REVIEWED_TOOL: &str = "synthetic.reviewed";
 const GENERATED_TOOL: &str = "synthetic.generated";
+const AGGREGATE_INPUT: &[u8] = include_bytes!("fixtures/aggregates/passed-report.json");
 
 fn fixture() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_mcp-doctor-stdio-fixture"))
@@ -82,6 +86,30 @@ fn assert_no_report_stages(path: &Path) {
             assert_no_report_stages(&entry.path());
         }
     }
+}
+
+fn ordered_report_stages(path: &Path) -> Vec<PathBuf> {
+    let mut stages = fs::read_dir(path)
+        .expect("the disposable artifact root should be readable")
+        .map(|entry| entry.expect("each disposable artifact entry should be readable"))
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".mcp-doctor-report-")
+        })
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    stages.sort_by_key(|stage| {
+        stage
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".tmp"))
+            .and_then(|name| name.rsplit_once('-'))
+            .and_then(|(_, id)| id.parse::<u64>().ok())
+            .expect("a report stage should end in its numeric creation identifier")
+    });
+    stages
 }
 
 fn reviewed_case(sequence: i64) -> Value {
@@ -538,6 +566,245 @@ fn render_write_and_cleanup_failures_are_visible_and_publish_no_artifact_set() {
         }
         assert_no_report_stages(&environment.artifact_path(""));
     }
+}
+
+#[test]
+fn replaced_json_stage_fails_closed_without_publishing_or_deleting_replacement() {
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("report.json");
+    let retained_stage = environment.artifact_path("retained-json-stage");
+    let marker = environment.artifact_path("one-run.marker");
+    let mut replacement_stage = None;
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("report-single-run")
+        .arg(&marker);
+    let output = run_with_report_publication_mutation(&mut command, &json_path, || {
+        let stages = ordered_report_stages(&environment.artifact_path(""));
+        assert_eq!(stages.len(), 1, "one JSON stage should be prepared");
+        let stage = stages[0].clone();
+        fs::rename(&stage, &retained_stage)?;
+        fs::write(&stage, b"foreign JSON stage")?;
+        replacement_stage = Some(stage);
+        Ok(())
+    });
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(4), "{stdout}\n{stderr}");
+    assert!(stdout.contains("outcome passed · exit 0"), "{stdout}");
+    assert!(
+        stderr.contains("could not be published from their verified stages"),
+        "{stderr}"
+    );
+    assert!(
+        marker.exists(),
+        "the diagnostic should execute exactly once"
+    );
+    assert!(
+        !json_path.exists(),
+        "the replacement must not become output"
+    );
+    let replacement_stage = replacement_stage.expect("the stage should be replaced");
+    assert_eq!(fs::read(&replacement_stage).unwrap(), b"foreign JSON stage");
+    assert!(
+        fs::read(&retained_stage)
+            .expect("the identity-bound stage should remain available to the fixture")
+            .starts_with(b"{")
+    );
+    for private in [&json_path, &retained_stage, &replacement_stage, &marker] {
+        let private = private.to_string_lossy();
+        assert!(!stdout.contains(private.as_ref()));
+        assert!(!stderr.contains(private.as_ref()));
+    }
+    fs::remove_file(replacement_stage).expect("the test should remove its foreign stage");
+    assert_no_report_stages(&environment.artifact_path(""));
+}
+
+#[test]
+fn replaced_junit_stage_rolls_back_the_already_published_json_artifact() {
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("report.json");
+    let junit_path = environment.artifact_path("report.xml");
+    let retained_stage = environment.artifact_path("retained-junit-stage");
+    let marker = environment.artifact_path("one-run.marker");
+    let mut replacement_stage = None;
+    let mut command = environment.command();
+    command.arg("inspect");
+    add_report_destinations(&mut command, &json_path, &junit_path);
+    command
+        .arg("--")
+        .arg(fixture())
+        .arg("report-single-run")
+        .arg(&marker);
+    let output = run_with_report_publication_mutation(&mut command, &junit_path, || {
+        let stages = ordered_report_stages(&environment.artifact_path(""));
+        assert_eq!(stages.len(), 2, "JSON and JUnit stages should be prepared");
+        let stage = stages[1].clone();
+        fs::rename(&stage, &retained_stage)?;
+        fs::write(&stage, b"foreign JUnit stage")?;
+        replacement_stage = Some(stage);
+        Ok(())
+    });
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(4), "{stdout}\n{stderr}");
+    assert!(stdout.contains("outcome passed · exit 0"), "{stdout}");
+    assert!(
+        stderr.contains("could not be published from their verified stages"),
+        "{stderr}"
+    );
+    assert!(
+        marker.exists(),
+        "the diagnostic should execute exactly once"
+    );
+    assert!(
+        !json_path.exists(),
+        "the first owned artifact should roll back"
+    );
+    assert!(
+        !junit_path.exists(),
+        "the replacement must not become output"
+    );
+    let replacement_stage = replacement_stage.expect("the JUnit stage should be replaced");
+    assert_eq!(
+        fs::read(&replacement_stage).unwrap(),
+        b"foreign JUnit stage"
+    );
+    assert!(
+        fs::read(&retained_stage)
+            .expect("the identity-bound JUnit stage should remain available to the fixture")
+            .starts_with(b"<?xml")
+    );
+    for private in [
+        &json_path,
+        &junit_path,
+        &retained_stage,
+        &replacement_stage,
+        &marker,
+    ] {
+        let private = private.to_string_lossy();
+        assert!(!stdout.contains(private.as_ref()));
+        assert!(!stderr.contains(private.as_ref()));
+    }
+    fs::remove_file(replacement_stage).expect("the test should remove its foreign stage");
+    assert_no_report_stages(&environment.artifact_path(""));
+}
+
+#[test]
+fn replaced_destination_after_link_is_not_accepted_or_deleted() {
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("report.json");
+    let retained_output = environment.artifact_path("retained-owned-output");
+    let marker = environment.artifact_path("one-run.marker");
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("report-single-run")
+        .arg(&marker);
+    let output = run_with_report_link_mutation(&mut command, &json_path, || {
+        fs::rename(&json_path, &retained_output)?;
+        fs::write(&json_path, b"foreign linked output")
+    });
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(4), "{stdout}\n{stderr}");
+    assert!(stdout.contains("outcome passed · exit 0"), "{stdout}");
+    assert!(
+        stderr.contains("publication failed and foreign-path-safe cleanup did not complete"),
+        "{stderr}"
+    );
+    assert!(
+        marker.exists(),
+        "the diagnostic should execute exactly once"
+    );
+    assert_eq!(
+        fs::read(&json_path).expect("the foreign output should remain untouched"),
+        b"foreign linked output"
+    );
+    assert!(
+        fs::read(&retained_output)
+            .expect("the identity-bound linked output should remain available to the fixture")
+            .starts_with(b"{")
+    );
+    for private in [&json_path, &retained_output, &marker] {
+        let private = private.to_string_lossy();
+        assert!(!stdout.contains(private.as_ref()));
+        assert!(!stderr.contains(private.as_ref()));
+    }
+    assert_no_report_stages(&environment.artifact_path(""));
+}
+
+#[test]
+fn replaced_aggregate_stage_emits_no_stdout_or_output_evidence() {
+    let environment = TestEnvironment::new();
+    let input_path = environment.artifact_path("input.json");
+    let output_path = environment.artifact_path("aggregate.json");
+    let retained_stage = environment.artifact_path("retained-aggregate-stage");
+    fs::write(&input_path, AGGREGATE_INPUT).expect("the aggregate input should be written");
+    let mut replacement_stage = None;
+    let mut command = environment.command();
+    command
+        .arg("aggregate")
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--format")
+        .arg("json")
+        .arg(&input_path);
+    let output = run_with_report_publication_mutation(&mut command, &output_path, || {
+        let stages = ordered_report_stages(&environment.artifact_path(""));
+        assert_eq!(stages.len(), 1, "one aggregate stage should be prepared");
+        let stage = stages[0].clone();
+        fs::rename(&stage, &retained_stage)?;
+        fs::write(&stage, b"foreign aggregate stage")?;
+        replacement_stage = Some(stage);
+        Ok(())
+    });
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(4), "{stdout}\n{stderr}");
+    assert!(
+        stdout.is_empty(),
+        "failed aggregate publication emitted evidence"
+    );
+    assert!(
+        stderr.contains("could not be published from their verified stages"),
+        "{stderr}"
+    );
+    assert!(
+        !output_path.exists(),
+        "the replacement must not become output"
+    );
+    let replacement_stage = replacement_stage.expect("the aggregate stage should be replaced");
+    assert_eq!(
+        fs::read(&replacement_stage).unwrap(),
+        b"foreign aggregate stage"
+    );
+    assert!(
+        fs::read(&retained_stage)
+            .expect("the identity-bound aggregate stage should remain available to the fixture")
+            .starts_with(b"{")
+    );
+    for private in [
+        &input_path,
+        &output_path,
+        &retained_stage,
+        &replacement_stage,
+    ] {
+        let private = private.to_string_lossy();
+        assert!(!stdout.contains(private.as_ref()));
+        assert!(!stderr.contains(private.as_ref()));
+    }
+    fs::remove_file(replacement_stage).expect("the test should remove its foreign stage");
+    assert_no_report_stages(&environment.artifact_path(""));
 }
 
 #[test]
