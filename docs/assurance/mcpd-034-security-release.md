@@ -1,0 +1,112 @@
+# MCPD-034 coordinated security-release record
+
+This non-sensitive record closes `MCPD-034` and the two related CWE-367
+advisories on 2026-08-17. It records only public commits, pull requests,
+workflows, release artifacts, advisories, and aggregate repository-control
+state. It contains no private reproducer, path, credential, payload, file
+content, or advisory-workspace material.
+
+## Scope and outcome
+
+`DEC-058` limited `v0.3.1` to two native-identity corrections:
+
+- authority-bearing scenario, custom-CA, snapshot, and aggregate inputs now
+  read only from a no-follow regular-file handle whose complete native identity
+  is reverified before use; and
+- JSON, JUnit, and aggregate publication now binds the stage and destination
+  to the opened stage identity, while cleanup and rollback remove only an
+  identity-owned entry.
+
+The correction preserves the existing target, credential, tool, effect,
+side-effect, schema, byte, redaction, no-overwrite, all-or-nothing publication,
+and cleanup contracts. It adds no retry, fallback, dependency, protocol claim,
+installation channel, or native binary.
+
+## Public merge and bounded exception
+
+The temporary advisory fork could not run Actions, and GitHub's advisory-wide
+merge control remained unavailable while the repository's active ruleset
+applied. Incident `MCPD-034-SECURITY-20260817-02` therefore used the previously
+exercised dedicated pull-request path:
+
+| Event | Evidence |
+| --- | --- |
+| Public correction | [PR #92](https://github.com/EnjoyableWork/mcp-doctor/pull/92), exact candidate `32256dd991b3887ca07084795c3a3ac57b0ef3d9` |
+| Temporary authority | One built-in repository-administrator actor; `pull_request` mode only |
+| Activation | `2026-08-17T00:22:40.893Z` |
+| Squash merge | `2026-08-17T00:22:43Z`, commit [`316dbaf`](https://github.com/EnjoyableWork/mcp-doctor/commit/316dbaf3092af97f85438da212eaf4f9c5435244) |
+| Restoration | `2026-08-17T00:22:44.723Z`, less than four seconds after activation |
+| Projection | Canonical SHA-256 `2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794` |
+
+The candidate and public squash commits have the same Git tree
+`354feffb123a1e1dd964cf70c33d10754cfffa7a`. The head branch was deleted
+after merge. No `always` bypass, ruleset disablement, direct update, deletion
+of `main`, force push, or non-linear merge occurred. Public and authenticated
+verification immediately after restoration both passed with the active
+`Protect main` ruleset, zero bypass actors, and
+`current_user_can_bypass=never`.
+
+## Preserved failure and correction
+
+The first exact-`main`
+[CI run](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31981850276)
+on `316dbaf` failed only the Windows parent-entry replacement regression:
+Windows prevented the real-directory rename while the selected file remained
+open, so the fixture observed the already fail-closed `Unavailable` result
+instead of reaching its exact `IdentityChanged` assertion. The product did not
+accept a replaced file.
+
+[PR #93](https://github.com/EnjoyableWork/mcp-doctor/pull/93) changed only the
+Windows fixture to swap a directory-symlink target, preserving the exact
+`IdentityChanged` requirement and leaving runtime code unchanged. Its
+first-attempt [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31983816016),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31983815079),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31983816021)
+passed before the normal protected squash merge. No unchanged-source workflow
+was rerun, and no timeout, assertion, quarantine, or product behavior was
+weakened.
+
+## Exact-main and release evidence
+
+Corrected exact `main`
+[`d4db369`](https://github.com/EnjoyableWork/mcp-doctor/commit/d4db369a2789f7b6f89b2daad4adc1b6f4900f7e)
+passed:
+
+- [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532369),
+  including native Windows, macOS ARM64, GNU/Linux x64, and dependency policy;
+- [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532095);
+  and
+- [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532388),
+  including source installs, deterministic represented archives, SPDX SBOMs,
+  and the complete non-publishing payload check.
+
+The signed annotated `v0.3.1` tag object
+`3aabbbd31b54b81d42531918766a6d2794259fb6` resolves exactly to that commit. The
+[protected release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985219134)
+published the immutable
+[GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.1)
+and byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.3.1) through the
+recorded reviewer gates and short-lived OIDC token. The tap-owned
+[workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31985523936)
+published exact formula commit
+[`b063e2c`](https://github.com/EnjoyableWork/homebrew-tap/commit/b063e2c43478c93373f6256d8162c685a8b27c27).
+The credential-free
+[release-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985595470)
+then passed all ten identity and installed-smoke jobs without a rerun.
+
+## Coordinated disclosure
+
+Both high-severity CWE-367 advisories were published at
+`2026-08-17T01:48:45Z`, after the safe version and every represented channel
+were verified:
+
+- [GHSA-92m2-749h-2gv5](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-92m2-749h-2gv5)
+  affects `0.2.0` through `0.3.0`; and
+- [GHSA-8r6p-qf9j-vpvx](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-8r6p-qf9j-vpvx)
+  affects exactly `0.3.0`.
+
+Both identify `0.3.1` and later as patched. GitHub removed the temporary
+private fork on publication. The unrelated SSE-fragmentation and
+schema-evaluation drafts remain outside this release and retain their own
+independent remediation and disclosure gates.
