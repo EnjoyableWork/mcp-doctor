@@ -155,10 +155,18 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "stopped at `Authentication required`",
         "Kiro IDE `1.0.288` and Kiro Crew `0.1.3`",
         "was not rerun into acceptance",
-        "Status: implementation and publication complete on 2026-08-17",
+        "Status: completed on 2026-08-17",
         "31996837111",
         "31997316851",
         "31997406753",
+        "9f3a838751856bd20d670053071b6d537f430d37",
+        "31999383802",
+        "31999383050",
+        "31999383921",
+        "32000204735",
+        "32000204694",
+        "32000204757",
+        "32000204919",
         "No other host, unattended behavior, independent adoption",
     ] {
         assert!(
@@ -167,10 +175,11 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         );
     }
     for contract in [
-        "| D-25 | Safe portable coding-agent diagnostic workflow | Optional adoption UX | In progress |",
-        "| MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | In progress |",
+        "| D-25 | Safe portable coding-agent diagnostic workflow | Optional adoption UX | Done |",
+        "| MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | Done |",
         "Mitigated for the exact `v0.3.2` and Codex CLI `0.147.0` scope",
         "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
+        "no main-story ticket is in progress",
     ] {
         assert!(
             project.contains(contract),

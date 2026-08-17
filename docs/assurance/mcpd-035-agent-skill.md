@@ -1,9 +1,8 @@
 # MCPD-035 Agent Skill evidence
 
-Status: implementation and publication complete on 2026-08-17; ticket closure
-remains in progress until the advanced `0.3.2` rehearsal default passes on
-protected `main`. The host observations below ran on 2026-08-16 and are scoped
-to the exact `mcp-doctor` `0.3.2` source and canonical Agent Skill whose SHA-256 is
+Status: completed on 2026-08-17. The host observations below ran on 2026-08-16
+and are scoped to the exact `mcp-doctor` `0.3.2` source and canonical Agent Skill
+whose SHA-256 is
 `f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51`.
 This is not a universal agent-compatibility, deterministic model-correctness,
 or adoption claim. The only host support claim established here is the exact
@@ -101,6 +100,23 @@ matches the immutable release asset. The final credential-free
 passed immutable release, registry, formula, provenance, Agent Skill, installed
 top-level help, two GitHub archive, four Cargo, and three Homebrew checks across
 the represented native hosts.
+
+Protected [PR 96](https://github.com/EnjoyableWork/mcp-doctor/pull/96)
+advanced the current-channel rehearsal default to `0.3.2` and merged as exact
+[`9f3a838`](https://github.com/EnjoyableWork/mcp-doctor/commit/9f3a838751856bd20d670053071b6d537f430d37).
+That protected `main` commit passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383802),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383050),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383921).
+From the same exact source head, the defaulted `0.3.2`
+[release and OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204735),
+[wrong-workflow OIDC rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204694),
+tap-owned [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32000204757),
+and [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204919)
+all passed. Credential inventories immediately before and after found no Cargo
+registry token, release-workflow secret reference, or stored source or tap
+release-environment secret. These post-merge results close `MCPD-035`; they do
+not broaden the exact host, behavior, or adoption claims below.
 
 ## Synthetic forward-tests
 

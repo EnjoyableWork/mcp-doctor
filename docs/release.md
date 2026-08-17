@@ -302,6 +302,23 @@ then passed all ten jobs: immutable release, registry, formula, provenance, and
 Agent Skill identity; two GitHub archive installs; four native Cargo installs;
 three native Homebrew installs; and the installed top-level help route.
 
+Protected [PR 96](https://github.com/EnjoyableWork/mcp-doctor/pull/96) then
+advanced the current-channel rehearsal default to `0.3.2` and merged as exact
+[`9f3a838`](https://github.com/EnjoyableWork/mcp-doctor/commit/9f3a838751856bd20d670053071b6d537f430d37).
+That exact protected `main` commit passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383802),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383050),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383921).
+The defaulted `0.3.2`
+[release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204735),
+[wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204694),
+tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32000204757),
+and [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204919)
+then passed from the protected source and tap heads. Clean before-and-after
+inventories found no Cargo registry token, release-workflow secret reference,
+or stored source or tap release-environment secret. This is the completed
+current-channel rehearsal for `v0.3.2`.
+
 ### GitHub-controlled sequence
 
 Every later release keeps three deliberately separate write boundaries:
