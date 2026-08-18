@@ -340,10 +340,14 @@ unchanged.
 The candidate retains the eight-asset release shape introduced by `v0.3.2` and
 reissues the canonical instruction-only Agent Skill with exact `0.3.3`
 identity. That version-bound skill has no new host-support claim until its
-separate exact-version observation passes. Nothing in this section is
-publication evidence: clean protected source, represented native preflight,
-immutable release, downstream handoffs, installed-channel verification, and
-coordinated advisory publication remain required.
+separate exact-version observation passes. The first tag workflow made the
+eight-asset GitHub Release immutable, then failed because GitHub had not yet
+made its asynchronously generated release attestation available. The
+attestation appeared later, but that later state is not a green rerun and the
+failed workflow remains the accepted failure record. Corrected protected
+source, the explicit partial-release recovery, crates.io and Homebrew handoffs,
+installed-channel verification, and coordinated advisory publication remain
+required.
 
 ### GitHub-controlled sequence
 
@@ -355,9 +359,16 @@ Every later release keeps three deliberately separate write boundaries:
    It rejects a version older than any stable crates.io release and serializes
    every tag and rehearsal through one release concurrency group. It rechecks
    `main` and the annotated tag immediately before publication, then builds,
-   attests, byte-checks, and makes the GitHub Release immutable.
-2. Only after those public bytes and attestations verify, the same workflow and
-   protected `release` environment exchange GitHub OIDC identity through the
+   attests, byte-checks, makes the GitHub Release immutable, and re-downloads
+   the exact immutable bytes.
+2. GitHub creates the release attestation asynchronously after publication.
+   Before approving the separately protected OIDC job, the operator observes
+   one exact `release` attestation for the annotated tag object through the
+   repository-attestations API. That job repeats one typed availability read,
+   cryptographically verifies the release attestation and every asset's
+   provenance, and recreates the exact source handoff from the release tag.
+   Only then does the same workflow and protected `release` environment
+   exchange GitHub OIDC identity through the
    full-SHA-pinned official `rust-lang/crates-io-auth-action` and run
    `cargo publish --locked`. The temporary token is masked and revoked by the
    Action. The same version may be observed only during recovery from a partial
@@ -384,6 +395,20 @@ ever justified, replace that manual dispatch only with a narrowly installed
 GitHub App whose short-lived token can invoke the one tap workflow; do not add
 a PAT or give the source repository write access to the tap.
 
+If the sole tag-triggered workflow attempt fails after the release becomes
+immutable but before crates.io publication, do not rerun that workflow or
+alter the tag or release. Preserve the failure and correct the release path on
+new reviewed `main`. After the correction passes its complete local,
+protected, rehearsal, and credential-inventory gates, dispatch `release.yml`
+from exact `main` with only `recovery_version` set to the immutable version.
+The recovery validator accepts only one failed attempt for that exact annotated
+tag and source commit, one available release attestation, exact immutable
+release state, and an absent crates.io version. Its protected job checks out
+the immutable tag, repeats every release, asset, provenance, package, and
+handoff check, and either publishes that exact source byte once through OIDC or
+fails closed. This recovery is a new reviewed path for a partial release, not
+an accepted green rerun of failed source.
+
 ### Trusted publisher and environment bindings
 
 The crates.io publisher must contain exactly this GitHub identity:
@@ -396,7 +421,8 @@ The crates.io publisher must contain exactly this GitHub identity:
 | Environment | `release` |
 
 The `mcp-doctor` `release` environment permits only `main` for the explicit
-nonpublishing rehearsal and stable `v*.*.*` tags for publication. The tap's
+nonpublishing rehearsal or reviewed partial-release recovery, and stable
+`v*.*.*` tags for initial publication. The tap's
 separate `release` environment permits only tap `main`. Both environments
 have a required-reviewer gate and store no secret. The current one-maintainer
 organization allows its administrator to bypass that gate, so this is an
@@ -410,7 +436,8 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
    currently represented identically across GitHub Releases, Cargo, and Homebrew
-   (`0.3.2` at this review). It reuses that existing immutable release, compares
+   (`0.3.2` at this review) and leave `recovery_version` empty. It reuses that
+   existing immutable release, compares
    the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
    byte fixtures, obtains and revokes one short-lived token through the
    authorized workflow and environment, and proves the same workflow is

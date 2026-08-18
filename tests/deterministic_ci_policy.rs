@@ -143,7 +143,7 @@ fn operational_sleeps_and_positive_retries_match_the_owned_inventory() {
     let channels = read(&repository_root().join(".github/workflows/release-channels.yml"));
     let release_controls =
         read(&repository_root().join("scripts/verify-release-repository-controls.sh"));
-    assert_eq!(release.matches("--retry 0").count(), 6);
+    assert_eq!(release.matches("--retry 0").count(), 7);
     assert_eq!(channels.matches("--retry 0").count(), 3);
     assert_eq!(release_controls.matches("--retry 0").count(), 1);
     for source in [&release, &channels, &release_controls] {
@@ -155,7 +155,9 @@ fn operational_sleeps_and_positive_retries_match_the_owned_inventory() {
         assert!(!source.contains("for _ in {1..60}"));
     }
     assert!(release.contains("timeout 60 gh api"));
-    assert!(release.contains("timeout 60 gh release verify"));
+    assert_eq!(release.matches("gh release verify").count(), 2);
+    assert!(release.contains("predicate_type=release"));
+    assert!(!release.contains("timeout 60 gh release verify"));
     assert!(release.contains(".immutable == true"));
     assert!(release.contains("cmp --silent"));
 }
@@ -278,14 +280,14 @@ fn nonstandard_ci_commands_are_declared_and_incidental_tools_are_rejected() {
     assert!(AUDIT.contains("immediately after checkout"));
 
     let release = read(&repository_root().join(".github/workflows/release.yml"));
-    assert_eq!(release.matches("uses: actions/checkout@").count(), 6);
+    assert_eq!(release.matches("uses: actions/checkout@").count(), 7);
     assert_eq!(
         release
             .matches("- name: Verify declared runner tools")
             .count(),
-        6
+        7
     );
-    assert_eq!(release.matches("./scripts/verify-ci-tools.sh").count(), 6);
+    assert_eq!(release.matches("./scripts/verify-ci-tools.sh").count(), 7);
 
     let channels = read(&repository_root().join(".github/workflows/release-channels.yml"));
     assert_eq!(
