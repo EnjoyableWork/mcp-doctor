@@ -44,7 +44,7 @@
     {
       "name": "base64",
       "scope": "runtime",
-      "version": "0.22.1",
+      "version": "0.23.1",
       "default_features": false,
       "features": ["alloc"]
     },

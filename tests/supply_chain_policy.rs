@@ -392,6 +392,34 @@ fn direct_dependency_versions_features_and_scopes_require_reviewed_inventory() {
 }
 
 #[test]
+fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
+    let deny = repository_file("deny.toml");
+    assert!(
+        deny.contains("[bans]\nmultiple-versions = \"deny\""),
+        "the repository-wide duplicate-version ban must remain enabled"
+    );
+    assert_eq!(
+        deny.matches("base64@").count(),
+        1,
+        "the base64 transition must have one exact exception"
+    );
+    assert!(deny.contains(
+        "base64@0.22.1\", reason = \"reqwest 0.13.4 and hyper-util 0.1.20 retain base64 0.22"
+    ));
+    assert!(deny.contains(
+        "remove this exact transition when every selected upstream converges or a relevant advisory changes the balance"
+    ));
+    assert!(
+        deny.contains("skip-tree = []"),
+        "a transitive subtree must not bypass the duplicate-version review"
+    );
+
+    let project = repository_file("PROJECT.md");
+    assert!(project.contains("DEC-065"));
+    assert!(project.contains("exact transitional `base64` `0.22.1` exception"));
+}
+
+#[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
     assert_eq!(controls["reviewed_on"], "2026-08-18");

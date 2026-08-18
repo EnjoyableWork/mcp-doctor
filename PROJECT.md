@@ -2382,20 +2382,22 @@ or advisory/license exceptions require an accepted decision.
 
 ### Current direct dependency baseline
 
-The 2026-08-11 review, extended on 2026-08-16 for the direct `libc` selection
-and on 2026-08-17 for direct `referencing` use, found every selected direct
-version stable, every declared upstream repository active and not archived,
-the locked graph free of known advisories under `cargo-deny`, and all selected
-licenses accepted or narrowly documented.
-`reqwest` and `rustls` are their current stable releases; `base64` deliberately
-retains the exact stable `0.22.1` already selected by the HTTP graph instead of
-adding current `0.23.1` as a duplicate. This is dated adoption evidence, not a
-promise about future maintenance; an update, ownership change, advisory,
-unexplained inactivity, or project-need change triggers re-review.
+The 2026-08-11 review, extended on 2026-08-16 for the direct `libc` selection,
+on 2026-08-17 for direct `referencing` use, and on 2026-08-18 for direct
+`base64` `0.23.1`, found every selected direct version stable, every declared
+upstream repository active and not archived, the locked graph free of known
+advisories under `cargo-deny`, and all selected licenses accepted or narrowly
+documented. `reqwest`, `rustls`, and direct `base64` are their current stable
+releases. `DEC-065` retains the global duplicate-version ban while allowing one
+exact transitional `base64` `0.22.1` exception for current HTTP and
+development-only certificate-generation upstreams that have not converged.
+This is dated adoption evidence, not a promise about future maintenance; an
+update, ownership change, advisory, unexplained inactivity, upstream
+convergence, or project-need change triggers re-review.
 
 | Dependency | First owning ticket | Narrow role and current review boundary |
 | --- | --- | --- |
-| [`base64` `=0.22.1`](https://crates.io/crates/base64/0.22.1) | `MCPD-010` — Done | Exact standard Base64 encoding for the specification's unsafe-header-value sentinel; direct defaults are disabled and only `alloc` is requested, while reusing the same exact version already required by `reqwest` avoids a second implementation or graph version |
+| [`base64` `=0.23.1`](https://crates.io/crates/base64/0.23.1) | `MCPD-010` — Done; re-reviewed through `MCPD-016` maintenance | Exact standard Base64 encoding for the specification's unsafe-header-value sentinel; direct defaults are disabled and only `alloc` is requested, so the default-on `simd-unsafe` path is absent; `DEC-065` bounds the one retained `0.22.1` transitive line and requires its removal when selected upstreams converge or a relevant advisory changes the balance |
 | [`clap` `=4.6.6`](https://crates.io/crates/clap/4.6.6) | `MCPD-002` — Done | CLI parsing and generated help through the selected `derive` feature; the active clap-rs upstream, Rust floor, permissive license, graph, and built-binary CLI behavior are reviewed |
 | [`serde` `=1.0.229`](https://crates.io/crates/serde/1.0.229) and [`serde_json` `=1.0.151`](https://crates.io/crates/serde_json/1.0.151) | `MCPD-004` — Done | Typed protocol/report serialization and strict JSON parsing; active serde-rs stewardship, Rust floors, permissive licenses, graph, deterministic fixtures, and redaction boundaries are reviewed |
 | [`tokio` `=1.53.1`](https://crates.io/crates/tokio/1.53.1) | `MCPD-005` — Done; `net` expanded by `MCPD-010` | Only the async process, I/O, timer, macro, runtime, and network features needed by bounded STDIO and one-shot DNS/HTTP; active upstream, Rust floor, MIT license, feature graph, timing, cleanup, and cross-platform behavior are reviewed |
@@ -2893,8 +2895,8 @@ and implementing HTTP framing, certificate validation, or cryptography inside
 selected crates keep those semantics in maintained implementations while the
 application owns the stricter target, authorization, resolver, retry, proxy,
 redaction, and resource boundaries. `base64` is used for one exact wire
-encoding already present in that graph rather than duplicating a subtle
-protocol representation locally.
+encoding rather than duplicating a subtle protocol representation in product
+code; `DEC-065` separately records the bounded package-version transition.
 
 Registry ownership and repository identity were checked against crates.io and
 the declared upstreams. [`reqwest`](https://github.com/seanmonstar/reqwest) is
@@ -2904,25 +2906,27 @@ maintainers and rustls organization; `0.23.43` was released 2026-07-29 and its
 [security policy](https://github.com/rustls/rustls/security/policy) covers the
 current line, private reporting, fixes, regression tests, releases, and RustSec
 advisories. [`base64`](https://github.com/marshallpierce/rust-base64) retains
-its two established crates.io owners; `0.22.1` was released 2024-04-30 and the
+its two established crates.io owners; `0.23.1` was released 2026-08-04 and the
 repository remained active through 2026-08-05. All three repositories were
 active and unarchived during review with no unexplained registry/repository
-provenance change. `reqwest` and `base64` do not publish a dedicated security
-policy; their active owner and issue/release paths plus RustSec monitoring are
-accepted for these focused roles, and that weaker formal response surface is
-an explicit replacement or re-review trigger.
+ownership change. `base64`'s annotated tag and release commit remain unsigned
+and it has no GitHub Release or dedicated security policy; its active owner and
+issue/release paths plus RustSec monitoring are accepted for this focused role,
+and that weaker formal provenance and response surface is an explicit
+replacement or re-review trigger. `reqwest` likewise has no dedicated security
+policy.
 
 The direct crates declare permissive MIT/Apache-2.0, MIT/Apache-2.0, and
 Apache-2.0/ISC/MIT licenses and Rust floors 1.48, 1.85, and 1.71 respectively;
-the graph's effective floor is below the repository's Rust 1.97 toolchain.
-`base64` and `rustls` forbid unsafe Rust. `base64` and `reqwest` have no build
-script; the selected `rustls` build script only gates an unselected nightly
-`read_buf` optimization. `reqwest` contains small unsafe buffer adapters, and
-the transitive `ring` `0.17.14` provider owns reviewed native C/assembly, unsafe,
-and `cc` build surfaces. Platform-verifier FFI and trust packages are selected
-per target. These concentrated surfaces, especially `ring`, platform trust,
-and the HTTP parser, require focused TLS, malformed-response, native, advisory,
-and ownership rechecks on every update.
+the graph's effective floor is below the repository's Rust 1.97 toolchain. The
+selected `base64` feature set and `rustls` forbid unsafe Rust. `base64` and
+`reqwest` have no build script; the selected `rustls` build script only gates an
+unselected nightly `read_buf` optimization. `reqwest` contains small unsafe
+buffer adapters, and the transitive `ring` `0.17.14` provider owns reviewed
+native C/assembly, unsafe, and `cc` build surfaces. Platform-verifier FFI and
+trust packages are selected per target. These concentrated surfaces,
+especially `ring`, platform trust, and the HTTP parser, require focused TLS,
+malformed-response, native, advisory, and ownership rechecks on every update.
 
 The change adds 72 locked crates for HTTP, URL/IDNA, async connection, TLS,
 cryptography, and target-specific macOS, Windows, Linux, Android, and WebAssembly
@@ -2932,11 +2936,12 @@ also absent. Default `rustls` features such as `aws-lc-rs`, logging, and
 post-quantum exchange are not selected. The application selects `ring`, `std`,
 and TLS 1.2 support, explicitly limits the client to HTTP/1.1, disables proxy
 and replay behavior at construction, and proves the runtime settings with trap
-fixtures. `cargo tree --duplicates` reports only reviewed `getrandom` 0.2/0.3/
-0.4, `syn` 2/3, and `windows-sys` 0.52/0.61 transitions; `deny.toml` names those
-exact exceptions and scopes the additional `ring`, `rustls-webpki`, `subtle`,
-`untrusted`, and root-certificate data licenses. The complete all-feature
-locked graph passes advisory, ban, license, and source policy.
+fixtures. `cargo tree --duplicates` reports only reviewed `base64` 0.22/0.23,
+`getrandom` 0.2/0.3/0.4, `syn` 2/3, and `windows-sys` 0.52/0.61 transitions;
+`deny.toml` names those exact exceptions and scopes the additional `ring`,
+`rustls-webpki`, `subtle`, `untrusted`, and root-certificate data licenses. The
+complete all-feature locked graph passes advisory, ban, license, and source
+policy.
 
 Static TLS leaf fixtures are not acceptable evidence because platform-enforced
 validity limits would make them expire. Development-only
@@ -3574,6 +3579,41 @@ without a needed capability and failed the duplicate-version ban. The proposal
 was closed without an ignore rule, leaving later convergence or a security
 update eligible for fresh review.
 
+The 2026-08-18 fresh maintenance review for
+[PR 98](https://github.com/EnjoyableWork/mcp-doctor/pull/98) deliberately
+changes only that no-ignore outcome under `DEC-065`; it does not claim that the
+ecosystem converged or that the earlier rejection lacked evidence. Direct
+`base64` moves to stable, unyanked `0.23.1`, a 93,605-byte crates.io package at
+SHA-256 `ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5`.
+The package retains the two established registry owners, dual MIT/Apache-2.0
+license, Rust `1.71` floor, no build script, active public unarchived upstream,
+and no published GitHub or RustSec advisory. Its annotated `v0.23.1` tag and
+commit `069bf7067b949f5c0a92b6ceb82492920502f2c2` are unsigned and there is no
+GitHub Release or dedicated security policy; those limitations remain recorded
+rather than being treated as positive provenance.
+
+Release notes and the source diff add custom padding support, additional
+preconfigured constants, a clearer decode error, and optional SIMD engines.
+`mcp-doctor` continues to call only the scalar standard encoder for one bounded
+header sentinel. Direct defaults remain disabled and only `alloc` is selected,
+so neither `std` nor the default-on `simd-unsafe` feature enters this edge; the
+selected crate consequently forbids unsafe code. The update adds no transitive
+package, build script, native code, startup work, network behavior, active
+authority, protocol claim, or product-source change. It does add one exact
+package version and can retain two compiled Base64 implementations in the
+release graph; its runtime role remains one bounded encoding operation.
+
+Current stable `reqwest` `0.13.4` and `hyper-util` `0.1.20` still select
+`base64` `0.22.1`; current `rcgen` `0.14.9` also retains it through `pem`
+`3.0.6` for development-only certificate fixtures. No selected upstream update
+can therefore converge the graph today. The global duplicate ban remains
+enabled, `deny.toml` permits only exact `base64@0.22.1`, and a policy regression
+proves that this exception cannot become a subtree bypass. Convergence by every
+selected upstream removes the exception; an advisory, ownership or provenance
+change, feature expansion, source change, or wider product use forces a fresh
+review. The exact locked proposal must pass the full local dependency gate and
+all represented hosted native source/package journeys before merge.
+
 The dated [Action review](https://github.com/EnjoyableWork/mcp-doctor/pull/27#issuecomment-5268400437)
 accepts only `Homebrew/actions/setup-homebrew` immutable release
 `2026.08.10.1` at verified commit
@@ -4104,6 +4144,7 @@ evidence, and official proof.
 | DEC-062 | Preserve the read-only verification credential while correcting GitHub merge-setting observation | Accepted | 2026-08-18 | GitHub's current REST repository response exposes merge-related fields only when a credential has both contents read and write. An omitted `allow_auto_merge` field under the exact canonical read-only fine-grained token is therefore unavailable evidence, not proof of disabled auto-merge. Do not expand the token. Verify only this setting through one exact variable-bound read-only GraphQL repository query that requires the exact `nameWithOwner` and Boolean `autoMergeAllowed=false`; API errors, missing or malformed data, identity mismatch, and `true` fail. Retain REST for repository identity, visibility, archive, default branch, and security-update checks. Preserve the second failed audit and accept a corrected operator result only from new reviewed source after deterministic pass/rejection rehearsals and first-attempt exact-head and exact-`main` gates. No mutation, retry, fallback, clock, poll, new credential, product behavior, release artifact, advisory content, or assurance claim changes. |
 | DEC-063 | Fail closed when repeat-release credential inventory evidence is unavailable | Accepted | 2026-08-18 | Reject the pre-rehearsal result that received `403` for the organization Actions-secret inventory but printed success because Bash did not propagate a process-substitution failure. Acquire and validate the complete organization-secret response before iteration. Unavailable or malformed inventory, unknown visibility, or unavailable selected-repository evidence fails with a value-free diagnostic; an empty successfully read array remains valid. Preserve the rejected result and prove the unavailable rejection plus empty-inventory success through a disposable fake GitHub CLI that completes every other repository, environment, local credential-store, and workflow check. Accept a new before/after inventory only from corrected reviewed source after first-attempt exact-head and exact-`main` gates, using the existing exact read-only verification credential. No permission expansion, rehearsal retry, workflow dispatch, product behavior, dependency, release artifact, advisory content, or assurance claim changes. |
 | DEC-064 | Recover an immutable partial release without accepting an attestation-readiness rerun | Accepted | 2026-08-18 | Preserve the sole `v0.3.3` tag-workflow failure after GitHub made the eight-asset release immutable but before its asynchronous release attestation became available; do not rerun the failed job, move or delete the signed annotated tag, edit the immutable release, rewrite an asset, or treat the later attestation as a green attempt. On new reviewed `main`, make the publication job prove immutable state and re-downloaded bytes, then put one typed release-attestation read and one cryptographic verification in the separately approved OIDC job. Permit `workflow_dispatch` recovery only from exact `main`, only when the input names an exact immutable annotated release with exactly one failed attempt at the same source, exactly one available `release` attestation, and no crates.io version. Check out that immutable tag, repeat all release, asset, provenance, package, formula, and handoff checks, and publish only its byte-identical crate through the existing trusted workflow, environment, and ephemeral token. Require complete local and dependency gates, protected first-attempt exact-head and exact-`main` gates, a new exact-source operator audit, and clean before/after credential inventories plus all four nonpublishing rehearsals before the one recovery dispatch. Add no sleep, poll, retry, fallback, credential, dependency, product behavior, release mutation, advisory change, or assurance claim. |
+| DEC-065 | Accept direct `base64` `0.23.1` with one exact transitional duplicate | Accepted | 2026-08-18 | Supersede only the no-ignore outcome of the dated PR 26 review after a fresh `MCPD-016` maintenance review, while preserving its provenance and graph findings. Select exact stable, unyanked `base64` `0.23.1` only for the existing bounded header-sentinel encoder with defaults disabled and `alloc` alone, keeping the default-on `simd-unsafe` feature and its unsafe implementation absent. Keep the repository-wide duplicate ban and allow only exact `base64@0.22.1` while current stable `reqwest` and `hyper-util`, plus development-only `rcgen` through `pem`, retain that line; do not permit a subtree skip. Remove the exception when every selected upstream converges, and re-review any advisory, ownership, provenance, source, feature, platform, or use change. Require the closed direct-dependency inventory, exact lockfile, dependency policy, ordinary behavior, and represented native source/package journeys to pass before merge. Add no transitive package, build script, native code, active behavior, protocol support, release artifact, or assurance claim. |
 
 ## Open decisions
 
@@ -4115,8 +4156,9 @@ accepted as `DEC-032`, `OPEN-08` and `OPEN-09` are accepted as `DEC-034` and
 `DEC-061` records the historical-versus-rolling release-gate correction,
 `DEC-062` records the least-authority merge-setting observation correction, and
 `DEC-063` records the fail-closed repeat-release inventory correction discovered
-during `MCPD-036`, and `DEC-064` records its immutable partial-release recovery
-without accepting a delayed green rerun.
+during `MCPD-036`, `DEC-064` records its immutable partial-release recovery
+without accepting a delayed green rerun, and `DEC-065` records the exact
+transitional `base64` duplicate accepted after fresh maintenance review.
 `OPEN-12` is accepted as `DEC-044`, `OPEN-13` is accepted as `DEC-045`, and
 `OPEN-14` is accepted as `DEC-051`.
 `DEC-048` records the focused issue #64 protocol-rejection correction, and
