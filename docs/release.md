@@ -457,7 +457,12 @@ a workflow file or local test alone is not completion evidence.
 ### Credential inventory gate
 
 Before and after the rehearsal, inventory credential names and configuration
-without printing values. Acceptance requires:
+without printing values. Every repository, environment, and organization
+secret endpoint must return a successfully parsed typed inventory; a permission
+error, missing response, malformed shape, or unavailable selected-repository
+mapping fails closed and cannot emit the success record. Run this inventory
+with the same exact read-only verification credential used by the operator
+audit rather than widening another session. Acceptance requires:
 
 - no Cargo credential for crates.io in the operator's active Cargo home;
 - no repository, environment, or organization Actions secret used by either

@@ -369,6 +369,8 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
         "environments/release/deployment-branch-policies",
         "environments/release/secrets",
         "orgs/${repeat_release_organization}/actions/secrets",
+        "organization Actions secret inventory could not be verified",
+        "repeat_release_organization_secret_rows",
         "actions/permissions/workflow",
         "default_workflow_permissions == \"read\"",
         "CARGO_REGISTRY_TOKEN",
@@ -381,6 +383,143 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
             "repeat-release control verifier should enforce {contract}"
         );
     }
+    assert!(
+        !control_verifier.contains("done < <("),
+        "repeat-release inventory must not lose API failures in process substitution"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repeat_release_inventory_fails_closed_when_organization_secrets_are_unavailable() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let source_sha = "1111111111111111111111111111111111111111";
+    let tap_sha = "2222222222222222222222222222222222222222";
+    let temporary = tempfile::tempdir().expect("repeat-release fixture root should be disposable");
+    let fake_bin = temporary.path().join("bin");
+    let fake_home = temporary.path().join("home");
+    let fake_cargo_home = temporary.path().join("cargo");
+    fs::create_dir_all(&fake_bin).expect("fake executable directory should be created");
+    fs::create_dir_all(&fake_home).expect("fake home should be created");
+    fs::create_dir_all(&fake_cargo_home).expect("fake Cargo home should be created");
+    let fake_gh = fake_bin.join("gh");
+    let fake_log = temporary.path().join("gh.log");
+    let fake_gh_source = r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == auth && "$2" == status ]]; then
+  exit 0
+fi
+if [[ "$1" != api ]]; then
+  exit 2
+fi
+endpoint=$2
+printf '%s\n' "$endpoint" >>"$REPEAT_RELEASE_GH_LOG"
+case "$endpoint" in
+  repos/EnjoyableWork/mcp-doctor)
+    printf '{"visibility":"public","id":101}\n'
+    ;;
+  repos/EnjoyableWork/homebrew-tap)
+    printf '{"visibility":"public","id":202}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/commits/main)
+    printf '{"sha":"SOURCE_SHA_SENTINEL"}\n'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/commits/main)
+    printf '{"sha":"TAP_SHA_SENTINEL"}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/immutable-releases)
+    printf '{"enabled":true}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/environments/release)
+    printf '%s\n' '{"name":"release","deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]},{"type":"branch_policy"}]}'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/environments/release)
+    printf '%s\n' '{"name":"release","deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]},{"type":"branch_policy"}]}'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/environments/release/deployment-branch-policies)
+    printf '%s\n' '{"branch_policies":[{"name":"main","type":"branch"},{"name":"v*.*.*","type":"tag"}]}'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/environments/release/deployment-branch-policies)
+    printf '%s\n' '{"branch_policies":[{"name":"main","type":"branch"}]}'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/actions/secrets|repos/EnjoyableWork/mcp-doctor/environments/release/secrets|repos/EnjoyableWork/homebrew-tap/actions/secrets|repos/EnjoyableWork/homebrew-tap/environments/release/secrets)
+    printf '{"total_count":0}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/actions/permissions/workflow|repos/EnjoyableWork/homebrew-tap/actions/permissions/workflow)
+    printf '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}\n'
+    ;;
+  'orgs/EnjoyableWork/actions/secrets?per_page=100')
+    if [[ "$REPEAT_RELEASE_ORG_SECRET_MODE" == unavailable ]]; then
+      printf 'synthetic unavailable inventory\n' >&2
+      exit 1
+    fi
+    printf '{"secrets":[]}\n'
+    ;;
+  'repos/EnjoyableWork/mcp-doctor/contents/.github/workflows/release.yml?ref=SOURCE_SHA_SENTINEL')
+    content=$(printf '%s' 'rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18' | base64 | tr -d '\n')
+    printf '{"content":"%s"}\n' "$content"
+    ;;
+  'repos/EnjoyableWork/homebrew-tap/contents/.github/workflows/publish-mcp-doctor.yml?ref=TAP_SHA_SENTINEL')
+    content=$(printf '%s' 'permissions: contents: write' | base64 | tr -d '\n')
+    printf '{"content":"%s"}\n' "$content"
+    ;;
+  *)
+    printf 'unexpected synthetic endpoint\n' >&2
+    exit 2
+    ;;
+esac
+"#
+    .replace("SOURCE_SHA_SENTINEL", source_sha)
+    .replace("TAP_SHA_SENTINEL", tap_sha);
+    fs::write(&fake_gh, fake_gh_source).expect("fake GitHub CLI should be written");
+    let mut permissions = fs::metadata(&fake_gh)
+        .expect("fake GitHub CLI metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_gh, permissions).expect("fake GitHub CLI should be executable");
+    let inherited_path = std::env::var("PATH").expect("test PATH should be available");
+    let fixture_path = format!("{}:{inherited_path}", fake_bin.display());
+
+    let run_fixture = |mode: &str| {
+        Command::new("bash")
+            .arg(repository_root().join("scripts/verify-repeat-release-controls.sh"))
+            .arg(source_sha)
+            .arg(tap_sha)
+            .current_dir(repository_root())
+            .env("PATH", &fixture_path)
+            .env("HOME", &fake_home)
+            .env("CARGO_HOME", &fake_cargo_home)
+            .env("REPEAT_RELEASE_GH_LOG", &fake_log)
+            .env("REPEAT_RELEASE_ORG_SECRET_MODE", mode)
+            .env_remove("CARGO_REGISTRY_TOKEN")
+            .env_remove("CARGO_REGISTRIES_CRATES_IO_TOKEN")
+            .env_remove("GH_TOKEN")
+            .env_remove("GITHUB_TOKEN")
+            .output()
+            .expect("repeat-release verifier should execute")
+    };
+
+    let unavailable = run_fixture("unavailable");
+    assert!(!unavailable.status.success());
+    assert!(
+        !String::from_utf8_lossy(&unavailable.stdout)
+            .contains("Verified clean repeat-release controls")
+    );
+    assert!(
+        String::from_utf8_lossy(&unavailable.stderr)
+            .contains("organization Actions secret inventory could not be verified")
+    );
+
+    let empty = run_fixture("empty");
+    assert!(
+        empty.status.success(),
+        "empty synthetic inventory should pass: {}",
+        String::from_utf8_lossy(&empty.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&empty.stdout).contains("Verified clean repeat-release controls")
+    );
 }
 
 #[test]
