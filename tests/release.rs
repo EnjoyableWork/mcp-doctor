@@ -138,7 +138,8 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     for contract in [
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
-        "default: 0.3.2",
+        "default: 0.3.3",
+        "recovery_version:",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
         "published_stable_versions",
@@ -167,6 +168,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         "Revalidate current main and annotated tag authority",
         "REHEARSED_VERSION: ${{ needs.rehearse.outputs.version }}",
         "REQUESTED_VERSION: ${{ inputs.rehearsal_version }}",
+        "inputs.recovery_version == ''",
     ] {
         assert!(
             workflow.contains(contract),
@@ -182,6 +184,52 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     assert!(workflow.contains("no publish command exists in this job"));
     assert!(!workflow.contains("reuses only immutable v0.1.0"));
     assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn immutable_partial_release_recovery_is_explicit_single_attempt_and_byte_bound() {
+    let workflow = repository_file(".github/workflows/release.yml");
+
+    for contract in [
+        "Validate exact immutable partial-release recovery",
+        "inputs.recovery_version != ''",
+        "Check out the controlled default branch",
+        "partial-release recovery must be dispatched from exact main",
+        "predicate_type=release",
+        ".attestations | type == \"array\" and length == 1",
+        "--workflow release.yml",
+        ".[0].attempt == 1 and .[0].conclusion == \"failure\"",
+        "all(.versions[]; .num != $version)",
+        "needs.recover.result == 'success'",
+        "needs.validate.outputs.version || needs.recover.outputs.version",
+        "test \"$(git rev-parse HEAD)\" = \"$release_commit\"",
+        "--source-ref \"$release_ref\"",
+    ] {
+        assert!(
+            workflow.contains(contract),
+            "partial-release recovery should enforce {contract}"
+        );
+    }
+
+    let publish_start = workflow.find("\n  publish:\n").unwrap();
+    let recover_start = workflow.find("\n  recover:\n").unwrap();
+    let source_start = workflow.find("\n  source:\n").unwrap();
+    let crates_start = workflow.find("\n  crates:\n").unwrap();
+    let rehearse_start = workflow.find("\n  rehearse:\n").unwrap();
+    let recover_job = &workflow[recover_start..source_start];
+    let publish_job = &workflow[publish_start..crates_start];
+    let crates_job = &workflow[crates_start..rehearse_start];
+    assert!(
+        recover_job
+            .find("scripts/validate-release-version.sh")
+            .unwrap()
+            < recover_job.find("git fetch --force origin").unwrap()
+    );
+    assert!(!recover_job.contains("ref: refs/tags/v${{ inputs.recovery_version }}"));
+    assert!(publish_job.contains("Require immutable release state"));
+    assert!(!publish_job.contains("gh release verify"));
+    assert!(crates_job.contains("gh release verify"));
+    assert!(!workflow.contains("sleep "));
 }
 
 #[test]
@@ -369,6 +417,8 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
         "environments/release/deployment-branch-policies",
         "environments/release/secrets",
         "orgs/${repeat_release_organization}/actions/secrets",
+        "organization Actions secret inventory could not be verified",
+        "repeat_release_organization_secret_rows",
         "actions/permissions/workflow",
         "default_workflow_permissions == \"read\"",
         "CARGO_REGISTRY_TOKEN",
@@ -381,6 +431,143 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
             "repeat-release control verifier should enforce {contract}"
         );
     }
+    assert!(
+        !control_verifier.contains("done < <("),
+        "repeat-release inventory must not lose API failures in process substitution"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repeat_release_inventory_fails_closed_when_organization_secrets_are_unavailable() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let source_sha = "1111111111111111111111111111111111111111";
+    let tap_sha = "2222222222222222222222222222222222222222";
+    let temporary = tempfile::tempdir().expect("repeat-release fixture root should be disposable");
+    let fake_bin = temporary.path().join("bin");
+    let fake_home = temporary.path().join("home");
+    let fake_cargo_home = temporary.path().join("cargo");
+    fs::create_dir_all(&fake_bin).expect("fake executable directory should be created");
+    fs::create_dir_all(&fake_home).expect("fake home should be created");
+    fs::create_dir_all(&fake_cargo_home).expect("fake Cargo home should be created");
+    let fake_gh = fake_bin.join("gh");
+    let fake_log = temporary.path().join("gh.log");
+    let fake_gh_source = r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == auth && "$2" == status ]]; then
+  exit 0
+fi
+if [[ "$1" != api ]]; then
+  exit 2
+fi
+endpoint=$2
+printf '%s\n' "$endpoint" >>"$REPEAT_RELEASE_GH_LOG"
+case "$endpoint" in
+  repos/EnjoyableWork/mcp-doctor)
+    printf '{"visibility":"public","id":101}\n'
+    ;;
+  repos/EnjoyableWork/homebrew-tap)
+    printf '{"visibility":"public","id":202}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/commits/main)
+    printf '{"sha":"SOURCE_SHA_SENTINEL"}\n'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/commits/main)
+    printf '{"sha":"TAP_SHA_SENTINEL"}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/immutable-releases)
+    printf '{"enabled":true}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/environments/release)
+    printf '%s\n' '{"name":"release","deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]},{"type":"branch_policy"}]}'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/environments/release)
+    printf '%s\n' '{"name":"release","deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true},"protection_rules":[{"type":"required_reviewers","prevent_self_review":false,"reviewers":[{}]},{"type":"branch_policy"}]}'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/environments/release/deployment-branch-policies)
+    printf '%s\n' '{"branch_policies":[{"name":"main","type":"branch"},{"name":"v*.*.*","type":"tag"}]}'
+    ;;
+  repos/EnjoyableWork/homebrew-tap/environments/release/deployment-branch-policies)
+    printf '%s\n' '{"branch_policies":[{"name":"main","type":"branch"}]}'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/actions/secrets|repos/EnjoyableWork/mcp-doctor/environments/release/secrets|repos/EnjoyableWork/homebrew-tap/actions/secrets|repos/EnjoyableWork/homebrew-tap/environments/release/secrets)
+    printf '{"total_count":0}\n'
+    ;;
+  repos/EnjoyableWork/mcp-doctor/actions/permissions/workflow|repos/EnjoyableWork/homebrew-tap/actions/permissions/workflow)
+    printf '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}\n'
+    ;;
+  'orgs/EnjoyableWork/actions/secrets?per_page=100')
+    if [[ "$REPEAT_RELEASE_ORG_SECRET_MODE" == unavailable ]]; then
+      printf 'synthetic unavailable inventory\n' >&2
+      exit 1
+    fi
+    printf '{"secrets":[]}\n'
+    ;;
+  'repos/EnjoyableWork/mcp-doctor/contents/.github/workflows/release.yml?ref=SOURCE_SHA_SENTINEL')
+    content=$(printf '%s' 'rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18' | base64 | tr -d '\n')
+    printf '{"content":"%s"}\n' "$content"
+    ;;
+  'repos/EnjoyableWork/homebrew-tap/contents/.github/workflows/publish-mcp-doctor.yml?ref=TAP_SHA_SENTINEL')
+    content=$(printf '%s' 'permissions: contents: write' | base64 | tr -d '\n')
+    printf '{"content":"%s"}\n' "$content"
+    ;;
+  *)
+    printf 'unexpected synthetic endpoint\n' >&2
+    exit 2
+    ;;
+esac
+"#
+    .replace("SOURCE_SHA_SENTINEL", source_sha)
+    .replace("TAP_SHA_SENTINEL", tap_sha);
+    fs::write(&fake_gh, fake_gh_source).expect("fake GitHub CLI should be written");
+    let mut permissions = fs::metadata(&fake_gh)
+        .expect("fake GitHub CLI metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_gh, permissions).expect("fake GitHub CLI should be executable");
+    let inherited_path = std::env::var("PATH").expect("test PATH should be available");
+    let fixture_path = format!("{}:{inherited_path}", fake_bin.display());
+
+    let run_fixture = |mode: &str| {
+        Command::new("bash")
+            .arg(repository_root().join("scripts/verify-repeat-release-controls.sh"))
+            .arg(source_sha)
+            .arg(tap_sha)
+            .current_dir(repository_root())
+            .env("PATH", &fixture_path)
+            .env("HOME", &fake_home)
+            .env("CARGO_HOME", &fake_cargo_home)
+            .env("REPEAT_RELEASE_GH_LOG", &fake_log)
+            .env("REPEAT_RELEASE_ORG_SECRET_MODE", mode)
+            .env_remove("CARGO_REGISTRY_TOKEN")
+            .env_remove("CARGO_REGISTRIES_CRATES_IO_TOKEN")
+            .env_remove("GH_TOKEN")
+            .env_remove("GITHUB_TOKEN")
+            .output()
+            .expect("repeat-release verifier should execute")
+    };
+
+    let unavailable = run_fixture("unavailable");
+    assert!(!unavailable.status.success());
+    assert!(
+        !String::from_utf8_lossy(&unavailable.stdout)
+            .contains("Verified clean repeat-release controls")
+    );
+    assert!(
+        String::from_utf8_lossy(&unavailable.stderr)
+            .contains("organization Actions secret inventory could not be verified")
+    );
+
+    let empty = run_fixture("empty");
+    assert!(
+        empty.status.success(),
+        "empty synthetic inventory should pass: {}",
+        String::from_utf8_lossy(&empty.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&empty.stdout).contains("Verified clean repeat-release controls")
+    );
 }
 
 #[test]
@@ -459,6 +646,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let agent_notes = repository_file("docs/releases/v0.3.2.md");
     let current_notes = repository_file("docs/releases/v0.3.3.md");
     let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
+    let bounded_work_record = repository_file("docs/assurance/mcpd-036-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -473,11 +661,11 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "currently represented identically across GitHub Releases, Cargo, and Homebrew"
         )
     );
-    assert!(release.contains("`0.3.2` at this review"));
+    assert!(release.contains("`0.3.3` at this review"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents the `mcp-doctor` `0.3.3` release candidate",
+        "This source tree records the completed `mcp-doctor` `0.3.3` publication",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -516,6 +704,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "32000204694",
         "32000204757",
         "32000204919",
+        "mcpd-036-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
         "passed all ten jobs",
@@ -581,8 +770,9 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "Fragmented request-scoped SSE",
         "schema_evaluation_steps",
         "unsupported_linear_pattern",
-        "separate advisory\nrecords",
-        "post-publication closure update",
+        "separate advisories\nbecause",
+        "GHSA-3vpj-fcvj-28pm",
+        "GHSA-jr72-f9q4-424m",
         "cargo install mcp-doctor --version '=0.3.3' --locked",
     ] {
         assert!(
@@ -590,10 +780,6 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "v0.3.3 release notes should preserve {contract}"
         );
     }
-    assert!(
-        !current_notes.contains("/security/advisories/GHSA-"),
-        "an unpublished candidate must not expose active advisory identifiers"
-    );
     for contract in [
         "MCPD-034 coordinated security-release record",
         "MCPD-034-SECURITY-20260817-02",
@@ -606,6 +792,23 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         assert!(
             security_record.contains(contract),
             "MCPD-034 completion record should preserve {contract}"
+        );
+    }
+    for contract in [
+        "MCPD-036 coordinated bounded-work security-release record",
+        "32095369800",
+        "995d471b0024a6d1e16b85e1778168bd27d3aebc",
+        "7e5fff3b7fa953a4ae371739a6046db9cd56feca",
+        "32099327284",
+        "4a2e2f3ba88dad5a8d80cba42c3ee07c38da18bc",
+        "32099683447",
+        "GHSA-3vpj-fcvj-28pm",
+        "GHSA-jr72-f9q4-424m",
+        "One bounded later observation proved GitHub\nrejected it",
+    ] {
+        assert!(
+            bounded_work_record.contains(contract),
+            "MCPD-036 completion record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
@@ -910,7 +1113,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
         "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
+        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
         "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
         "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
         "31755736570",
@@ -1194,8 +1397,8 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done; `MCPD-036` is an in-progress security correction |",
-        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017`, `MCPD-018`, and `MCPD-036` are Done |",
+        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
@@ -1839,7 +2042,7 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-017` and `MCPD-018` are Done",
+        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",

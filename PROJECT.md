@@ -6,12 +6,12 @@ decisions, risks, and release gates.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, passive legacy inspection, current-revision contract snapshots and diffs, one-run JSON/JUnit report artifacts, conservative offline aggregation, structured unsupported-version diagnosis, and stable schema-backed JSON and JUnit-compatible projections pass local, protected hosted, immutable-release, and represented installed-channel evidence in `v0.3.0`; optional compiled-only capability discovery, explicit passive legacy-revision snapshot/diff support, exact-selected MCP `2025-11-25` and `2025-06-18` `check` and `break`, and current-revision schema-invalid argument rejection pass their scoped local, clean package/install, protected exact-head, and exact-`main` source evidence; invocation-local named diagnostic limits and current-revision bounded multi-tool workflows additionally pass scoped local, clean package/install, and protected exact-head evidence without a new release or broad compatibility claim; the `MCPD-034` native-identity corrections additionally pass deterministic local, protected hosted, immutable `v0.3.1`, and represented installed-channel evidence without broadening the protocol, transport, platform, or output-format matrix; the `MCPD-035` instruction-only Agent Skill, installed help route, and exact Codex CLI `0.147.0` route pass deterministic local, protected hosted, immutable `v0.3.2`, and represented installed-channel evidence without active authority, a dependency, a universal-host claim, or an adoption claim |
-| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done; `MCPD-036` is an in-progress security correction |
-| Overall status | M0 through M4 are Done; immutable `v0.1.0` through `v0.3.2` channels are verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence and the completed `MCPD-016A` correction prove the current supply-chain boundary, including direct digest-authenticated Syft acquisition, the narrowed live Action allowlist, and first-attempt exact-head and exact-`main` gates; `DEC-041` and `DEC-042` fix the organization-access policy; `MCPD-017` is Done after owner-authorized activation, correction of a manually regressed owner-only App-installation setting, a protected non-disclosing exact-`main` verifier pass, and confirmed revocation of its one-run credential; `MCPD-018` completes the scoped M4 baseline with the owner-published official BadgeApp project `14096`, dated evidence for all 24 OSPS `v2026.02.19` Level 1 controls, and a digest- and provenance-bound SLSA `v1.2` Build L2 evaluation of all seven canonical `v0.3.0` GitHub Release assets; optional `MCPD-021` through `MCPD-033` are Done for resolved issues #72, #73, #64, #66, #74, #60, #61, #75, #41, #65, and #71 plus the independently verified `v0.3.0` release and corrected next-release path without broadening the M4 claim; `MCPD-034` is Done after the bounded protected public merge, preserved Windows fixture failure and focused correction, first-attempt corrected exact-`main` gates, immutable `v0.3.1` GitHub and crates.io publication, tap-owned Homebrew handoff, ten-job installed-channel verification, and coordinated publication of both CWE-367 advisories; `MCPD-035` is Done after protected PR 96 advanced the `v0.3.2` rehearsal baseline, first-attempt exact-`main` CI, CodeQL, and release preflight passed on `9f3a838`, the defaulted release/OIDC and wrong-workflow paths, tap-owned no-write path, and ten-job channel verifier all passed, and clean before-and-after credential inventories proved no retained publication credential; `MCPD-036` is In progress for two confirmed privately disclosed CWE-400 defects and has not yet produced a patched release or public assurance claim |
-| Current focus | Stabilize the unpublished `v0.3.3` `MCPD-036` candidate as two independently bounded remediations without weakening protocol, activity, redaction, cleanup, or compatibility contracts |
-| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |
-| Last reviewed | 2026-08-17 |
+| Product state | The passive local STDIO MVP, pinned current-revision compatibility matrix, bounded local and Streamable HTTP `check`, deterministic `break`, passive legacy inspection, current-revision contract snapshots and diffs, one-run JSON/JUnit report artifacts, conservative offline aggregation, structured unsupported-version diagnosis, and stable schema-backed JSON and JUnit-compatible projections pass local, protected hosted, immutable-release, and represented installed-channel evidence in `v0.3.0`; optional compiled-only capability discovery, explicit passive legacy-revision snapshot/diff support, exact-selected MCP `2025-11-25` and `2025-06-18` `check` and `break`, and current-revision schema-invalid argument rejection pass their scoped local, clean package/install, protected exact-head, and exact-`main` source evidence; invocation-local named diagnostic limits and current-revision bounded multi-tool workflows additionally pass scoped local, clean package/install, and protected exact-head evidence without a new release or broad compatibility claim; the `MCPD-034` native-identity corrections additionally pass deterministic local, protected hosted, immutable `v0.3.1`, and represented installed-channel evidence without broadening the protocol, transport, platform, or output-format matrix; the `MCPD-035` instruction-only Agent Skill, installed help route, and exact Codex CLI `0.147.0` route pass deterministic local, protected hosted, immutable `v0.3.2`, and represented installed-channel evidence without active authority, a dependency, a universal-host claim, or an adoption claim; the `MCPD-036` incremental SSE decoder and deterministic schema-work budget pass independent local, protected hosted, immutable `v0.3.3`, and represented installed-channel evidence without a protocol, transport, active-authority, platform-signing, broad compatibility, or assurance-claim expansion |
+| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017`, `MCPD-018`, and `MCPD-036` are Done |
+| Overall status | M0 through M4 are Done; immutable `v0.1.0` through `v0.3.3` channels are verified; protected `main` retains the `MCPD-013` controls; the scoped `MCPD-014` repository-security baseline and revalidated three-repository `MCPD-015` public community, channel, and license contract pass with their explicit limitations; dated `MCPD-016` evidence and the completed `MCPD-016A` correction prove the current supply-chain boundary, including direct digest-authenticated Syft acquisition, the narrowed live Action allowlist, and first-attempt exact-head and exact-`main` gates; `DEC-041` and `DEC-042` fix the organization-access policy; `MCPD-017` is Done after owner-authorized activation, correction of a manually regressed owner-only App-installation setting, a protected non-disclosing exact-`main` verifier pass, and confirmed revocation of its one-run credential; `MCPD-018` completes the scoped M4 baseline with the owner-published official BadgeApp project `14096`, dated evidence for all 24 OSPS `v2026.02.19` Level 1 controls, and a digest- and provenance-bound SLSA `v1.2` Build L2 evaluation of all seven canonical `v0.3.0` GitHub Release assets; optional `MCPD-021` through `MCPD-033` are Done for resolved issues #72, #73, #64, #66, #74, #60, #61, #75, #41, #65, and #71 plus the independently verified `v0.3.0` release and corrected next-release path without broadening the M4 claim; `MCPD-034` is Done after the bounded protected public merge, preserved Windows fixture failure and focused correction, first-attempt corrected exact-`main` gates, immutable `v0.3.1` GitHub and crates.io publication, tap-owned Homebrew handoff, ten-job installed-channel verification, and coordinated publication of both CWE-367 advisories; `MCPD-035` is Done after protected PR 96 advanced the `v0.3.2` rehearsal baseline, first-attempt exact-`main` CI, CodeQL, and release preflight passed on `9f3a838`, the defaulted release/OIDC and wrong-workflow paths, tap-owned no-write path, and ten-job channel verifier all passed, and clean before-and-after credential inventories proved no retained publication credential; `MCPD-036` is Done after independently bounded CWE-400 corrections, protected control fixes, preserved failed audits and release attempt, exact-byte OIDC recovery, byte-identical Cargo and Homebrew handoffs, first-attempt ten-job installed-channel verification, coordinated publication of two range-correct advisories, and proved rejection of its task-scoped credential |
+| Current focus | No main-story ticket is in progress; preserve the verified `v0.3.3` release, channel, advisory, credential, and public-proof boundaries until new work is accepted |
+| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |
+| Last reviewed | 2026-08-18 |
 | Next review trigger | Any organization authentication, member, owner, billing-manager, invitation, base-permission, member-privilege, repository-creation, application, OAuth, personal-access-token, organization credential, in-scope repository credential, deploy-key, recovery, public-repository, community-route, official-channel, source/package/archive/formula license, security-policy, supported-line, entitlement, scan result, ruleset, merge-setting, administrator-boundary, required-context, GitHub-capability, Action, workflow, dependency proposal, report destination, projection fan-out, aggregate schema or outcome policy, capability-manifest schema, command/transport/revision matrix, exit/profile identifier, Agent Skill contract, coding-agent host support claim, tracked artifact, voluntary-usage, trusted-publisher, tap-authority, release-pipeline, testing-tool, safety-boundary, or assurance-evidence change |
 
 ## Document roles
@@ -238,15 +238,51 @@ channel rehearsals with clean before-and-after credential inventories.
 MCP-server mode, IDE extension, daemon, SDK, hosted service, deterministic
 model-correctness claim, or adoption claim.
 
-`MCPD-036` is the in-progress correction for two confirmed private CWE-400
-reports: repeated full-buffer parsing of fragmented request-scoped SSE and
-JSON Schema work that occurs outside the named evaluation-step counter. The
-SSE regression first appears in `v0.3.0`; the schema-work gap is present from
-`v0.1.0`; both remain in immutable `v0.3.2`. `DEC-060` coordinates the
-unpublished `v0.3.3` patch-release candidate while retaining separate
-implementation, regression, affected-line, and disclosure evidence for each
-advisory. No publication or advisory-state change occurs until both fixes and
-every represented release gate pass.
+`MCPD-036` completes two confirmed CWE-400 corrections: repeated full-buffer
+parsing of fragmented request-scoped SSE and JSON Schema work that occurred
+outside the named evaluation-step counter. The SSE regression affects
+`v0.3.0` through `v0.3.2`; the schema-work gap affects `v0.1.0` through
+`v0.3.2`; both are patched in immutable `v0.3.3`. `DEC-060` coordinated the
+patch release while retaining separate implementation, regression,
+affected-line, and disclosure evidence for each advisory. `DEC-064` preserves
+the first release run's attestation-readiness failure and the reviewed
+exact-byte recovery rather than treating delayed GitHub state as a green
+rerun. The [non-sensitive completion
+record](docs/assurance/mcpd-036-security-release.md) binds protected source,
+operator, rehearsal, immutable release, Cargo, Homebrew, represented installed
+channel, disclosure, and credential-revocation evidence.
+
+The first 2026-08-18 pre-tag supply-chain operator audit on exact protected
+`main` `f73b4511fc955b99b3d5c889a6706b1e0a96a7a1` preserved its failure:
+`date=2026-08-18 canonical_sha256=bdc0b1009b4bb40e0a4cbf58aaf07ae511a644548502fb386b69750150029767 source_sha=f73b4511fc955b99b3d5c889a6706b1e0a96a7a1 result=FAIL`.
+The audit authenticated the source revision before exposing a stale `DEC-040`
+assertion that required rolling `homebrew-tap/main` to remain the historical
+`v0.3.0` handoff commit even after verified `v0.3.1` and `v0.3.2` releases.
+`DEC-061` corrects that release blocker on new reviewed source without
+rebaselining the immutable M4 proof or accepting an unchanged rerun.
+
+Protected PR 101 then merged the byte-identical reviewed tree as exact `main`
+`1d5a2ccebec45709a5f7fadad19de5f15bc837d9`; its first-attempt exact-head and
+exact-`main` CI, CodeQL, and release-preflight gates all passed. The next
+operator invocation preserved a second distinct failure:
+`date=2026-08-18 canonical_sha256=aa247183c668479877cd8ffb99144997888f6e8b118c6f429bbef40174c5230b source_sha=1d5a2ccebec45709a5f7fadad19de5f15bc837d9 result=FAIL`.
+The repository setting remained disabled and the credential matched the exact
+canonical read-only profile. GitHub's current REST contract instead withholds
+merge-related repository fields unless a credential also has `Contents:
+write`; `DEC-062` keeps write authority out of the operator credential and
+moves only that live assertion to the read-only GraphQL repository field.
+
+Protected PR 102 then merged its byte-identical reviewed tree as exact `main`
+`4bc5977e14c4c3ac89fea2b5b8c807eecf6d7e7e`; first-attempt exact-head and
+exact-`main` CI, CodeQL, and release-preflight gates all passed. The corrected
+operator audit then passed once with the exact read-only credential:
+`date=2026-08-18 canonical_sha256=aa247183c668479877cd8ffb99144997888f6e8b118c6f429bbef40174c5230b source_sha=4bc5977e14c4c3ac89fea2b5b8c807eecf6d7e7e release=v0.3.0 result=PASS`.
+Before dispatching a rehearsal, the repeat-release credential inventory used
+an OAuth administration session that could not read organization Actions
+secrets. GitHub returned `403`, but Bash lost that status inside process
+substitution and the verifier incorrectly printed success. That result is
+rejected. `DEC-063` makes unavailable or malformed organization-secret evidence
+fail closed before any rehearsal or publication.
 
 ## Product outcome
 
@@ -2272,7 +2308,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | D-23 | Invocation-local named diagnostic limit selection | Optional runtime ergonomics | Done | `DEC-055`, `MCPD-032`, protected [PR 85](https://github.com/EnjoyableWork/mcp-doctor/pull/85), exact implementation head [`565ece0`](https://github.com/EnjoyableWork/mcp-doctor/commit/565ece032b637374e770a092219f346de63238d9), closed [issue #65](https://github.com/EnjoyableWork/mcp-doctor/issues/65), complete locked local, dependency, source-review, deterministic-package, packaged-install, reporter, aggregate, capability, pre-target rejection, cross-command, cross-transport, active no-authorization, and represented installed-source evidence, plus first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31844464763), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31844463226), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31844464938) pass on 2026-08-14 without changing cleanup, capacity, authority, dependencies, configuration, numeric overrides, published artifacts, or M4 |
 | D-24 | Bounded exact multi-tool workflow diagnosis | Optional active correctness | Done | `DEC-056`, `MCPD-033`, protected [PR 86](https://github.com/EnjoyableWork/mcp-doctor/pull/86), exact implementation head [`52a7120`](https://github.com/EnjoyableWork/mcp-doctor/commit/52a7120d5b413f23a1cf1e61db0c5db5ed3fb6e1), and closed [issue #71](https://github.com/EnjoyableWork/mcp-doctor/issues/71) prove one current-revision `mcp-doctor.scenario/v2alpha1` workflow for 1–100 sequential exact steps, bounded pre-clone structural capture/reference, exact invocation authorization for every distinct tool, an explicitly declared cleanup suffix, and value-free causal reports. Complete local, dependency, source-review, strict-schema, STDIO/HTTP, reporter, artifact, aggregate, cleanup, limit, legacy-rejection, deterministic package (`sha256:8e283ba8dd8b37d8ad7e7a360f387f5d4cca2bf1ab78c75e9219959cc00b9023`), packaged-install, and represented-platform evidence plus first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850068158), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850066186), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850068085) pass on 2026-08-14 without changing accepted v1 documents, wire behavior, successful report projection, dependencies, release artifacts, broad compatibility, assurance, or M4 |
 | D-25 | Safe portable coding-agent diagnostic workflow | Optional adoption UX | Done | `DEC-057` as superseded by `DEC-059`, `MCPD-035`, protected [PR 95](https://github.com/EnjoyableWork/mcp-doctor/pull/95), exact release source [`d117cf4`](https://github.com/EnjoyableWork/mcp-doctor/commit/d117cf4c7cbbd5bfb6dd43c01af2607ae64cc1d2), the [dated scoped evidence](docs/assurance/mcpd-035-agent-skill.md), immutable eight-asset `v0.3.2`, and the final [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31997406753) prove one canonical instruction-only Agent Skill, immutable companion archive, reversible host installation, installed help route, deterministic passive/refusal forward-tests, and only the exact Codex CLI `0.147.0` support claim without active authority, silent installation, dependency, universal compatibility, deterministic model-correctness, or adoption claims. Protected [PR 96](https://github.com/EnjoyableWork/mcp-doctor/pull/96) advanced that default and merged as [`9f3a838`](https://github.com/EnjoyableWork/mcp-doctor/commit/9f3a838751856bd20d670053071b6d537f430d37); first-attempt exact-`main` [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383802), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383050), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383921), the defaulted [release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204735), [wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204694), tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32000204757), [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204919), and clean before-and-after credential inventories close the decision. |
-| D-26 | Bounded SSE decoding and actual JSON Schema work | Security correction | In progress | `DEC-060` and `MCPD-036`; local verification confirms the fragmented-SSE regression in `v0.3.0` through `v0.3.2` and the schema-work accounting gap in `v0.1.0` through `v0.3.2`. Completion requires independent deterministic work-bound regressions, complete local and represented native gates, one immutable patched release, installed-channel verification, and coordinated publication of both corrected advisories. |
+| D-26 | Bounded SSE decoding and actual JSON Schema work | Security correction | Done | `DEC-060` through `DEC-064`, `MCPD-036`, and the [non-sensitive completion record](docs/assurance/mcpd-036-security-release.md) prove independent finite-work regressions, complete local and dependency gates, protected correction [PR 103](https://github.com/EnjoyableWork/mcp-doctor/pull/103), reviewed recovery [PR 104](https://github.com/EnjoyableWork/mcp-doctor/pull/104), corrected exact-source operator and inventory evidence, first-attempt nonpublishing rehearsals, preserved failed [tag workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32095369800), exact-byte [OIDC recovery](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32099327284), tap-owned [publication](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32099555744), and first-attempt [ten-job channel verification](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32099683447). Immutable `v0.3.3`, crates.io, and Homebrew now carry the coordinated patch; [GHSA-3vpj-fcvj-28pm](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-3vpj-fcvj-28pm) retains the SSE `>=0.3.0, <=0.3.2` line and [GHSA-jr72-f9q4-424m](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-jr72-f9q4-424m) retains the schema `>=0.1.0, <=0.3.2` line, both fixed in `>=0.3.3`. |
 
 ## Ticket board
 
@@ -2315,7 +2351,7 @@ transport variation should remain cohesive rather than leak through the CLI.
 | MCPD-033 | Add a bounded exact multi-tool workflow scenario for current-revision `check` | Optional active correctness | Done | `MCPD-009`, `MCPD-010`, `MCPD-021`, `MCPD-025` | `DEC-056`; protected [PR 86](https://github.com/EnjoyableWork/mcp-doctor/pull/86), exact implementation head [`52a7120`](https://github.com/EnjoyableWork/mcp-doctor/commit/52a7120d5b413f23a1cf1e61db0c5db5ed3fb6e1), and closed [issue #71](https://github.com/EnjoyableWork/mcp-doctor/issues/71) prove strict current-revision-only `mcp-doctor.scenario/v2alpha1` over STDIO and Streamable HTTP with 1–100 ordered exact steps, exact-set redundant authorization, explicit effects, bounded prior-success structural data flow, causal main-step stopping, an explicit cleanup suffix, independent cleanup failure, and numeric value-free report evidence. Complete locked local and dependency gates, source review, strict-schema and v1 regressions, deterministic positive and negative built-binary journeys, JSON/JUnit artifacts, offline aggregation, two byte-identical packages, exact packaged install, represented POSIX and PowerShell smokes, and first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850068158), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850066186), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31850068085) pass on 2026-08-14. The change adds no loop, branch, expression, interpolation, arbitrary environment access, dynamic selection, LLM planning, retry, concurrency, dependency, release, broad compatibility, assurance, or M4 claim. |
 | MCPD-034 | Bind authority-bearing local inputs and report artifact publication to exact opened file identities | Security correction | Done | `MCPD-010`, `MCPD-020`, `MCPD-022`, `MCPD-033` | `DEC-058`; public correction [PR 92](https://github.com/EnjoyableWork/mcp-doctor/pull/92), focused Windows fixture [PR 93](https://github.com/EnjoyableWork/mcp-doctor/pull/93), and the [non-sensitive completion record](docs/assurance/mcpd-034-security-release.md) prove the shared no-follow native-identity input boundary plus identity-bound stage publication, cleanup, rollback, and no-foreign-delete regressions. The preserved initial exact-`main` [CI failure](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31981850276) identified a Windows fixture transition without unsafe product acceptance; no unchanged source was rerun. Corrected exact `main` [`d4db369`](https://github.com/EnjoyableWork/mcp-doctor/commit/d4db369a2789f7b6f89b2daad4adc1b6f4900f7e) passed first-attempt [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532369), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532095), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31984532388); the protected [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985219134), tap [publication](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31985523936), and [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31985595470) prove immutable `v0.3.1`, byte-identical Cargo/Homebrew handoffs, and represented installs. [GHSA-92m2-749h-2gv5](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-92m2-749h-2gv5) and [GHSA-8r6p-qf9j-vpvx](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-8r6p-qf9j-vpvx) were published together after those gates, without adding a dependency, retry, fallback, broader compatibility claim, installation channel, or M4 change. |
 | MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | Done | `MCPD-034`, `MCPD-025` | `DEC-057` as superseded by `DEC-059`; protected [PR 95](https://github.com/EnjoyableWork/mcp-doctor/pull/95), exact implementation head [`3f4c422`](https://github.com/EnjoyableWork/mcp-doctor/commit/3f4c4226813b313eba85baee25d1a0f65e659798), focused Windows correction [`c27b82a`](https://github.com/EnjoyableWork/mcp-doctor/commit/c27b82a41e4ae60d6ad882fbfaf4e85b47bc4d4a), exact release source [`d117cf4`](https://github.com/EnjoyableWork/mcp-doctor/commit/d117cf4c7cbbd5bfb6dd43c01af2607ae64cc1d2), and the [dated scoped evidence](docs/assurance/mcpd-035-agent-skill.md) prove the canonical SHA-256-bound instruction-only skill, versioned guide/help route, reversible no-overwrite installation, deterministic archive, static passive/refusal contracts, synthetic recorder, direct CLI backstops, and exact host matrix. The preserved initial [CI failure](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994190833) exposed a Windows WSL-launcher fixture assumption and was not rerun; corrected exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994756702), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994753470), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31994756706), then exact-`main` [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534219), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534040), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31995534224), passed on corrected source. The prepublication [release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996320198), [wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996322032), tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31996325240), existing-version [channel rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996323697), and clean before-and-after credential inventories passed. The protected [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31996837111) published immutable eight-asset `v0.3.2` and the byte-identical crates.io package through OIDC; tap [publication](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31997316851) committed only the exact formula as [`b3bfd0d`](https://github.com/EnjoyableWork/homebrew-tap/commit/b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302); and the final [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31997406753) passed every represented installed help and channel check. Exact Codex CLI `0.147.0` discovery, seven explicit synthetic cases, and one separately labeled implicit observation support only that scoped route; Claude Code, Cursor, VS Code/Copilot, Kiro IDE, Kiro CLI, Kiro Crew, unattended behavior, deterministic model correctness, and adoption remain unclaimed. Protected [PR 96](https://github.com/EnjoyableWork/mcp-doctor/pull/96) advanced that default and merged as [`9f3a838`](https://github.com/EnjoyableWork/mcp-doctor/commit/9f3a838751856bd20d670053071b6d537f430d37); first-attempt exact-`main` [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383802), [CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383050), and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31999383921), the defaulted [release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204735), [wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204694), tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32000204757), [ten-job channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32000204919), and clean before-and-after credential inventories close `MCPD-035`; the ticket adds no active authority, direct MCP mode, silent installation, permission grant, dependency, marketplace requirement, universal-agent claim, daemon, SDK, or hosted service. |
-| MCPD-036 | Correct fragmented-SSE and JSON Schema resource amplification in one coordinated patch candidate | Security correction | In progress | `MCPD-035`, `MCPD-010`, `MCPD-006` | `DEC-060`; replace repeated full-buffer SSE parsing with one incremental decoder whose scan work is linear in accepted bytes and whose retained line, event, and payload state remains bounded; meter actual Draft 2020-12 meta-validation, compilation, and instance-evaluation work with a deterministic operation budget that stops expensive library work rather than relying on elapsed time; preserve external-reference rejection, protocol/revision behavior, request-scoped completion, typed limits, causal skips, redaction, no-call-on-local-limit, and cleanup. Prove fragmentation-invariant SSE outcomes for single, irregular, and one-byte chunks plus partial UTF-8 and CR/LF boundaries; prove deterministic exhaustion for schema-by-instance cross-products, nested combinators, local-reference fan-out, string/pattern work, and uniqueness while ordinary schemas retain behavior. Correct the private advisory ranges to SSE `>=0.3.0, <=0.3.2` and schema `>=0.1.0, <=0.3.2`; keep both private until one patched release and represented installed-channel verification pass. Direct `referencing =0.49.9`, `jsonschema-regex =0.49.9`, and `regex-syntax =0.8.11` declarations are permitted only if their recorded reviews prove that reuse of the already locked transitive packages adds no package, feature, source, build script, unsafe code, platform, or MSRV change. Finish only after independent focused regressions, complete locked local and dependency gates, deterministic package/install evidence, protected exact-head and exact-`main` gates, immutable release and channel handoffs, and coordinated advisory publication. |
+| MCPD-036 | Correct fragmented-SSE and JSON Schema resource amplification in one coordinated patch release | Security correction | Done | `MCPD-035`, `MCPD-010`, `MCPD-006` | `DEC-060` through `DEC-064` and the [non-sensitive completion record](docs/assurance/mcpd-036-security-release.md) prove one-pass bounded SSE decoding and one deterministic schema-work budget through independent focused regressions, complete locked local and dependency gates, deterministic package/install evidence, protected exact-head and exact-`main` evidence, corrected operator and fail-closed inventory results, four first-attempt nonpublishing rehearsals, and exact immutable-source recovery. Signed immutable [v0.3.3](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.3), the byte-identical [crates.io package](https://crates.io/crates/mcp-doctor/0.3.3), tap commit [`4a2e2f3`](https://github.com/EnjoyableWork/homebrew-tap/commit/4a2e2f3ba88dad5a8d80cba42c3ee07c38da18bc), and all ten represented installed-channel jobs passed before the separate SSE and schema advisories were published together. The failed audits, rejected fail-open inventory, and sole attestation-readiness workflow remain preserved; the exact read-only credential was never expanded and the task-scoped token's later rejection was proved. The release adds no retry, fallback, dependency-graph expansion, protocol, transport, active authority, platform-signing, broad compatibility, or assurance claim. |
 
 ## Dependency and testing-tool introduction plan
 
@@ -2365,9 +2401,9 @@ unexplained inactivity, or project-need change triggers re-review.
 | [`tokio` `=1.53.1`](https://crates.io/crates/tokio/1.53.1) | `MCPD-005` — Done; `net` expanded by `MCPD-010` | Only the async process, I/O, timer, macro, runtime, and network features needed by bounded STDIO and one-shot DNS/HTTP; active upstream, Rust floor, MIT license, feature graph, timing, cleanup, and cross-platform behavior are reviewed |
 | [`process-wrap` `=9.1.0`](https://crates.io/crates/process-wrap/9.1.0) | `MCPD-005` — Done | Process-group, Windows Job Object, Tokio, and kill-on-drop control with defaults disabled; watchexec stewardship, Rust floor, permissive license, feature graph, and resistant-descendant cleanup are reviewed |
 | [`jsonschema` `=0.49.9`](https://crates.io/crates/jsonschema/0.49.9) | `MCPD-006` — Done | Draft 2020-12 validation with defaults and retrieval features disabled plus a rejecting retriever; active upstream, Rust floor, MIT license, transitive-license exceptions, no-network graph, bounds, and no-retrieval evidence are reviewed |
-| [`jsonschema-regex` `=0.49.9`](https://crates.io/crates/jsonschema-regex/0.49.9) | `MCPD-036` — In progress | Direct use only of the exact ECMA-262 translation and literal-pattern analysis already used by `jsonschema`, allowing the work estimator to analyze the same accepted pattern before validator construction; defaults remain disabled and the exact package was already resolved through `jsonschema` |
-| [`referencing` `=0.49.9`](https://crates.io/crates/referencing/0.49.9) | `MCPD-036` — In progress | Direct access only to the pinned embedded Draft 2020-12 specification registry and meta-schema for budgeted validation; defaults are disabled, the only optional retrieval feature remains absent, and the exact package was already resolved through `jsonschema` |
-| [`regex-syntax` `=0.8.11`](https://crates.io/crates/regex-syntax/0.8.11) | `MCPD-036` — In progress | Direct HIR inspection only for a conservative pre-match pattern-work bound that includes counted-repetition expansion and character-class ranges; defaults are disabled and only the already selected `std` and `unicode` features are named |
+| [`jsonschema-regex` `=0.49.9`](https://crates.io/crates/jsonschema-regex/0.49.9) | `MCPD-036` — Done | Direct use only of the exact ECMA-262 translation and literal-pattern analysis already used by `jsonschema`, allowing the work estimator to analyze the same accepted pattern before validator construction; defaults remain disabled and the exact package was already resolved through `jsonschema` |
+| [`referencing` `=0.49.9`](https://crates.io/crates/referencing/0.49.9) | `MCPD-036` — Done | Direct access only to the pinned embedded Draft 2020-12 specification registry and meta-schema for budgeted validation; defaults are disabled, the only optional retrieval feature remains absent, and the exact package was already resolved through `jsonschema` |
+| [`regex-syntax` `=0.8.11`](https://crates.io/crates/regex-syntax/0.8.11) | `MCPD-036` — Done | Direct HIR inspection only for a conservative pre-match pattern-work bound that includes counted-repetition expansion and character-class ranges; defaults are disabled and only the already selected `std` and `unicode` features are named |
 | [`libc` `=0.2.189`](https://crates.io/crates/libc/0.2.189) | `MCPD-034` — Done | Unix-only use of the platform `O_NOFOLLOW` and `O_NONBLOCK` constants for identity-bound regular-file opens; defaults are disabled, and the exact package was already resolved throughout the locked runtime graph, so direct selection adds no package, feature, source, duplicate, build script, or unsafe execution surface |
 | [`reqwest` `=0.13.4`](https://crates.io/crates/reqwest/0.13.4) | `MCPD-010` — Done | Maintained asynchronous HTTP framing and a rustls/platform-verifier client; defaults are disabled and only `rustls-no-provider` is selected, while the application separately fixes HTTP/1.1, direct connections, identity encoding, no redirects/retries/decompression, one origin, and pinned resolution |
 | [`rustls` `=0.23.43`](https://crates.io/crates/rustls/0.23.43) | `MCPD-010` — Done | Direct selection and installation of the `ring` crypto provider plus TLS 1.2/1.3 configuration and typed TLS-error recognition; defaults are disabled and only `ring`, `std`, and `tls12` are selected |
@@ -2522,6 +2558,302 @@ tar required for deterministic release and Agent Skill archives, and
 represented native gates, protected exact-head and exact-`main` gates,
 immutable publication, installed-channel verification, and both advisory
 publications remain outstanding.
+
+#### MCPD-036 historical-distribution gate correction — 2026-08-18
+
+The focused `DEC-061` source replaces only the contradictory live-tap assertion
+with an exact historical-commit verifier and its offline fake-API rehearsal.
+That rehearsal passes with a distinct synthetic rolling head, records exactly
+one historical content request, and rejects changed formula bytes at the same
+recorded commit. `scripts/check.sh`, `cargo deny --all-features --locked check`,
+`scripts/verify-source-artifacts.sh --worktree`, ShellCheck `0.11.0`, Bash syntax,
+JSON parsing, and `git diff --check` pass on the corrected tree. The first
+format check identified only two formatter-owned Rust line wraps, and the first
+ShellCheck pass identified intentional single-quoted expansion deferred to the
+generated fake process; both were corrected on new source before the passing
+checks. The first focused runbook assertion also assumed one physical Markdown
+line; the corrected regression normalizes insignificant prose whitespace before
+checking the exact contract. No unchanged rerun was accepted. The original
+authenticated operator failure above remains the failure record. A new
+authenticated result is not acceptance evidence until this correction passes
+protected exact-head and exact-`main` gates and is invoked once from that
+corrected clean `main`.
+
+Clean exact-source correction commit
+`a0217ee1eb30b7ea1233b9015b39937ffb69bcc8` passed two independent
+`cargo package --locked` runs with byte-identical 183-entry packages at SHA-256
+`2d63657b2806d0adc77dd871bfac1dfbe9d433a7e24c5a22ce9cfdf788ac1fe2`.
+The packaged source contains the executable historical-formula verifier; two
+generated Cargo and Homebrew handoffs were byte-identical; and a locked install,
+packaged fixture build, and complete `scripts/smoke-installed.sh` journey passed.
+This is exact-source candidate evidence, not permission to bypass the protected
+review, corrected operator audit, immutable release, installed-channel, or
+advisory-publication gates.
+
+Protected [PR 101](https://github.com/EnjoyableWork/mcp-doctor/pull/101) passed
+first-attempt exact-head
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32086998940),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32086997589),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32086998874),
+then merged as
+[`1d5a2cc`](https://github.com/EnjoyableWork/mcp-doctor/commit/1d5a2ccebec45709a5f7fadad19de5f15bc837d9).
+The merged tree exactly equaled reviewed head
+`bf39e2ebdb678001470e17dd610ed6851487f2b5`; first-attempt exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32087900150),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32087899916),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32087900139)
+also passed without a retry.
+
+#### MCPD-036 read-only repository projection correction — 2026-08-18
+
+The next exact-`main` operator attempt produced the second preserved failure
+record above. Focused read-only diagnosis proved every other initial repository,
+Actions, workflow, secret-boundary, source-artifact, and historical-formula
+assertion passed. The normal administrative session returned
+`allow_auto_merge=false`, while the exact canonical fine-grained token omitted
+the REST field even though GitHub's token UI confirmed repository
+`Administration: read` and `Contents: read`. GitHub's current documented REST
+contract requires both contents read and write merely to expose merge-related
+settings. The same exact token returned repository identity,
+`autoMergeAllowed=false`, and the existing squash-only state through GraphQL.
+
+`DEC-062` therefore preserves the least-authority token rather than adding
+write permission. A focused helper performs one variable-bound GraphQL query,
+caps the response, and accepts only the exact repository identity plus Boolean
+`false`; API errors, missing data, identity mismatch, and `true` all fail. REST
+continues to verify repository identity, visibility, archive, default branch,
+and security-update state. A deterministic fake-API rehearsal proves the
+read-only pass and missing/enabled rejection without a mutation, retry, clock,
+poll, or credential. The second operator failure remains evidence; no unchanged
+audit result is accepted.
+
+The first focused local check on this correction stopped at ShellCheck `0.11.0`
+with `SC2016`: the initial source wrote GraphQL's literal variable sigils in a
+single-quoted shell string. The command stopped before the rehearsal and Rust
+test. Corrected source explicitly escapes both variable sigils in a
+double-quoted string; the failed attempt remains evidence and is not accepted
+through an unchanged rerun.
+
+The first complete local handoff command on the corrected helper then stopped
+at `cargo fmt --all -- --check`: one new policy-test assertion required only
+the formatter's multiline call shape. Because `scripts/check.sh` stopped at
+that first gate, Clippy, the complete test suite, `cargo-deny`, and source review
+did not run in that attempt. The formatting-only correction is new source; the
+failed command remains evidence and an unchanged rerun is not accepted.
+
+Corrected implementation commit
+`6b623fc12f724aaf86ea5cb27a102093046b59bf` passes Bash syntax, ShellCheck
+`0.11.0`, `git diff --check`, the deterministic supply-chain rehearsal, all
+nine focused policy tests, `scripts/check.sh`,
+`cargo deny --all-features --locked check`, and review of all 187 source files.
+The rehearsal proves the exact read-only success, enabled and unavailable
+settings, repository mismatch, GraphQL error, malformed response, and request
+failure without a mutation, credential, retry, clock, or poll.
+
+Two independent `cargo package --locked` runs from that clean commit produced
+byte-identical 184-entry `0.3.3` packages with SHA-256
+`c906dc4959fe877e475013b371c72154631763a79418c7961ea4bb42a5610e7f`.
+Two release-channel generations produced identical Cargo packages and Homebrew
+formulae. A locked release fixture build and locked installation from the exact
+extracted package then passed the complete `scripts/smoke-installed.sh`
+journey. This is pre-review candidate evidence only; protected exact-head and
+exact-`main` gates remain prerequisites for a new authenticated operator audit.
+
+Protected [PR 102](https://github.com/EnjoyableWork/mcp-doctor/pull/102) passed
+first-attempt exact-head
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090167018),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090165517),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090167016),
+then merged as
+[`4bc5977`](https://github.com/EnjoyableWork/mcp-doctor/commit/4bc5977e14c4c3ac89fea2b5b8c807eecf6d7e7e).
+The merge tree exactly equaled reviewed head
+`8203c4859b0db0e6729f9073df89f9f7ad6fb6c5`; first-attempt exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090917541),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090917491),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32090917489)
+also passed without a retry. The corrected authenticated audit emitted the
+single passing record above with no stderr or over-limit output; its child-only
+credential environment ended with the process.
+
+#### MCPD-036 repeat-release secret-inventory correction — 2026-08-18
+
+The first pre-rehearsal credential inventory on exact `main` `4bc5977` and tap
+`main` `b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302` is preserved as rejected
+evidence. Its normal OAuth administration session lacked the organization
+Actions-secret permission, so GitHub returned `403` and `jq` received no
+inventory. The loop consumed a process substitution, whose failure status was
+not the loop's status; the verifier continued and printed success. No workflow
+was dispatched and no release state changed.
+
+`DEC-063` removes that process substitution. The complete organization-secret
+response and its typed array shape must succeed before iteration; unavailable,
+malformed, unknown-visibility, and unavailable selected-repository evidence all
+fail with value-free diagnostics. A disposable fake-GitHub regression proves
+both the exact unavailable-response rejection and an empty-inventory pass all
+the way through the remaining repository, environment, credential-store, and
+workflow checks. The misleading success line is not accepted, and a corrected
+before/after inventory requires new reviewed source plus first-attempt
+exact-head and exact-`main` gates.
+
+The corrected candidate passes Bash syntax, ShellCheck `0.11.0`,
+`git diff --check`, the focused unavailable-versus-empty inventory regression,
+the verifier static-contract regression, `scripts/check.sh`,
+`cargo deny --all-features --locked check`, and review of all 187 source files.
+No live credential inventory, workflow dispatch, tag, release, channel write, or
+advisory publication was repeated while establishing this local evidence.
+
+Clean implementation commit
+`bd079b4eb4068956778a1e4f02da200c7f54d684` produced two byte-identical
+184-entry `cargo package --locked` archives at SHA-256
+`01a565a520c143d89bee3cfa7279a8063e88d17e48283060137ec2df96d3abe3`.
+Two release-channel generations were identical; the generated formula has
+SHA-256 `6a64dec15ddad9155cbecdaeb543e9f183cebee7e5c089c6002055335dd0ebda`.
+The canonical Agent Skill verifier passed with SHA-256
+`4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf`.
+The separate local archive attempt then stopped at its declared GNU-tar
+prerequisite because this macOS host provides BSD tar; it was not rerun, and
+the represented Linux release-preflight archive gate remains required.
+A locked release fixture build and locked install from the exact extracted
+Cargo package passed the complete `scripts/smoke-installed.sh` journey.
+
+Protected [PR 103](https://github.com/EnjoyableWork/mcp-doctor/pull/103)
+passed first-attempt exact-head
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32092740886),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32092739262),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32092740864),
+then merged as exact `main`
+[`995d471`](https://github.com/EnjoyableWork/mcp-doctor/commit/995d471b0024a6d1e16b85e1778168bd27d3aebc).
+The merge tree exactly equaled reviewed head
+`c2a178c2133a67fd96ba889c0eba2ee6ab6f6ea8`; first-attempt exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32093686828),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32093686896),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32093686827)
+also passed.
+
+The corrected before-inventory used exact source `995d471` and tap
+`b3bfd0d084ee5fdaf6553ee6d3c225cd5ad7d302`. Its first child wrapper reserved
+zsh's read-only `status` parameter: the verifier emitted its fixed success line,
+but the wrapper exited `1`, so that invocation is rejected. A synthetic check
+reproduced the reserved-name failure and proved the task-specific
+`mcpd_exit_code` wrapper exits `0`; one corrected live invocation then returned
+the exact 82-byte success line with empty stderr and no timeout or truncation.
+The four required nonpublishing rehearsals then passed on their sole attempts:
+the source
+[release/OIDC path](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32094680754),
+[wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32094682295),
+tap
+[no-write path](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32094683922),
+and
+[ten-job current-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32094685565).
+The after-inventory against those unchanged heads returned the same exact
+82-byte success line with empty stderr and no timeout or truncation.
+
+#### MCPD-036 immutable-release attestation-readiness correction — 2026-08-18
+
+Signed annotated tag `v0.3.3`, tag object
+`a889b6fdba86205b33a1f9641140ca06231bbf35`, resolves to exact protected
+`main` `995d471`. Its sole
+[release run](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32095369800)
+passed tag authority, deterministic source and Agent Skill packaging, and both
+represented GNU/Linux package, smoke, SBOM, and attestation jobs. The protected
+publication job then verified every asset provenance statement, revalidated
+`main` and the tag, verified the complete draft bytes, published the release,
+and observed an immutable non-draft eight-asset release. Its immediately
+following `gh release verify` failed because GitHub had not yet exposed the
+server-generated release attestation for the tag object. At that point the
+crates.io job was skipped, `0.3.3` was absent there, the tap remained at
+`0.3.2`, no installed-channel verifier had been dispatched, and both
+advisories remained private.
+
+A later single typed repository-attestations read found exactly one `release`
+attestation for the same tag object. That delayed state diagnoses asynchronous
+availability but is not acceptance evidence and does not turn the failed run
+green. GitHub Status reported no unresolved incident. `DEC-064` therefore
+preserves the sole failed attempt and forbids an unchanged rerun. New reviewed
+source moves the one cryptographic release verification behind the second
+protected approval, after an operator has observed the exact attestation, and
+adds an explicit recovery dispatch. Recovery accepts only exact `main`, one
+failed attempt for the immutable annotated tag and source, exactly one release
+attestation, and an absent registry version; its protected OIDC job checks out
+that tag and repeats release-state, release-attestation, asset-provenance,
+package, formula, and byte-handoff verification before it may publish the exact
+crate once. No sleep, polling loop, tag movement, release edit, asset rewrite,
+credential expansion, or failed-job rerun is permitted.
+
+Corrected implementation commit
+`7c5049b170d2ae3f655836a2de5cdac07ea1bdc3` passes Actionlint, the 46 focused
+release and deterministic-CI policy tests, `scripts/check.sh`,
+`cargo deny --all-features --locked check`, `git diff --check`, and review of
+all 187 source files. The first focused Rust attempt incorrectly changed the
+expected verifier count for three unrelated workflows from six to seven; that
+attempt failed, the assertion was restored on new source, and the recovery
+contracts then passed. Diff review subsequently caught and removed a proposed
+checkout of the input-selected tag before canonical version validation. The
+recovery validator now executes only protected `main` source, validates the
+input, and fetches the exact tag without executing it. The first complete gate
+on that correction stopped at one formatter-owned multiline assertion; the
+formatted source then passed the complete gate. No failed correctness command
+was rerun unchanged.
+
+Two clean `cargo package --locked` runs from that commit produced
+byte-identical 184-entry packages at SHA-256
+`643d50c0e5e76cbff17e76553c3bbceca6c642d889c254481966a85fbb627f33`.
+The first handoff-generation command then correctly rejected the temporary
+filename `first.crate`; the already compared package bytes were retained and
+copied to the required canonical filename rather than repackaged. Two release
+channel generations from those retained bytes were identical, with formula
+SHA-256
+`ada937aa72e9411951802821f3e159d275b0474140ea576be1224d71706f0b39`.
+A locked fixture build, locked install from the exact extracted package, and
+complete `scripts/smoke-installed.sh` journey passed. This is clean local
+recovery-source evidence, not authority to dispatch recovery before protected
+review, exact-`main` gates, operator audit, inventories, and all four renewed
+nonpublishing rehearsals pass.
+
+Protected [PR 104](https://github.com/EnjoyableWork/mcp-doctor/pull/104)
+retained exact implementation commit `7c5049b`, advanced the evidence head to
+`51596b6`, and merged the byte-identical reviewed tree as exact `main`
+[`7e5fff3`](https://github.com/EnjoyableWork/mcp-doctor/commit/7e5fff3b7fa953a4ae371739a6046db9cd56feca).
+First-attempt exact-head
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32096997746),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32096995363),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32096997620),
+then exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32097796559),
+[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32097796067),
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32097796654)
+all passed. The corrected operator audit passed once on that source. Exact
+before-and-after fail-closed credential inventories and first-attempt
+[release/OIDC](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32098636374),
+[wrong-workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32098637731),
+tap [no-write](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32098639806),
+and [ten-job channel](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32098641058)
+rehearsals passed on the exact source and tap heads.
+
+The reviewed
+[recovery run](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32099327284)
+verified the immutable release, its one release attestation, every asset and
+provenance statement, and the regenerated source handoff before publishing the
+exact 689,739-byte crate through OIDC. The GitHub and crates.io bytes share
+SHA-256
+`a6fc434131ab109d7e9bf85e8cdff17cad34590c2a65ee4bf91578eb4310b4ec`.
+Tap-owned
+[publication](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32099555744)
+changed only the formula in exact commit
+[`4a2e2f3`](https://github.com/EnjoyableWork/homebrew-tap/commit/4a2e2f3ba88dad5a8d80cba42c3ee07c38da18bc),
+and the final first-attempt
+[ten-job installed-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32099683447)
+passed. Both high-severity advisories were published together at
+`2026-08-18T04:50:21Z`: the fragmented-SSE
+[GHSA-3vpj-fcvj-28pm](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-3vpj-fcvj-28pm)
+for `>=0.3.0, <=0.3.2` and schema-work
+[GHSA-jr72-f9q4-424m](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-jr72-f9q4-424m)
+for `>=0.1.0, <=0.3.2`; both identify `>=0.3.3` as patched. The final inventory
+passed against exact source `7e5fff3` and tap `4a2e2f3`, and later rejection of
+the task-scoped fine-grained credential was proved. The
+[non-sensitive completion record](docs/assurance/mcpd-036-security-release.md)
+closes the ticket without retaining a credential, private reproducer, advisory
+workspace, endpoint, schema, payload, tool argument, or result.
 
 #### MCPD-034 Unix no-follow adoption review — 2026-08-16
 
@@ -2695,7 +3027,7 @@ complete dependency policy and be visible in the pull request.
 | `cargo-mutants` `27.1.0` | `MCPD-007` — evaluated 2026-08-10 | Diagnostic only; not adopted | A copied-tree five-mutant primary-diagnosis subset produced three useful test gaps and then passed 5/5; standard focused tests retain the value without permanent tool execution |
 | GitHub artifact and build-provenance Actions | `MCPD-008` — selected 2026-08-10 | Adopted release tooling | Current active official GitHub Actions are pinned by full commit SHA; short-lived workflow artifacts assemble the exact payload, while GitHub attestations bind each published byte to the tag workflow and commit without a stored signing secret |
 | Syft `1.51.0` | `MCPD-008` — `1.50.0` selected 2026-08-10; acquisition and security correction accepted under `MCPD-016A` on 2026-08-12 | Adopted release tooling | Generate target SPDX 2.3 JSON only for the two represented GNU/Linux archives. Fetch the immutable `linux_amd64` and `linux_arm64` `1.51.0` release assets directly under exact byte, SHA-256, four-entry layout, version, and platform checks; discard partial bytes and allow at most three attempts only for the `DEC-043` transient acquisition classes. Never use the former Action's mutable `main/install.sh`, retry generation or validation, enable Syft network or host-cache cataloging, or broaden macOS/Windows artifact scope. |
-| `Homebrew/actions/setup-homebrew` `2026.08.10.1` | `MCPD-008` — selected 2026-08-10; updated under `MCPD-016` on 2026-08-12 | Adopted release tooling | Pin immutable release commit `c8707045ccae42888fe98e86f2ee8938bc7cc193`; use only to style, audit, source-build, test, and smoke the exact formula on represented native hosts with both token inputs empty. The reviewed update removes an unused privileged sandbox-setup path, changes no selected dependency or nested Action, retains exact BSD-2-Clause license bytes, and passes every represented source/formula journey. |
+| `Homebrew/actions/setup-homebrew` `2026.08.14.1` | `MCPD-008` — selected 2026-08-10; updated under `MCPD-016` on 2026-08-12 and re-reviewed on 2026-08-18 | Adopted release tooling | Pin immutable release commit `8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4`; use only to style, audit, source-build, test, and smoke the exact formula on represented native hosts with both token inputs empty. The selected subtree, wrapper, and vendored runtime dependency tree are byte-identical to the prior pin; the update changes only upstream tests, shared configuration, root dependency metadata, and an unrelated Action. It retains exact BSD-2-Clause license bytes, adds no selected dependency or nested Action, and passes every represented source/formula journey. |
 | [`rust-lang/crates-io-auth-action` `v1.0.5`](https://github.com/rust-lang/crates-io-auth-action/releases/tag/v1.0.5) at `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `MCPD-008A` — selected 2026-08-10 | Adopted and live-verified | The official Rust project Action is active, unarchived, dual MIT/Apache-2.0, Node 24 bundled, released from a verified commit, masks its 30-minute token, and revokes it in its post step; it is full-SHA-pinned in the [verified authorized and rejected OIDC paths](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330), with no new Cargo dependency or stored secret |
 | GitHub-native Homebrew tap update authority | `MCPD-008A` | Adopted and live-verified | The separate tap owns a manual rehearsal/publish workflow; its read-only job authenticates the annotated immutable upstream source, provenance, checksums, package hash, and formula without executing upstream code, while only an approved publish-mode job receives the tap's short-lived `contents: write` `GITHUB_TOKEN` and may copy `Formula/mcp-doctor.rb`; the protected no-write [hosted rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455) passes, and no cross-repository PAT or source-repository tap write exists |
 | `proptest` or another property framework | `MCPD-011` — evaluated 2026-08-11 | Not adopted | Exact-seed unit fixtures and table-driven valid, unsatisfiable, reference, and limit schemas expose deterministic generator invariants without a measured shrinking gap or another executable dependency |
@@ -3165,8 +3497,32 @@ change or republish any immutable `v0.2.0` byte.
 | Untrusted code | Only `CI` and `Release preflight` execute a pull request's code. They use only GitHub-hosted ephemeral runners, top-level `contents: read`, non-persisted checkout credentials, no environment, stored secret, secret reference, privileged asset, write permission, `pull_request_target`, `workflow_run`, or untrusted metadata interpolation into shell. Explicit Homebrew token inputs are empty. The ephemeral read-only `GITHUB_TOKEN` used by GitHub to fetch a public pull request is not publication or repository-write authority. Fork approval limits compute abuse but is not treated as a security boundary. |
 | Standalone CI executables | The former full-SHA `cargo-deny-action` still fetched a mutable release executable without checking a digest, so its commit pin did not authenticate the executed tool. Required CI instead downloads only `cargo-deny` `0.20.2` for `x86_64-unknown-linux-musl` over bounded HTTPS, requires exact SHA-256 `9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f` and the five-entry reviewed archive layout, then executes the reported exact version from a disposable runner path. `MCPD-016A` applies the same boundary to current Syft `1.51.0`: only immutable GNU/Linux ARM64/x64 release assets may run, under exact size, SHA-256, four-entry layout, reported-version, and reported-platform checks. At most three 20-second attempts separated by one second may acquire the same asset after curl `6`, `7`, `18`, `28`, `52`, `55`, `56`, or `92`, or HTTP `408`, `429`, `500`, `502`, `503`, or `504`; partial bytes are deleted. TLS/trust errors, other responses, integrity or layout failures, tool execution, generation, validation, build, test, publication, job, and workflow failures never retry. The `cargo-deny` upstream release is mutable, so any API digest, asset, tag, layout, version, or selected-tool change blocks for renewed review; immutable Syft drift does the same. |
 | Source artifacts | Source control admits reviewable regular UTF-8 text source only. Executable mode is reserved for shebang-bearing `scripts/*.sh`; generated executables, libraries, packages, archives, NUL-bearing or non-UTF-8 content, disallowed ASCII controls, executable/archive/document/binary-media signatures, Git LFS pointers, symlinks, and control-character paths fail. There are no binary exceptions. The negative rehearsal proves a normal reviewable tree passes and generated ELF, NUL-bearing, non-UTF-8, and extension-disguised executable cases fail in a disposable repository. Release and testing-tool bytes stay outside Git history. |
-| Published distribution | Authenticate only canonical immutable `v0.3.0`: require the annotated tag object and source commit, immutable non-draft GitHub Release, exact seven-name/size/digest asset set, GitHub release verification, and every asset's signed attestation constrained to the source repository, `release.yml`, tag ref, and source commit. The crates.io package must be unyanked, MIT-declared, and byte-identical to the attested release crate. Current tap `main` must remain the reviewed commit and its formula must be byte-identical to the attested release formula, name the exact immutable GitHub Release package URL and digest, and declare MIT. Verification downloads to a mode-private disposable root and performs no publish, release, tag, formula, or package write. |
-| Live policy and evidence | The operator audit requires exact clean local and remote `main`, selected-Action and SHA-pinning settings, read-only default token, no approval authority, the recorded fork policy, no repository or applicable organization Actions secret, closed upstream Action identities and licenses, the digest-recorded standalone tools including Syft's latest-release contract, reviewable exact source tree, and authenticated distribution equality. It emits only UTC date, canonical SHA-256, exact source SHA, release tag, and `PASS` or `FAIL`; API bodies and downloaded artifacts are deleted. A failure is investigated privately and blocks completion. |
+| Published distribution | Authenticate only canonical immutable `v0.3.0`: require the annotated tag object and source commit, immutable non-draft GitHub Release, exact seven-name/size/digest asset set, GitHub release verification, and every asset's signed attestation constrained to the source repository, `release.yml`, tag ref, and source commit. The crates.io package must be unyanked, MIT-declared, and byte-identical to the attested release crate. At the recorded immutable full tap commit, the formula must be byte-identical to the attested release formula, name the exact immutable GitHub Release package URL and digest, and declare MIT. Rolling tap `main` is independently governed by the repeat-release audit, current-channel rehearsal, and installed-channel verifier; advancing it through a later verified release does not rewrite this historical proof. Verification downloads to a mode-private disposable root and performs no publish, release, tag, formula, or package write. |
+| Live policy and evidence | The operator audit requires exact clean local and remote `main`, selected-Action and SHA-pinning settings, read-only default token, no approval authority, the recorded fork policy, no repository or applicable organization Actions secret, closed upstream Action identities and licenses, the digest-recorded standalone tools including Syft's latest-release contract, reviewable exact source tree, authenticated historical distribution equality, and disabled auto-merge through one exact read-only GraphQL repository field. The REST repository response retains identity and security-state checks but does not supply merge-setting evidence because GitHub's current projection requires contents write; the operator token must not gain write authority to expose it. The audit emits only UTC date, canonical SHA-256, exact source SHA, release tag, and `PASS` or `FAIL`; API bodies and downloaded artifacts are deleted. A failure is investigated privately and blocks completion. Rolling release-channel state is verified separately and cannot be substituted for or required to equal the immutable historical handoff. |
+
+`DEC-061` corrects one stale assertion in `DEC-040` without changing its dated
+`v0.3.0` distribution identity. The operator audit fetches the Homebrew formula
+only through `contents/Formula/mcp-doctor.rb?ref=<recorded-full-commit>` and
+still requires exact release-formula bytes, formula SHA-256, immutable package
+URL and digest, and MIT declaration. It no longer reads or constrains rolling
+tap `main`. `scripts/verify-repeat-release-controls.sh`, the current-version
+nonpublishing rehearsal, and `.github/workflows/release-channels.yml` retain the
+separate current-channel boundary. A deterministic fake-API rehearsal exposes a
+different later tap head, proves the historical check still passes without
+consulting it, and proves changed bytes at the recorded commit still fail.
+
+`DEC-062` corrects a second stale observation assumption without weakening the
+canonical verification credential. GitHub's current REST repository contract
+exposes merge-related settings only when a credential has both contents read
+and write, so absence of `allow_auto_merge` under the exact read-only token is
+not evidence that the setting is disabled. The token must not gain write
+authority for that projection. One variable-bound read-only GraphQL query now
+requires the exact repository identity and `autoMergeAllowed=false`; GraphQL
+errors, missing or malformed data, identity mismatch, and `true` fail. REST
+continues to verify repository identity, visibility, archive, default branch,
+and security-update state. The second failed audit is preserved, and only new
+reviewed source with first-attempt exact-head and exact-`main` gates may produce
+the accepted operator result.
 
 The 2026-08-12 pre-activation audit found the existing weekly Cargo and Action
 version groups, exact direct requirements, locked graph, full-SHA direct Action
@@ -3235,6 +3591,30 @@ passes Linux x64 and ARM64, macOS ARM64, and Windows source/package/formula
 journeys with token inputs empty. Updating both workflow uses and this canonical
 inventory in PR 27 is mandatory; green behavior alone cannot bypass the closed
 pin.
+
+The 2026-08-18 maintenance review for
+[PR 99](https://github.com/EnjoyableWork/mcp-doctor/pull/99) accepts only
+`Homebrew/actions/setup-homebrew` immutable non-prerelease release
+`2026.08.14.1` at verified commit
+`8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4`. The public, active, unarchived
+Homebrew-owned repository retains multiple active maintainers, and all ten
+intervening commits are signature-verified. The complete `setup-homebrew`
+subtree, shared deprecation wrapper, and committed `node_modules` tree are
+byte-identical to `2026.08.10.1`; the selected `@actions/core` `3.0.1` and
+`@actions/exec` `3.0.0` runtime dependencies therefore do not change. Upstream
+changes affect only its stable-container test, shared RuboCop configuration,
+root dependency metadata, workflow pins, and the unrelated
+`check-commit-format` Action. They add no selected input, feature, nested
+Action, privilege, executable, binary artifact, build script, generated bundle,
+download, startup work, or runtime work. The 1,334-byte BSD-2-Clause license
+retains SHA-256
+`f80329e58613ad669c0e73cb132d8060b9b2c55e339c73848068e4d1567f4627`,
+the repository has no published GitHub security advisory, and the update does
+not touch the Rust graph, Rust floor, release binary, or supported platforms.
+The exact proposed pin passes the nonpublishing GNU/Linux x64 and ARM64, macOS
+ARM64, and Windows source/package/formula journeys with both token inputs empty.
+Both workflow uses and the closed inventory must move together; Dependabot
+retains no approval, merge, secret, or auto-merge authority.
 
 This contract contributes the five OSPS `v2026.02.19` Level 1 rows assigned
 below. Protected [PR 25](https://github.com/EnjoyableWork/mcp-doctor/pull/25)
@@ -3720,6 +4100,10 @@ evidence, and official proof.
 | DEC-058 | Batch only the two related native-identity corrections in `v0.3.1` | Accepted | 2026-08-16 | Coordinate the authority-bearing input and report-publication CWE-367 drafts through one private candidate because both require complete Unix/Windows file identity and because trustworthy machine evidence is part of the north star. Inputs read only the verified no-follow handle. Report stages retain their opened identity, must match immediately before a no-overwrite link, and must match the destination immediately afterward; cleanup and rollback remove only a matching owned identity and never a foreign replacement. Preserve existing activity, artifact, no-clobber, redaction, and cleanup contracts and require deterministic forced interleavings plus represented native evidence. The SSE-fragmentation and schema-evaluation CWE-400 drafts require different resource-bound designs and are explicitly excluded rather than delaying or broadening this patch. |
 | DEC-059 | Supersede `DEC-057` with explicit companion-skill distribution and exact host-scoped evidence | Accepted | 2026-08-16 | Retain one concise instruction-only canonical `.agents/skills/mcp-doctor/SKILL.md`, the passive-first terminal workflow, exact user- or repository-selected targets, compiled capability discovery, redacted causal-report interpretation, explicit edit intent, active-command refusal, and no permission, executable, installation, or secret authority from `DEC-057`. Bind the canonical bytes and compatibility identity to one immutable companion archive in the next protected patch release; expose one terse installed top-level help route; and provide primary-documented explicit, reversible, no-overwrite install and removal routes without silent package-channel mutation or an unpinned remote-shell installer. A support claim requires a clean disposable profile, exact product version and date, verified listing/discovery, and an explicit invocation pass for that individual host; implicit selection remains a separately labeled best-effort observation because the model decides relevance. Initially evaluate Codex, Claude Code, Cursor, VS Code/Copilot, Kiro IDE, Kiro CLI, and Kiro Crew. Treat Kiro Crew as a distinct persistent-agent surface and limit its initial claim to an interactive foreground session with unchanged canonical skill identity; schedules, proactive loops, webhooks, heartbeats, Apps, synthesized skills, persistent lessons, background tasks, unattended work, and cross-surface behavior remain out of scope. Deterministic format, archive, help, install/removal, forbidden-content, documentation, recorder, redaction, and direct-CLI safety regressions prove repository-controlled behavior; dated synthetic forward-tests are scoped integration evidence, not universal compliance, deterministic model correctness, or adoption. Publish no host claim until the immutable skill, matching binary help, represented installed channels, exact host matrix, and durable evidence pass. Marketplaces, host plug-ins, IDE extensions, direct MCP mode, active authority, dependencies, daemons, SDKs, and hosted services remain separate decisions. |
 | DEC-060 | Coordinate the two confirmed CWE-400 corrections in one patch candidate while bounding them independently | Accepted | 2026-08-17 | The fragmented-SSE regression and schema-work accounting gap are both reachable only after an explicit target selection but can amplify attacker-controlled bounded input into disproportionate synchronous work. Ship neither correction as the sole fixed latest release: prepare unpublished `v0.3.3` containing both, retain separate findings, affected lines, regressions, and advisory records, and publish only after all represented channels verify the same immutable bytes. SSE parsing becomes one incremental decoder with linear scan work and bounded retained state. Schema processing uses the pinned `jsonschema` implementation, its public custom representation, and an injected always-true compile marker under one deterministic operation budget shared with the preliminary walk; exhaustion produces the existing typed schema-work limit before a target call. Select the validator's linear-time regex engine with fixed compiled-size and DFA-cache bounds, translate and inspect its maintained HIR so counted-repetition and character-class complexity multiplied by potential instance text is admitted before matching, and fail backtracking-only Draft 2020-12 pattern syntax locally with the typed `unsupported_linear_pattern` rule rather than misrepresenting it as accepted bounded behavior. Reuse the already locked `referencing 0.49.9`, `jsonschema-regex 0.49.9`, and `regex-syntax 0.8.11` packages directly only for the pinned embedded meta-schema and this value-free pattern-work analysis. No elapsed-time acceptance, worker that cannot be reaped, external reference retrieval, retry, fallback, dependency-graph expansion, protocol change, broader compatibility claim, or assurance change is permitted. |
+| DEC-061 | Keep immutable historical Homebrew proof separate from rolling release-channel state | Accepted | 2026-08-18 | Correct the stale `DEC-040` assertion discovered by `MCPD-036` without rebaselining or broadening the dated M4 result. Authenticate the canonical `v0.3.0` formula only at its recorded 40-hex tap handoff commit and retain exact formula bytes, formula digest, release-package URL and digest, and MIT checks. Do not read or require rolling tap `main` to equal that historical commit. Keep current tap state under the independently authenticated repeat-release audit, current-version nonpublishing rehearsal, and represented installed-channel verifier. Preserve the first failed audit, require deterministic later-head and mutated-history regressions, and accept a new operator result only from corrected reviewed source after first-attempt exact-head and exact-`main` gates. |
+| DEC-062 | Preserve the read-only verification credential while correcting GitHub merge-setting observation | Accepted | 2026-08-18 | GitHub's current REST repository response exposes merge-related fields only when a credential has both contents read and write. An omitted `allow_auto_merge` field under the exact canonical read-only fine-grained token is therefore unavailable evidence, not proof of disabled auto-merge. Do not expand the token. Verify only this setting through one exact variable-bound read-only GraphQL repository query that requires the exact `nameWithOwner` and Boolean `autoMergeAllowed=false`; API errors, missing or malformed data, identity mismatch, and `true` fail. Retain REST for repository identity, visibility, archive, default branch, and security-update checks. Preserve the second failed audit and accept a corrected operator result only from new reviewed source after deterministic pass/rejection rehearsals and first-attempt exact-head and exact-`main` gates. No mutation, retry, fallback, clock, poll, new credential, product behavior, release artifact, advisory content, or assurance claim changes. |
+| DEC-063 | Fail closed when repeat-release credential inventory evidence is unavailable | Accepted | 2026-08-18 | Reject the pre-rehearsal result that received `403` for the organization Actions-secret inventory but printed success because Bash did not propagate a process-substitution failure. Acquire and validate the complete organization-secret response before iteration. Unavailable or malformed inventory, unknown visibility, or unavailable selected-repository evidence fails with a value-free diagnostic; an empty successfully read array remains valid. Preserve the rejected result and prove the unavailable rejection plus empty-inventory success through a disposable fake GitHub CLI that completes every other repository, environment, local credential-store, and workflow check. Accept a new before/after inventory only from corrected reviewed source after first-attempt exact-head and exact-`main` gates, using the existing exact read-only verification credential. No permission expansion, rehearsal retry, workflow dispatch, product behavior, dependency, release artifact, advisory content, or assurance claim changes. |
+| DEC-064 | Recover an immutable partial release without accepting an attestation-readiness rerun | Accepted | 2026-08-18 | Preserve the sole `v0.3.3` tag-workflow failure after GitHub made the eight-asset release immutable but before its asynchronous release attestation became available; do not rerun the failed job, move or delete the signed annotated tag, edit the immutable release, rewrite an asset, or treat the later attestation as a green attempt. On new reviewed `main`, make the publication job prove immutable state and re-downloaded bytes, then put one typed release-attestation read and one cryptographic verification in the separately approved OIDC job. Permit `workflow_dispatch` recovery only from exact `main`, only when the input names an exact immutable annotated release with exactly one failed attempt at the same source, exactly one available `release` attestation, and no crates.io version. Check out that immutable tag, repeat all release, asset, provenance, package, formula, and handoff checks, and publish only its byte-identical crate through the existing trusted workflow, environment, and ephemeral token. Require complete local and dependency gates, protected first-attempt exact-head and exact-`main` gates, a new exact-source operator audit, and clean before/after credential inventories plus all four nonpublishing rehearsals before the one recovery dispatch. Add no sleep, poll, retry, fallback, credential, dependency, product behavior, release mutation, advisory change, or assurance claim. |
 
 ## Open decisions
 
@@ -3727,7 +4111,12 @@ evidence, and official proof.
 `DEC-031` records the implemented `MCPD-011` generation boundary, `OPEN-07` is
 accepted as `DEC-032`, `OPEN-08` and `OPEN-09` are accepted as `DEC-034` and
 `DEC-035`, `OPEN-10` is accepted as `DEC-041`, and `OPEN-11` is accepted as
-`DEC-042`. `DEC-043` records the approved `MCPD-016A` supply-chain correction.
+`DEC-042`. `DEC-043` records the approved `MCPD-016A` supply-chain correction,
+`DEC-061` records the historical-versus-rolling release-gate correction,
+`DEC-062` records the least-authority merge-setting observation correction, and
+`DEC-063` records the fail-closed repeat-release inventory correction discovered
+during `MCPD-036`, and `DEC-064` records its immutable partial-release recovery
+without accepting a delayed green rerun.
 `OPEN-12` is accepted as `DEC-044`, `OPEN-13` is accepted as `DEC-045`, and
 `OPEN-14` is accepted as `DEC-051`.
 `DEC-048` records the focused issue #64 protocol-rejection correction, and
@@ -3782,13 +4171,13 @@ silently changing an accepted decision.
 | RISK-24 | A structured protocol-version rejection is mislabeled as transport failure, reflected unsafely, or used to trigger retry or downgrade | High | `DEC-048` and `MCPD-023` require the exact bounded current-revision `400`/`-32022` shape, matching request and requested revision, noncontradictory finite supported list, value-free rule evidence, protocol-layer primary diagnosis, causal skips, and zero replay/fallback; every malformed lookalike remains an HTTP failure | Mitigated for exact `v0.3.0` by focused exact and negative classifier tests, passive and active one-request human/JSON/JUnit/redaction journeys, protected first-attempt exact-head and exact-`main` evidence, closed issue #64, and represented installed-channel verification; any classifier, bound, redaction, causal-skip, replay, fallback, or revision-contract drift reopens the risk |
 | RISK-25 | A stale or over-broad capability manifest starts an unsupported diagnostic, hides an available one, leaks ambient state, or turns server advertisements into execution authority | High | `DEC-050` requires source-owned constant reuse, CLI-inventory regression, an exact command/transport/revision matrix plus recognized-unsupported inventory, tri-state consumer cases, stable compatible schema rules, value-free exact schema rejection, fixed compile-family fields, a 64-KiB output limit, and zero configuration, host-inventory, file, environment-value, credential, process, DNS, network, retrieval, server-advertisement, or tool activity; any manifest/code drift, false support, unknown-value execution, ambient value, unbounded output, or activity blocks completion | Mitigated for the `MCPD-025` scope by protected [PR 58](https://github.com/EnjoyableWork/mcp-doctor/pull/58), the schema, golden, unit and built-binary deterministic/unknown-version/forward-compatibility/consumer/proxy/target-like/redaction evidence, represented installed smokes, and first-attempt exact-head [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161743) plus [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31761161698); any manifest/code, schema, matrix, profile, bound, redaction, consumer-unknown, or zero-activity drift reopens the risk |
 | RISK-26 | A schema-invalid rejection diagnostic executes a side effect, mistakes success for safe rejection, or leaks the deliberately invalid request or server response | Critical | `DEC-053` and `MCPD-029` require the existing exact tool, effect, side-effect, target, and credential gates; prove each finite case invalid for one fixed structural reason before transmission; treat only exact structural `-32602` rejection as the expectation rather than safety authority; stop on unsafe success or exhausted safety bounds; and retain only value-free reproduction and causal evidence | Mitigated for the current source scope by protected [PR 82](https://github.com/EnjoyableWork/mcp-doctor/pull/82), exact implementation and final evidence heads, closed issue #75, merge [`3472952`](https://github.com/EnjoyableWork/mcp-doctor/commit/3472952a521ad30fbf716c828739887835a78898), focused safety and redaction regressions, complete local/package/install evidence, and first-attempt exact-head plus exact-`main` CI, CodeQL, and release preflight; no published artifact or legacy claim follows, and any authority, invalidity-proof, response-classification, redaction, cleanup, or finite-work drift reopens the risk |
-| RISK-27 | Scheduler-dependent fixtures, correctness retries, or incidental runner tools make identical source pass and fail or hide a safety regression | High | `DEC-054` and `MCPD-030` require a complete tracked timing/tool inventory; product bounds only in product code or explicit limit fixtures; audited product-clock input only for a contract that consumes verification time; job, socket, and channel deadlines only as outer watchdogs; observable state or event/acknowledgement fixture coordination; deterministic forced-state regressions; one exact immutable Syft acquisition exception under `DEC-043`; declared non-standard CI tools; preserved failed evidence; and first-attempt acceptance without rerun, timeout inflation, assertion weakening, quarantine, or broad serialization | Mitigated for current test, source-checkout, and release scope by protected [PR 83](https://github.com/EnjoyableWork/mcp-doctor/pull/83), [PR 90](https://github.com/EnjoyableWork/mcp-doctor/pull/90), and [PR 91](https://github.com/EnjoyableWork/mcp-doctor/pull/91); the tracked audit and enforced inventories; deterministic state and acknowledgement proofs; exact runner-command verification; one-shot bounded release observation; the preserved stale-contract failure; and first-attempt corrected exact-`main` native CI, CodeQL, release preflight, and protected nonpublishing OIDC rehearsal. Any timing threshold used as correctness proof, correctness rerun, undeclared runner tool, inventory drift, broad retry, fixed publication sleep, mismatched handoff selector, or weaker cleanup/state-transition evidence reopens the risk. |
+| RISK-27 | Scheduler-dependent fixtures, correctness retries, or incidental runner tools make identical source pass and fail or hide a safety regression | High | `DEC-054`, `MCPD-030`, and `DEC-064` require a complete tracked timing/tool inventory; product bounds only in product code or explicit limit fixtures; audited product-clock input only for a contract that consumes verification time; job, socket, and channel deadlines only as outer watchdogs; observable state or event/acknowledgement fixture coordination; deterministic forced-state regressions; one exact immutable Syft acquisition exception under `DEC-043`; declared non-standard CI tools; preserved failed evidence; and first-attempt acceptance without rerun, timeout inflation, assertion weakening, quarantine, or broad serialization | Mitigated for the `v0.3.3` release-only scope by the [MCPD-036 completion record](docs/assurance/mcpd-036-security-release.md). The sole tag-workflow failure remains failed after GitHub exposed the asynchronous release attestation; no unchanged run, job, test, build, integrity check, or publication was retried. `DEC-064` instead passed reviewed exact-head and exact-`main` gates, exact-source operator and inventory checks, four first-attempt rehearsals, and one exact-byte recovery from observable immutable state before the tap and ten-job verifier passed. Any unchanged rerun, timing threshold used as correctness proof, undeclared runner tool, inventory drift, broad retry, fixed publication sleep, mismatched handoff selector, or weaker cleanup/state-transition evidence reopens the risk. |
 | RISK-28 | A larger diagnostic profile becomes hidden execution authority, weakens cleanup or capacity limits, masks a hung server, or is reported inconsistently | High | `DEC-055` and `MCPD-032` permit only invocation-local exact named selection for three existing diagnostic commands, cap both profiles with fixed total and phase times, keep cleanup and all byte/count/retry/redirect/concurrency/authority limits identical, reject unknown names before target preparation, and require one typed profile to drive runtime, human/JSON/JUnit reports, offline aggregate retention, and compiled capability discovery. Deterministic value-equality, pre-target rejection, cross-transport immediate-state, active no-authorization, artifact-parity, and represented installed-source tests replace elapsed-time acceptance. | Mitigated for the `MCPD-032` source scope by protected [PR 85](https://github.com/EnjoyableWork/mcp-doctor/pull/85), exact implementation head [`565ece0`](https://github.com/EnjoyableWork/mcp-doctor/commit/565ece032b637374e770a092219f346de63238d9), closed issue #65, complete local/package/install and reporter/manifest evidence, and first-attempt exact-head CI, CodeQL, and release preflight. Any per-field/config/environment/unbounded/adaptive mode, profile-dependent cleanup/capacity/authority change, hidden fallback, report/runtime mismatch, or timing-based acceptance reopens the risk. |
 | RISK-29 | Multi-tool data flow executes an undeclared or side-effecting tool, leaks a captured value, continues after an unsafe state, leaves created state behind, or becomes an unbounded scripting language | Critical | `DEC-056` and `MCPD-033` require a strict current-revision-only schema; one finite sequential path; exact per-step tools and effects; exact-set invocation authorization before target preparation; prior-only structural captures into existing null placeholders; complete step/capture/input/schema/time/message/process/network/report bounds; no loops, branches, expressions, dynamic selection, retry, concurrency, or discovery authority; a contiguous explicit cleanup suffix; value-free numeric-step reports; and independent cleanup failure. | Mitigated for the current source scope by protected [PR 86](https://github.com/EnjoyableWork/mcp-doctor/pull/86), exact implementation head [`52a7120`](https://github.com/EnjoyableWork/mcp-doctor/commit/52a7120d5b413f23a1cf1e61db0c5db5ed3fb6e1), closed issue #71, strict parser and exact-set pretarget authorization, pre-clone capture and input limits, causal-stop and independent-cleanup regressions, value-free STDIO/HTTP and reporter evidence, complete local/package/install gates, and first-attempt exact-head CI, CodeQL, and release preflight. Any wildcard, duplicate/extra authorization acceptance, arbitrary interpolation, reflected identifier/pointer/value, non-prefix main execution after failure, hidden cleanup failure, legacy fallback, or unbounded retained result reopens the risk. |
 | RISK-30 | A selected authority-bearing path changes between validation and use, causing the diagnostic to execute different scenario data, trust different CA material, or accept different snapshot or aggregate evidence | Critical | `MCPD-034` requires one no-follow native-identity opener, opened-handle metadata and reads, a same-identity path verification before use, complete Unix and Windows identities, and deterministic forced-interleaving evidence. Any following open after a path decision, partial identity, path-based reread, fallback, retry, target start, connection, credential handling, or accepted offline evidence after detected replacement reopens the risk. | Mitigated for the released `v0.3.1` scope by the shared bound-file implementation, deterministic replacement/reparse/disappearance/oversize/no-activity regressions, protected PRs 92 and 93, first-attempt corrected exact-`main` native gates, immutable and represented installed-channel verification, and published GHSA-92m2-749h-2gv5. Any unbound authority-file reader, incomplete native identity, fallback, retry, or activity after detected replacement reopens the risk. |
 | RISK-31 | A binary-only user never discovers the companion skill, or a coding agent fails to load it, guesses a target, escalates passive discovery into active calls, grants itself permissions, leaks secrets, persists unsafe guidance, or overstates host support or actual adoption | Critical | `DEC-059` and completed `MCPD-035` require one canonical instruction-only skill and immutable version-bound archive, a terse installed-CLI help route, explicit reversible no-overwrite host installation, exact user- or repository-selected targets, compiled capability discovery, passive JSON inspection by default, explicit editing intent before correction and rerun, no inferred `check`/`break`/`reject`, no permission grant, executable script, automatic installation, or secret handling, and dated exact-version discovery plus explicit-invocation evidence for every individually claimed host. A synthetic command recorder proves the permitted sequence without real activity; direct CLI regressions keep the existing target, network, credential, tool, effect, side-effect, cleanup, and reporter gates authoritative when the skill is absent or ignored. Kiro Crew remains a distinct persistent surface with no supported or unattended claim. | Mitigated for the exact `v0.3.2` and Codex CLI `0.147.0` scope by protected PR 95, deterministic skill/distribution/help and CLI-backstop checks, immutable eight-asset publication, represented installed-channel help verification, and the dated scoped host matrix. Implicit model selection remains best-effort rather than guaranteed; every other evaluated host remains unclaimed, and vendor compatibility, downloads, binary or skill installs, stars, and forward-tests remain non-adoption evidence. Any binary/skill conflation, silent install, canonical-byte drift, behavioral fork, inferred authority, unsupported or universal host wording, Crew persistence/background overclaim, secret exposure, direct MCP-mode shortcut, or new claimed host/version without the same evidence reopens the risk. |
 | RISK-32 | A report stage or destination path changes after its handle is opened, causing foreign bytes to be published as trusted diagnostic evidence or a foreign entry to be deleted during cleanup | Critical | `DEC-058` and `MCPD-034` require the opened stage's complete native identity before linking, the new destination's matching identity immediately after, and same-identity checks immediately before every cleanup or rollback removal. A mismatch, disappearance, symlink/reparse substitution, partial Windows identity, unconditional non-Unix ownership assumption, accepted foreign output, foreign deletion, partial two-artifact set, or aggregate stdout after failed publication reopens the risk. | Mitigated for the released `v0.3.1` scope by identity-bound JSON, JUnit, and aggregate staging, publication, cleanup, and rollback; deterministic pre-link/post-link replacement and no-foreign-delete regressions; protected PRs 92 and 93; first-attempt corrected exact-`main` native gates; immutable and represented installed-channel verification; and published GHSA-8r6p-qf9j-vpvx. Any path-based publication or removal without the complete opened identity, accepted foreign output, foreign deletion, or partial artifact set reopens the risk. |
-| RISK-33 | A fragmented SSE stream or compact schema/instance cross-product exhausts CPU or allocation outside the declared finite work boundary | High | `DEC-060` and `MCPD-036` require one-pass incremental SSE decoding with bounded retained state and one deterministic schema-operation budget spanning preliminary analysis, meta-validation, construction, and instance evaluation. Single, irregular, and one-byte stream partitions must produce identical outcomes with linear observed scan work; adversarial combinators, references, strings, equality, collections, and uniqueness must stop at a measured operation count independent of wall time. Any full-buffer reparse, consumed-byte retention, unmetered validator path, elapsed-time proof, target call after local exhaustion, raw value in a limit result, or affected-version overclaim blocks completion. | Open. Complete local, regression, dependency, clean exact-source package generation, exact-package install, and installed-smoke evidence pass for both independently bounded corrections, including the tightened shared compilation-and-instance counter, and unpublished `v0.3.3` is the coordinated candidate. The SSE regression begins in `v0.3.0`, while the schema gap begins in `v0.1.0`; both remain in immutable `v0.3.2`. Mitigation and public disclosure remain pending represented native and protected verification, immutable patched publication, represented installed-channel verification, and coordinated advisory release. |
+| RISK-33 | A fragmented SSE stream or compact schema/instance cross-product exhausts CPU or allocation outside the declared finite work boundary | High | `DEC-060` and `MCPD-036` require one-pass incremental SSE decoding with bounded retained state and one deterministic schema-operation budget spanning preliminary analysis, meta-validation, construction, and instance evaluation. Single, irregular, and one-byte stream partitions must produce identical outcomes with linear observed scan work; adversarial combinators, references, strings, equality, collections, and uniqueness must stop at a measured operation count independent of wall time. Any full-buffer reparse, consumed-byte retention, unmetered validator path, elapsed-time proof, target call after local exhaustion, raw value in a limit result, or affected-version overclaim blocks completion. | Mitigated for exact `v0.3.3` by independent fragmentation and schema-work regressions, complete locked local/dependency/package/install evidence, protected exact-head and exact-`main` gates, immutable byte-identical GitHub/Cargo/Homebrew handoffs, and first-attempt represented installed-channel verification recorded in the [MCPD-036 completion record](docs/assurance/mcpd-036-security-release.md). [GHSA-3vpj-fcvj-28pm](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-3vpj-fcvj-28pm) preserves the SSE `>=0.3.0, <=0.3.2` line and [GHSA-jr72-f9q4-424m](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-jr72-f9q4-424m) preserves the schema `>=0.1.0, <=0.3.2` line; both are patched in `>=0.3.3`. Any decoder, retained-state, schema-work, pattern, no-call, redaction, version-range, or deterministic-bound drift reopens the risk. |
 
 ## Readiness and completion gates
 

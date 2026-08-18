@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents the `mcp-doctor` `0.3.3` release candidate and its
-intended canonical release tag `v0.3.3`.
+This source tree records the completed `mcp-doctor` `0.3.3` publication and
+the reviewed recovery controls added after its canonical signed tag `v0.3.3`.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the
 `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source
@@ -320,9 +320,9 @@ inventories found no Cargo registry token, release-workflow secret reference,
 or stored source or tap release-environment secret. This is the completed
 current-channel rehearsal for `v0.3.2`.
 
-## v0.3.3 bounded-work security candidate
+## v0.3.3 bounded-work security release
 
-The `v0.3.3` candidate coordinates two independent CWE-400 corrections. Its
+The `v0.3.3` release coordinates two independent CWE-400 corrections. Its
 request-scoped SSE decoder consumes accepted bytes incrementally instead of
 reparsing the accumulated body after every fragment. Its Draft 2020-12 schema
 path charges preliminary traversal, meta-validation, compilation, reference
@@ -337,13 +337,21 @@ an execution path whose actual work cannot be charged. Existing protocol,
 transport, authorization, redaction, cleanup, and reporter contracts remain
 unchanged.
 
-The candidate retains the eight-asset release shape introduced by `v0.3.2` and
+The release retains the eight-asset release shape introduced by `v0.3.2` and
 reissues the canonical instruction-only Agent Skill with exact `0.3.3`
 identity. That version-bound skill has no new host-support claim until its
-separate exact-version observation passes. Nothing in this section is
-publication evidence: clean protected source, represented native preflight,
-immutable release, downstream handoffs, installed-channel verification, and
-coordinated advisory publication remain required.
+separate exact-version observation passes. The first tag workflow made the
+eight-asset GitHub Release immutable, then failed because GitHub had not yet
+made its asynchronously generated release attestation available. The
+attestation appeared later, but that later state is not a green rerun and the
+failed workflow remains the accepted failure record. Corrected protected
+source and the explicit partial-release recovery then published the exact
+immutable source byte to crates.io; the tap-owned Homebrew handoff and all ten
+represented installed-channel jobs passed before the two distinct advisories
+were published together. The
+[non-sensitive completion record](assurance/mcpd-036-security-release.md)
+binds the exact commits, first-attempt protected and rehearsal runs, recovered
+bytes, channel identities, affected ranges, and public advisories.
 
 ### GitHub-controlled sequence
 
@@ -355,9 +363,16 @@ Every later release keeps three deliberately separate write boundaries:
    It rejects a version older than any stable crates.io release and serializes
    every tag and rehearsal through one release concurrency group. It rechecks
    `main` and the annotated tag immediately before publication, then builds,
-   attests, byte-checks, and makes the GitHub Release immutable.
-2. Only after those public bytes and attestations verify, the same workflow and
-   protected `release` environment exchange GitHub OIDC identity through the
+   attests, byte-checks, makes the GitHub Release immutable, and re-downloads
+   the exact immutable bytes.
+2. GitHub creates the release attestation asynchronously after publication.
+   Before approving the separately protected OIDC job, the operator observes
+   one exact `release` attestation for the annotated tag object through the
+   repository-attestations API. That job repeats one typed availability read,
+   cryptographically verifies the release attestation and every asset's
+   provenance, and recreates the exact source handoff from the release tag.
+   Only then does the same workflow and protected `release` environment
+   exchange GitHub OIDC identity through the
    full-SHA-pinned official `rust-lang/crates-io-auth-action` and run
    `cargo publish --locked`. The temporary token is masked and revoked by the
    Action. The same version may be observed only during recovery from a partial
@@ -384,6 +399,20 @@ ever justified, replace that manual dispatch only with a narrowly installed
 GitHub App whose short-lived token can invoke the one tap workflow; do not add
 a PAT or give the source repository write access to the tap.
 
+If the sole tag-triggered workflow attempt fails after the release becomes
+immutable but before crates.io publication, do not rerun that workflow or
+alter the tag or release. Preserve the failure and correct the release path on
+new reviewed `main`. After the correction passes its complete local,
+protected, rehearsal, and credential-inventory gates, dispatch `release.yml`
+from exact `main` with only `recovery_version` set to the immutable version.
+The recovery validator accepts only one failed attempt for that exact annotated
+tag and source commit, one available release attestation, exact immutable
+release state, and an absent crates.io version. Its protected job checks out
+the immutable tag, repeats every release, asset, provenance, package, and
+handoff check, and either publishes that exact source byte once through OIDC or
+fails closed. This recovery is a new reviewed path for a partial release, not
+an accepted green rerun of failed source.
+
 ### Trusted publisher and environment bindings
 
 The crates.io publisher must contain exactly this GitHub identity:
@@ -396,7 +425,8 @@ The crates.io publisher must contain exactly this GitHub identity:
 | Environment | `release` |
 
 The `mcp-doctor` `release` environment permits only `main` for the explicit
-nonpublishing rehearsal and stable `v*.*.*` tags for publication. The tap's
+nonpublishing rehearsal or reviewed partial-release recovery, and stable
+`v*.*.*` tags for initial publication. The tap's
 separate `release` environment permits only tap `main`. Both environments
 have a required-reviewer gate and store no secret. The current one-maintainer
 organization allows its administrator to bypass that gate, so this is an
@@ -410,7 +440,8 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
    currently represented identically across GitHub Releases, Cargo, and Homebrew
-   (`0.3.2` at this review). It reuses that existing immutable release, compares
+   (`0.3.3` at this review) and leave `recovery_version` empty. It reuses that
+   existing immutable release, compares
    the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
    byte fixtures, obtains and revokes one short-lived token through the
    authorized workflow and environment, and proves the same workflow is
@@ -430,6 +461,25 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    This confirms the generalized verifier remains credential-free and all
    existing public channel bytes and installed diagnostic smokes still pass.
 
+The dated M4 supply-chain operator audit is a separate historical-evidence
+gate. When it is required, `scripts/verify-supply-chain-controls.sh`
+authenticates the canonical `v0.3.0` Homebrew formula at its recorded immutable
+full tap commit; it does not require rolling `homebrew-tap/main` to remain at
+that historical commit. The repeat-release audit, current-version rehearsal,
+and channel verifier above own current rolling formula state. Neither boundary
+may substitute for the other, and a failed audit is corrected on new reviewed
+source rather than rerun unchanged.
+
+The verification operator profile remains read-only. GitHub's REST
+`Get a repository` response exposes merge-related settings only to credentials
+with both `Contents: read` and `Contents: write`, so the audit must not infer
+that an omitted `allow_auto_merge` field is a disabled setting and must not add
+write authority merely to make that field appear. It verifies the same
+repository's `autoMergeAllowed` value through the read-only GraphQL repository
+field instead. A missing, malformed, mismatched, or `true` field fails closed.
+The REST response continues to own repository identity, visibility, archive,
+default-branch, and security-update state.
+
 `PROJECT.md` records the initial four successful run links, exact
 environment-policy readback, and trusted-publisher readback. Repeat and record
 this rehearsal after any workflow, environment, publisher, or authority change;
@@ -438,13 +488,20 @@ a workflow file or local test alone is not completion evidence.
 ### Credential inventory gate
 
 Before and after the rehearsal, inventory credential names and configuration
-without printing values. Acceptance requires:
+without printing values. Every repository, environment, and organization
+secret endpoint must return a successfully parsed typed inventory; a permission
+error, missing response, malformed shape, or unavailable selected-repository
+mapping fails closed and cannot emit the success record. Run this inventory
+with the same exact read-only verification credential used by the operator
+audit rather than widening another session. Acceptance requires:
 
 - no Cargo credential for crates.io in the operator's active Cargo home;
 - no repository, environment, or organization Actions secret used by either
   release path;
 - no classic or fine-grained personal access token referenced by either
   workflow;
+- the exceptional verification-operator token retains the exact canonical
+  read-only profile and must not gain `Contents: write` for a REST projection;
 - only the ephemeral crates.io token returned to the exact `release.yml` job,
   automatically revoked when that job ends; and
 - only the tap repository's per-run `GITHUB_TOKEN`, with `contents: write`
