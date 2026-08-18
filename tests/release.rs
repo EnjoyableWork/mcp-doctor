@@ -138,7 +138,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     for contract in [
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
-        "default: 0.3.2",
+        "default: 0.3.3",
         "recovery_version:",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
@@ -646,6 +646,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let agent_notes = repository_file("docs/releases/v0.3.2.md");
     let current_notes = repository_file("docs/releases/v0.3.3.md");
     let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
+    let bounded_work_record = repository_file("docs/assurance/mcpd-036-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -660,11 +661,11 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "currently represented identically across GitHub Releases, Cargo, and Homebrew"
         )
     );
-    assert!(release.contains("`0.3.2` at this review"));
+    assert!(release.contains("`0.3.3` at this review"));
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents the `mcp-doctor` `0.3.3` release candidate",
+        "This source tree records the completed `mcp-doctor` `0.3.3` publication",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -703,6 +704,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "32000204694",
         "32000204757",
         "32000204919",
+        "mcpd-036-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
         "passed all ten jobs",
@@ -768,8 +770,9 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "Fragmented request-scoped SSE",
         "schema_evaluation_steps",
         "unsupported_linear_pattern",
-        "separate advisory\nrecords",
-        "post-publication closure update",
+        "separate advisories\nbecause",
+        "GHSA-3vpj-fcvj-28pm",
+        "GHSA-jr72-f9q4-424m",
         "cargo install mcp-doctor --version '=0.3.3' --locked",
     ] {
         assert!(
@@ -777,10 +780,6 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
             "v0.3.3 release notes should preserve {contract}"
         );
     }
-    assert!(
-        !current_notes.contains("/security/advisories/GHSA-"),
-        "an unpublished candidate must not expose active advisory identifiers"
-    );
     for contract in [
         "MCPD-034 coordinated security-release record",
         "MCPD-034-SECURITY-20260817-02",
@@ -793,6 +792,23 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         assert!(
             security_record.contains(contract),
             "MCPD-034 completion record should preserve {contract}"
+        );
+    }
+    for contract in [
+        "MCPD-036 coordinated bounded-work security-release record",
+        "32095369800",
+        "995d471b0024a6d1e16b85e1778168bd27d3aebc",
+        "7e5fff3b7fa953a4ae371739a6046db9cd56feca",
+        "32099327284",
+        "4a2e2f3ba88dad5a8d80cba42c3ee07c38da18bc",
+        "32099683447",
+        "GHSA-3vpj-fcvj-28pm",
+        "GHSA-jr72-f9q4-424m",
+        "One bounded later observation proved GitHub\nrejected it",
+    ] {
+        assert!(
+            bounded_work_record.contains(contract),
+            "MCPD-036 completion record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
@@ -1097,7 +1113,7 @@ fn project_records_the_completed_protocol_correction_and_v030_release() {
         "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
         "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
         "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
+        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
         "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
         "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
         "31755736570",
@@ -1381,8 +1397,8 @@ fn project_records_m3_completion_against_exact_v020_evidence() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017` and `MCPD-018` are Done; `MCPD-036` is an in-progress security correction |",
-        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
+        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017`, `MCPD-018`, and `MCPD-036` are Done |",
+        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release",
         "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
         "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
         "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
@@ -2026,7 +2042,7 @@ fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-017` and `MCPD-018` are Done",
+        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
         "### Accepted community, repository, channel, and license contract",
         "`DEC-039` fixes the `MCPD-015` boundary.",
         "https://github.com/EnjoyableWork/homebrew-tap/pull/3",

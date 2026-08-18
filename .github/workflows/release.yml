@@ -9,7 +9,7 @@ on:
       rehearsal_version:
         description: Published stable version represented by every public source handoff
         required: true
-        default: 0.3.2
+        default: 0.3.3
         type: string
       recovery_version:
         description: Immutable partial release whose absent crates.io handoff must be recovered

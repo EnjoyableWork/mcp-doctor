@@ -247,7 +247,7 @@ fn project_records_mcpd_017_completion_without_public_assurance_claim() {
     let project = repository_file("PROJECT.md");
 
     for contract in [
-        "`MCPD-017` and `MCPD-018` are Done",
+        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
         "### Accepted organization access, credential, continuity, and recovery contract",
         "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
         "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",

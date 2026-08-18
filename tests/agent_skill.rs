@@ -180,8 +180,8 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "| D-25 | Safe portable coding-agent diagnostic workflow | Optional adoption UX | Done |",
         "| MCPD-035 | Make the existing passive diagnostic workflow discoverable and safe for coding agents | Optional adoption UX | Done |",
         "Mitigated for the exact `v0.3.2` and Codex CLI `0.147.0` scope",
-        "| Public release | `mcp-doctor` `v0.3.2` — signed annotated tag, immutable eight-asset GitHub Release",
-        "| MCPD-036 | Correct fragmented-SSE and JSON Schema resource amplification in one coordinated patch candidate | Security correction | In progress |",
+        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release",
+        "| MCPD-036 | Correct fragmented-SSE and JSON Schema resource amplification in one coordinated patch release | Security correction | Done |",
     ] {
         assert!(
             project.contains(contract),
@@ -193,7 +193,10 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         .filter(|line| line.starts_with("| MCPD-") && line.contains("| In progress |"))
         .filter_map(|line| line.split('|').nth(1).map(str::trim))
         .collect::<Vec<_>>();
-    assert_eq!(active_main_story_tickets, ["MCPD-036"]);
+    assert!(
+        active_main_story_tickets.is_empty(),
+        "completed project state should not retain an in-progress main-story ticket"
+    );
 }
 
 #[test]
