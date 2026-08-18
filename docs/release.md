@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents the `mcp-doctor` `0.3.3` release candidate and its
-intended canonical release tag `v0.3.3`.
+This source tree records the completed `mcp-doctor` `0.3.3` publication and
+the reviewed recovery controls added after its canonical signed tag `v0.3.3`.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the
 `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source
@@ -320,9 +320,9 @@ inventories found no Cargo registry token, release-workflow secret reference,
 or stored source or tap release-environment secret. This is the completed
 current-channel rehearsal for `v0.3.2`.
 
-## v0.3.3 bounded-work security candidate
+## v0.3.3 bounded-work security release
 
-The `v0.3.3` candidate coordinates two independent CWE-400 corrections. Its
+The `v0.3.3` release coordinates two independent CWE-400 corrections. Its
 request-scoped SSE decoder consumes accepted bytes incrementally instead of
 reparsing the accumulated body after every fragment. Its Draft 2020-12 schema
 path charges preliminary traversal, meta-validation, compilation, reference
@@ -337,7 +337,7 @@ an execution path whose actual work cannot be charged. Existing protocol,
 transport, authorization, redaction, cleanup, and reporter contracts remain
 unchanged.
 
-The candidate retains the eight-asset release shape introduced by `v0.3.2` and
+The release retains the eight-asset release shape introduced by `v0.3.2` and
 reissues the canonical instruction-only Agent Skill with exact `0.3.3`
 identity. That version-bound skill has no new host-support claim until its
 separate exact-version observation passes. The first tag workflow made the
@@ -345,9 +345,13 @@ eight-asset GitHub Release immutable, then failed because GitHub had not yet
 made its asynchronously generated release attestation available. The
 attestation appeared later, but that later state is not a green rerun and the
 failed workflow remains the accepted failure record. Corrected protected
-source, the explicit partial-release recovery, crates.io and Homebrew handoffs,
-installed-channel verification, and coordinated advisory publication remain
-required.
+source and the explicit partial-release recovery then published the exact
+immutable source byte to crates.io; the tap-owned Homebrew handoff and all ten
+represented installed-channel jobs passed before the two distinct advisories
+were published together. The
+[non-sensitive completion record](assurance/mcpd-036-security-release.md)
+binds the exact commits, first-attempt protected and rehearsal runs, recovered
+bytes, channel identities, affected ranges, and public advisories.
 
 ### GitHub-controlled sequence
 
@@ -436,7 +440,7 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
 
 1. Dispatch `Publish verified immutable release` with rehearsal version
    currently represented identically across GitHub Releases, Cargo, and Homebrew
-   (`0.3.2` at this review) and leave `recovery_version` empty. It reuses that
+   (`0.3.3` at this review) and leave `recovery_version` empty. It reuses that
    existing immutable release, compares
    the real Cargo and Homebrew bytes, rejects synthetic provenance and mutated
    byte fixtures, obtains and revokes one short-lived token through the

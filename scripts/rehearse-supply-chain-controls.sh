@@ -146,7 +146,7 @@ printf '%s\n' \
   'class McpDoctor < Formula' \
   '  desc "Synthetic current formula"' \
   '  homepage "https://github.com/EnjoyableWork/mcp-doctor"' \
-  '  url "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.2/mcp-doctor-0.3.2.crate"' \
+  '  url "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.3/mcp-doctor-0.3.3.crate"' \
   '  sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
   '  license "MIT"' \
   'end' \

@@ -693,7 +693,7 @@ fn syft_acquisition_and_generation_fail_closed_offline() {
 fn project_records_mcpd_016_completion() {
     let project = repository_file("PROJECT.md");
     for contract in [
-        "`MCPD-017` and `MCPD-018` are Done",
+        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
         "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
         "`DEC-040` fixes the `MCPD-016` boundary.",
         ".github/supply-chain-controls.json",
