@@ -82,8 +82,10 @@ git -C "$rehearsal_repo" commit --quiet -m 'test: add generated executable exten
 rehearsal_expect_rejection 'a generated executable extension'
 
 rehearsal_historical_verifier="$rehearsal_script_directory/verify-historical-homebrew-formula.sh"
-if [[ ! -x "$rehearsal_historical_verifier" ]]; then
-  printf 'historical Homebrew verifier is unavailable\n' >&2
+rehearsal_readonly_verifier="$rehearsal_script_directory/verify-read-only-repository-settings.sh"
+if [[ ! -x "$rehearsal_historical_verifier" ]] ||
+  [[ ! -x "$rehearsal_readonly_verifier" ]]; then
+  printf 'focused supply-chain verifier is unavailable\n' >&2
   exit 1
 fi
 
@@ -106,6 +108,12 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
   'if [[ $# -lt 2 ]] || [[ "$1" != api ]]; then exit 2; fi' \
+  'if [[ "$2" == graphql ]]; then' \
+  '  printf "graphql\n" >>"$REHEARSAL_GH_LOG"' \
+  '  if [[ "${REHEARSAL_GRAPHQL_EXIT:-0}" != 0 ]]; then exit "$REHEARSAL_GRAPHQL_EXIT"; fi' \
+  '  printf "%s\n" "$REHEARSAL_GRAPHQL_RESPONSE"' \
+  '  exit 0' \
+  'fi' \
   'fake_endpoint=' \
   'for fake_argument in "$@"; do fake_endpoint=$fake_argument; done' \
   'printf "%s\\n" "$fake_endpoint" >>"$REHEARSAL_GH_LOG"' \
@@ -152,6 +160,48 @@ printf '%s\n' \
   '  license "MIT"' \
   'end' \
   >"$rehearsal_mutated_formula"
+
+rehearsal_verify_readonly_settings() {
+  local graphql_response=$1
+  local graphql_exit=${2:-0}
+  PATH="$rehearsal_fake_bin:$PATH" \
+    REHEARSAL_GH_LOG="$rehearsal_gh_log" \
+    REHEARSAL_GRAPHQL_RESPONSE="$graphql_response" \
+    REHEARSAL_GRAPHQL_EXIT="$graphql_exit" \
+    "$rehearsal_readonly_verifier" \
+    EnjoyableWork/mcp-doctor \
+    2026-03-10
+}
+
+: >"$rehearsal_gh_log"
+rehearsal_verify_readonly_settings \
+  '{"data":{"repository":{"nameWithOwner":"EnjoyableWork/mcp-doctor","autoMergeAllowed":false}}}'
+if [[ "$(wc -l <"$rehearsal_gh_log" | tr -d '[:space:]')" != 1 ]] ||
+  ! grep -Fx graphql "$rehearsal_gh_log" >/dev/null; then
+  printf 'read-only repository verifier used an unexpected API boundary\n' >&2
+  exit 1
+fi
+
+for rehearsal_unsafe_response in \
+  '{"data":{"repository":{"nameWithOwner":"EnjoyableWork/mcp-doctor","autoMergeAllowed":true}}}' \
+  '{"data":{"repository":{"nameWithOwner":"EnjoyableWork/mcp-doctor","autoMergeAllowed":null}}}' \
+  '{"data":{"repository":{"nameWithOwner":"EnjoyableWork/another","autoMergeAllowed":false}}}' \
+  '{"data":{"repository":null}}' \
+  '{"errors":[{"type":"SYNTHETIC"}],"data":{"repository":null}}' \
+  'not-json'; do
+  : >"$rehearsal_gh_log"
+  if rehearsal_verify_readonly_settings "$rehearsal_unsafe_response" \
+    >/dev/null 2>&1; then
+    printf 'read-only repository verifier accepted unsafe synthetic evidence\n' >&2
+    exit 1
+  fi
+done
+
+: >"$rehearsal_gh_log"
+if rehearsal_verify_readonly_settings '{}' 1 >/dev/null 2>&1; then
+  printf 'read-only repository verifier accepted a failed API request\n' >&2
+  exit 1
+fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   rehearsal_historical_formula_sha="$(
@@ -207,4 +257,5 @@ if [[ "$(wc -l <"$rehearsal_gh_log" | tr -d '[:space:]')" != 1 ]] ||
 fi
 
 printf 'Historical Homebrew evidence remains strict after rolling tap advancement.\n'
+printf 'Read-only repository settings remain verifiable without contents write access.\n'
 printf 'Supply-chain artifact negative exercises passed in a disposable repository.\n'
