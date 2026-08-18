@@ -11,6 +11,10 @@ on:
         required: true
         default: 0.3.2
         type: string
+      recovery_version:
+        description: Immutable partial release whose absent crates.io handoff must be recovered
+        required: false
+        type: string
 
 permissions: {}
 
@@ -160,6 +164,107 @@ jobs:
               '.tag_name == $tag and (.draft == true or .immutable == true)' \
               "$existing_release" >/dev/null
           fi
+
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+  recover:
+    name: Validate exact immutable partial-release recovery
+    if: >-
+      github.repository == 'EnjoyableWork/mcp-doctor' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.recovery_version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    outputs:
+      version: ${{ steps.contract.outputs.version }}
+
+    steps:
+      - name: Check out the controlled default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify declared runner tools
+        run: ./scripts/verify-ci-tools.sh ubuntu-24.04
+
+      - name: Require one failed tag run, immutable attested bytes, and an absent registry version
+        id: contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_VERSION: ${{ inputs.recovery_version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "partial-release recovery must be dispatched from exact main" >&2
+            exit 1
+          fi
+
+          release_tag="v$RECOVERY_VERSION"
+          release_version="$(
+            scripts/validate-release-version.sh \
+              published \
+              "$release_tag" \
+              "$RECOVERY_VERSION"
+          )"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --force origin \
+            "refs/tags/$release_tag:refs/tags/$release_tag"
+          test "$(git cat-file -t "$release_tag")" = tag
+          release_commit="$(git rev-parse "$release_tag^{commit}")"
+
+          release_state="$RUNNER_TEMP/recovery-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' >"$release_state"
+          jq -e \
+            --arg tag "$release_tag" \
+            '.tag_name == $tag and .draft == false and .prerelease == false and .immutable == true' \
+            "$release_state" >/dev/null
+
+          release_tag_object="$(git rev-parse "$release_tag^{tag}")"
+          release_attestations="$RUNNER_TEMP/recovery-release-attestations.json"
+          gh api -X GET \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/attestations/sha1:$release_tag_object" \
+            -f predicate_type=release >"$release_attestations"
+          jq -e \
+            '.attestations | type == "array" and length == 1' \
+            "$release_attestations" >/dev/null
+
+          failed_runs="$RUNNER_TEMP/failed-tag-runs.json"
+          gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow release.yml \
+            --branch "$release_tag" \
+            --commit "$release_commit" \
+            --event push \
+            --status completed \
+            --limit 10 \
+            --json attempt,conclusion,event,headBranch,headSha,url \
+            >"$failed_runs"
+          jq -e \
+            --arg tag "$release_tag" \
+            --arg commit "$release_commit" \
+            'length == 1 and
+             .[0].attempt == 1 and .[0].conclusion == "failure" and
+             .[0].event == "push" and .[0].headBranch == $tag and
+             .[0].headSha == $commit' \
+            "$failed_runs" >/dev/null
+
+          registry_state="$RUNNER_TEMP/recovery-registry-state.json"
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 60 \
+            --output "$registry_state" \
+            --header 'User-Agent: mcp-doctor-release-recovery/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+            'https://crates.io/api/v1/crates/mcp-doctor'
+          jq -e \
+            --arg version "$release_version" \
+            'all(.versions[]; .num != $version)' \
+            "$registry_state" >/dev/null
 
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
@@ -466,7 +571,7 @@ jobs:
         if: steps.draft.outputs.already_immutable != 'true'
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
 
-      - name: Require immutable release state and release attestation
+      - name: Require immutable release state
         run: |
           set -euo pipefail
           release_state="$RUNNER_TEMP/published-release.json"
@@ -478,8 +583,6 @@ jobs:
             '.tag_name == $tag and .draft == false and
              .prerelease == false and .immutable == true' \
             "$release_state" >/dev/null
-          timeout 60 gh release verify \
-            "$GITHUB_REF_NAME" --format json >/dev/null
 
       - name: Re-download and verify the immutable release
         run: |
@@ -496,18 +599,29 @@ jobs:
     needs:
       - validate
       - publish
+      - recover
+    if: >-
+      always() &&
+      github.repository == 'EnjoyableWork/mcp-doctor' &&
+      ((github.event_name == 'push' &&
+        needs.validate.result == 'success' &&
+        needs.publish.result == 'success') ||
+       (github.event_name == 'workflow_dispatch' &&
+        inputs.recovery_version != '' &&
+        needs.recover.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment:
       name: release
-      url: https://crates.io/crates/mcp-doctor/${{ needs.validate.outputs.version }}
+      url: https://crates.io/crates/mcp-doctor/${{ needs.validate.outputs.version || needs.recover.outputs.version }}
     permissions:
       attestations: read
       contents: read
       id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RECOVERY_VERSION: ${{ inputs.recovery_version }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version || needs.recover.outputs.version }}
 
     steps:
       - name: Check out the exact release tag
@@ -515,6 +629,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: refs/tags/v${{ needs.validate.outputs.version || needs.recover.outputs.version }}
 
       - name: Verify declared runner tools
         run: ./scripts/verify-ci-tools.sh ubuntu-24.04
@@ -523,10 +638,20 @@ jobs:
         run: |
           set -euo pipefail
           release_tag="v$RELEASE_VERSION"
-          test "$GITHUB_REF" = "refs/tags/$release_tag"
+          release_ref="refs/tags/$release_tag"
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$GITHUB_REF" = "$release_ref"
+          else
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            test "$GITHUB_REF" = refs/heads/main
+            test "$RECOVERY_VERSION" = "$RELEASE_VERSION"
+          fi
           test "$(git cat-file -t "$release_tag")" = tag
           release_commit="$(git rev-parse "$release_tag^{commit}")"
-          test "$release_commit" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$release_commit"
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$release_commit" = "$GITHUB_SHA"
+          fi
 
           release_state="$RUNNER_TEMP/immutable-release.json"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
@@ -539,12 +664,21 @@ jobs:
           mkdir -p immutable-release
           gh release download "$release_tag" --dir immutable-release
           scripts/verify-published-release.sh immutable-release "$RELEASE_VERSION"
+          release_tag_object="$(git rev-parse "$release_tag^{tag}")"
+          release_attestations="$RUNNER_TEMP/release-attestations.json"
+          gh api -X GET \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/attestations/sha1:$release_tag_object" \
+            -f predicate_type=release >"$release_attestations"
+          jq -e \
+            '.attestations | type == "array" and length == 1' \
+            "$release_attestations" >/dev/null
           gh release verify "$release_tag" --format json >/dev/null
           for release_asset in immutable-release/*; do
             gh attestation verify "$release_asset" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
-              --source-ref "$GITHUB_REF" \
+              --source-ref "$release_ref" \
               --source-digest "$release_commit" \
               --format json >/dev/null
           done
@@ -633,7 +767,8 @@ jobs:
     name: Rehearse immutable and downstream byte handoffs
     if: >-
       github.repository == 'EnjoyableWork/mcp-doctor' &&
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' &&
+      inputs.recovery_version == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

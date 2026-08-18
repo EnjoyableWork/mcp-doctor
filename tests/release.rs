@@ -139,6 +139,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         "tags:\n      - \"v*.*.*\"",
         "workflow_dispatch:",
         "default: 0.3.2",
+        "recovery_version:",
         "group: mcp-doctor-release",
         "scripts/validate-release-version.sh",
         "published_stable_versions",
@@ -167,6 +168,7 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
         "Revalidate current main and annotated tag authority",
         "REHEARSED_VERSION: ${{ needs.rehearse.outputs.version }}",
         "REQUESTED_VERSION: ${{ inputs.rehearsal_version }}",
+        "inputs.recovery_version == ''",
     ] {
         assert!(
             workflow.contains(contract),
@@ -182,6 +184,52 @@ fn future_tag_workflow_preserves_release_proof_before_oidc_publication() {
     assert!(workflow.contains("no publish command exists in this job"));
     assert!(!workflow.contains("reuses only immutable v0.1.0"));
     assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn immutable_partial_release_recovery_is_explicit_single_attempt_and_byte_bound() {
+    let workflow = repository_file(".github/workflows/release.yml");
+
+    for contract in [
+        "Validate exact immutable partial-release recovery",
+        "inputs.recovery_version != ''",
+        "Check out the controlled default branch",
+        "partial-release recovery must be dispatched from exact main",
+        "predicate_type=release",
+        ".attestations | type == \"array\" and length == 1",
+        "--workflow release.yml",
+        ".[0].attempt == 1 and .[0].conclusion == \"failure\"",
+        "all(.versions[]; .num != $version)",
+        "needs.recover.result == 'success'",
+        "needs.validate.outputs.version || needs.recover.outputs.version",
+        "test \"$(git rev-parse HEAD)\" = \"$release_commit\"",
+        "--source-ref \"$release_ref\"",
+    ] {
+        assert!(
+            workflow.contains(contract),
+            "partial-release recovery should enforce {contract}"
+        );
+    }
+
+    let publish_start = workflow.find("\n  publish:\n").unwrap();
+    let recover_start = workflow.find("\n  recover:\n").unwrap();
+    let source_start = workflow.find("\n  source:\n").unwrap();
+    let crates_start = workflow.find("\n  crates:\n").unwrap();
+    let rehearse_start = workflow.find("\n  rehearse:\n").unwrap();
+    let recover_job = &workflow[recover_start..source_start];
+    let publish_job = &workflow[publish_start..crates_start];
+    let crates_job = &workflow[crates_start..rehearse_start];
+    assert!(
+        recover_job
+            .find("scripts/validate-release-version.sh")
+            .unwrap()
+            < recover_job.find("git fetch --force origin").unwrap()
+    );
+    assert!(!recover_job.contains("ref: refs/tags/v${{ inputs.recovery_version }}"));
+    assert!(publish_job.contains("Require immutable release state"));
+    assert!(!publish_job.contains("gh release verify"));
+    assert!(crates_job.contains("gh release verify"));
+    assert!(!workflow.contains("sleep "));
 }
 
 #[test]
