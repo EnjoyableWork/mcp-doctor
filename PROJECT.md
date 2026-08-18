@@ -3027,7 +3027,7 @@ complete dependency policy and be visible in the pull request.
 | `cargo-mutants` `27.1.0` | `MCPD-007` — evaluated 2026-08-10 | Diagnostic only; not adopted | A copied-tree five-mutant primary-diagnosis subset produced three useful test gaps and then passed 5/5; standard focused tests retain the value without permanent tool execution |
 | GitHub artifact and build-provenance Actions | `MCPD-008` — selected 2026-08-10 | Adopted release tooling | Current active official GitHub Actions are pinned by full commit SHA; short-lived workflow artifacts assemble the exact payload, while GitHub attestations bind each published byte to the tag workflow and commit without a stored signing secret |
 | Syft `1.51.0` | `MCPD-008` — `1.50.0` selected 2026-08-10; acquisition and security correction accepted under `MCPD-016A` on 2026-08-12 | Adopted release tooling | Generate target SPDX 2.3 JSON only for the two represented GNU/Linux archives. Fetch the immutable `linux_amd64` and `linux_arm64` `1.51.0` release assets directly under exact byte, SHA-256, four-entry layout, version, and platform checks; discard partial bytes and allow at most three attempts only for the `DEC-043` transient acquisition classes. Never use the former Action's mutable `main/install.sh`, retry generation or validation, enable Syft network or host-cache cataloging, or broaden macOS/Windows artifact scope. |
-| `Homebrew/actions/setup-homebrew` `2026.08.10.1` | `MCPD-008` — selected 2026-08-10; updated under `MCPD-016` on 2026-08-12 | Adopted release tooling | Pin immutable release commit `c8707045ccae42888fe98e86f2ee8938bc7cc193`; use only to style, audit, source-build, test, and smoke the exact formula on represented native hosts with both token inputs empty. The reviewed update removes an unused privileged sandbox-setup path, changes no selected dependency or nested Action, retains exact BSD-2-Clause license bytes, and passes every represented source/formula journey. |
+| `Homebrew/actions/setup-homebrew` `2026.08.14.1` | `MCPD-008` — selected 2026-08-10; updated under `MCPD-016` on 2026-08-12 and re-reviewed on 2026-08-18 | Adopted release tooling | Pin immutable release commit `8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4`; use only to style, audit, source-build, test, and smoke the exact formula on represented native hosts with both token inputs empty. The selected subtree, wrapper, and vendored runtime dependency tree are byte-identical to the prior pin; the update changes only upstream tests, shared configuration, root dependency metadata, and an unrelated Action. It retains exact BSD-2-Clause license bytes, adds no selected dependency or nested Action, and passes every represented source/formula journey. |
 | [`rust-lang/crates-io-auth-action` `v1.0.5`](https://github.com/rust-lang/crates-io-auth-action/releases/tag/v1.0.5) at `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `MCPD-008A` — selected 2026-08-10 | Adopted and live-verified | The official Rust project Action is active, unarchived, dual MIT/Apache-2.0, Node 24 bundled, released from a verified commit, masks its 30-minute token, and revokes it in its post step; it is full-SHA-pinned in the [verified authorized and rejected OIDC paths](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31443495330), with no new Cargo dependency or stored secret |
 | GitHub-native Homebrew tap update authority | `MCPD-008A` | Adopted and live-verified | The separate tap owns a manual rehearsal/publish workflow; its read-only job authenticates the annotated immutable upstream source, provenance, checksums, package hash, and formula without executing upstream code, while only an approved publish-mode job receives the tap's short-lived `contents: write` `GITHUB_TOKEN` and may copy `Formula/mcp-doctor.rb`; the protected no-write [hosted rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31444057455) passes, and no cross-repository PAT or source-repository tap write exists |
 | `proptest` or another property framework | `MCPD-011` — evaluated 2026-08-11 | Not adopted | Exact-seed unit fixtures and table-driven valid, unsatisfiable, reference, and limit schemas expose deterministic generator invariants without a measured shrinking gap or another executable dependency |
@@ -3591,6 +3591,30 @@ passes Linux x64 and ARM64, macOS ARM64, and Windows source/package/formula
 journeys with token inputs empty. Updating both workflow uses and this canonical
 inventory in PR 27 is mandatory; green behavior alone cannot bypass the closed
 pin.
+
+The 2026-08-18 maintenance review for
+[PR 99](https://github.com/EnjoyableWork/mcp-doctor/pull/99) accepts only
+`Homebrew/actions/setup-homebrew` immutable non-prerelease release
+`2026.08.14.1` at verified commit
+`8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4`. The public, active, unarchived
+Homebrew-owned repository retains multiple active maintainers, and all ten
+intervening commits are signature-verified. The complete `setup-homebrew`
+subtree, shared deprecation wrapper, and committed `node_modules` tree are
+byte-identical to `2026.08.10.1`; the selected `@actions/core` `3.0.1` and
+`@actions/exec` `3.0.0` runtime dependencies therefore do not change. Upstream
+changes affect only its stable-container test, shared RuboCop configuration,
+root dependency metadata, workflow pins, and the unrelated
+`check-commit-format` Action. They add no selected input, feature, nested
+Action, privilege, executable, binary artifact, build script, generated bundle,
+download, startup work, or runtime work. The 1,334-byte BSD-2-Clause license
+retains SHA-256
+`f80329e58613ad669c0e73cb132d8060b9b2c55e339c73848068e4d1567f4627`,
+the repository has no published GitHub security advisory, and the update does
+not touch the Rust graph, Rust floor, release binary, or supported platforms.
+The exact proposed pin passes the nonpublishing GNU/Linux x64 and ARM64, macOS
+ARM64, and Windows source/package/formula journeys with both token inputs empty.
+Both workflow uses and the closed inventory must move together; Dependabot
+retains no approval, merge, secret, or auto-merge authority.
 
 This contract contributes the five OSPS `v2026.02.19` Level 1 rows assigned
 below. Protected [PR 25](https://github.com/EnjoyableWork/mcp-doctor/pull/25)
