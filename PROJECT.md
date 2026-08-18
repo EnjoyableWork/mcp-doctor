@@ -2777,6 +2777,36 @@ package, formula, and byte-handoff verification before it may publish the exact
 crate once. No sleep, polling loop, tag movement, release edit, asset rewrite,
 credential expansion, or failed-job rerun is permitted.
 
+Corrected implementation commit
+`7c5049b170d2ae3f655836a2de5cdac07ea1bdc3` passes Actionlint, the 46 focused
+release and deterministic-CI policy tests, `scripts/check.sh`,
+`cargo deny --all-features --locked check`, `git diff --check`, and review of
+all 187 source files. The first focused Rust attempt incorrectly changed the
+expected verifier count for three unrelated workflows from six to seven; that
+attempt failed, the assertion was restored on new source, and the recovery
+contracts then passed. Diff review subsequently caught and removed a proposed
+checkout of the input-selected tag before canonical version validation. The
+recovery validator now executes only protected `main` source, validates the
+input, and fetches the exact tag without executing it. The first complete gate
+on that correction stopped at one formatter-owned multiline assertion; the
+formatted source then passed the complete gate. No failed correctness command
+was rerun unchanged.
+
+Two clean `cargo package --locked` runs from that commit produced
+byte-identical 184-entry packages at SHA-256
+`643d50c0e5e76cbff17e76553c3bbceca6c642d889c254481966a85fbb627f33`.
+The first handoff-generation command then correctly rejected the temporary
+filename `first.crate`; the already compared package bytes were retained and
+copied to the required canonical filename rather than repackaged. Two release
+channel generations from those retained bytes were identical, with formula
+SHA-256
+`ada937aa72e9411951802821f3e159d275b0474140ea576be1224d71706f0b39`.
+A locked fixture build, locked install from the exact extracted package, and
+complete `scripts/smoke-installed.sh` journey passed. This is clean local
+recovery-source evidence, not authority to dispatch recovery before protected
+review, exact-`main` gates, operator audit, inventories, and all four renewed
+nonpublishing rehearsals pass.
+
 #### MCPD-034 Unix no-follow adoption review — 2026-08-16
 
 Rust `1.97.1` exposes Unix custom open flags but does not expose portable
