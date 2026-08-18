@@ -430,6 +430,15 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    This confirms the generalized verifier remains credential-free and all
    existing public channel bytes and installed diagnostic smokes still pass.
 
+The dated M4 supply-chain operator audit is a separate historical-evidence
+gate. When it is required, `scripts/verify-supply-chain-controls.sh`
+authenticates the canonical `v0.3.0` Homebrew formula at its recorded immutable
+full tap commit; it does not require rolling `homebrew-tap/main` to remain at
+that historical commit. The repeat-release audit, current-version rehearsal,
+and channel verifier above own current rolling formula state. Neither boundary
+may substitute for the other, and a failed audit is corrected on new reviewed
+source rather than rerun unchanged.
+
 `PROJECT.md` records the initial four successful run links, exact
 environment-policy readback, and trusted-publisher readback. Repeat and record
 this rehearsal after any workflow, environment, publisher, or authority change;

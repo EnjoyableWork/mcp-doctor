@@ -45,7 +45,7 @@ supply_hash() {
 if ! jq -e '
   .schema_version == "mcp-doctor.supply-chain-controls/v1" and
   .api_version == "2026-03-10" and
-  .reviewed_on == "2026-08-17" and
+  .reviewed_on == "2026-08-18" and
   .repository == "EnjoyableWork/mcp-doctor" and
   .default_branch == "main" and
   .dependency_updates.auto_merge == false and
@@ -145,6 +145,8 @@ if ! jq -e '
   .distribution_authentication.version == "0.3.0" and
   .distribution_authentication.tag == "v0.3.0" and
   .distribution_authentication.immutable == true and
+  .distribution_authentication.homebrew_commit_scope ==
+    "immutable_historical_handoff" and
   .distribution_authentication.homebrew_source ==
     "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate" and
   .mapped_controls == [
@@ -597,22 +599,6 @@ fi
 supply_tap_repository="$(jq -er '.distribution_authentication.homebrew_repository' "$supply_canonical")" || supply_failure
 supply_tap_commit="$(jq -er '.distribution_authentication.homebrew_commit' "$supply_canonical")" || supply_failure
 supply_formula_path="$(jq -er '.distribution_authentication.homebrew_formula' "$supply_canonical")" || supply_failure
-supply_tap_main_json="$supply_temp_root/tap-main.json"
-supply_formula_json="$supply_temp_root/formula.json"
-supply_formula="$supply_temp_root/mcp-doctor.rb"
-if ! supply_api_get "repos/$supply_tap_repository/commits/main" "$supply_tap_main_json" ||
-  [[ "$(jq -er '.sha' "$supply_tap_main_json")" != "$supply_tap_commit" ]] ||
-  ! supply_api_get \
-    "repos/$supply_tap_repository/contents/$supply_formula_path?ref=$supply_tap_commit" \
-    "$supply_formula_json" ||
-  ! jq -er '.content' "$supply_formula_json" | tr -d '\n' | \
-    base64 --decode >"$supply_formula" 2>/dev/null ||
-  ! cmp -s "$supply_assets/mcp-doctor.rb" "$supply_formula" ||
-  [[ "$(supply_hash "$supply_formula")" != \
-    "$(jq -er '.distribution_authentication.homebrew_formula_sha256' "$supply_canonical")" ]]; then
-  supply_failure
-fi
-
 supply_package_sha="$(
   jq -er --arg name "mcp-doctor-$supply_release_version.crate" \
     '.release_license_contract.assets[] | select(.name == $name) | .sha256' \
@@ -621,11 +607,15 @@ supply_package_sha="$(
 supply_homebrew_source="$(
   jq -er '.distribution_authentication.homebrew_source' "$supply_canonical"
 )" || supply_failure
-if ! grep -F \
-  "url \"$supply_homebrew_source\"" \
-  "$supply_formula" >/dev/null ||
-  ! grep -F "sha256 \"$supply_package_sha\"" "$supply_formula" >/dev/null ||
-  ! grep -F 'license "MIT"' "$supply_formula" >/dev/null; then
+if ! "$supply_script_directory/verify-historical-homebrew-formula.sh" \
+  "$supply_tap_repository" \
+  "$supply_tap_commit" \
+  "$supply_formula_path" \
+  "$supply_assets/mcp-doctor.rb" \
+  "$(jq -er '.distribution_authentication.homebrew_formula_sha256' "$supply_canonical")" \
+  "$supply_homebrew_source" \
+  "$supply_package_sha" \
+  "$supply_api_version" >/dev/null 2>&1; then
   supply_failure
 fi
 
