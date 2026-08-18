@@ -439,6 +439,16 @@ and channel verifier above own current rolling formula state. Neither boundary
 may substitute for the other, and a failed audit is corrected on new reviewed
 source rather than rerun unchanged.
 
+The verification operator profile remains read-only. GitHub's REST
+`Get a repository` response exposes merge-related settings only to credentials
+with both `Contents: read` and `Contents: write`, so the audit must not infer
+that an omitted `allow_auto_merge` field is a disabled setting and must not add
+write authority merely to make that field appear. It verifies the same
+repository's `autoMergeAllowed` value through the read-only GraphQL repository
+field instead. A missing, malformed, mismatched, or `true` field fails closed.
+The REST response continues to own repository identity, visibility, archive,
+default-branch, and security-update state.
+
 `PROJECT.md` records the initial four successful run links, exact
 environment-policy readback, and trusted-publisher readback. Repeat and record
 this rehearsal after any workflow, environment, publisher, or authority change;
@@ -454,6 +464,8 @@ without printing values. Acceptance requires:
   release path;
 - no classic or fine-grained personal access token referenced by either
   workflow;
+- the exceptional verification-operator token retains the exact canonical
+  read-only profile and must not gain `Contents: write` for a REST projection;
 - only the ephemeral crates.io token returned to the exact `release.yml` job,
   automatically revoked when that job ends; and
 - only the tap repository's per-run `GITHUB_TOKEN`, with `contents: write`

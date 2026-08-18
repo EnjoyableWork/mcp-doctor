@@ -266,7 +266,6 @@ if ! jq -e \
     .visibility == "public" and
     .archived == false and
     .default_branch == $branch and
-    .allow_auto_merge == false and
     .security_and_analysis.dependabot_security_updates.status == "enabled"
   ' "$supply_repository_json" >/dev/null 2>&1 ||
   ! jq -e '
@@ -290,6 +289,11 @@ if ! jq -e \
     all(.workflows[]; .state == "active")
   ' "$supply_workflows" >/dev/null 2>&1 ||
   ! jq -e '.total_count == 0' "$supply_repo_secrets" >/dev/null 2>&1; then
+  supply_failure
+fi
+
+if ! "$supply_script_directory/verify-read-only-repository-settings.sh" \
+  "$supply_repository" "$supply_api_version" >/dev/null 2>&1; then
   supply_failure
 fi
 
