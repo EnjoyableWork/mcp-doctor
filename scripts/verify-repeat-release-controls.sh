@@ -126,6 +126,31 @@ repeat_release_source_id=$(
 repeat_release_tap_id=$(
   repeat_release_api "repos/${repeat_release_tap_repository}" | jq -r '.id'
 )
+if ! repeat_release_organization_secrets=$(
+  repeat_release_api \
+    "orgs/${repeat_release_organization}/actions/secrets?per_page=100" \
+    2>/dev/null
+); then
+  echo "organization Actions secret inventory could not be verified" >&2
+  exit 1
+fi
+if ! jq -e '
+  (.secrets | type) == "array" and
+  all(.secrets[];
+    (.name | type) == "string" and
+    (.visibility | type) == "string"
+  )
+' <<<"${repeat_release_organization_secrets}" >/dev/null 2>&1; then
+  echo "organization Actions secret inventory could not be verified" >&2
+  exit 1
+fi
+repeat_release_organization_secret_rows=$(
+  jq -r '.secrets[] | [.name, .visibility] | @tsv' \
+    <<<"${repeat_release_organization_secrets}"
+) || {
+  echo "organization Actions secret inventory could not be verified" >&2
+  exit 1
+}
 while IFS=$'\t' read -r repeat_release_secret_name repeat_release_secret_visibility; do
   [[ -n "${repeat_release_secret_name}" ]] || continue
   case "${repeat_release_secret_visibility}" in
@@ -134,11 +159,24 @@ while IFS=$'\t' read -r repeat_release_secret_name repeat_release_secret_visibil
       exit 1
       ;;
     selected)
-      repeat_release_selected_ids=$(
+      if ! repeat_release_selected_repositories=$(
         repeat_release_api \
           "orgs/${repeat_release_organization}/actions/secrets/${repeat_release_secret_name}/repositories" \
-          | jq -r '.repositories[].id'
-      )
+          2>/dev/null
+      ) || ! jq -e '
+        (.repositories | type) == "array" and
+        all(.repositories[]; (.id | type) == "number")
+      ' <<<"${repeat_release_selected_repositories}" >/dev/null 2>&1; then
+        echo "organization Actions secret selection could not be verified" >&2
+        exit 1
+      fi
+      repeat_release_selected_ids=$(
+        jq -r '.repositories[].id' \
+          <<<"${repeat_release_selected_repositories}"
+      ) || {
+        echo "organization Actions secret selection could not be verified" >&2
+        exit 1
+      }
       if grep -F -x -e "${repeat_release_source_id}" -e "${repeat_release_tap_id}" \
         <<<"${repeat_release_selected_ids}" >/dev/null; then
         echo "an organization Actions secret is selected for a release repository" >&2
@@ -151,10 +189,7 @@ while IFS=$'\t' read -r repeat_release_secret_name repeat_release_secret_visibil
       exit 1
       ;;
   esac
-done < <(
-  repeat_release_api "orgs/${repeat_release_organization}/actions/secrets?per_page=100" \
-    | jq -r '.secrets[] | [.name, .visibility] | @tsv'
-)
+done <<<"${repeat_release_organization_secret_rows}"
 
 if [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] ||
   [[ -n "${CARGO_REGISTRIES_CRATES_IO_TOKEN:-}" ]]; then
