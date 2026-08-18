@@ -2625,6 +2625,24 @@ that first gate, Clippy, the complete test suite, `cargo-deny`, and source revie
 did not run in that attempt. The formatting-only correction is new source; the
 failed command remains evidence and an unchanged rerun is not accepted.
 
+Corrected implementation commit
+`6b623fc12f724aaf86ea5cb27a102093046b59bf` passes Bash syntax, ShellCheck
+`0.11.0`, `git diff --check`, the deterministic supply-chain rehearsal, all
+nine focused policy tests, `scripts/check.sh`,
+`cargo deny --all-features --locked check`, and review of all 187 source files.
+The rehearsal proves the exact read-only success, enabled and unavailable
+settings, repository mismatch, GraphQL error, malformed response, and request
+failure without a mutation, credential, retry, clock, or poll.
+
+Two independent `cargo package --locked` runs from that clean commit produced
+byte-identical 184-entry `0.3.3` packages with SHA-256
+`c906dc4959fe877e475013b371c72154631763a79418c7961ea4bb42a5610e7f`.
+Two release-channel generations produced identical Cargo packages and Homebrew
+formulae. A locked release fixture build and locked installation from the exact
+extracted package then passed the complete `scripts/smoke-installed.sh`
+journey. This is pre-review candidate evidence only; protected exact-head and
+exact-`main` gates remain prerequisites for a new authenticated operator audit.
+
 #### MCPD-034 Unix no-follow adoption review — 2026-08-16
 
 Rust `1.97.1` exposes Unix custom open flags but does not expose portable
