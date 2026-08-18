@@ -2698,6 +2698,20 @@ the verifier static-contract regression, `scripts/check.sh`,
 No live credential inventory, workflow dispatch, tag, release, channel write, or
 advisory publication was repeated while establishing this local evidence.
 
+Clean implementation commit
+`bd079b4eb4068956778a1e4f02da200c7f54d684` produced two byte-identical
+184-entry `cargo package --locked` archives at SHA-256
+`01a565a520c143d89bee3cfa7279a8063e88d17e48283060137ec2df96d3abe3`.
+Two release-channel generations were identical; the generated formula has
+SHA-256 `6a64dec15ddad9155cbecdaeb543e9f183cebee7e5c089c6002055335dd0ebda`.
+The canonical Agent Skill verifier passed with SHA-256
+`4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf`.
+The separate local archive attempt then stopped at its declared GNU-tar
+prerequisite because this macOS host provides BSD tar; it was not rerun, and
+the represented Linux release-preflight archive gate remains required.
+A locked release fixture build and locked install from the exact extracted
+Cargo package passed the complete `scripts/smoke-installed.sh` journey.
+
 #### MCPD-034 Unix no-follow adoption review — 2026-08-16
 
 Rust `1.97.1` exposes Unix custom open flags but does not expose portable
