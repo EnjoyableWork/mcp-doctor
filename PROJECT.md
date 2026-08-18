@@ -2552,6 +2552,17 @@ authenticated result is not acceptance evidence until this correction passes
 protected exact-head and exact-`main` gates and is invoked once from that
 corrected clean `main`.
 
+Clean exact-source correction commit
+`a0217ee1eb30b7ea1233b9015b39937ffb69bcc8` passed two independent
+`cargo package --locked` runs with byte-identical 183-entry packages at SHA-256
+`2d63657b2806d0adc77dd871bfac1dfbe9d433a7e24c5a22ce9cfdf788ac1fe2`.
+The packaged source contains the executable historical-formula verifier; two
+generated Cargo and Homebrew handoffs were byte-identical; and a locked install,
+packaged fixture build, and complete `scripts/smoke-installed.sh` journey passed.
+This is exact-source candidate evidence, not permission to bypass the protected
+review, corrected operator audit, immutable release, installed-channel, or
+advisory-publication gates.
+
 #### MCPD-034 Unix no-follow adoption review — 2026-08-16
 
 Rust `1.97.1` exposes Unix custom open flags but does not expose portable
