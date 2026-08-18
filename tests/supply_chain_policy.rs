@@ -394,6 +394,7 @@ fn direct_dependency_versions_features_and_scopes_require_reviewed_inventory() {
 #[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
+    assert_eq!(controls["reviewed_on"], "2026-08-18");
     assert_eq!(
         controls["distribution_authentication"]["cargo_package"],
         "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate"
@@ -401,6 +402,19 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     assert_eq!(
         controls["distribution_authentication"]["homebrew_source"],
         "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate"
+    );
+    assert_eq!(
+        controls["distribution_authentication"]["homebrew_commit_scope"],
+        "immutable_historical_handoff"
+    );
+    assert!(
+        controls["limitations"]
+            .as_array()
+            .expect("limitations should be an array")
+            .iter()
+            .any(|limitation| limitation.as_str().is_some_and(|value| {
+                value.contains("rolling tap main is a separate release-channel control")
+            }))
     );
 
     let deny_installer = repository_file("scripts/install-cargo-deny.sh");
@@ -567,6 +581,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
         ".distribution_authentication.cargo_package",
         "homebrew_source",
         "homebrew_formula_sha256",
+        "verify-historical-homebrew-formula.sh",
         ".standalone_tools[]",
         ".immutable == $immutable",
         "releases/latest",
@@ -583,6 +598,39 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
             "live verifier must not contain {forbidden}"
         );
     }
+
+    let historical_formula_verifier =
+        repository_file("scripts/verify-historical-homebrew-formula.sh");
+    assert!(
+        historical_formula_verifier
+            .contains("contents/$historical_formula_path?ref=$historical_tap_commit")
+    );
+    assert!(!historical_formula_verifier.contains("commits/main"));
+    assert!(!verifier.contains("repos/$supply_tap_repository/commits/main"));
+}
+
+#[test]
+fn project_and_release_runbook_separate_historical_and_rolling_homebrew_state() {
+    let project = repository_file("PROJECT.md");
+    for contract in [
+        "`DEC-061` corrects one stale assertion in `DEC-040`",
+        "contents/Formula/mcp-doctor.rb?ref=<recorded-full-commit>",
+        "It no longer reads or constrains rolling",
+        "different later tap head",
+        "changed bytes at the recorded commit still fail",
+    ] {
+        assert!(
+            project.contains(contract),
+            "PROJECT.md should retain {contract}"
+        );
+    }
+    assert!(!project.contains("Current tap `main` must remain the reviewed commit"));
+
+    let release = repository_file("docs/release.md");
+    let normalized_release = release.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(normalized_release.contains("separate historical-evidence"));
+    assert!(normalized_release.contains("does not require rolling `homebrew-tap/main` to remain"));
+    assert!(normalized_release.contains("Neither boundary may substitute for the other"));
 }
 
 #[test]
@@ -691,9 +739,9 @@ fn project_records_mcpd_016_completion() {
 #[test]
 #[cfg_attr(
     windows,
-    ignore = "artifact rehearsal executes through Bash and a disposable Git repository"
+    ignore = "supply-chain rehearsal executes through Bash and disposable fixtures"
 )]
-fn source_artifact_policy_rejects_executables_and_binary_artifacts() {
+fn supply_chain_rehearsal_rejects_artifacts_and_historical_formula_drift() {
     let controls = controls();
     assert_eq!(controls["source_artifact_policy"]["text_encoding"], "UTF-8");
     assert_eq!(
@@ -719,6 +767,10 @@ fn source_artifact_policy_rejects_executables_and_binary_artifacts() {
         String::from_utf8_lossy(&output.stdout).contains(
             "Supply-chain artifact negative exercises passed in a disposable repository."
         )
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Historical Homebrew evidence remains strict after rolling tap advancement.")
     );
 }
 

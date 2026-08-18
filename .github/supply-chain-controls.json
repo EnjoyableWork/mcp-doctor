@@ -1,7 +1,7 @@
 {
   "schema_version": "mcp-doctor.supply-chain-controls/v1",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-17",
+  "reviewed_on": "2026-08-18",
   "repository": "EnjoyableWork/mcp-doctor",
   "default_branch": "main",
   "dependency_updates": {
@@ -409,6 +409,7 @@
     "homebrew_source": "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.3.0/mcp-doctor-0.3.0.crate",
     "homebrew_repository": "EnjoyableWork/homebrew-tap",
     "homebrew_commit": "2b62e11902c7461cddbc0b96075e3745fdf6f260",
+    "homebrew_commit_scope": "immutable_historical_handoff",
     "homebrew_formula": "Formula/mcp-doctor.rb",
     "homebrew_formula_sha256": "25ac053224e8eb687b8ca12323eca98610f4be6f47ef05f43530e7082cafbfd8"
   },
@@ -425,6 +426,7 @@
     "At most three Syft acquisition attempts improve availability for the same immutable digest-pinned bytes; they do not retry or supply acceptance evidence for a build, test, SBOM generation, validation, publication, job, or workflow.",
     "Syft's prebuilt 276-package Go release graph is not independently rebuilt or audited by this repository; execution is limited to a repository-generated archive in a disposable process with ambient state removed and known network-backed and host-cache catalogers disabled, and Anchore's latest-only support policy makes every release or advisory a renewed-review trigger.",
     "A successful dependency proposal is review input, never evidence that the proposed source is safe or authority to merge it.",
+    "The immutable Homebrew proof follows the recorded v0.3.0 handoff commit; rolling tap main is a separate release-channel control and is not required to remain at that historical commit.",
     "The authenticated distribution result covers only immutable v0.3.0 bytes and does not change, republish, or make a channel-wide claim about future releases.",
     "MCPD-016 does not complete the OSPS baseline, SLSA evaluation, organization-access review, independent certification, regulatory compliance, or a warranty."
   ]
