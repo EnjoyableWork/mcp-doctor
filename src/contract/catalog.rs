@@ -8,7 +8,7 @@ use super::http_headers::validate_annotations;
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
     CheckId, CheckResult, ExpectedShape, Finding, JsonKind, JsonRpcErrorKind, Location,
-    LocationField, Requirement, RuleViolation, SkipReason,
+    LocationField, Requirement, RuleViolation, SchemaValidationPhase, SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_current_modern_revision};
 use super::schema_budget::{
@@ -1585,7 +1585,11 @@ impl Analyzer {
         match validate_meta_schema(schema, budget.clone(), values.validation_errors) {
             Ok(()) => {}
             Err(SchemaWorkIssue::Limit(limit)) => {
-                self.schema_limit(base, limit.kind(), limit.observed(), limit.maximum());
+                self.schema_validation_incomplete(
+                    base,
+                    SchemaValidationPhase::MetaValidation,
+                    limit,
+                );
                 return;
             }
             Err(SchemaWorkIssue::Invalid {
@@ -1626,7 +1630,11 @@ impl Analyzer {
         if let Err(issue) = BudgetedValidator::compile_with_budget(schema, budget) {
             match issue {
                 SchemaWorkIssue::Limit(limit) => {
-                    self.schema_limit(base, limit.kind(), limit.observed(), limit.maximum());
+                    self.schema_validation_incomplete(
+                        base,
+                        SchemaValidationPhase::CompileConstruction,
+                        limit,
+                    );
                 }
                 SchemaWorkIssue::Invalid { location, .. } => {
                     self.push(
@@ -1658,6 +1666,23 @@ impl Analyzer {
         self.push(
             FindingBucket::Schema,
             Finding::limit_exceeded(SupportedRevision::CURRENT, location, violation),
+        );
+    }
+
+    fn schema_validation_incomplete(
+        &mut self,
+        location: Location,
+        phase: SchemaValidationPhase,
+        violation: LimitViolation,
+    ) {
+        self.push(
+            FindingBucket::Schema,
+            Finding::schema_validation_incomplete(
+                SupportedRevision::CURRENT,
+                location,
+                phase,
+                violation,
+            ),
         );
     }
 

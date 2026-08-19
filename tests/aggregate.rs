@@ -51,6 +51,45 @@ fn incomplete_report() -> Value {
     report
 }
 
+fn schema_incomplete_report() -> Value {
+    let mut report = passed_report();
+    let check = report["checks"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|check| check["id"] == "schema.contracts")
+        .expect("the synthetic report should contain schema.contracts");
+    check["outcome"] = json!("incomplete");
+    check["findings"] = json!([{
+        "code": "MCP-SCHEMA-005",
+        "severity": "error",
+        "protocol_revision": "2026-07-28",
+        "location": "tools[0].inputSchema",
+        "message": "mcp-doctor could not complete local schema validation within its work bound.",
+        "impact": "Schema validity remains unknown, so reporting it as valid or invalid would be misleading.",
+        "expectation": "Local Draft 2020-12 validation must complete within the fixed schema-work bound or report incomplete evidence.",
+        "remediation": "Provide a minimized, wholly synthetic reproducer through the private project support route, then rerun with a release that can complete validation within the same bound.",
+        "reference": "mcp-doctor bounded local JSON Schema Draft 2020-12 validation contract",
+        "evidence": {
+            "kind": "schema_validation_limit",
+            "phase": "compile_construction",
+            "limit": "schema_evaluation_steps",
+            "unit": "count",
+            "observed": 100001,
+            "maximum": 100000
+        }
+    }]);
+    report["primary_diagnosis"] = json!({
+        "check_id": "schema.contracts",
+        "findings": [{
+            "code": "MCP-SCHEMA-005",
+            "location": "tools[0].inputSchema"
+        }]
+    });
+    recompute_report(&mut report);
+    report
+}
+
 fn negotiated_mismatch_report() -> Value {
     let mut report = failed_report();
     let checks = report["checks"].as_array_mut().unwrap();
@@ -166,6 +205,7 @@ fn recompute_report(report: &mut Value) {
         "skipped": 0,
         "passed": 0,
         "warned": 0,
+        "incomplete": 0,
         "failed": 0,
         "required_skipped": 0,
         "findings": {"info": 0, "warning": 0, "error": 0, "critical": 0}
@@ -183,6 +223,7 @@ fn recompute_report(report: &mut Value) {
             let summary_name = match outcome {
                 "passed" => "passed",
                 "warning" => "warned",
+                "incomplete" => "incomplete",
                 "failed" => "failed",
                 _ => panic!("unexpected synthetic check outcome"),
             };
@@ -207,7 +248,8 @@ fn recompute_report(report: &mut Value) {
     }
     let outcome = if summary["failed"].as_u64().unwrap() > 0 {
         "failed"
-    } else if summary["required"].as_u64().unwrap() == 0
+    } else if summary["incomplete"].as_u64().unwrap() > 0
+        || summary["required"].as_u64().unwrap() == 0
         || summary["performed"].as_u64().unwrap() == 0
         || summary["required_skipped"].as_u64().unwrap() > 0
     {
@@ -624,6 +666,61 @@ fn failed_then_incomplete_then_passed_precedence_never_demotes_a_member() {
     assert_eq!(aggregate["outcome"], "failed");
     assert_eq!(aggregate["summary"]["failed"], 2);
     assert_eq!(aggregate["members"][3]["report"]["exit_code"], 2);
+}
+
+#[test]
+fn typed_schema_incomplete_round_trips_and_invalid_pairings_fail_closed() {
+    let environment = TestEnvironment::new();
+    let input = write_report(
+        &environment,
+        "schema-incomplete.json",
+        &schema_incomplete_report(),
+    );
+    let output_path = environment.artifact_path("aggregate.json");
+    let output = aggregate_command(&environment, &output_path, "json", &[input])
+        .output()
+        .expect("the typed incomplete report should aggregate");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(3), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let aggregate = parse_and_validate_aggregate(&output.stdout);
+    assert_eq!(aggregate["outcome"], "incomplete");
+    let member = &aggregate["members"][0]["report"];
+    assert_eq!(member["summary"]["incomplete"], 1);
+    assert_eq!(member["checks"][1]["state"], "performed");
+    assert_eq!(member["checks"][1]["outcome"], "incomplete");
+    assert_eq!(
+        member["checks"][1]["findings"][0]["evidence"]["phase"],
+        "compile_construction"
+    );
+
+    for (name, mut report) in [
+        ("wrong-code", schema_incomplete_report()),
+        ("wrong-evidence", schema_incomplete_report()),
+    ] {
+        if name == "wrong-code" {
+            report["checks"][1]["findings"][0]["code"] = json!("MCP-FUTURE-999");
+            report["primary_diagnosis"]["findings"][0]["code"] = json!("MCP-FUTURE-999");
+        } else {
+            report["checks"][1]["findings"][0]["evidence"] = json!({"kind": "none"});
+        }
+        let invalid_environment = TestEnvironment::new();
+        let invalid_input = write_report(&invalid_environment, "invalid.json", &report);
+        let invalid_output = invalid_environment.artifact_path("aggregate.json");
+        let result = aggregate_command(
+            &invalid_environment,
+            &invalid_output,
+            "json",
+            &[invalid_input],
+        )
+        .output()
+        .expect("the invalid typed pairing should fail deterministically");
+        let (stdout, stderr) = text(&result);
+        assert_eq!(result.status.code(), Some(2), "{name}: {stdout}\n{stderr}");
+        assert!(stdout.is_empty(), "{name}: {stdout}");
+        assert!(!invalid_output.exists(), "{name}");
+        assert!(!stderr.contains("MCP-SCHEMA-005"), "{name}: {stderr}");
+    }
 }
 
 #[test]

@@ -347,6 +347,13 @@ failure without secrets or raw production data. Related problems identify the
 first actionable cause, skip only dependent checks with a reason, and keep
 independent checks running.
 
+`MCP-SCHEMA-005` is reserved for bounded local validator evidence that could
+not be completed after preliminary schema gates passed. It safely records
+`meta_validation` or `compile_construction`, `schema_evaluation_steps`, count,
+maximum, and structural location. The check remains performed with outcome
+`incomplete`; a true contract or safety failure outranks it without removing
+the evidence.
+
 ### Tool-description quality
 
 Passive `inspect` reports `MCP-QUALITY-001` as a warning at
