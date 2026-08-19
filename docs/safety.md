@@ -28,17 +28,27 @@ disable-limit mode. Every byte, message, page, schema, case, generation,
 report, redirect, retry, concurrency, and cleanup-capacity limit is identical
 between the two selections.
 
-A profile changes patience only. It never permits a process, private or
+A profile changes patience only. It never grants a process, private or
 cleartext network destination, credential, tool, side effect, redirect, retry,
-fallback, schema retrieval, or extra request. Human and stable JSON reports
-identify the selection and its effective numeric limits; JUnit records the
-same selection while preserving the diagnostic result and exit semantics.
-`mcp-doctor capabilities` advertises the two names and exactly which commands
-accept them. An invalid name is rejected before target preparation.
+schema retrieval, or request beyond the selected command's existing authority.
+For passive `inspect auto`, both protocol-era phases share the one selected
+profile; choosing `slow-start` does not add a fallback, launch, prepared target,
+or lifecycle request. Human and stable JSON reports identify the selection and
+its effective numeric limits; JUnit records the same selection while
+preserving the diagnostic result and exit semantics. `mcp-doctor capabilities`
+advertises the two names and exactly which commands accept them. An invalid
+name is rejected before target preparation.
 
 ## Safety boundaries
 
 - `inspect` checks advertised contracts without calling a tool.
+- Passive `inspect` defaults to a finite `auto` negotiation. STDIO permits at
+  most two non-overlapping launches of the exact command and reaps the first
+  tree before the second; Streamable HTTP prepares one endpoint and pinned
+  address authority. Both paths permit at most two lifecycle requests, one
+  initialized notification, one legacy transition, zero retransmissions, zero
+  application retries, concurrency one, and one shared total and aggregate
+  budget. An explicit revision is a one-lifecycle hard pin.
 - Active runs name and independently authorize each exact tool and target,
   declare effects and bounded cases, and add a seed for generation. Side
   effects require `--allow-side-effects`.
@@ -69,7 +79,8 @@ accept them. An invalid name is rejected before target preparation.
   engine.
 - Legacy HTTP session IDs come only from initialization, stay bounded and
   run-local, repeat exactly, and receive one bounded teardown. Session loss
-  never reinitializes or downgrades; teardown failure stays visible.
+  never reinitializes or changes the selected revision; teardown failure stays
+  visible.
 - Reports hide headers, credentials, tool inputs, raw results, and server logs.
 - Sensitive snapshots require an exact-path acknowledgement and new file;
   value-free offline diffs have no target or network surface.

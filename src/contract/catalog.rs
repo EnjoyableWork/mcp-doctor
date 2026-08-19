@@ -10,7 +10,7 @@ use super::model::{
     CheckId, CheckResult, ExpectedShape, Finding, JsonKind, JsonRpcErrorKind, Location,
     LocationField, Requirement, RuleViolation, SkipReason,
 };
-use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
+use super::protocol::{RevisionSelection, SupportedRevision, select_current_modern_revision};
 use super::schema_budget::{
     BudgetedValidator, SchemaWorkBudget, SchemaWorkIssue, validate_meta_schema,
 };
@@ -108,6 +108,45 @@ fn classify_json_rpc_error(object: &Map<String, Value>) -> Option<JsonRpcErrorKi
     )
 }
 
+fn is_unsupported_protocol_error(object: &Map<String, Value>) -> bool {
+    let Some(error) = object.get("error").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(data) = error.get("data").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(supported) = data.get("supported").and_then(Value::as_array) else {
+        return false;
+    };
+    error.get("code").and_then(Value::as_i64) == Some(-32022)
+        && error.get("message").is_some_and(Value::is_string)
+        && data.get("requested").and_then(Value::as_str) == Some(PROTOCOL_REVISION)
+        && u64::try_from(supported.len()).unwrap_or(u64::MAX)
+            <= DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions
+        && supported.iter().all(Value::is_string)
+        && !supported
+            .iter()
+            .any(|revision| revision.as_str() == Some(PROTOCOL_REVISION))
+}
+
+fn unsupported_protocol_revision_limit(object: &Map<String, Value>) -> Option<LimitViolation> {
+    let error = object.get("error")?.as_object()?;
+    let data = error.get("data")?.as_object()?;
+    let supported = data.get("supported")?.as_array()?;
+    if error.get("code").and_then(Value::as_i64) != Some(-32022)
+        || !error.get("message").is_some_and(Value::is_string)
+        || data.get("requested").and_then(Value::as_str) != Some(PROTOCOL_REVISION)
+    {
+        return None;
+    }
+    LimitViolation::new(
+        LimitKind::ProtocolRevisions,
+        u64::try_from(supported.len()).unwrap_or(u64::MAX),
+        DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions,
+    )
+    .ok()
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum RequestKind {
     Initialize,
@@ -137,6 +176,15 @@ impl fmt::Debug for RequestRecord {
 
 /// Drives the selected lifecycle and only capability-gated list requests. It
 /// never constructs `tools/call`, `prompts/get`, or `resources/read`.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum AutoDiscoveryOutcome {
+    NotApplicable,
+    Pending,
+    Modern,
+    LegacySignal,
+    Terminal,
+}
+
 pub(crate) struct PassiveCatalogConversation {
     revision: SupportedRevision,
     started: bool,
@@ -151,6 +199,10 @@ pub(crate) struct PassiveCatalogConversation {
     observed_items: u64,
     maximum_items: u64,
     validate_http_headers: bool,
+    auto_discovery: bool,
+    allow_legacy_counteroffer: bool,
+    auto_discovery_outcome: AutoDiscoveryOutcome,
+    auto_selected_revision: Option<SupportedRevision>,
 }
 
 impl PassiveCatalogConversation {
@@ -166,6 +218,15 @@ impl PassiveCatalogConversation {
     }
 
     fn with_catalog_limit(revision: SupportedRevision, maximum_items: u64) -> Self {
+        Self::with_options(revision, maximum_items, false, false)
+    }
+
+    fn with_options(
+        revision: SupportedRevision,
+        maximum_items: u64,
+        auto_discovery: bool,
+        allow_legacy_counteroffer: bool,
+    ) -> Self {
         Self {
             revision,
             started: false,
@@ -180,7 +241,33 @@ impl PassiveCatalogConversation {
             observed_items: 0,
             maximum_items,
             validate_http_headers: false,
+            auto_discovery,
+            allow_legacy_counteroffer,
+            auto_discovery_outcome: if auto_discovery {
+                AutoDiscoveryOutcome::Pending
+            } else {
+                AutoDiscoveryOutcome::NotApplicable
+            },
+            auto_selected_revision: None,
         }
+    }
+
+    pub(crate) fn for_auto_modern() -> Self {
+        Self::with_options(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
+            true,
+            false,
+        )
+    }
+
+    pub(crate) fn for_auto_legacy() -> Self {
+        Self::with_options(
+            SupportedRevision::V2025_11_25,
+            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
+            false,
+            true,
+        )
     }
 
     pub(crate) fn new_http() -> Self {
@@ -195,12 +282,30 @@ impl PassiveCatalogConversation {
         conversation
     }
 
+    pub(crate) fn new_http_for_auto_modern() -> Self {
+        let mut conversation = Self::for_auto_modern();
+        conversation.validate_http_headers = true;
+        conversation
+    }
+
+    pub(crate) fn new_http_for_auto_legacy() -> Self {
+        Self::for_auto_legacy()
+    }
+
     pub(crate) const fn revision(&self) -> SupportedRevision {
         self.revision
     }
 
     pub(crate) const fn negotiated_revision(&self) -> Option<super::protocol::KnownRevision> {
         self.negotiated_revision
+    }
+
+    pub(crate) const fn auto_discovery_outcome(&self) -> AutoDiscoveryOutcome {
+        self.auto_discovery_outcome
+    }
+
+    pub(crate) const fn auto_selected_revision(&self) -> Option<SupportedRevision> {
+        self.auto_selected_revision
     }
 
     fn record_request(&mut self, kind: RequestKind, cursor: Option<String>) -> ProbeRequest {
@@ -225,7 +330,7 @@ impl PassiveCatalogConversation {
             page,
             cursor,
         });
-        ProbeRequest::new(id, bytes)
+        ProbeRequest::new(id, bytes).with_protocol_revision(self.revision.as_str())
     }
 
     fn advance_after(&mut self, response: &ProbeResponse) -> Option<(RequestKind, Option<String>)> {
@@ -242,6 +347,18 @@ impl PassiveCatalogConversation {
         match record.kind {
             RequestKind::Initialize => unreachable!("initialize advances through its notification"),
             RequestKind::Discover => {
+                if self.auto_discovery {
+                    self.auto_discovery_outcome = classify_auto_discovery(response);
+                    if self.auto_discovery_outcome != AutoDiscoveryOutcome::Modern {
+                        self.stopped = true;
+                        return None;
+                    }
+                    self.auto_selected_revision = selected_modern_revision(response);
+                    if self.auto_selected_revision.is_none() {
+                        self.stopped = true;
+                        return None;
+                    }
+                }
                 self.queue = advertised_catalogs(response).into();
                 self.queue
                     .pop_front()
@@ -301,13 +418,21 @@ impl Conversation for PassiveCatalogConversation {
         {
             if !self.initialized_sent {
                 self.negotiated_revision = negotiated_revision(response);
+                if self.allow_legacy_counteroffer
+                    && let Some(selected) = self
+                        .negotiated_revision
+                        .and_then(super::protocol::KnownRevision::supported)
+                    && selected.uses_initialize()
+                {
+                    self.revision = selected;
+                }
                 let Some(catalogs) = legacy_advertised_catalogs(response, self.revision) else {
                     self.stopped = true;
                     return None;
                 };
                 self.queue = catalogs.into();
                 self.initialized_sent = true;
-                return Some(initialized_notification());
+                return Some(initialized_notification(self.revision));
             }
             return self
                 .queue
@@ -363,13 +488,58 @@ fn encode_request(
     .expect("the typed passive request must serialize")
 }
 
-fn initialized_notification() -> ProbeRequest {
+fn initialized_notification(revision: SupportedRevision) -> ProbeRequest {
     let bytes = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
     }))
     .expect("the typed initialized notification must serialize");
-    ProbeRequest::notification(bytes)
+    ProbeRequest::notification(bytes).with_protocol_revision(revision.as_str())
+}
+
+fn classify_auto_discovery(response: &ProbeResponse) -> AutoDiscoveryOutcome {
+    let Ok(value) = serde_json::from_slice::<Value>(response.as_bytes()) else {
+        return AutoDiscoveryOutcome::Terminal;
+    };
+    let Some(object) = value.as_object() else {
+        return AutoDiscoveryOutcome::Terminal;
+    };
+    if let Some(error) = object.get("error") {
+        let Some(error) = error.as_object() else {
+            return AutoDiscoveryOutcome::Terminal;
+        };
+        let Some(code) = error.get("code").and_then(Value::as_i64) else {
+            return AutoDiscoveryOutcome::Terminal;
+        };
+        if !error.get("message").is_some_and(Value::is_string) {
+            return AutoDiscoveryOutcome::Terminal;
+        }
+        return if matches!(code, -32022..=-32020) {
+            AutoDiscoveryOutcome::Terminal
+        } else {
+            AutoDiscoveryOutcome::LegacySignal
+        };
+    }
+    AutoDiscoveryOutcome::Modern
+}
+
+fn selected_modern_revision(response: &ProbeResponse) -> Option<SupportedRevision> {
+    let value: Value = serde_json::from_slice(response.as_bytes()).ok()?;
+    let result = value.get("result")?.as_object()?;
+    let base = Location::root(LocationField::Server);
+    if !validate_cacheable_result(result, base.clone()).is_empty()
+        || !validate_discovery_capabilities(result, base).0.is_empty()
+    {
+        return None;
+    }
+    let supported = result.get("supportedVersions")?.as_array()?;
+    (u64::try_from(supported.len()).unwrap_or(u64::MAX)
+        <= DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions
+        && supported.iter().all(Value::is_string)
+        && supported
+            .iter()
+            .any(|revision| revision.as_str() == Some(PROTOCOL_REVISION)))
+    .then_some(SupportedRevision::CURRENT)
 }
 
 fn negotiated_revision(response: &ProbeResponse) -> Option<super::protocol::KnownRevision> {
@@ -569,10 +739,11 @@ struct Analyzer {
     identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     secondary_identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     returned_cursors: BTreeMap<CatalogKind, BTreeSet<String>>,
+    auto_discovery: bool,
 }
 
 impl Analyzer {
-    fn new(reserved_findings: usize, validate_http_headers: bool) -> Self {
+    fn new(reserved_findings: usize, validate_http_headers: bool, auto_discovery: bool) -> Self {
         let limits = DiagnosticLimits::M1_DEFAULTS;
         let maximum = usize::try_from(limits.values().report_findings).unwrap_or(usize::MAX);
         Self {
@@ -598,6 +769,7 @@ impl Analyzer {
             identifiers: BTreeMap::new(),
             secondary_identifiers: BTreeMap::new(),
             returned_cursors: BTreeMap::new(),
+            auto_discovery,
         }
     }
 
@@ -672,15 +844,41 @@ impl Analyzer {
         };
         if let Some(error) = classify_json_rpc_error(object) {
             self.revision_checked = true;
-            self.revision_block = Some(SkipReason::PrerequisiteFailed);
-            self.push(
-                FindingBucket::Revision,
-                Finding::lifecycle_method_rejected(
-                    SupportedRevision::CURRENT,
-                    Location::root(LocationField::ServerDiscover).field(LocationField::Response),
-                    error,
-                ),
-            );
+            if self.auto_discovery
+                && let Some(violation) = unsupported_protocol_revision_limit(object)
+            {
+                self.revision_block = Some(SkipReason::LimitReached);
+                self.push(
+                    FindingBucket::Revision,
+                    Finding::limit_exceeded(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::ServerDiscover)
+                            .field(LocationField::Response),
+                        violation,
+                    ),
+                );
+            } else if self.auto_discovery && is_unsupported_protocol_error(object) {
+                self.revision_block = Some(SkipReason::UnsupportedRevision);
+                self.push(
+                    FindingBucket::Revision,
+                    Finding::unsupported_protocol_version(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::ServerDiscover)
+                            .field(LocationField::Response),
+                    ),
+                );
+            } else {
+                self.revision_block = Some(SkipReason::PrerequisiteFailed);
+                self.push(
+                    FindingBucket::Revision,
+                    Finding::lifecycle_method_rejected(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::ServerDiscover)
+                            .field(LocationField::Response),
+                        error,
+                    ),
+                );
+            }
             return;
         } else if object.contains_key("error") {
             self.push(
@@ -742,7 +940,7 @@ impl Analyzer {
             strings.push(version);
         }
 
-        match select_server_revision(
+        match select_current_modern_revision(
             strings.iter().copied(),
             self.limits.values().protocol_revisions,
         ) {
@@ -1794,7 +1992,7 @@ pub(super) fn validate_local_schema_with_policy(
     base: Location,
     policy: LocalSchemaDialectPolicy,
 ) -> Vec<Finding> {
-    let mut analyzer = Analyzer::new(0, false);
+    let mut analyzer = Analyzer::new(0, false, false);
     analyzer.analyze_schema_with_policy(schema, base.clone(), policy);
     if analyzer.finding_overflow {
         analyzer.schema.pop();
@@ -1940,7 +2138,11 @@ pub(super) fn diagnose(
     if conversation.revision.uses_initialize() {
         return diagnose_legacy(conversation, responses, reserved_findings);
     }
-    let mut analyzer = Analyzer::new(reserved_findings, conversation.validate_http_headers);
+    let mut analyzer = Analyzer::new(
+        reserved_findings,
+        conversation.validate_http_headers,
+        conversation.auto_discovery,
+    );
     let Some(discovery) = responses.first() else {
         return analyzer.into_checks();
     };

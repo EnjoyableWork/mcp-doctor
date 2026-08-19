@@ -40,6 +40,10 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Passively inspect a local STDIO server or one Streamable HTTP endpoint.
+    ///
+    /// Defaults to bounded protocol auto-selection. STDIO auto may consume the
+    /// discovery bound, reap the first process, and start the exact command one
+    /// more time; an explicit revision is a one-lifecycle hard pin.
     Inspect(InspectArgs),
     /// Replay reviewed cases against one explicitly authorized local or remote tool.
     Check(CheckArgs),
@@ -69,8 +73,8 @@ struct InspectArgs {
     #[command(flatten)]
     limits: DiagnosticLimitArgs,
 
-    /// Exact MCP revision to inspect; legacy revisions are passive and opt-in only.
-    #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Current)]
+    /// Auto is bounded and passive; exact revisions run one selected lifecycle.
+    #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Auto)]
     protocol_version: InspectProtocolVersion,
 
     /// Write a sensitive selected-revision contract snapshot to one new file.
@@ -383,6 +387,8 @@ impl From<DiagnosticLimitSelection> for contract::DiagnosticLimitProfile {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 enum InspectProtocolVersion {
+    #[value(name = "auto")]
+    Auto,
     #[value(name = "2026-07-28", alias = "current")]
     Current,
     #[value(name = "2025-11-25")]
@@ -391,12 +397,17 @@ enum InspectProtocolVersion {
     V2025_06_18,
 }
 
-impl From<InspectProtocolVersion> for contract::ProtocolRevision {
+impl From<InspectProtocolVersion> for contract::PassiveProtocolSelection {
     fn from(version: InspectProtocolVersion) -> Self {
         match version {
-            InspectProtocolVersion::Current => Self::V2026_07_28,
-            InspectProtocolVersion::V2025_11_25 => Self::V2025_11_25,
-            InspectProtocolVersion::V2025_06_18 => Self::V2025_06_18,
+            InspectProtocolVersion::Auto => Self::Auto,
+            InspectProtocolVersion::Current => Self::Exact(contract::ProtocolRevision::V2026_07_28),
+            InspectProtocolVersion::V2025_11_25 => {
+                Self::Exact(contract::ProtocolRevision::V2025_11_25)
+            }
+            InspectProtocolVersion::V2025_06_18 => {
+                Self::Exact(contract::ProtocolRevision::V2025_06_18)
+            }
         }
     }
 }
@@ -649,7 +660,7 @@ async fn main() -> ExitCode {
     match cli.command {
         None => contract::success_exit(),
         Some(Command::Inspect(arguments)) => {
-            let revision = arguments.protocol_version.into();
+            let protocol_selection = arguments.protocol_version.into();
             let limit_profile = arguments.limits.limit_profile.into();
             let destination = match contract::prepare_snapshot_destination(
                 arguments.snapshot,
@@ -679,7 +690,7 @@ async fn main() -> ExitCode {
             if let Some(endpoint) = arguments.endpoint {
                 match inspect::run_http(
                     arguments.remote.into_options(endpoint),
-                    revision,
+                    protocol_selection,
                     capture_snapshot,
                     limit_profile,
                 )
@@ -694,7 +705,7 @@ async fn main() -> ExitCode {
             } else {
                 match inspect::run_stdio(
                     arguments.target,
-                    revision,
+                    protocol_selection,
                     capture_snapshot,
                     limit_profile,
                 )

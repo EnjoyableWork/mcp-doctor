@@ -9,7 +9,7 @@ use super::model::{
     CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence,
     GeneratedCaseReproduction, Location, Requirement, RuleViolation, Severity, StructuralInput,
 };
-use super::protocol::{KnownRevision, SupportedRevision};
+use super::protocol::{KnownRevision, ProtocolSelectionEvidence, SupportedRevision};
 use super::redaction::REDACTION_MARKER;
 
 pub(crate) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
@@ -253,6 +253,7 @@ pub(super) struct ReportSummary {
 pub(super) struct DiagnosticReport {
     revision: SupportedRevision,
     negotiated_revision: Option<KnownRevision>,
+    protocol_selection: Option<ProtocolSelectionEvidence>,
     limit_profile: DiagnosticLimitProfile,
     limits: DiagnosticLimits,
     checks: Vec<CheckResult>,
@@ -340,6 +341,7 @@ impl DiagnosticReport {
         Ok(Self {
             revision,
             negotiated_revision: None,
+            protocol_selection: None,
             limit_profile: DiagnosticLimitProfile::Default,
             limits,
             checks,
@@ -361,6 +363,11 @@ impl DiagnosticReport {
         self
     }
 
+    pub(super) fn with_protocol_selection(mut self, selection: ProtocolSelectionEvidence) -> Self {
+        self.protocol_selection = Some(selection);
+        self
+    }
+
     pub(super) fn with_limit_profile(mut self, profile: DiagnosticLimitProfile) -> Self {
         self.limit_profile = profile;
         self.limits = profile.limits();
@@ -373,6 +380,10 @@ impl DiagnosticReport {
 
     pub(super) const fn negotiated_revision(&self) -> Option<KnownRevision> {
         self.negotiated_revision
+    }
+
+    pub(super) const fn protocol_selection(&self) -> Option<ProtocolSelectionEvidence> {
+        self.protocol_selection
     }
 
     pub(super) const fn limit_profile(&self) -> DiagnosticLimitProfile {
@@ -673,6 +684,30 @@ impl HumanReporter {
                 "protocol selection · selected {} · negotiated {}",
                 report.revision(),
                 negotiated.as_str()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+        if let Some(selection) = report.protocol_selection() {
+            write!(
+                output,
+                "protocol negotiation · mode={} · path={}",
+                selection.mode().as_str(),
+                selection.path().as_str()
+            )
+            .expect("the bounded report writer records limit failures");
+            if let Some(selected) = selection.selected_revision() {
+                write!(output, " · selected={selected}")
+                    .expect("the bounded report writer records limit failures");
+            } else {
+                output.push_str(" · selected=none");
+            }
+            writeln!(
+                output,
+                " · process_launches={} · lifecycle_requests={} · lifecycle_notifications={} · fallbacks={}",
+                selection.process_launches(),
+                selection.lifecycle_requests(),
+                selection.lifecycle_notifications(),
+                selection.fallbacks()
             )
             .expect("the bounded report writer records limit failures");
         }
@@ -1149,6 +1184,41 @@ fn write_junit_metadata(
     if let Some(negotiated) = report.negotiated_revision() {
         write_xml_line(output, "negotiated_protocol_revision", negotiated.as_str());
     }
+    if let Some(selection) = report.protocol_selection() {
+        write_xml_line(output, "protocol_selection.mode", selection.mode().as_str());
+        write_xml_line(output, "protocol_selection.path", selection.path().as_str());
+        if let Some(selected) = selection.selected_revision() {
+            write_xml_line(
+                output,
+                "protocol_selection.selected_revision",
+                selected.as_str(),
+            );
+        }
+        writeln!(
+            output,
+            "protocol_selection.process_launches={}",
+            selection.process_launches()
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "protocol_selection.lifecycle_requests={}",
+            selection.lifecycle_requests()
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "protocol_selection.lifecycle_notifications={}",
+            selection.lifecycle_notifications()
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "protocol_selection.fallbacks={}",
+            selection.fallbacks()
+        )
+        .expect("the bounded report writer records limit failures");
+    }
     write_xml_line(output, "report_outcome", report.outcome().as_str());
     writeln!(output, "exit_code={}", report.exit_status().code())
         .expect("the bounded report writer records limit failures");
@@ -1524,6 +1594,8 @@ struct JsonReport {
     protocol_revision: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     negotiated_protocol_revision: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol_selection: Option<ProtocolSelectionEvidence>,
     primary_diagnosis: Option<JsonDiagnosis>,
     independent_findings: Vec<JsonIndependentFinding>,
     outcome: &'static str,
@@ -1540,6 +1612,7 @@ impl From<&DiagnosticReport> for JsonReport {
             schema_stability: "stable",
             protocol_revision: report.revision().as_str(),
             negotiated_protocol_revision: report.negotiated_revision().map(KnownRevision::as_str),
+            protocol_selection: report.protocol_selection(),
             primary_diagnosis: report.primary_diagnosis().map(JsonDiagnosis::from),
             independent_findings: report
                 .independent_findings()

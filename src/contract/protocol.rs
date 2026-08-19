@@ -56,6 +56,15 @@ impl KnownRevision {
             _ => None,
         }
     }
+
+    pub(crate) const fn supported(self) -> Option<SupportedRevision> {
+        match self {
+            Self::V2025_06_18 => Some(SupportedRevision::V2025_06_18),
+            Self::V2025_11_25 => Some(SupportedRevision::V2025_11_25),
+            Self::V2026_07_28 => Some(SupportedRevision::V2026_07_28),
+            Self::V2024_11_05 | Self::V2025_03_26 => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -63,6 +72,126 @@ pub(crate) enum SupportedRevision {
     V2025_06_18,
     V2025_11_25,
     V2026_07_28,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum PassiveProtocolSelection {
+    Auto,
+    Exact(SupportedRevision),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProtocolSelectionMode {
+    Auto,
+    Exact,
+}
+
+impl ProtocolSelectionMode {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Exact => "exact",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProtocolSelectionPath {
+    ExactPin,
+    ModernDiscovery,
+    StdioLegacyInitialization,
+    HttpLegacyInitialization,
+}
+
+impl ProtocolSelectionPath {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactPin => "exact_pin",
+            Self::ModernDiscovery => "modern_discovery",
+            Self::StdioLegacyInitialization => "stdio_legacy_initialization",
+            Self::HttpLegacyInitialization => "http_legacy_initialization",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+pub(crate) struct ProtocolSelectionEvidence {
+    mode: ProtocolSelectionMode,
+    path: ProtocolSelectionPath,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_revision: Option<SupportedRevision>,
+    process_launches: u64,
+    lifecycle_requests: u64,
+    lifecycle_notifications: u64,
+    fallbacks: u64,
+}
+
+impl ProtocolSelectionEvidence {
+    pub(crate) const fn new(
+        mode: ProtocolSelectionMode,
+        path: ProtocolSelectionPath,
+        selected_revision: Option<SupportedRevision>,
+        process_launches: u64,
+        lifecycle_requests: u64,
+        lifecycle_notifications: u64,
+        fallbacks: u64,
+    ) -> Self {
+        assert!(
+            process_launches <= 2,
+            "passive negotiation launches at most two processes"
+        );
+        assert!(
+            lifecycle_requests <= 2,
+            "passive negotiation sends at most two lifecycle requests"
+        );
+        assert!(
+            lifecycle_notifications <= 1,
+            "passive negotiation sends at most one lifecycle notification"
+        );
+        assert!(
+            fallbacks <= 1,
+            "passive negotiation falls back at most once"
+        );
+        Self {
+            mode,
+            path,
+            selected_revision,
+            process_launches,
+            lifecycle_requests,
+            lifecycle_notifications,
+            fallbacks,
+        }
+    }
+
+    pub(crate) const fn mode(self) -> ProtocolSelectionMode {
+        self.mode
+    }
+
+    pub(crate) const fn path(self) -> ProtocolSelectionPath {
+        self.path
+    }
+
+    pub(crate) const fn selected_revision(self) -> Option<SupportedRevision> {
+        self.selected_revision
+    }
+
+    pub(crate) const fn process_launches(self) -> u64 {
+        self.process_launches
+    }
+
+    pub(crate) const fn lifecycle_requests(self) -> u64 {
+        self.lifecycle_requests
+    }
+
+    pub(crate) const fn lifecycle_notifications(self) -> u64 {
+        self.lifecycle_notifications
+    }
+
+    pub(crate) const fn fallbacks(self) -> u64 {
+        self.fallbacks
+    }
 }
 
 impl SupportedRevision {
@@ -290,6 +419,51 @@ where
     }
 
     RevisionSelection::Unsupported(summary)
+}
+
+pub(super) fn select_current_modern_revision<'a, I>(
+    advertised: I,
+    maximum_revisions: u64,
+) -> RevisionSelection
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut summary = RevisionAdvertisementSummary::default();
+    let mut selected = false;
+
+    for (index, value) in advertised.into_iter().enumerate() {
+        let observed = u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1);
+        if observed > maximum_revisions {
+            let violation =
+                LimitViolation::new(LimitKind::ProtocolRevisions, observed, maximum_revisions)
+                    .expect("the observed revision count is above the checked maximum");
+            return RevisionSelection::LimitExceeded(violation);
+        }
+
+        let claim = classify_revision(value);
+        summary.offered = summary.offered.saturating_add(1);
+        match claim {
+            RevisionClaim::Supported(SupportedRevision::V2026_07_28) => selected = true,
+            RevisionClaim::Supported(
+                SupportedRevision::V2025_06_18 | SupportedRevision::V2025_11_25,
+            )
+            | RevisionClaim::KnownUnsupported(_) => {
+                summary.recognized_legacy = summary.recognized_legacy.saturating_add(1);
+            }
+            RevisionClaim::UnknownDate(_) => {
+                summary.unknown_date = summary.unknown_date.saturating_add(1);
+            }
+            RevisionClaim::Opaque(_) => {
+                summary.opaque = summary.opaque.saturating_add(1);
+            }
+        }
+    }
+
+    if selected {
+        RevisionSelection::Selected(SupportedRevision::CURRENT)
+    } else {
+        RevisionSelection::Unsupported(summary)
+    }
 }
 
 fn parse_date_revision(value: &str) -> Option<RevisionDate> {

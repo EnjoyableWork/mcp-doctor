@@ -110,6 +110,39 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
             "mcp-doctor.scenario/v2alpha1"
         ])
     );
+    assert_eq!(manifest["protocol_selection"]["command"], "inspect");
+    assert_eq!(manifest["protocol_selection"]["default_mode"], "auto");
+    assert_eq!(
+        manifest["protocol_selection"]["modes"],
+        json!(["auto", "exact"])
+    );
+    assert_eq!(
+        manifest["protocol_selection"]["compiled_modern_revisions"],
+        json!(["2026-07-28"])
+    );
+    assert_eq!(
+        manifest["protocol_selection"]["exact_revisions"],
+        json!(["2026-07-28", "2025-11-25", "2025-06-18"])
+    );
+    assert_eq!(
+        manifest["protocol_selection"]["exact_max_lifecycle_requests"],
+        1
+    );
+    assert_eq!(manifest["protocol_selection"]["exact_max_fallbacks"], 0);
+    let auto_transports = manifest["protocol_selection"]["auto_transports"]
+        .as_array()
+        .expect("auto selection transports should be an array");
+    assert_eq!(auto_transports.len(), 2);
+    assert_eq!(auto_transports[0]["transport"], "stdio");
+    assert_eq!(auto_transports[0]["max_process_launches"], 2);
+    assert_eq!(auto_transports[1]["transport"], "streamable_http");
+    assert_eq!(auto_transports[1]["max_prepared_targets"], 1);
+    for transport in auto_transports {
+        assert_eq!(transport["max_lifecycle_requests"], 2);
+        assert_eq!(transport["max_lifecycle_notifications"], 1);
+        assert_eq!(transport["max_fallbacks"], 1);
+        assert_eq!(transport["shared_total_and_aggregate_budgets"], true);
+    }
     for transport in ["stdio", "streamable_http"] {
         let revisions = manifest["protocol_support"]
             .as_array()
@@ -184,6 +217,15 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     assert!(stdout.contains("inspect · passive"));
     assert!(stdout.contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18"));
     assert!(stdout.contains("reject · stdio · 2026-07-28"));
+    assert!(stdout.contains(
+        "Passive selection: inspect · default auto · modes auto,exact · modern 2026-07-28 · exact 2026-07-28,2025-11-25,2025-06-18"
+    ));
+    assert!(stdout.contains(
+        "auto · stdio · path stdio_legacy_initialization · prepared_targets 0 · process_launches 2 · lifecycle_requests 2 · lifecycle_notifications 1 · fallbacks 1 · shared_budgets true"
+    ));
+    assert!(stdout.contains(
+        "auto · streamable_http · path http_legacy_initialization · prepared_targets 1 · process_launches 0 · lifecycle_requests 2 · lifecycle_notifications 1 · fallbacks 1 · shared_budgets true"
+    ));
     assert!(stdout.contains(
         "Limit selections: mcp-doctor.limits/diagnostic/v1 · default,slow-start · commands break,check,inspect"
     ));

@@ -56,6 +56,12 @@ and artifact verification.
 
 ## Quick start
 
+Passive `inspect` defaults to bounded `--protocol-version auto`. For a local
+STDIO target, `auto` may consume the discovery bound, fully reap the first
+process, and start the exact command one more time for legacy initialization.
+Use an explicit supported revision when one lifecycle and, for STDIO, one
+process launch is required.
+
 Inspect a local STDIO server without calling any tools. Put the command you
 already use to start the server after `--`:
 
@@ -69,9 +75,9 @@ For Streamable HTTP, pass the endpoint URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
-`inspect` connects, validates the MCP conversation, checks advertised features
-and schemas, reports the earliest actionable failure, and cleans up. It never
-calls a tool.
+`inspect` selects a mutually supported compiled revision, validates the MCP
+conversation, checks advertised features and schemas, reports the earliest
+actionable failure, and cleans up. It never calls a tool.
 
 ## Use with coding agents
 
@@ -123,10 +129,12 @@ multi-tool workflows, generated cases, rejection checks, and contract diffs.
 
 ## MCP revision support
 
-**Legend:** ✅ = supported; ❌ = not supported. MCP `2026-07-28` is the default;
-supported legacy revisions require exact `--protocol-version` selection. Each
-status includes an invisible `mcp-doctor-support=supported|unsupported` source
-token for agents reading the Markdown.
+**Legend:** ✅ = supported; ❌ = not supported. Passive `inspect` defaults to
+bounded `auto`; an explicit revision remains a hard pin. Active commands keep
+MCP `2026-07-28` as their sole implicit revision and require an exact option
+for supported legacy activity. Each status includes an invisible
+`mcp-doctor-support=supported|unsupported` source token for agents reading the
+Markdown.
 
 | MCP revision | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` | `reject` |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -138,9 +146,10 @@ token for agents reading the Markdown.
 | `2024-10-07` | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
 | Unknown | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
 
-Read the [full revision contract](docs/protocol-support.md) for exact selection,
-schema-dialect rules, dated usage context, and compatibility evidence. For
-automation, `mcp-doctor capabilities --format json` remains authoritative.
+Read the [full revision contract](docs/protocol-support.md) for bounded passive
+selection, exact pins, schema-dialect rules, dated usage context, and
+compatibility evidence. For automation,
+`mcp-doctor capabilities --format json` remains authoritative.
 
 ## Documentation
 

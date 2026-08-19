@@ -17,7 +17,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Instant;
 
-use super::{Conversation, ProbeRequest, ProbeResponse};
+use super::{Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse};
 
 const READ_BUFFER_BYTES: usize = 8 * 1024;
 
@@ -34,6 +34,47 @@ pub(crate) struct StdioLimits {
     pub(crate) stderr_bytes: u64,
     pub(crate) aggregate_output_bytes: u64,
     pub(crate) message_count: u64,
+}
+
+pub(crate) struct StdioBudget {
+    started: Instant,
+    limits: StdioLimits,
+    stdout: u64,
+    stderr: u64,
+    aggregate: u64,
+    messages: u64,
+    next_message_index: usize,
+    #[cfg(feature = "internal-test-fixtures")]
+    force_total_exhausted: bool,
+}
+
+impl StdioBudget {
+    pub(crate) fn new(limits: StdioLimits) -> Self {
+        Self {
+            started: Instant::now(),
+            limits,
+            stdout: 0,
+            stderr: 0,
+            aggregate: 0,
+            messages: 0,
+            next_message_index: 0,
+            #[cfg(feature = "internal-test-fixtures")]
+            force_total_exhausted: false,
+        }
+    }
+
+    #[cfg(feature = "internal-test-fixtures")]
+    pub(crate) fn exhaust_total_for_test(&mut self) {
+        self.force_total_exhausted = true;
+    }
+
+    fn observe(&mut self, usage: ProcessUsage) {
+        self.stdout = usage.stdout;
+        self.stderr = usage.stderr;
+        self.aggregate = usage.aggregate;
+        self.messages = usage.messages;
+        self.next_message_index = usage.next_message_index;
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -197,6 +238,8 @@ pub(crate) struct StdioRun {
     responses: Vec<ProbeResponse>,
     failure: Option<StdioFailure>,
     cleanup_failed: bool,
+    process_started: bool,
+    lifecycle_interactions: LifecycleInteractionCounts,
 }
 
 impl StdioRun {
@@ -214,6 +257,18 @@ impl StdioRun {
 
     pub(crate) const fn cleanup_failed(&self) -> bool {
         self.cleanup_failed
+    }
+
+    pub(crate) const fn process_started(&self) -> bool {
+        self.process_started
+    }
+
+    pub(crate) const fn lifecycle_request_count(&self) -> u64 {
+        self.lifecycle_interactions.requests()
+    }
+
+    pub(crate) const fn lifecycle_notification_count(&self) -> u64 {
+        self.lifecycle_interactions.notifications()
     }
 }
 
@@ -245,15 +300,57 @@ impl StdioTransport {
     where
         C: Conversation,
     {
+        let mut budget = StdioBudget::new(self.limits);
+        self.probe_with_budget(target, conversation, &mut budget)
+            .await
+    }
+
+    pub(crate) async fn probe_with_budget<C>(
+        self,
+        target: &StdioTarget,
+        conversation: &mut C,
+        budget: &mut StdioBudget,
+    ) -> StdioRun
+    where
+        C: Conversation,
+    {
+        assert_eq!(
+            self.limits, budget.limits,
+            "a shared STDIO budget uses one limit contract"
+        );
+        #[cfg(feature = "internal-test-fixtures")]
+        if budget.force_total_exhausted {
+            return StdioRun {
+                responses: Vec::new(),
+                failure: Some(StdioFailure::limit(
+                    StdioLimit::TotalTime,
+                    self.limits.total_ms.saturating_add(1),
+                    self.limits.total_ms,
+                )),
+                cleanup_failed: false,
+                process_started: false,
+                lifecycle_interactions: LifecycleInteractionCounts::default(),
+            };
+        }
         let run_started = Instant::now();
         let total_deadline =
-            StageDeadline::after(run_started, self.limits.total_ms, StdioLimit::TotalTime);
+            StageDeadline::after(budget.started, self.limits.total_ms, StdioLimit::TotalTime);
         let startup_deadline = StageDeadline::earliest([
             total_deadline,
             StageDeadline::after(run_started, self.limits.startup_ms, StdioLimit::StartupTime),
         ]);
+        if Instant::now() > total_deadline.at {
+            return StdioRun {
+                responses: Vec::new(),
+                failure: Some(StdioFailure::timeout(total_deadline)),
+                cleanup_failed: false,
+                process_started: false,
+                lifecycle_interactions: LifecycleInteractionCounts::default(),
+            };
+        }
 
-        let spawn_result = ManagedProcess::spawn(target, self.limits, self.accept_server_requests);
+        let spawn_result =
+            ManagedProcess::spawn(target, self.limits, self.accept_server_requests, budget);
         let mut process = match spawn_result {
             Ok(process) => process,
             Err(failure) => {
@@ -261,10 +358,13 @@ impl StdioTransport {
                     responses: Vec::new(),
                     failure: Some(failure),
                     cleanup_failed: false,
+                    process_started: false,
+                    lifecycle_interactions: LifecycleInteractionCounts::default(),
                 };
             }
         };
 
+        let mut lifecycle_interactions = LifecycleInteractionCounts::default();
         let operation = async {
             if Instant::now() > startup_deadline.at {
                 return Err(StdioFailure::timeout(startup_deadline));
@@ -282,6 +382,7 @@ impl StdioTransport {
                 let Some(request) = request else {
                     break;
                 };
+                lifecycle_interactions.observe(&request);
                 let discovery = responses.is_empty();
                 if !request.expects_response() {
                     process
@@ -303,16 +404,39 @@ impl StdioTransport {
             Ok(responses) => (responses, None),
             Err(failure) => (Vec::new(), Some(failure)),
         };
-        if failure.is_none() {
+        if failure.is_none()
+            || (failure.is_some_and(|failure| {
+                matches!(
+                    failure,
+                    StdioFailure::EarlyExit
+                        | StdioFailure::Limit {
+                            kind: StdioLimit::DiscoveryTime,
+                            ..
+                        }
+                )
+            }) && shutdown.background_failure.is_some())
+        {
             failure = shutdown.background_failure;
         }
+        budget.observe(process.usage());
 
         StdioRun {
             responses,
             failure,
             cleanup_failed: shutdown.cleanup_failed,
+            process_started: true,
+            lifecycle_interactions,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ProcessUsage {
+    stdout: u64,
+    stderr: u64,
+    aggregate: u64,
+    messages: u64,
+    next_message_index: usize,
 }
 
 struct ManagedProcess {
@@ -332,6 +456,7 @@ impl ManagedProcess {
         target: &StdioTarget,
         limits: StdioLimits,
         accept_server_requests: bool,
+        budget: &StdioBudget,
     ) -> Result<Self, StdioFailure> {
         let mut command = target.command();
         command
@@ -359,12 +484,32 @@ impl ManagedProcess {
             stdin,
             stdout,
             stderr,
-            decoder: FrameDecoder::new(limits.message_bytes, limits.message_count),
+            decoder: FrameDecoder::with_observed(
+                limits.message_bytes,
+                limits.message_count,
+                budget.messages,
+                budget.next_message_index,
+            ),
             protocol: ProtocolTracker::new(accept_server_requests),
-            output: OutputBudget::new(limits),
+            output: OutputBudget::with_observed(
+                limits,
+                budget.stdout,
+                budget.stderr,
+                budget.aggregate,
+            ),
             limits,
             cleaned: false,
         })
+    }
+
+    fn usage(&self) -> ProcessUsage {
+        ProcessUsage {
+            stdout: self.output.stdout,
+            stderr: self.output.stderr,
+            aggregate: self.output.aggregate,
+            messages: self.decoder.observed_messages,
+            next_message_index: self.decoder.next_index,
+        }
     }
 
     async fn exchange(
@@ -852,13 +997,23 @@ struct FrameDecoder {
 }
 
 impl FrameDecoder {
+    #[cfg(test)]
     fn new(message_bytes: u64, message_count: u64) -> Self {
+        Self::with_observed(message_bytes, message_count, 0, 0)
+    }
+
+    fn with_observed(
+        message_bytes: u64,
+        message_count: u64,
+        observed_messages: u64,
+        next_index: usize,
+    ) -> Self {
         Self {
             current: Vec::new(),
             message_bytes,
             message_count,
-            observed_messages: 0,
-            next_index: 0,
+            observed_messages,
+            next_index,
         }
     }
 
@@ -1003,11 +1158,16 @@ struct OutputBudget {
 }
 
 impl OutputBudget {
+    #[cfg(test)]
     const fn new(limits: StdioLimits) -> Self {
+        Self::with_observed(limits, 0, 0, 0)
+    }
+
+    const fn with_observed(limits: StdioLimits, stdout: u64, stderr: u64, aggregate: u64) -> Self {
         Self {
-            stdout: 0,
-            stderr: 0,
-            aggregate: 0,
+            stdout,
+            stderr,
+            aggregate,
             limits,
         }
     }
@@ -1122,8 +1282,8 @@ mod tests {
     use std::ffi::{OsStr, OsString};
 
     use super::{
-        FrameDecoder, OutputBudget, ProtocolTracker, StdioFailure, StdioLimit, StdioLimits,
-        StdioTarget, constrained_environment,
+        FrameDecoder, OutputBudget, ProcessUsage, ProtocolTracker, StdioBudget, StdioFailure,
+        StdioLimit, StdioLimits, StdioTarget, constrained_environment,
     };
     use crate::transport::ProbeRequest;
 
@@ -1246,6 +1406,47 @@ mod tests {
                 maximum: 32,
             })
         );
+    }
+
+    #[test]
+    fn shared_phase_budget_seeds_every_cumulative_stdio_boundary() {
+        let limits = small_limits();
+        let mut budget = StdioBudget::new(limits);
+        let original_start = budget.started;
+        budget.observe(ProcessUsage {
+            stdout: 100,
+            stderr: 20,
+            aggregate: 120,
+            messages: 2,
+            next_message_index: 2,
+        });
+
+        let mut output =
+            OutputBudget::with_observed(limits, budget.stdout, budget.stderr, budget.aggregate);
+        assert_eq!(
+            output.observe_stdout(9),
+            Some(StdioFailure::Limit {
+                kind: StdioLimit::AggregateOutputBytes,
+                observed: 129,
+                maximum: 128,
+            })
+        );
+
+        let mut decoder = FrameDecoder::with_observed(
+            limits.message_bytes,
+            limits.message_count,
+            budget.messages,
+            budget.next_message_index,
+        );
+        assert_eq!(
+            decoder.push(b"{}\n"),
+            Err(StdioFailure::Limit {
+                kind: StdioLimit::MessageCount,
+                observed: 3,
+                maximum: 2,
+            })
+        );
+        assert_eq!(budget.started, original_start);
     }
 
     #[test]

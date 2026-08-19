@@ -43,6 +43,9 @@
         "$ref": "#/$defs/protocol_support"
       }
     },
+    "protocol_selection": {
+      "$ref": "#/$defs/protocol_selection"
+    },
     "schema_versions": {
       "$ref": "#/$defs/schema_versions"
     },
@@ -234,6 +237,115 @@
         }
       },
       "additionalProperties": true
+    },
+    "protocol_selection": {
+      "type": "object",
+      "required": [
+        "command",
+        "default_mode",
+        "modes",
+        "compiled_modern_revisions",
+        "exact_revisions",
+        "exact_max_lifecycle_requests",
+        "exact_max_fallbacks",
+        "auto_transports"
+      ],
+      "properties": {
+        "command": {
+          "const": "inspect"
+        },
+        "default_mode": {
+          "const": "auto"
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "compiled_modern_revisions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/revision"
+          }
+        },
+        "exact_revisions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/revision"
+          }
+        },
+        "exact_max_lifecycle_requests": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "exact_max_fallbacks": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "auto_transports": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/auto_selection_transport"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "auto_selection_transport": {
+      "type": "object",
+      "required": [
+        "transport",
+        "legacy_path",
+        "max_prepared_targets",
+        "max_process_launches",
+        "max_lifecycle_requests",
+        "max_lifecycle_notifications",
+        "max_fallbacks",
+        "shared_total_and_aggregate_budgets"
+      ],
+      "properties": {
+        "transport": {
+          "$ref": "#/$defs/name"
+        },
+        "legacy_path": {
+          "$ref": "#/$defs/name"
+        },
+        "max_prepared_targets": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "max_process_launches": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "max_lifecycle_requests": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "max_lifecycle_notifications": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "max_fallbacks": {
+          "$ref": "#/$defs/selection_count"
+        },
+        "shared_total_and_aggregate_budgets": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "selection_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
     },
     "schema_versions": {
       "type": "object",

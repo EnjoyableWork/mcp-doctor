@@ -1,7 +1,7 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::thread;
@@ -66,6 +66,10 @@ fn main() -> ExitCode {
         Some("snapshot-invalid-shape") => snapshot_invalid_shape(),
         Some("snapshot-started-marker") => snapshot_started_marker(&remaining),
         Some("legacy-success") => legacy_success(),
+        Some("auto-legacy") => auto_legacy(&remaining),
+        Some("auto-modern-error") => auto_modern_error(&remaining),
+        Some("auto-modern-no-mutual") => auto_modern_no_mutual(&remaining),
+        Some("auto-modern-invalid-result") => auto_modern_invalid_result(&remaining),
         Some("legacy-lifecycle-method-not-found") => legacy_lifecycle_error(-32601),
         Some("legacy-catalog-method-errors") => legacy_catalog_method_errors(),
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
@@ -467,6 +471,237 @@ fn legacy_success() -> ExitCode {
         Some("synthetic-private-legacy-cursor-never-report-7f2c"),
     );
     write_result(3, json!({"tools": []}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn auto_legacy(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let Some(signal) = arguments.get(1).and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+    let Some(selected_revision) = arguments.get(2).and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+
+    match OpenOptions::new()
+        .create_new(true)
+        .read(true)
+        .write(true)
+        .open(&marker)
+    {
+        Ok(mut claim) => {
+            claim
+                .lock()
+                .expect("the modern probe marker should be locked");
+            claim
+                .write_all(b"modern-probe-started")
+                .expect("the modern probe marker should be writable");
+            claim
+                .sync_all()
+                .expect("the modern probe marker should be durable");
+
+            let mut input = io::BufReader::new(io::stdin().lock());
+            read_discover_request(&mut input);
+            match signal {
+                "method-not-found" => write_json_rpc_error(1, -32601),
+                "invalid-params" => write_json_rpc_error(1, -32602),
+                "application-error" => write_json_rpc_error(1, -31999),
+                "clean-exit" => {}
+                "malformed-exit" => {
+                    let mut stdout = io::stdout().lock();
+                    stdout
+                        .write_all(b"{\"jsonrpc\":")
+                        .expect("the partial frame should be writable");
+                    stdout.flush().expect("the partial frame should flush");
+                }
+                "timeout" => wait_forever(),
+                "cumulative-stderr" => {
+                    let mut stderr = io::stderr().lock();
+                    write_repeated(&mut stderr, b's', 900 * 1024);
+                    stderr.flush().expect("the first-phase stderr should flush");
+                    write_json_rpc_error(1, -32601);
+                }
+                "cumulative-messages" => {
+                    let mut stdout = io::stdout().lock();
+                    for _ in 0..800 {
+                        writeln!(
+                            stdout,
+                            "{{\"jsonrpc\":\"2.0\",\"method\":\"synthetic/progress\"}}"
+                        )
+                        .expect("the first-phase notification should be writable");
+                    }
+                    stdout
+                        .flush()
+                        .expect("the first-phase notifications should flush");
+                    write_json_rpc_error(1, -32601);
+                }
+                _ => return ExitCode::from(2),
+            }
+            if !matches!(signal, "clean-exit" | "malformed-exit") {
+                assert_eof(&mut input);
+            }
+            claim
+                .set_len(0)
+                .expect("the modern probe marker should truncate");
+            claim
+                .seek(SeekFrom::Start(0))
+                .expect("the modern probe marker should rewind");
+            claim
+                .write_all(b"modern-probe-complete")
+                .expect("the modern probe completion should be writable");
+            claim
+                .sync_all()
+                .expect("the modern probe completion should be durable");
+            ExitCode::SUCCESS
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            let mut claim = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&marker)
+                .expect("the existing modern probe marker should open");
+            claim
+                .try_lock()
+                .expect("the legacy process must not overlap the modern process");
+            let mut state = String::new();
+            claim
+                .read_to_string(&mut state)
+                .expect("the modern probe state should be readable");
+            if signal == "timeout" {
+                assert_eq!(state, "modern-probe-started");
+            } else {
+                assert_eq!(state, "modern-probe-complete");
+            }
+
+            let mut input = io::BufReader::new(io::stdin().lock());
+            let offered_revision = read_initialize(&mut input);
+            assert_eq!(offered_revision, "2025-11-25");
+            match signal {
+                "cumulative-stderr" => {
+                    let mut stderr = io::stderr().lock();
+                    write_repeated(&mut stderr, b's', 200 * 1024);
+                    stderr
+                        .flush()
+                        .expect("the second-phase stderr should flush");
+                }
+                "cumulative-messages" => {
+                    let mut stdout = io::stdout().lock();
+                    for _ in 0..300 {
+                        writeln!(
+                            stdout,
+                            "{{\"jsonrpc\":\"2.0\",\"method\":\"synthetic/progress\"}}"
+                        )
+                        .expect("the second-phase notification should be writable");
+                    }
+                    stdout
+                        .flush()
+                        .expect("the second-phase notifications should flush");
+                }
+                _ => {}
+            }
+            write_result(
+                1,
+                json!({
+                    "protocolVersion": selected_revision,
+                    "capabilities": {},
+                    "serverInfo": {"name": "synthetic-auto-legacy", "version": "1.0.0"},
+                    "instructions": REDACTION_SENTINEL
+                }),
+            );
+            if matches!(selected_revision, "2025-11-25" | "2025-06-18") {
+                read_initialized(&mut input);
+            }
+            assert_eof(&mut input);
+            ExitCode::SUCCESS
+        }
+        Err(_) => ExitCode::from(2),
+    }
+}
+
+fn auto_modern_error(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first() else {
+        return ExitCode::from(2);
+    };
+    if !claim_single_run(Some(marker)) {
+        return ExitCode::from(2);
+    }
+    let Some(advertisement) = arguments.get(1).and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+    let supported = match advertisement {
+        "no-mutual" => json!(["2025-11-25", REDACTION_SENTINEL]),
+        "contradictory" => json!(["2026-07-28", REDACTION_SENTINEL]),
+        "limit" => Value::Array(
+            (0..33)
+                .map(|_| Value::String(REDACTION_SENTINEL.to_owned()))
+                .collect(),
+        ),
+        _ => return ExitCode::from(2),
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+            "code": -32022,
+            "message": REDACTION_SENTINEL,
+            "data": {
+                "requested": "2026-07-28",
+                "supported": supported,
+                "secret": REDACTION_SENTINEL
+            }
+        }
+    }));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn auto_modern_no_mutual(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first() else {
+        return ExitCode::from(2);
+    };
+    if !claim_single_run(Some(marker)) {
+        return ExitCode::from(2);
+    }
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": ["2025-11-25", REDACTION_SENTINEL],
+            "capabilities": {"tools": {}},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn auto_modern_invalid_result(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first() else {
+        return ExitCode::from(2);
+    };
+    if !claim_single_run(Some(marker)) {
+        return ExitCode::from(2);
+    }
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+    write_result(
+        1,
+        json!({
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {"tools": {"listChanged": REDACTION_SENTINEL}},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }),
+    );
     assert_eof(&mut input);
     ExitCode::SUCCESS
 }

@@ -1,4 +1,5 @@
 mcp-doctor report · MCP 2026-07-28 · mcp-doctor.report/v1
+protocol negotiation · mode=exact · path=exact_pin · selected=2026-07-28 · process_launches=1 · lifecycle_requests=1 · lifecycle_notifications=0 · fallbacks=0
 
 PRIMARY DIAGNOSIS · protocol.revision
   MCP-PROTOCOL-002 · server.supportedVersions

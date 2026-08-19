@@ -1282,6 +1282,42 @@ fn assert_successful_inspection(output: &Output) {
     assert!(stdout.contains("PASS  protocol.envelope"));
 }
 
+fn assert_protocol_selection(
+    report: &Value,
+    mode: &str,
+    path: &str,
+    selected_revision: Option<&str>,
+    counts: [u64; 4],
+) {
+    let [
+        process_launches,
+        lifecycle_requests,
+        lifecycle_notifications,
+        fallbacks,
+    ] = counts;
+    let selection = &report["protocol_selection"];
+    assert_eq!(selection["mode"], mode);
+    assert_eq!(selection["path"], path);
+    match selected_revision {
+        Some(revision) => assert_eq!(selection["selected_revision"], revision),
+        None => assert!(selection.get("selected_revision").is_none()),
+    }
+    assert_eq!(selection["process_launches"], process_launches);
+    assert_eq!(selection["lifecycle_requests"], lifecycle_requests);
+    assert_eq!(
+        selection["lifecycle_notifications"],
+        lifecycle_notifications
+    );
+    assert_eq!(selection["fallbacks"], fallbacks);
+}
+
+fn bad_request_json(value: Value) -> FixtureResponse {
+    let mut response = FixtureResponse::json(value);
+    response.status = 400;
+    response.reason = "Bad Request";
+    response
+}
+
 fn assert_report_artifacts(json_path: &std::path::Path, junit_path: &std::path::Path) {
     let json = fs::read(json_path).expect("the JSON report artifact should exist");
     let junit = fs::read(junit_path).expect("the JUnit report artifact should exist");
@@ -1366,6 +1402,13 @@ fn explicit_legacy_http_revisions_preserve_session_pagination_and_reporter_parit
                     let report = parse_and_validate_report(&output.stdout);
                     assert_eq!(report["protocol_revision"], revision);
                     assert_eq!(report["negotiated_protocol_revision"], revision);
+                    assert_protocol_selection(
+                        &report,
+                        "exact",
+                        "exact_pin",
+                        Some(revision),
+                        [0, 1, 1, 0],
+                    );
                     assert_eq!(report["outcome"], "passed");
                 }
                 Some("junit") => {
@@ -2943,6 +2986,667 @@ fn loopback_http_requires_exact_gates_and_accepts_json_and_sse() {
 }
 
 #[test]
+fn default_and_explicit_auto_select_modern_http_once() {
+    for explicit_auto in [false, true] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({})),
+            )],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        if explicit_auto {
+            command.arg("--protocol-version").arg("auto");
+        }
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert!(output.status.success(), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 1);
+        assert_eq!(outcome.valid_requests, 1);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "modern_discovery",
+            Some("2026-07-28"),
+            [0, 1, 0, 0],
+        );
+        assert_eq!(report["protocol_revision"], "2026-07-28");
+        assert_redacted(&output, &endpoint, &[]);
+    }
+}
+
+#[test]
+fn auto_http_modern_results_without_mutual_support_never_fall_back() {
+    const REVISION_SENTINEL: &str = "synthetic-modern-revision-never-report-4a91";
+    let response = FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "resultType": "complete",
+            "supportedVersions": ["2025-11-25", REVISION_SENTINEL],
+            "capabilities": {"tools": {}},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }
+    }));
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            response,
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+    assert_redacted(&output, &endpoint, &[REVISION_SENTINEL]);
+}
+
+#[test]
+fn auto_http_invalid_modern_results_stop_before_catalog_work() {
+    const SENTINEL: &str = "synthetic-invalid-modern-result-never-report-4a91";
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            FixtureResponse::json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "resultType": "complete",
+                    "supportedVersions": ["2026-07-28"],
+                    "capabilities": {"tools": {"listChanged": SENTINEL}},
+                    "ttlMs": 0,
+                    "cacheScope": "private"
+                }
+            })),
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.envelope");
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn auto_http_recognized_or_malformed_reserved_modern_errors_are_terminal() {
+    const SENTINEL: &str = "synthetic-modern-error-never-report-4a91";
+    for (label, error) in [
+        (
+            "header-mismatch",
+            json!({"code": -32020, "message": SENTINEL}),
+        ),
+        (
+            "missing-capability",
+            json!({
+                "code": -32021,
+                "message": SENTINEL,
+                "data": {"requiredCapabilities": {"synthetic": true}, "secret": SENTINEL}
+            }),
+        ),
+        (
+            "contradictory-version",
+            json!({
+                "code": -32022,
+                "message": SENTINEL,
+                "data": {
+                    "requested": "2026-07-28",
+                    "supported": ["2026-07-28", SENTINEL]
+                }
+            }),
+        ),
+        (
+            "unsupported-version",
+            json!({
+                "code": -32022,
+                "message": SENTINEL,
+                "data": {
+                    "requested": "2026-07-28",
+                    "supported": ["2025-11-25", SENTINEL]
+                }
+            }),
+        ),
+        (
+            "malformed-reserved-error",
+            json!({"code": -32022, "message": 7, "data": {"secret": SENTINEL}}),
+        ),
+    ] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                bad_request_json(json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": error
+                })),
+            )],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(output.status.code(), Some(1), "{label}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 1, "{label}");
+        assert_eq!(outcome.valid_requests, 1, "{label}");
+        assert_eq!(outcome.unexpected_connections, 0, "{label}");
+        let report = parse_and_validate_report(&output.stdout);
+        assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
+        if label == "contradictory-version" {
+            assert_eq!(
+                report["primary_diagnosis"]["findings"][0]["code"],
+                "MCP-PROTOCOL-006"
+            );
+        } else if label == "unsupported-version" {
+            assert_eq!(
+                report["primary_diagnosis"]["findings"][0]["code"],
+                "MCP-PROTOCOL-002"
+            );
+        }
+        assert_redacted(&output, &endpoint, &[SENTINEL]);
+    }
+
+    let mut mislabeled_modern_error = bad_request_json(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+            "code": -32022,
+            "message": SENTINEL,
+            "data": {
+                "requested": "2026-07-28",
+                "supported": ["2025-11-25"]
+            }
+        }
+    }));
+    mislabeled_modern_error.fields = vec![("Content-Type".to_owned(), "text/plain".to_owned())];
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            mislabeled_modern_error,
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn auto_http_bounds_modern_revision_advertisements_without_fallback() {
+    const SENTINEL: &str = "synthetic-modern-revision-never-report-4a91";
+    let supported = Value::Array(
+        (0..33)
+            .map(|_| Value::String(SENTINEL.to_owned()))
+            .collect(),
+    );
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            bad_request_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32022,
+                    "message": SENTINEL,
+                    "data": {
+                        "requested": "2026-07-28",
+                        "supported": supported
+                    }
+                }
+            })),
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
+    let finding = &report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "protocol.revision")
+        })
+        .expect("the bounded revision finding should remain explicit")["findings"][0];
+    assert_eq!(finding["code"], "MCP-LIMIT-001");
+    assert_eq!(finding["evidence"]["limit"], "protocol_revisions");
+    assert_eq!(finding["evidence"]["observed"], 33);
+    assert_eq!(finding["evidence"]["maximum"], 32);
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn auto_http_falls_back_only_from_exact_legacy_era_400_signals() {
+    const ERROR_SENTINEL: &str = "synthetic-http-era-error-never-report-4a91";
+    for (label, first_response, selected_revision, explicit_auto) in [
+        (
+            "empty",
+            FixtureResponse::status(400, "Bad Request"),
+            "2025-11-25",
+            false,
+        ),
+        (
+            "non-modern-error",
+            bad_request_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32601,
+                    "message": ERROR_SENTINEL,
+                    "data": {"secret": ERROR_SENTINEL}
+                }
+            })),
+            "2025-06-18",
+            true,
+        ),
+    ] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::reply(ExpectedRequest::method("server/discover"), first_response),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize("2025-11-25"),
+                    legacy_initialize_response(selected_revision, json!({}), None),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(selected_revision, None),
+                    FixtureResponse::accepted(),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        if explicit_auto {
+            command.arg("--protocol-version").arg("auto");
+        }
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert!(output.status.success(), "{label}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 3, "{label}");
+        assert_eq!(outcome.valid_requests, 3, "{label}");
+        assert_eq!(outcome.unexpected_connections, 0, "{label}");
+        let report = parse_and_validate_report(&output.stdout);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "http_legacy_initialization",
+            Some(selected_revision),
+            [0, 2, 1, 1],
+        );
+        assert_eq!(report["protocol_revision"], selected_revision);
+        assert_eq!(report["negotiated_protocol_revision"], selected_revision);
+        assert_redacted(&output, &endpoint, &[ERROR_SENTINEL]);
+    }
+}
+
+#[test]
+fn auto_http_preserves_the_original_total_deadline_across_era_phases() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            FixtureResponse::status(400, "Bad Request"),
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--format")
+        .arg("json")
+        .env("MCP_DOCTOR_INTERNAL_TEST_EXHAUST_AUTO_TOTAL_BUDGET", "1");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(
+        &report,
+        "auto",
+        "http_legacy_initialization",
+        None,
+        [0, 1, 0, 1],
+    );
+    let finding = report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks.iter().find_map(|check| {
+                check["findings"].as_array().and_then(|findings| {
+                    findings.iter().find(|finding| {
+                        finding["code"] == "MCP-LIMIT-001"
+                            && finding["evidence"]["limit"] == "total_time"
+                    })
+                })
+            })
+        })
+        .expect("the cumulative total-time finding should remain explicit");
+    assert_eq!(finding["evidence"]["maximum"], report["limits"]["total_ms"]);
+    assert_redacted(&output, &endpoint, &[]);
+}
+
+#[test]
+fn auto_http_never_reclassifies_a_later_catalog_400_as_legacy_evidence() {
+    const SENTINEL: &str = "synthetic-late-catalog-error-never-report-4a91";
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                bad_request_json(json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32601,
+                        "message": SENTINEL,
+                        "data": {"secret": SENTINEL}
+                    }
+                })),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(
+        &report,
+        "auto",
+        "modern_discovery",
+        Some("2026-07-28"),
+        [0, 1, 0, 0],
+    );
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn auto_http_selection_evidence_matches_human_json_and_junit_reporters() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                FixtureResponse::status(400, "Bad Request"),
+            ),
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize("2025-11-25"),
+                legacy_initialize_response("2025-06-18", json!({}), None),
+            ),
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialized("2025-06-18", None),
+                FixtureResponse::accepted(),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("auto-http-report.json");
+    let junit_path = environment.artifact_path("auto-http-report.xml");
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path);
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert!(stdout.contains(
+        "protocol negotiation · mode=auto · path=http_legacy_initialization · selected=2025-06-18 · process_launches=0 · lifecycle_requests=2 · lifecycle_notifications=1 · fallbacks=1"
+    ));
+    let report = parse_and_validate_report(
+        &fs::read(&json_path).expect("the auto HTTP JSON report should exist"),
+    );
+    assert_protocol_selection(
+        &report,
+        "auto",
+        "http_legacy_initialization",
+        Some("2025-06-18"),
+        [0, 2, 1, 1],
+    );
+    let (junit, _) = parse_and_validate_junit(
+        &fs::read(&junit_path).expect("the auto HTTP JUnit report should exist"),
+    );
+    for evidence in [
+        "protocol_selection.mode=auto",
+        "protocol_selection.path=http_legacy_initialization",
+        "protocol_selection.selected_revision=2025-06-18",
+        "protocol_selection.process_launches=0",
+        "protocol_selection.lifecycle_requests=2",
+        "protocol_selection.lifecycle_notifications=1",
+        "protocol_selection.fallbacks=1",
+    ] {
+        assert!(junit.contains(evidence), "missing {evidence}: {junit}");
+    }
+    assert_redacted(&output, &endpoint, &[]);
+}
+
+#[test]
+fn auto_http_rejects_unsupported_and_unknown_legacy_counteroffers() {
+    for selected_revision in [
+        "2025-03-26",
+        "synthetic-private-unknown-revision-never-report-4a91",
+    ] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::reply(
+                    ExpectedRequest::method("server/discover"),
+                    FixtureResponse::status(400, "Bad Request"),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize("2025-11-25"),
+                    legacy_initialize_response(selected_revision, json!({}), None),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 2);
+        assert_eq!(outcome.valid_requests, 2);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "http_legacy_initialization",
+            None,
+            [0, 2, 0, 1],
+        );
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        if selected_revision.starts_with("synthetic-private-") {
+            assert!(!stdout.contains(selected_revision));
+        }
+        assert_redacted(&output, &endpoint, &[]);
+    }
+}
+
+#[test]
+fn auto_http_preserves_legacy_session_cleanup_and_never_hides_failure() {
+    for (cleanup_status, expected_success) in [(200, true), (500, false)] {
+        let cleanup_reason = if cleanup_status == 200 {
+            "OK"
+        } else {
+            "Internal Server Error"
+        };
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::reply(
+                    ExpectedRequest::method("server/discover"),
+                    FixtureResponse::status(400, "Bad Request"),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize("2025-11-25"),
+                    legacy_initialize_response("2025-11-25", json!({}), Some(LEGACY_SESSION)),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized("2025-11-25", Some(LEGACY_SESSION)),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::delete("2025-11-25", LEGACY_SESSION),
+                    FixtureResponse::status(cleanup_status, cleanup_reason),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(
+            output.status.success(),
+            expected_success,
+            "{stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 4);
+        assert_eq!(outcome.valid_requests, 4);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "http_legacy_initialization",
+            Some("2025-11-25"),
+            [0, 2, 1, 1],
+        );
+        assert_eq!(
+            report["outcome"],
+            if expected_success { "passed" } else { "failed" }
+        );
+        if expected_success {
+            assert_eq!(report["independent_findings"], json!([]));
+        } else {
+            assert!(
+                report["independent_findings"]
+                    .as_array()
+                    .is_some_and(|findings| !findings.is_empty())
+            );
+        }
+        assert_redacted(&output, &endpoint, &[LEGACY_SESSION]);
+    }
+}
+
+#[test]
 fn unsupported_current_revision_is_a_protocol_diagnosis_without_replay_or_fallback() {
     const MESSAGE_SENTINEL: &str = "synthetic-version-message-never-report-4a91";
     const VERSION_SENTINEL: &str = "synthetic-version-value-never-report-4a91";
@@ -3000,6 +3704,7 @@ fn unsupported_current_revision_is_a_protocol_diagnosis_without_replay_or_fallba
             }
             Some("json") => {
                 let report = parse_and_validate_report(&output.stdout);
+                assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
                 assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
                 assert_eq!(
                     report["primary_diagnosis"]["findings"][0]["code"],
@@ -3109,6 +3814,13 @@ fn passive_http_lifecycle_rejections_are_revision_diagnoses_without_replay() {
     assert_eq!(outcome.valid_requests, 1);
     assert_eq!(outcome.unexpected_connections, 0);
     let report = parse_and_validate_report(&output.stdout);
+    assert_protocol_selection(
+        &report,
+        "exact",
+        "exact_pin",
+        Some("2026-07-28"),
+        [0, 1, 0, 0],
+    );
     assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
     let finding = &report["primary_diagnosis"]["findings"][0];
     assert_eq!(finding["code"], "MCP-PROTOCOL-006");
@@ -3382,6 +4094,9 @@ fn redirects_status_replays_and_proxy_environment_are_fail_closed() {
     assert!(stderr.is_empty());
     assert!(stdout.contains("MCP-HTTP-002"));
     assert!(stdout.contains("HTTP status 307"));
+    assert!(stdout.contains(
+        "mode=auto · path=modern_discovery · selected=none · process_launches=0 · lifecycle_requests=1 · lifecycle_notifications=0 · fallbacks=0"
+    ));
     assert_redacted(&output, &endpoint, &[&trap_url]);
 }
 
@@ -3393,7 +4108,10 @@ fn authentication_and_retryable_statuses_are_structural_and_never_replayed() {
     for (status, reason, code) in [
         (401, "Unauthorized", "MCP-HTTP-AUTH-001"),
         (403, "Forbidden", "MCP-HTTP-AUTH-001"),
+        (404, "Not Found", "MCP-HTTP-002"),
+        (405, "Method Not Allowed", "MCP-HTTP-002"),
         (429, "Too Many Requests", "MCP-HTTP-002"),
+        (500, "Internal Server Error", "MCP-HTTP-002"),
     ] {
         let mut response = FixtureResponse::status(status, reason);
         response.fields.push((
@@ -3415,6 +4133,7 @@ fn authentication_and_retryable_statuses_are_structural_and_never_replayed() {
         let endpoint = server.endpoint();
         let environment = TestEnvironment::new();
         let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--format").arg("json");
         let output = run(&mut command);
         let outcome = server.finish();
 
@@ -3425,7 +4144,18 @@ fn authentication_and_retryable_statuses_are_structural_and_never_replayed() {
         let (stdout, stderr) = text(&output);
         assert!(stderr.is_empty());
         assert!(stdout.contains(code));
-        assert!(stdout.contains(&format!("HTTP status {status}")));
+        let report = parse_and_validate_report(&output.stdout);
+        assert!(
+            report["checks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|check| check["findings"].as_array())
+                .flatten()
+                .any(|finding| finding["evidence"]["http_status"] == status),
+            "missing HTTP status {status}: {report:#}"
+        );
+        assert_protocol_selection(&report, "auto", "modern_discovery", None, [0, 1, 0, 0]);
         assert_redacted(&output, &endpoint, &[CHALLENGE_SENTINEL, BODY_SENTINEL]);
     }
 }

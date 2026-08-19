@@ -183,13 +183,18 @@ logs, and tool results as untrusted.
   browser, refresh, or step-up flows; report `401` and `403`
   structurally without rendering or following challenge values.
 - Keep the stateless MCP `2026-07-28` POST binding as the default and sole
-  implicit active HTTP binding. The
-  [protocol support contract](docs/protocol-support.md) permits exact-selected
-  passive `inspect` handshakes for MCP `2025-11-25` and `2025-06-18`, including
-  their bounded optional session lifecycle, and exact-selected `check` and
-  `break` for those two legacy revisions through the shared adapter. Never use
-  fallback, retry, discovery, or another revision as authority. MCP
-  `2025-06-18` activity also requires the exact supported Draft
+  implicit active HTTP binding. Passive `inspect` defaults to the finite
+  transport-defined `auto` contract in
+  [protocol support](docs/protocol-support.md): one modern discovery, at most
+  one legacy-era transition, no modern retransmission or sequential guessing,
+  and one shared deadline and aggregate budget. STDIO must reap the first tree
+  before its one permitted legacy launch. Streamable HTTP must reuse the one
+  prepared canonical endpoint, pinned address set, peer checks, trust, and
+  credential authority without re-resolution. An explicit passive revision is
+  a strict one-lifecycle hard pin. The exact-selected `check` and
+  `break` may use the shared MCP `2025-11-25` and `2025-06-18` adapters but
+  never negotiate, retry, or fall back. MCP `2025-06-18` activity also requires
+  the exact supported Draft
   2020-12 declaration on every advertised schema interpreted for activity.
   Generate the exact protocol headers, validate and bound `x-mcp-header`
   mappings without treating them as execution authority, support bounded JSON
@@ -228,14 +233,19 @@ logs, and tool results as untrusted.
 - Keep fixtures for every claimed revision and test version negotiation or
   rejection deliberately.
 - MCP `2026-07-28` remains the default and sole implicit active revision.
-  Passive `inspect`, and `check` or `break` where the
+  Passive `inspect` defaults to bounded `auto` and may select only the compiled
+  current revision or, after the exact transport-specific legacy signal, one
+  supported `2025-11-25` or `2025-06-18` initialization. It never retransmits a
+  modern request, guesses sequential revisions, exceeds one legacy transition,
+  overlaps STDIO children, re-resolves HTTP, or broadens endpoint, peer,
+  credential, time, message, or output authority. An explicit passive revision
+  is a hard pin with no probe, retry, fallback, or downgrade. `check` and
+  `break` where the
   [protocol support matrix](docs/protocol-support.md#support-matrix) marks them
-  supported, may initialize only an exact explicit `2025-11-25` or
-  `2025-06-18` selection;
-  never discover, retry, downgrade, or fall back to one. Recognize `2025-03-26`
-  and `2024-11-05` only for precise unsupported diagnostics. Follow that
-  complete revision and transport matrix; `reject` never selects or claims a
-  legacy revision.
+  supported may initialize legacy only through an exact explicit selection.
+  Recognize `2025-03-26` and `2024-11-05` only for precise unsupported
+  diagnostics. Follow that complete revision and transport matrix;
+  `reject` never selects or claims a legacy revision.
 - Broad current-revision positioning requires every selected official and
   independent current-revision
   case to pass across at least two languages. Narrower credible reach requires

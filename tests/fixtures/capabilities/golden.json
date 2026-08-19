@@ -213,6 +213,46 @@
       ]
     }
   ],
+  "protocol_selection": {
+    "command": "inspect",
+    "default_mode": "auto",
+    "modes": [
+      "auto",
+      "exact"
+    ],
+    "compiled_modern_revisions": [
+      "2026-07-28"
+    ],
+    "exact_revisions": [
+      "2026-07-28",
+      "2025-11-25",
+      "2025-06-18"
+    ],
+    "exact_max_lifecycle_requests": 1,
+    "exact_max_fallbacks": 0,
+    "auto_transports": [
+      {
+        "transport": "stdio",
+        "legacy_path": "stdio_legacy_initialization",
+        "max_prepared_targets": 0,
+        "max_process_launches": 2,
+        "max_lifecycle_requests": 2,
+        "max_lifecycle_notifications": 1,
+        "max_fallbacks": 1,
+        "shared_total_and_aggregate_budgets": true
+      },
+      {
+        "transport": "streamable_http",
+        "legacy_path": "http_legacy_initialization",
+        "max_prepared_targets": 1,
+        "max_process_launches": 0,
+        "max_lifecycle_requests": 2,
+        "max_lifecycle_notifications": 1,
+        "max_fallbacks": 1,
+        "shared_total_and_aggregate_budgets": true
+      }
+    ]
+  },
   "schema_versions": {
     "aggregate": [
       "mcp-doctor.aggregate/v1"

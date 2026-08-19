@@ -23,7 +23,8 @@ use crate::transport::http::{
 use crate::transport::stdio::{StdioFailure, StdioLimit, StdioStream as TransportStream};
 use limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use model::{
-    CheckId, CheckResult, Finding, Location, LocationField, Requirement, RuleViolation, SkipReason,
+    CheckId, CheckResult, Finding, JsonRpcErrorKind, Location, LocationField, Requirement,
+    RuleViolation, SkipReason,
 };
 use protocol::SupportedRevision;
 use redaction::RedactedValue;
@@ -37,11 +38,12 @@ pub(crate) use active::{
     render_resolved_scenario_failure_for_revision, render_scenario_failure_for_revision,
     resolve_target_environment,
 };
-pub(crate) use catalog::PassiveCatalogConversation;
+pub(crate) use catalog::{AutoDiscoveryOutcome, PassiveCatalogConversation};
 pub(crate) use generate::GENERATOR_VERSION;
 pub(crate) use limits::DiagnosticLimitProfile;
 pub(crate) use protocol::{
-    ActiveProtocolRevision, KnownRevision, SupportedRevision as ProtocolRevision,
+    ActiveProtocolRevision, KnownRevision, PassiveProtocolSelection, ProtocolSelectionEvidence,
+    ProtocolSelectionMode, ProtocolSelectionPath, SupportedRevision as ProtocolRevision,
 };
 pub(crate) use report::{
     ExitStatus, REPORT_SCHEMA_VERSION, RenderedReportArtifact, ReportArtifactFormat, ReportFormat,
@@ -279,6 +281,11 @@ impl Diagnostic {
         self
     }
 
+    pub(crate) fn with_protocol_selection(mut self, selection: ProtocolSelectionEvidence) -> Self {
+        self.report = self.report.with_protocol_selection(selection);
+        self
+    }
+
     pub(crate) fn render(self, request: ReportRequest) -> RenderedDiagnostic {
         match render_reports(&self.report, request) {
             Ok(reports) => RenderedDiagnostic {
@@ -316,6 +323,27 @@ impl HttpDiagnostic {
                 ResponseFailure::UnsupportedProtocolVersion
             ))
         )
+    }
+
+    const fn modern_lifecycle_rejected(self) -> bool {
+        matches!(
+            self.failure,
+            Some(HttpFailure::Response(
+                ResponseFailure::MissingRequiredClientCapability
+                    | ResponseFailure::ContradictoryProtocolVersion
+            ))
+        )
+    }
+
+    const fn protocol_revision_limit(self) -> Option<(u64, u64)> {
+        match self.failure {
+            Some(HttpFailure::Limit {
+                kind: HttpLimit::ProtocolRevisions,
+                observed,
+                maximum,
+            }) => Some((observed, maximum)),
+            _ => None,
+        }
     }
 
     pub(in crate::contract) const fn without_primary_failure(self) -> Self {
@@ -366,9 +394,45 @@ pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
     revision: SupportedRevision,
     negotiated_revision: Option<protocol::KnownRevision>,
 ) -> Diagnostic {
+    if let Some((observed, maximum)) = diagnostic.protocol_revision_limit() {
+        let mut checks = http_checks_for_revision(diagnostic.without_primary_failure(), revision);
+        checks.extend(protocol_revision_limit_checks(revision, observed, maximum));
+        return render_checks_for_revision(checks, revision, negotiated_revision);
+    }
     if diagnostic.unsupported_protocol_version() {
         let mut checks = http_checks_for_revision(diagnostic.without_primary_failure(), revision);
         checks.extend(protocol_version_rejection_checks(revision));
+        return render_checks_for_revision(checks, revision, negotiated_revision);
+    }
+    if diagnostic.modern_lifecycle_rejected() {
+        let mut checks = http_checks_for_revision(diagnostic.without_primary_failure(), revision);
+        checks.extend([
+            CheckResult::performed(CheckId::ProtocolEnvelope, Requirement::Required, Vec::new()),
+            CheckResult::performed(
+                CheckId::ProtocolRevision,
+                Requirement::Required,
+                vec![Finding::lifecycle_method_rejected(
+                    revision,
+                    Location::root(LocationField::ServerDiscover).field(LocationField::Response),
+                    JsonRpcErrorKind::Other,
+                )],
+            ),
+            CheckResult::skipped(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                SkipReason::PrerequisiteFailed,
+            ),
+            CheckResult::skipped(
+                CheckId::RuntimeTools,
+                Requirement::Optional,
+                SkipReason::NotAuthorized,
+            ),
+        ]);
         return render_checks_for_revision(checks, revision, negotiated_revision);
     }
     let checks = http_checks_for_revision(diagnostic, revision);
@@ -409,6 +473,41 @@ pub(crate) fn render_http_diagnostic_for_revision_with_negotiated(
         ]);
     }
     render_checks_for_revision(checks, revision, negotiated_revision)
+}
+
+fn protocol_revision_limit_checks(
+    revision: SupportedRevision,
+    observed: u64,
+    maximum: u64,
+) -> Vec<CheckResult> {
+    vec![
+        CheckResult::performed(CheckId::ProtocolEnvelope, Requirement::Required, Vec::new()),
+        CheckResult::performed(
+            CheckId::ProtocolRevision,
+            Requirement::Required,
+            vec![Finding::limit_exceeded(
+                revision,
+                Location::root(LocationField::ServerDiscover).field(LocationField::Response),
+                LimitViolation::new(LimitKind::ProtocolRevisions, observed, maximum)
+                    .expect("the HTTP revision advertisement exceeds its maximum"),
+            )],
+        ),
+        CheckResult::skipped(
+            CheckId::DiscoveryCatalogs,
+            Requirement::Required,
+            SkipReason::LimitReached,
+        ),
+        CheckResult::skipped(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            SkipReason::LimitReached,
+        ),
+        CheckResult::skipped(
+            CheckId::RuntimeTools,
+            Requirement::Optional,
+            SkipReason::NotAuthorized,
+        ),
+    ]
 }
 
 fn protocol_version_rejection_checks(revision: SupportedRevision) -> Vec<CheckResult> {
@@ -583,7 +682,8 @@ fn http_failure_stage(failure: HttpFailure) -> HttpStage {
             | HttpLimit::ResponseFieldsBytes
             | HttpLimit::MessageBytes
             | HttpLimit::AggregateOutputBytes
-            | HttpLimit::MessageCount => HttpStage::Http,
+            | HttpLimit::MessageCount
+            | HttpLimit::ProtocolRevisions => HttpStage::Http,
         },
     }
 }
@@ -690,6 +790,18 @@ fn http_finding(failure: HttpFailure, revision: SupportedRevision) -> Option<Fin
                     Location::root(LocationField::Http).field(LocationField::Headers),
                     RuleViolation::HeaderMismatch,
                 ),
+                ResponseFailure::MissingRequiredClientCapability => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Body),
+                    RuleViolation::InvalidResponseMessage,
+                ),
+                ResponseFailure::ContradictoryProtocolVersion => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Body),
+                    RuleViolation::InvalidResponseMessage,
+                ),
+                ResponseFailure::LegacyEra => Finding::http_response_invalid(
+                    Location::root(LocationField::Http).field(LocationField::Status),
+                    RuleViolation::HttpStatusRejected { status: 400 },
+                ),
                 ResponseFailure::InvalidSession => Finding::http_response_invalid(
                     Location::root(LocationField::Http).field(LocationField::Headers),
                     RuleViolation::InvalidSession,
@@ -758,6 +870,7 @@ fn http_limit_kind(kind: HttpLimit) -> LimitKind {
         HttpLimit::MessageBytes => LimitKind::MessageBytes,
         HttpLimit::AggregateOutputBytes => LimitKind::AggregateOutputBytes,
         HttpLimit::MessageCount => LimitKind::MessageCount,
+        HttpLimit::ProtocolRevisions => LimitKind::ProtocolRevisions,
     }
 }
 
@@ -782,7 +895,10 @@ fn http_limit_location(kind: HttpLimit) -> Location {
         | HttpLimit::ResponseFieldsBytes => Location::root(LocationField::Http)
             .field(LocationField::Result)
             .field(LocationField::Headers),
-        HttpLimit::MessageBytes | HttpLimit::AggregateOutputBytes | HttpLimit::MessageCount => {
+        HttpLimit::MessageBytes
+        | HttpLimit::AggregateOutputBytes
+        | HttpLimit::MessageCount
+        | HttpLimit::ProtocolRevisions => {
             Location::root(LocationField::Http).field(LocationField::Body)
         }
         HttpLimit::DiscoveryTime

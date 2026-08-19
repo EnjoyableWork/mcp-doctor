@@ -43,6 +43,8 @@ const V2025_03_26: &str = KnownRevision::V2025_03_26.as_str();
 const V2024_11_05: &str = KnownRevision::V2024_11_05.as_str();
 const ACTIVE_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25, V2025_06_18];
 const INSPECT_REVISIONS: &[&str] = &[CURRENT_REVISION, V2025_11_25, V2025_06_18];
+const MODERN_INSPECT_REVISIONS: &[&str] = &[CURRENT_REVISION];
+const PROTOCOL_SELECTION_MODES: &[&str] = &["auto", "exact"];
 
 const COMMANDS: &[CommandCapability<'static>] = &[
     CommandCapability {
@@ -176,6 +178,29 @@ const PROTOCOL_SUPPORT: &[ProtocolSupport<'static>] = &[
     },
 ];
 
+const AUTO_SELECTION_TRANSPORTS: &[AutoSelectionTransportCapability<'static>] = &[
+    AutoSelectionTransportCapability {
+        transport: "stdio",
+        legacy_path: "stdio_legacy_initialization",
+        max_prepared_targets: 0,
+        max_process_launches: 2,
+        max_lifecycle_requests: 2,
+        max_lifecycle_notifications: 1,
+        max_fallbacks: 1,
+        shared_total_and_aggregate_budgets: true,
+    },
+    AutoSelectionTransportCapability {
+        transport: "streamable_http",
+        legacy_path: "http_legacy_initialization",
+        max_prepared_targets: 1,
+        max_process_launches: 0,
+        max_lifecycle_requests: 2,
+        max_lifecycle_notifications: 1,
+        max_fallbacks: 1,
+        shared_total_and_aggregate_budgets: true,
+    },
+];
+
 const REPORTERS: &[ReporterCapability<'static>] = &[
     ReporterCapability {
         name: HUMAN_REPORTER,
@@ -288,6 +313,7 @@ struct CapabilitiesManifest<'a> {
     commands: &'a [CommandCapability<'a>],
     protocol_revisions: &'a [ProtocolRevisionCapability<'a>],
     protocol_support: &'a [ProtocolSupport<'a>],
+    protocol_selection: ProtocolSelectionCapability<'a>,
     schema_versions: SchemaVersions<'a>,
     reporters: &'a [ReporterCapability<'a>],
     exit_semantics: ExitSemantics<'a>,
@@ -324,6 +350,30 @@ struct ProtocolSupport<'a> {
     command: &'a str,
     transport: &'a str,
     revisions: &'a [&'a str],
+}
+
+#[derive(Debug, Serialize)]
+struct ProtocolSelectionCapability<'a> {
+    command: &'a str,
+    default_mode: &'a str,
+    modes: &'a [&'a str],
+    compiled_modern_revisions: &'a [&'a str],
+    exact_revisions: &'a [&'a str],
+    exact_max_lifecycle_requests: u8,
+    exact_max_fallbacks: u8,
+    auto_transports: &'a [AutoSelectionTransportCapability<'a>],
+}
+
+#[derive(Debug, Serialize)]
+struct AutoSelectionTransportCapability<'a> {
+    transport: &'a str,
+    legacy_path: &'a str,
+    max_prepared_targets: u8,
+    max_process_launches: u8,
+    max_lifecycle_requests: u8,
+    max_lifecycle_notifications: u8,
+    max_fallbacks: u8,
+    shared_total_and_aggregate_budgets: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -429,6 +479,16 @@ fn manifest() -> CapabilitiesManifest<'static> {
         commands: COMMANDS,
         protocol_revisions: PROTOCOL_REVISIONS,
         protocol_support: PROTOCOL_SUPPORT,
+        protocol_selection: ProtocolSelectionCapability {
+            command: "inspect",
+            default_mode: "auto",
+            modes: PROTOCOL_SELECTION_MODES,
+            compiled_modern_revisions: MODERN_INSPECT_REVISIONS,
+            exact_revisions: INSPECT_REVISIONS,
+            exact_max_lifecycle_requests: 1,
+            exact_max_fallbacks: 0,
+            auto_transports: AUTO_SELECTION_TRANSPORTS,
+        },
         schema_versions: SchemaVersions {
             aggregate: AGGREGATE_SCHEMAS,
             capabilities: CAPABILITIES_SCHEMAS,
@@ -549,6 +609,34 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
     }
     writeln!(
         output,
+        "Passive selection: {} · default {} · modes {} · modern {} · exact {}",
+        manifest.protocol_selection.command,
+        manifest.protocol_selection.default_mode,
+        manifest.protocol_selection.modes.join(","),
+        manifest
+            .protocol_selection
+            .compiled_modern_revisions
+            .join(","),
+        manifest.protocol_selection.exact_revisions.join(",")
+    )
+    .map_err(|_| CapabilitiesError::Render)?;
+    for transport in manifest.protocol_selection.auto_transports {
+        writeln!(
+            output,
+            "  auto · {} · path {} · prepared_targets {} · process_launches {} · lifecycle_requests {} · lifecycle_notifications {} · fallbacks {} · shared_budgets {}",
+            transport.transport,
+            transport.legacy_path,
+            transport.max_prepared_targets,
+            transport.max_process_launches,
+            transport.max_lifecycle_requests,
+            transport.max_lifecycle_notifications,
+            transport.max_fallbacks,
+            transport.shared_total_and_aggregate_budgets
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
+    writeln!(
+        output,
         "Exit semantics: {}",
         manifest.exit_semantics.version
     )
@@ -615,6 +703,11 @@ mod tests {
         assert_eq!(document["product"]["name"], "mcp-doctor");
         assert_eq!(document["product"]["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(document["limits"]["output_bytes"], MAXIMUM_OUTPUT_BYTES);
+        assert_eq!(document["protocol_selection"]["default_mode"], "auto");
+        assert_eq!(
+            document["protocol_selection"]["compiled_modern_revisions"],
+            serde_json::json!(["2026-07-28"])
+        );
         assert!(first.stdout.contains("mcp-doctor.limits/capabilities/v1"));
     }
 
@@ -659,5 +752,10 @@ mod tests {
                 .contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18")
         );
         assert!(rendered.stdout.contains("mcp-doctor.exit/v1"));
+        assert!(
+            rendered
+                .stdout
+                .contains("Passive selection: inspect · default auto")
+        );
     }
 }
