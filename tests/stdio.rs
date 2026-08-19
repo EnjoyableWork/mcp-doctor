@@ -23,6 +23,8 @@ const REPORT_ONLY_HUMAN: &str = include_str!("fixtures/reports/unsupported-revis
 const REPORT_ONLY_JSON: &str = include_str!("fixtures/reports/unsupported-revision.json");
 const TOOL_DESCRIPTION_QUALITY_HUMAN: &str =
     include_str!("fixtures/reports/tool-description-quality.finding.txt");
+const TOOL_DESCRIPTION_PLACEHOLDER_HUMAN: &str =
+    include_str!("fixtures/reports/tool-description-placeholder.finding.txt");
 
 fn fixture() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_mcp-doctor-stdio-fixture"))
@@ -1270,6 +1272,157 @@ fn missing_and_blank_tool_descriptions_are_value_free_across_reporters_and_revis
         }
         assert!(!legacy_json.contains(SENTINEL), "{legacy_json}");
         assert!(!legacy_json.contains("synthetic-private"), "{legacy_json}");
+    }
+}
+
+#[test]
+fn placeholder_and_name_only_descriptions_are_value_free_across_reporters_and_revisions() {
+    const SENTINEL: &str = "synthetic-private-placeholder-never-report-64";
+    const NORMALIZED_SENTINEL: &str = "syntheticprivateplaceholderneverreport64nameonly";
+    const REMEDIATION: &str = "Replace the placeholder or name-only description with what the tool does and when to select it.";
+    let human_output = run_mode("tool-description-placeholder");
+    let json_output = run_json_mode("tool-description-placeholder");
+    let environment = TestEnvironment::new();
+    let junit_output = junit_inspect_command(&environment, "tool-description-placeholder")
+        .output()
+        .expect("mcp-doctor should project placeholder warnings as JUnit");
+    let (human, human_stderr) = text(&human_output);
+    let (json_text, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
+    let report = json_report(&json_output);
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+
+    assert!(human_output.status.success(), "{human}\n{human_stderr}");
+    assert!(json_output.status.success(), "{report:#}\n{json_stderr}");
+    assert!(junit_output.status.success(), "{junit}\n{junit_stderr}");
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert!(junit_stderr.is_empty());
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert_eq!(report["primary_diagnosis"], serde_json::Value::Null);
+    assert_eq!(report["summary"]["warned"], 1);
+    assert_eq!(junit_summary.failures, 0);
+    assert!(human.contains("WARN  discovery.catalogs"), "{human}");
+    assert!(
+        human.contains(TOOL_DESCRIPTION_PLACEHOLDER_HUMAN),
+        "the human report should retain the reviewed placeholder-finding golden output: {human}"
+    );
+    assert!(
+        junit.contains("report_outcome=passed\nexit_code=0"),
+        "{junit}"
+    );
+
+    let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 4, "{report:#}");
+    for (index, finding) in findings.iter().enumerate() {
+        let location = format!("tools[{index}].description");
+        assert_eq!(finding["code"], "MCP-QUALITY-003");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["protocol_revision"], "2026-07-28");
+        assert_eq!(finding["location"], location);
+        assert_eq!(
+            finding["message"],
+            "An advertised tool description provides no selection guidance."
+        );
+        assert_eq!(finding["remediation"], REMEDIATION);
+        assert_eq!(finding["evidence"]["kind"], "none");
+        assert!(human.contains("MCP-QUALITY-003"), "{human}");
+        assert!(human.contains(&location), "{human}");
+        assert!(human.contains(REMEDIATION), "{human}");
+        assert!(
+            junit.contains(&format!("finding[{index}].code=MCP-QUALITY-003")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].location={location}")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].remediation={REMEDIATION}")),
+            "{junit}"
+        );
+    }
+    assert!(!human.contains("tools[4].description"), "{human}");
+    assert!(!json_text.contains("tools[4].description"), "{json_text}");
+    assert!(!junit.contains("tools[4].description"), "{junit}");
+    assert!(!human.contains("tools[5].description"), "{human}");
+    assert!(!json_text.contains("tools[5].description"), "{json_text}");
+    assert!(!junit.contains("tools[5].description"), "{junit}");
+    for (reporter_index, output) in [human, json_text, junit.as_str()].into_iter().enumerate() {
+        for (canary_index, forbidden) in [
+            SENTINEL,
+            NORMALIZED_SENTINEL,
+            "SYNTHETIC_PRIVATE_PLACEHOLDER_NEVER_REPORT_64_NAME_ONLY",
+            "T.O.D.O",
+            "工具",
+            "café",
+            "CAFE",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(
+                !output.contains(forbidden),
+                "reporter {reporter_index} retained redaction canary {canary_index}"
+            );
+        }
+        assert!(
+            !output.contains("MCP-QUALITY-001"),
+            "reporter {reporter_index} emitted the blank-description code"
+        );
+    }
+    assert_report_findings_are_actionable(&report, human);
+
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-tool-description-placeholder",
+        )
+        .output()
+        .expect("mcp-doctor should reuse placeholder semantics for legacy revisions");
+        let (legacy_json, legacy_stderr) = text(&output);
+        let legacy = json_report(&output);
+        assert!(
+            output.status.success(),
+            "{revision}: {legacy:#}\n{legacy_stderr}"
+        );
+        assert!(legacy_stderr.is_empty());
+        assert_eq!(legacy["outcome"], "passed");
+        let legacy_findings = find_json_check(&legacy, "discovery.catalogs")["findings"]
+            .as_array()
+            .expect("the legacy discovery check should contain findings");
+        assert_eq!(legacy_findings.len(), 4, "{legacy:#}");
+        for (index, finding) in legacy_findings.iter().enumerate() {
+            assert_eq!(finding["code"], "MCP-QUALITY-003");
+            assert_eq!(finding["severity"], "warning");
+            assert_eq!(finding["protocol_revision"], revision);
+            assert_eq!(finding["location"], format!("tools[{index}].description"));
+            assert_eq!(finding["remediation"], REMEDIATION);
+            assert_eq!(finding["evidence"]["kind"], "none");
+        }
+        for (canary_index, forbidden) in [
+            SENTINEL,
+            NORMALIZED_SENTINEL,
+            "SYNTHETIC_PRIVATE_PLACEHOLDER_NEVER_REPORT_64_NAME_ONLY",
+            "T.O.D.O",
+            "工具",
+            "café",
+            "CAFE",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(
+                !legacy_json.contains(forbidden),
+                "revision {revision} retained redaction canary {canary_index}"
+            );
+        }
     }
 }
 

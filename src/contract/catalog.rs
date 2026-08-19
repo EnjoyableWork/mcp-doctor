@@ -665,6 +665,7 @@ enum FindingBucket {
 enum ToolDescriptionDiagnosis {
     Usable,
     MissingOrBlank(Finding),
+    PlaceholderOrNameOnly(Finding),
     Invalid(Finding),
 }
 
@@ -682,6 +683,16 @@ fn diagnose_tool_description(
             ToolDescriptionDiagnosis::MissingOrBlank(Finding::tool_description_missing_or_blank(
                 revision, location,
             ))
+        }
+        Some(Value::String(description))
+            if is_a1_v1_placeholder_or_name_only(
+                tool.get("name").and_then(Value::as_str),
+                description,
+            ) =>
+        {
+            ToolDescriptionDiagnosis::PlaceholderOrNameOnly(
+                Finding::tool_description_placeholder_or_name_only(revision, location),
+            )
         }
         Some(Value::String(_)) => ToolDescriptionDiagnosis::Usable,
         Some(description) => ToolDescriptionDiagnosis::Invalid(Finding::catalog_contract_invalid(
@@ -714,6 +725,72 @@ const fn is_a1_v1_whitespace(character: char) -> bool {
             | '\u{205F}'
             | '\u{3000}'
     )
+}
+
+const A1_V1_PLACEHOLDERS: [&str; 5] = ["todo", "tbd", "tool", "description", "placeholder"];
+
+fn is_a1_v1_placeholder_or_name_only(name: Option<&str>, description: &str) -> bool {
+    A1_V1_PLACEHOLDERS
+        .into_iter()
+        .any(|placeholder| a1_v1_normalized_eq(description, placeholder))
+        || name.is_some_and(|name| a1_v1_normalized_eq(description, name))
+}
+
+fn a1_v1_normalized_eq(left: &str, right: &str) -> bool {
+    A1V1Normalized::new(left).eq(A1V1Normalized::new(right))
+}
+
+/// A value-free iterator for the fixed A1 comparison. ASCII whitespace is
+/// trimmed at the boundaries and collapsed between retained characters,
+/// ASCII punctuation is omitted, and only ASCII letters are case-folded.
+/// Non-ASCII scalars are compared exactly and are never transliterated.
+struct A1V1Normalized<'a> {
+    characters: std::str::Chars<'a>,
+    pending_space: bool,
+    emitted: bool,
+    buffered: Option<char>,
+}
+
+impl<'a> A1V1Normalized<'a> {
+    fn new(value: &'a str) -> Self {
+        Self {
+            characters: value.chars(),
+            pending_space: false,
+            emitted: false,
+            buffered: None,
+        }
+    }
+}
+
+impl Iterator for A1V1Normalized<'_> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(character) = self.buffered.take() {
+            self.emitted = true;
+            return Some(character);
+        }
+        for character in self.characters.by_ref() {
+            if character.is_ascii_punctuation() {
+                continue;
+            }
+            if character.is_ascii_whitespace() {
+                if self.emitted {
+                    self.pending_space = true;
+                }
+                continue;
+            }
+            let character = character.to_ascii_lowercase();
+            if self.pending_space {
+                self.pending_space = false;
+                self.buffered = Some(character);
+                return Some(' ');
+            }
+            self.emitted = true;
+            return Some(character);
+        }
+        None
+    }
 }
 
 struct Analyzer {
@@ -1184,7 +1261,8 @@ impl Analyzer {
         let location = CatalogKind::Tools.location().index(index);
         match diagnose_tool_description(SupportedRevision::CURRENT, location.clone(), tool) {
             ToolDescriptionDiagnosis::Usable => {}
-            ToolDescriptionDiagnosis::MissingOrBlank(finding) => {
+            ToolDescriptionDiagnosis::MissingOrBlank(finding)
+            | ToolDescriptionDiagnosis::PlaceholderOrNameOnly(finding) => {
                 self.push(FindingBucket::Quality, finding);
             }
             ToolDescriptionDiagnosis::Invalid(finding) => {
@@ -2580,7 +2658,8 @@ impl LegacyAnalyzer {
     fn analyze_tool(&mut self, base: Location, tool: &Map<String, Value>) {
         match diagnose_tool_description(self.revision_kind, base.clone(), tool) {
             ToolDescriptionDiagnosis::Usable => {}
-            ToolDescriptionDiagnosis::MissingOrBlank(finding) => {
+            ToolDescriptionDiagnosis::MissingOrBlank(finding)
+            | ToolDescriptionDiagnosis::PlaceholderOrNameOnly(finding) => {
                 self.push(FindingBucket::Quality, finding);
             }
             ToolDescriptionDiagnosis::Invalid(finding) => {
@@ -3476,6 +3555,82 @@ mod tests {
         };
         assert_eq!(finding.code(), FindingCode::CatalogContractInvalid);
         assert_eq!(finding.location().to_string(), "tools[9].description");
+    }
+
+    #[test]
+    fn a1_v1_placeholder_and_name_only_comparison_is_exact_and_value_free() {
+        let positive = [
+            ("synthetic-selector", "todo"),
+            ("synthetic-selector", " T.B.D. "),
+            ("synthetic-selector", "TOOL!!!"),
+            ("synthetic-selector", "\tdEsCrIpTiOn\r\n"),
+            ("synthetic-selector", "PLACEHOLDER"),
+            ("synthetic-tool", "SYNTHETIC_TOOL"),
+            ("synthetic  selector", " synthetic\tselector "),
+            ("synthetic.tool", "SYNTHETIC-TOOL"),
+            ("todo", "T.O.D.O."),
+            ("工具", "工具"),
+        ];
+        for (index, (name, description)) in positive.into_iter().enumerate() {
+            let tool = json!({"name": name, "description": description});
+            let ToolDescriptionDiagnosis::PlaceholderOrNameOnly(finding) =
+                diagnose_tool_description(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Tools).index(index),
+                    tool.as_object().expect("the fixture should be an object"),
+                )
+            else {
+                panic!("positive A1 comparison case {index} should produce one finding");
+            };
+            assert_eq!(
+                finding.code(),
+                FindingCode::ToolDescriptionPlaceholderOrNameOnly
+            );
+            assert_eq!(finding.severity(), Severity::Warning);
+            assert_eq!(finding.revision(), SupportedRevision::CURRENT);
+            assert_eq!(
+                finding.location().to_string(),
+                format!("tools[{index}].description")
+            );
+            assert_eq!(finding.evidence(), &FindingEvidence::None);
+        }
+
+        let close_non_matches = [
+            ("synthetic-selector", "todo item"),
+            ("synthetic-selector", "tooling"),
+            ("synthetic-selector", "description text"),
+            ("synthetic-selector", "place holder"),
+            ("synthetic-selector", "tbd2"),
+            ("synthetic-tool", "Use synthetic tool"),
+            ("café", "CAFE"),
+            ("synthetic-selector", "tödö"),
+        ];
+        for (index, (name, description)) in close_non_matches.into_iter().enumerate() {
+            let tool = json!({"name": name, "description": description});
+            assert!(
+                matches!(
+                    diagnose_tool_description(
+                        SupportedRevision::CURRENT,
+                        Location::root(LocationField::Tools).index(index),
+                        tool.as_object().expect("the fixture should be an object"),
+                    ),
+                    ToolDescriptionDiagnosis::Usable
+                ),
+                "close non-match case {index} must not be guessed"
+            );
+        }
+
+        for description in ["", " \t\r\n"] {
+            let tool = json!({"name": "todo", "description": description});
+            assert!(matches!(
+                diagnose_tool_description(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Tools).index(0),
+                    tool.as_object().expect("the fixture should be an object"),
+                ),
+                ToolDescriptionDiagnosis::MissingOrBlank(_)
+            ));
+        }
     }
 
     #[test]

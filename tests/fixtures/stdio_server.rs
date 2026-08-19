@@ -51,6 +51,7 @@ fn main() -> ExitCode {
         Some("catalog-duplicate") => catalog_duplicate(),
         Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
         Some("tool-description-quality") => tool_description_quality(),
+        Some("tool-description-placeholder") => tool_description_placeholder(),
         Some("tool-description-non-string") => tool_description_non_string(),
         Some("tool-description-finding-limit") => tool_description_finding_limit(),
         Some("schema-invalid") => schema_invalid(),
@@ -78,6 +79,7 @@ fn main() -> ExitCode {
         Some("legacy-lifecycle-method-not-found") => legacy_lifecycle_error(-32601),
         Some("legacy-catalog-method-errors") => legacy_catalog_method_errors(),
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
+        Some("legacy-tool-description-placeholder") => legacy_tool_description_placeholder(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
         Some("legacy-schema-external") => legacy_schema_external(),
@@ -1406,6 +1408,19 @@ fn tool_description_quality() -> ExitCode {
     )
 }
 
+fn tool_description_placeholder() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tool_description_placeholder_tools()
+        }),
+    )
+}
+
 fn legacy_tool_description_quality() -> ExitCode {
     let mut input = io::BufReader::new(io::stdin().lock());
     let revision = read_initialize(&mut input);
@@ -1420,6 +1435,24 @@ fn legacy_tool_description_quality() -> ExitCode {
     read_initialized(&mut input);
     read_legacy_request(&mut input, 2, "tools/list", None);
     write_result(2, json!({"tools": tool_description_quality_tools()}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_tool_description_placeholder() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-legacy-placeholder", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(2, json!({"tools": tool_description_placeholder_tools()}));
     assert_eof(&mut input);
     ExitCode::SUCCESS
 }
@@ -1451,6 +1484,49 @@ fn tool_description_quality_tools() -> Vec<Value> {
         json!({
             "name": format!("{SENTINEL}-usable"),
             "description": format!("Use the {SENTINEL} tool for a synthetic bounded operation."),
+            "inputSchema": schema()
+        }),
+    ]
+}
+
+fn tool_description_placeholder_tools() -> Vec<Value> {
+    const SENTINEL: &str = "synthetic-private-placeholder-never-report-64";
+    let schema = || {
+        json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "additionalProperties": false
+        })
+    };
+    vec![
+        json!({
+            "name": format!("{SENTINEL}-selector"),
+            "description": " T.O.D.O!!! ",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": format!("{SENTINEL}-name-only"),
+            "description": "SYNTHETIC_PRIVATE_PLACEHOLDER_NEVER_REPORT_64_NAME_ONLY",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": "todo",
+            "description": "T.O.D.O.",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": "工具",
+            "description": "工具",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": format!("{SENTINEL}-usable"),
+            "description": "Use this bounded synthetic selector for a reviewed operation.",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": "café",
+            "description": "CAFE",
             "inputSchema": schema()
         }),
     ]
