@@ -1,6 +1,6 @@
 #![allow(
     dead_code,
-    reason = "the M1 contract includes checks consumed by later ordered tickets"
+    reason = "the complete diagnostic model includes checks used by optional command paths"
 )]
 
 mod active;
@@ -1044,7 +1044,7 @@ fn render_checks_for_revision(
     revision: SupportedRevision,
     negotiated_revision: Option<protocol::KnownRevision>,
 ) -> Diagnostic {
-    let mut report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+    let mut report = DiagnosticReport::new(revision, DiagnosticLimits::DEFAULTS, checks)
         .expect("the STDIO application must construct a valid diagnostic report");
     if let Some(negotiated_revision) = negotiated_revision {
         report = report.with_negotiated_revision(negotiated_revision);

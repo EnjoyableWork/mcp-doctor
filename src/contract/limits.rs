@@ -231,7 +231,7 @@ impl DiagnosticLimitProfile {
 
     pub(super) const fn limits(self) -> DiagnosticLimits {
         match self {
-            Self::Default => DiagnosticLimits::M1_DEFAULTS,
+            Self::Default => DiagnosticLimits::DEFAULTS,
             Self::SlowStart => DiagnosticLimits::SLOW_START,
         }
     }
@@ -241,7 +241,7 @@ impl DiagnosticLimitProfile {
 pub(super) struct DiagnosticLimits(LimitValues);
 
 impl DiagnosticLimits {
-    pub(super) const M1_DEFAULTS: Self = Self(LimitValues {
+    pub(super) const DEFAULTS: Self = Self(LimitValues {
         startup_ms: 10_000,
         discovery_ms: 10_000,
         request_ms: 30_000,
@@ -287,7 +287,7 @@ impl DiagnosticLimits {
     });
 
     pub(super) const SLOW_START: Self = {
-        let mut values = Self::M1_DEFAULTS.0;
+        let mut values = Self::DEFAULTS.0;
         values.startup_ms = 30_000;
         values.discovery_ms = 30_000;
         values.request_ms = 60_000;
@@ -416,7 +416,7 @@ impl DiagnosticLimits {
 
 impl Default for DiagnosticLimits {
     fn default() -> Self {
-        Self::M1_DEFAULTS
+        Self::DEFAULTS
     }
 }
 
@@ -513,12 +513,12 @@ mod tests {
     };
 
     #[test]
-    fn m1_defaults_are_finite_and_internally_consistent() {
-        let values = DiagnosticLimits::M1_DEFAULTS.values();
+    fn defaults_are_finite_and_internally_consistent() {
+        let values = DiagnosticLimits::DEFAULTS.values();
 
         assert_eq!(
             DiagnosticLimits::try_from_values(values),
-            Ok(DiagnosticLimits::M1_DEFAULTS)
+            Ok(DiagnosticLimits::DEFAULTS)
         );
         assert_eq!(values.startup_ms, 10_000);
         assert_eq!(values.total_ms, 120_000);
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn invalid_limit_relationships_are_rejected() {
-        let base = DiagnosticLimits::M1_DEFAULTS.values();
+        let base = DiagnosticLimits::DEFAULTS.values();
 
         assert_eq!(
             DiagnosticLimits::try_from_values(LimitValues {

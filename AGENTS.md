@@ -6,14 +6,10 @@
 Protocol servers. Write the product name as lowercase `mcp-doctor`; format
 commands, paths, protocol values, configuration keys, and filenames as code.
 
-The project has four distinct authorities:
+The public project has three repository authorities:
 
 - [README.md](README.md) is the north-star product page. It describes the
   intended finished experience and should not become a progress diary.
-- The
-  [mcp-doctor: Category Leadership](https://linear.app/enjoyablework/project/mcp-doctor-category-leadership-ff35a964e5d3)
-  Linear project is the sole delivery authority for priorities, sequencing,
-  ownership, dependencies, risks, decisions, status, and completion.
 - Repository policy and focused documentation define durable product, safety,
   protocol, contribution, and release contracts. They must not become a
   roadmap, ticket board, decision log, or status mirror.
@@ -24,6 +20,38 @@ The project has four distinct authorities:
 Do not describe a protocol revision, transport, diagnostic, platform, output
 format, or installation channel as implemented unless its acceptance evidence
 exists.
+
+### Public context boundary
+
+Everything committed to this open-source repository must be understandable and
+reviewable using the repository and publicly accessible sources alone. Private
+planning systems may coordinate priorities and assignments, but they are not a
+product, implementation, review, or evidence authority.
+
+- Do not put private tracker names, organization-only URLs, private issue IDs,
+  internal documents, meeting notes, private conversations, or inaccessible
+  evaluation material in source, comments, tests, fixtures, documentation,
+  templates, commit messages, or release notes.
+- Do not put coding-agent control prompts, hidden prompt mechanics, model
+  reasoning, chat transcripts, runtime goal instructions, or token-budget
+  instructions in repository guidance or use them to explain an implementation.
+  Public MCP prompt fixtures and repository-published agent usage documentation
+  are allowed when they are themselves reviewed, testable product surfaces.
+- Source comments must explain the invariant, safety boundary, protocol rule, or
+  non-obvious tradeoff directly. Never make a contributor retrieve an external
+  discussion to learn why the code is correct.
+- A privately coordinated decision that affects the repository must be
+  translated into a self-contained public contract, focused change rationale,
+  and acceptance evidence before or with its implementation. Omit private
+  provenance rather than citing it.
+- Link a GitHub issue, pull request, specification, advisory, release, or other
+  source only when the referenced material is publicly accessible and useful to
+  verify the statement. Durable behavior belongs in code, tests, and focused
+  documentation rather than only in an issue discussion.
+- Suspected vulnerabilities may remain private while coordinated under
+  [SECURITY.md](SECURITY.md). Public repository text must rely only on the
+  resulting advisory, release evidence, or another deliberately published
+  non-sensitive record.
 
 The project-wide north star is a safe, noninteractive server-author preflight
 that identifies the earliest actionable failing layer, explains it precisely,
@@ -61,22 +89,16 @@ claim.
 Rust 2024 is the selected implementation language. Begin with one installable
 binary crate and cohesive internal modules. A workspace, published library,
 plug-in system, daemon, GUI, or hosted service requires a demonstrated consumer
-and an accepted decision in the governing Linear issue.
+and a publicly reviewable design with focused acceptance evidence.
 
-Follow the ordered work in the Linear project. Associate every material change
-with a Linear issue, keep one main-story issue in progress, and link durable
-evidence before marking it done. Each issue must state a focused outcome,
-dependencies, safety impact, acceptance evidence, and deterministic definition
-of done. Optional work cannot become a hidden prerequisite; promote it into the
-ordered story if a release depends on it. Delivery status belongs only in
-Linear; do not add a repository roadmap, ticket board, ADR log, or progress
-mirror. Assurance work must not rewrite or broaden claims about immutable
-release artifacts.
-
-When a runtime supports persistent goals, use the active ticket's objective as
-the thread goal. A goal cannot waive dependencies, safety rules, open decisions,
-or evidence gates. Do not assign a token budget unless the user explicitly
-requests one.
+Private planning may select and sequence work, but every repository change must
+stand on a focused, observable public outcome. State dependencies, safety
+impact, verification, and any remaining limitation in the public pull request
+or issue when one exists. Optional work cannot become a hidden prerequisite;
+make a release dependency explicit in the public change and release contract.
+Do not add a roadmap, ticket board, private-decision mirror, or progress diary
+to repository documentation. Assurance work must not rewrite or broaden claims
+about immutable release artifacts.
 
 ## Architecture
 
@@ -249,13 +271,14 @@ logs, and tool results as untrusted.
 - Broad current-revision positioning requires every selected official and
   independent current-revision
   case to pass across at least two languages. Narrower credible reach requires
-  explicit readiness or migration language and a separate compatibility ticket;
-  no credible independent pass blocks M1.
+  explicit readiness or migration language and a separately reviewed public
+  compatibility change. Broad positioning remains blocked until credible
+  independent evidence passes.
 - Follow the supported JSON Schema dialect exactly. Reject unsupported or
   ambiguous behavior with a typed diagnostic rather than guessing.
 - Do not use live network documentation as runtime behavior. Record the
-  accepted protocol contract and update it through a reviewed ticket when the
-  specification changes.
+  accepted protocol contract and update it through a reviewed public change
+  when the specification changes.
 
 ## Dependencies
 
@@ -263,10 +286,10 @@ logs, and tool results as untrusted.
   existing graph; do not add a crate or tool for a trivial helper, convenience,
   speculative future use, or functionality that the project already has.
 - Every runtime, build, development, and standalone testing dependency requires
-  an owning ticket and a concrete capability that the existing graph cannot
-  safely or reasonably provide. Test-only code still executes in contributor
-  and CI environments and receives the same supply-chain scrutiny as product
-  code.
+  a concrete capability that the existing graph cannot safely or reasonably
+  provide and a public review record containing the required evidence. Test-only
+  code still executes in contributor and CI environments and receives the same
+  supply-chain scrutiny as product code.
 - Before adoption, record the selected release and review its upstream
   stewardship, release and issue activity, security-response path, ownership or
   provenance changes, license compatibility, advisories, unsafe code and build
@@ -281,10 +304,11 @@ logs, and tool results as untrusted.
   test, package, install, and policy commands. The lockfile fixes the complete
   resolved graph; exact direct requirements make intentional upgrades visible
   in the manifest. Neither control proves that selected source is trustworthy.
-- Use stable releases only. A pre-release requires an accepted decision and
-  focused evidence. Git dependencies, alternate registries, unpublished forks,
-  and unpinned remote test data are prohibited unless an accepted decision
-  updates the source policy and records why crates.io cannot meet the need.
+- Use stable releases only. A pre-release requires an explicit public review
+  and focused evidence. Git dependencies, alternate registries, unpublished
+  forks, and unpinned remote test data are prohibited unless an explicit public
+  review updates the source policy and records why crates.io cannot meet the
+  need.
 - Disable default features when the required capability can be selected
   narrowly. A feature expansion is a dependency change and receives the same
   review as a new crate.
@@ -295,8 +319,8 @@ logs, and tool results as untrusted.
   Prefer a focused update when a grouped change obscures causality.
 - Pin standalone CI and diagnostic tools to an exact release or immutable
   revision at first use, record the version with its evidence, and run invasive
-  tools in disposable or copied trees. Select versions when the owning ticket
-  starts rather than freezing speculative choices in advance.
+  tools in disposable or copied trees. Select versions when the focused change
+  is reviewed rather than freezing speculative choices in advance.
 - An exact immutable, size- and digest-pinned CI artifact may be acquired at
   most three times when a bounded attempt fails with an explicitly classified
   transient transport error or `408`, `429`, `500`, `502`, `503`, or `504`.
@@ -305,17 +329,17 @@ logs, and tool results as untrusted.
   failures, permanent responses, checksum or layout mismatches, tool execution,
   builds, tests, SBOM generation, validation, publication, jobs, or workflows;
   an eventual acquisition is availability evidence, not correctness evidence.
-- Conditional tools default to rejection. The owning Linear issue may adopt one
-  without separate owner approval only after recording a concrete measured
-  need, the complete review above, its focused use, and pull-request evidence.
+- Conditional tools default to rejection. Adopt one only through a focused
+  public review that records a concrete measured need, the complete review
+  above, its narrow use, and pull-request evidence.
 - Do not implement JSON Schema validation, HTTP framing, process-tree control,
   cryptography, or fuzz-generation semantics casually when a maintained,
   reviewed implementation is safer.
-- Record dependency and testing-tool introductions in the governing Linear
-  issue and pull request, and keep `deny.toml` current. A new license, source,
-  duplicate version, ignored advisory, or broad exception requires an explicit
-  review. Remove or replace a dependency when its need disappears or its
-  maintenance, security, or reliability no longer satisfies this policy.
+- Record dependency and testing-tool introductions in the public pull request
+  and keep `deny.toml` current. A new license, source, duplicate version,
+  ignored advisory, or broad exception requires an explicit public review.
+  Remove or replace a dependency when its need disappears or its maintenance,
+  security, or reliability no longer satisfies this policy.
 
 ## Testing and verification
 
@@ -356,8 +380,8 @@ handling, or a false success claim requires a regression test.
   and one outer deadline prevents an indefinite hang.
 - Treat pass/fail variance on identical source as an unresolved defect. A green
   rerun is evidence of nondeterminism, not acceptance evidence; preserve the
-  failed attempt, classify it in the owning ticket or risk, and do not add an
-  automatic test, job, or workflow retry.
+  failed attempt, classify it in a public issue or pull-request risk record, and
+  do not add an automatic test, job, or workflow retry.
 - A narrowly bounded retry is permitted only for the idempotent download of one
   immutable size- and digest-pinned Syft asset documented in
   [the deterministic CI audit](docs/deterministic-ci.md), only for its
@@ -394,8 +418,10 @@ the first three checks through a disposable user environment.
 
 ## Documentation and release claims
 
-- Preserve the README as a polished description of the destination. Track the
-  gap between that promise and current delivery only in the Linear project.
+- Preserve the README as a polished description of the destination. Do not turn
+  it or focused documentation into a delivery-status mirror. Public GitHub
+  issues and pull requests may describe scoped proposals and implementation;
+  only shipped evidence may be described as available behavior.
 - Update public behavior, safety boundaries, and examples with the code that
   changes them.
 - Use generic names and synthetic values. Never commit local user paths,
@@ -407,9 +433,9 @@ the first three checks through a disposable user environment.
 - A stable macOS or Windows binary requires the signing and native verification
   contract accepted for that platform; unsigned artifacts are not a silent
   fallback.
-- Publish no assurance badge or trust claim until its owning ticket verifies the
-  official proof, exact framework version, scope, date, public evidence, and
-  rendered destination on exact `main`.
+- Publish no assurance badge or trust claim until a public evidence record
+  verifies the official proof, exact framework version, scope, date, public
+  evidence, and rendered destination on exact `main`.
 - Correct or remove assurance language immediately when its framework, issuer,
   scope, evidence, repository controls, organization boundary, or release
   pipeline changes invalidate the claim.
@@ -421,5 +447,5 @@ the first three checks through a disposable user environment.
 - Follow Conventional Commits: `<type>[optional scope]: <imperative summary>`.
 - Do not commit, push, rewrite history, create tags, publish releases, or open
   pull requests unless the user requests it.
-- At handoff, state the ticket outcome, files changed, checks run, and any
+- At handoff, state the change outcome, files changed, checks run, and any
   remaining assumption, risk, or unverified external gate.

@@ -81,8 +81,8 @@ Maintainers apply the public policy above through this non-disclosing lifecycle:
 7. Before publication, replace provisional data with exact affected and fixed
    versions, impact, severity, mitigation, credit, and the CVE decision.
 8. Publish the advisory when users have a safe upgrade or verified mitigation,
-   then link the public advisory from release notes and the governing Linear
-   issue's non-sensitive completion evidence.
+   then link the public advisory from release notes and any non-sensitive public
+   completion evidence.
 
 Keep independent root causes in separate draft advisories even when their fixes
 share one coordinated release. Active advisory identifiers, exploit details,

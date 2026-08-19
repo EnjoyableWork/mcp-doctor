@@ -512,7 +512,7 @@ mod tests {
     use crate::contract::limits::{DiagnosticLimits, LimitKind};
 
     fn revision_limit() -> u64 {
-        DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions
+        DiagnosticLimits::DEFAULTS.values().protocol_revisions
     }
 
     #[derive(Debug, Deserialize)]

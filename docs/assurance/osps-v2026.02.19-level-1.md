@@ -39,7 +39,7 @@ verifiers were re-run where their current authority remained available:
 - the credential-free community and license verifier passed exact `main`
   `21b189f9fd9ed97f1fcaf9d47c75b4f120678689` on 2026-08-15 with canonical
   SHA-256 `41361ad8db72283147783b7c582ab1560d7607e6b6ec80880a5e5c24e5aba873`;
-- the `MCPD-017` non-disclosing organization verifier passed on 2026-08-15 with
+- the non-disclosing organization verifier passed on 2026-08-15 with
   canonical SHA-256 `8f3b2c3db5f81a174d93bbcdaa8341e816b15c6ae059329fe5d61925c91a8111`.
   Its one-run credential was then revoked and rejected on reuse, so this
   assessment reuses that same-day bounded result instead of recreating

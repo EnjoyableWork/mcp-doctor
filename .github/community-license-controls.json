@@ -219,7 +219,7 @@
     {
       "surface": "supply_chain_and_complete_assurance",
       "state": "not_claimed",
-      "reason": "MCPD-015 verifies public community, repository, channel, and license evidence only; completed MCPD-016 separately authenticates the supply chain, while MCPD-018 owns complete-assurance work."
+      "reason": "This projection verifies public community, repository, channel, and license evidence only. The separate supply-chain projection covers artifact authentication; a complete-assurance claim requires its own dated assessment."
     }
   ],
   "mapped_controls": [

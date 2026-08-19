@@ -108,8 +108,8 @@ was removed locally and confirmed revoked server-side after publication.
    `EnjoyableWork/homebrew-tap/Formula/mcp-doctor.rb`; do not regenerate or
    hand-edit it after release. Require the public raw file to match.
 8. Run `.github/workflows/release-channels.yml` for `0.1.0`. It is read-only
-   and credential-free. Record its native matrix and the immutable release in
-   the governing Linear release issue, then open the dated
+   and credential-free. Record its public run URL, native matrix, and immutable
+   release in the dated
    [adoption checkpoint](adoption.md).
 
 ## Releases after v0.1.0
@@ -172,7 +172,7 @@ not permission to weaken it for a later release.
 [`v0.3.0`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.3.0)
 published the completed optional compatibility, contract-artifact, report-file,
 offline-aggregation, and structured protocol-rejection work without changing
-the retained release authority or making an M4 assurance claim. Protected
+the retained release authority or making a broader assurance claim. Protected
 [PR 54](https://github.com/EnjoyableWork/mcp-doctor/pull/54) passed
 first-attempt exact-head
 [CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31746397550) and
@@ -244,7 +244,7 @@ and
 [report-publication advisory](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-8r6p-qf9j-vpvx)
 were published together only after those installed-channel gates completed.
 The non-sensitive merge, correction, release, and restoration record is
-[retained separately](assurance/mcpd-034-security-release.md).
+[retained separately](assurance/v0.3.1-security-release.md).
 
 ## v0.3.2 Agent Skill payload contract
 
@@ -350,7 +350,7 @@ source and the explicit partial-release recovery then published the exact
 immutable source byte to crates.io; the tap-owned Homebrew handoff and all ten
 represented installed-channel jobs passed before the two distinct advisories
 were published together. The
-[non-sensitive completion record](assurance/mcpd-036-security-release.md)
+[non-sensitive completion record](assurance/v0.3.3-security-release.md)
 binds the exact commits, first-attempt protected and rehearsal runs, recovered
 bytes, channel identities, affected ranges, and public advisories.
 
@@ -462,7 +462,7 @@ branches without changing `Cargo.toml`, creating a tag, or publishing a byte:
    This confirms the generalized verifier remains credential-free and all
    existing public channel bytes and installed diagnostic smokes still pass.
 
-The dated M4 supply-chain operator audit is a separate historical-evidence
+The dated supply-chain operator audit is a separate historical-evidence
 gate. When it is required, `scripts/verify-supply-chain-controls.sh`
 authenticates the canonical `v0.3.0` Homebrew formula at its recorded immutable
 full tap commit; it does not require rolling `homebrew-tap/main` to remain at
@@ -481,10 +481,13 @@ field instead. A missing, malformed, mismatched, or `true` field fails closed.
 The REST response continues to own repository identity, visibility, archive,
 default-branch, and security-update state.
 
-Record the four successful run links, exact environment-policy readback, and
-trusted-publisher readback in the governing Linear release issue. Repeat and
-record this rehearsal after any workflow, environment, publisher, or authority
-change; a workflow file or local test alone is not completion evidence.
+Record the four successful public run links and a non-sensitive structural
+summary of the environment-policy and trusted-publisher readbacks in the GitHub
+release or dated [adoption checkpoint](adoption.md). If a control cannot be
+independently inspected, state that limitation instead of presenting it as
+public proof. Repeat and record this rehearsal after any workflow, environment,
+publisher, or authority change; a workflow file or local
+test alone is not completion evidence.
 
 ### Credential inventory gate
 

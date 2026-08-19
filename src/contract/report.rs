@@ -2211,7 +2211,7 @@ mod tests {
 
         DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 CheckResult::skipped(
                     CheckId::RuntimeTools,
@@ -2334,7 +2334,7 @@ mod tests {
     fn every_reporter_enforces_the_declared_output_byte_limit() {
         let limits = DiagnosticLimits::try_from_values(LimitValues {
             report_bytes: 32,
-            ..DiagnosticLimits::M1_DEFAULTS.values()
+            ..DiagnosticLimits::DEFAULTS.values()
         })
         .expect("the synthetic report byte limit should be valid");
         let report = DiagnosticReport::new(
@@ -2366,7 +2366,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 CheckResult::performed(
                     CheckId::TransportStdio,
@@ -2443,7 +2443,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::ProtocolEnvelope,
                 Requirement::Required,
@@ -2480,7 +2480,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::DiscoveryCatalogs,
                 Requirement::Required,
@@ -2507,7 +2507,7 @@ mod tests {
     fn required_skips_are_incomplete_while_optional_skips_can_pass() {
         let required_skip = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 passing_revision_check(),
                 CheckResult::skipped(
@@ -2523,7 +2523,7 @@ mod tests {
 
         let optional_skip = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 passing_revision_check(),
                 CheckResult::skipped(
@@ -2549,7 +2549,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 CheckResult::performed(
                     CheckId::SchemaContracts,
@@ -2584,7 +2584,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::SchemaContracts,
                 Requirement::Required,
@@ -2626,7 +2626,7 @@ mod tests {
         );
         let mixed = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::SchemaContracts,
                 Requirement::Required,
@@ -2655,7 +2655,7 @@ mod tests {
         let sentinel = "synthetic-private-revision-never-report-7f2c";
         let RevisionSelection::Unsupported(advertisement) = select_server_revision(
             ["2025-11-25", "1900-01-01", sentinel],
-            DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions,
+            DiagnosticLimits::DEFAULTS.values().protocol_revisions,
         ) else {
             panic!("a legacy and unknown advertisement must not negotiate")
         };
@@ -2666,7 +2666,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::ProtocolRevision,
                 Requirement::Required,
@@ -2695,7 +2695,7 @@ mod tests {
     fn a_report_with_no_performed_checks_is_incomplete() {
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::skipped(
                 CheckId::RuntimeTools,
                 Requirement::Optional,
@@ -2712,7 +2712,7 @@ mod tests {
     fn a_report_without_a_required_check_is_incomplete() {
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::RuntimeTools,
                 Requirement::Optional,
@@ -2733,7 +2733,7 @@ mod tests {
         );
         let warning_report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::DiscoveryCatalogs,
                 Requirement::Required,
@@ -2751,7 +2751,7 @@ mod tests {
         );
         let critical_report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![CheckResult::performed(
                 CheckId::RuntimeTools,
                 Requirement::Required,
@@ -2784,7 +2784,7 @@ mod tests {
         );
         let report = DiagnosticReport::new(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS,
+            DiagnosticLimits::DEFAULTS,
             vec![
                 CheckResult::performed(
                     CheckId::TransportStdio,
@@ -2820,7 +2820,7 @@ mod tests {
         assert_eq!(
             DiagnosticReport::new(
                 SupportedRevision::CURRENT,
-                DiagnosticLimits::M1_DEFAULTS,
+                DiagnosticLimits::DEFAULTS,
                 vec![CheckResult::skipped(
                     CheckId::ProtocolEnvelope,
                     Requirement::Required,
@@ -2840,7 +2840,7 @@ mod tests {
         assert_eq!(
             DiagnosticReport::new(
                 SupportedRevision::CURRENT,
-                DiagnosticLimits::M1_DEFAULTS,
+                DiagnosticLimits::DEFAULTS,
                 vec![
                     CheckResult::skipped(
                         CheckId::ProtocolEnvelope,
@@ -2866,7 +2866,7 @@ mod tests {
         assert_eq!(
             DiagnosticReport::new(
                 SupportedRevision::CURRENT,
-                DiagnosticLimits::M1_DEFAULTS,
+                DiagnosticLimits::DEFAULTS,
                 Vec::new(),
             ),
             Err(ReportContractError::NoChecks)
@@ -2874,7 +2874,7 @@ mod tests {
         assert_eq!(
             DiagnosticReport::new(
                 SupportedRevision::CURRENT,
-                DiagnosticLimits::M1_DEFAULTS,
+                DiagnosticLimits::DEFAULTS,
                 vec![passing_revision_check(), passing_revision_check()],
             ),
             Err(ReportContractError::DuplicateCheck(
@@ -2885,7 +2885,7 @@ mod tests {
 
     #[test]
     fn reports_reject_more_findings_than_the_declared_limit() {
-        let base = DiagnosticLimits::M1_DEFAULTS.values();
+        let base = DiagnosticLimits::DEFAULTS.values();
         let limits = DiagnosticLimits::try_from_values(LimitValues {
             report_findings: 1,
             ..base

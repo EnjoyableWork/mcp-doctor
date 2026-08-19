@@ -645,8 +645,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let security_notes = repository_file("docs/releases/v0.3.1.md");
     let agent_notes = repository_file("docs/releases/v0.3.2.md");
     let current_notes = repository_file("docs/releases/v0.3.3.md");
-    let security_record = repository_file("docs/assurance/mcpd-034-security-release.md");
-    let bounded_work_record = repository_file("docs/assurance/mcpd-036-security-release.md");
+    let security_record = repository_file("docs/assurance/v0.3.1-security-release.md");
+    let bounded_work_record = repository_file("docs/assurance/v0.3.3-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -704,7 +704,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "32000204694",
         "32000204757",
         "32000204919",
-        "mcpd-036-security-release.md",
+        "v0.3.3-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
         "passed all ten jobs",
@@ -781,8 +781,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         );
     }
     for contract in [
-        "MCPD-034 coordinated security-release record",
-        "MCPD-034-SECURITY-20260817-02",
+        "v0.3.1 coordinated security-release record",
+        "2026-08-17T00:22:40.893Z",
         "31981850276",
         "No unchanged-source workflow",
         "3aabbbd31b54b81d42531918766a6d2794259fb6",
@@ -791,11 +791,11 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     ] {
         assert!(
             security_record.contains(contract),
-            "MCPD-034 completion record should preserve {contract}"
+            "v0.3.1 security-release record should preserve {contract}"
         );
     }
     for contract in [
-        "MCPD-036 coordinated bounded-work security-release record",
+        "v0.3.3 coordinated bounded-work security-release record",
         "32095369800",
         "995d471b0024a6d1e16b85e1778168bd27d3aebc",
         "7e5fff3b7fa953a4ae371739a6046db9cd56feca",
@@ -808,14 +808,14 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     ] {
         assert!(
             bounded_work_record.contains(contract),
-            "MCPD-036 completion record should preserve {contract}"
+            "v0.3.3 security-release record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
     assert!(adoption.contains("Closed: 2026-08-10"));
     assert!(adoption.contains("zero independent adoption reports at opening"));
     assert!(adoption.contains("no adoption or repeat-use claim"));
-    assert!(adoption.contains("does not block M3"));
+    assert!(adoption.contains("does not block later\nscoped feature work"));
     assert!(adoption.contains("at least five independently authored servers"));
     for sensitive in [
         "endpoint URLs",
@@ -1238,11 +1238,11 @@ fn automation_guide_defines_conservative_offline_report_aggregation() {
 
 #[test]
 fn emergency_exercise_preserves_scoped_public_evidence() {
-    let exercise = repository_file("docs/assurance/mcpd-013-emergency-exercise.md");
+    let exercise = repository_file("docs/assurance/emergency-bypass-exercise-2026-08-11.md");
 
     for contract in [
         "Status: closed at `2026-08-11T21:55:10Z`",
-        "MCPD-013-EXERCISE-20260811-01",
+        "emergency-bypass-2026-08-11",
         "05090b3b62ae145f06dbdd69f3346e4cd2fa607a",
         "`BLOCKED`; neither `Required CI` nor `Required release preflight` had reported",
         "2026-08-11T21:42:39.603Z",
@@ -1402,7 +1402,7 @@ fn security_control_projection_matches_the_live_security_contract() {
         [
             "partner_only_public_repository_secret_alerts",
             "mcp_doctor_product_security_scanner",
-            "complete_m4_assurance_baseline",
+            "complete_assurance_baseline",
         ]
     );
 }
@@ -1959,23 +1959,107 @@ fn repository_only_references_the_scaffolding_project_in_the_explicit_inventory(
             &repository_root().join(root),
             &forbidden,
             &allowed_inventory_files,
+            "a reference to the scaffolding project",
         );
     }
 }
 
-fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[PathBuf]) {
+#[test]
+fn public_repository_text_does_not_depend_on_private_coordination() {
+    let allowed_inventory_files: [PathBuf; 0] = [];
+    let roots = [
+        "README.md",
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "SUPPORT.md",
+        "Cargo.toml",
+        ".agents",
+        ".github",
+        "docs",
+        "schemas",
+        "scripts",
+        "src",
+        "tests",
+    ];
+    let forbidden = [
+        ["linear", ".app"].join(""),
+        ["enj", "-"].join(""),
+        ["governing", " linear"].join(""),
+        ["linear", " project"].join(""),
+        ["linear", " issue"].join(""),
+        ["project", ".md"].join(""),
+        ["mcpd", "-"].join(""),
+        ["dec", "-"].join(""),
+    ];
+
+    for root in roots {
+        for value in &forbidden {
+            inspect_text_path(
+                &repository_root().join(root),
+                value,
+                &allowed_inventory_files,
+                "private coordination context",
+            );
+        }
+    }
+
+    let agents = repository_file("AGENTS.md");
+    for required in [
+        "### Public context boundary",
+        "publicly accessible sources alone",
+        "Source comments must explain the invariant",
+    ] {
+        assert!(
+            agents.contains(required),
+            "AGENTS.md must preserve {required}"
+        );
+    }
+    for obsolete_runtime_instruction in [
+        ["persistent", " goals"].join(""),
+        ["thread", " goal"].join(""),
+        ["token", " budget"].join(""),
+    ] {
+        assert!(
+            !agents
+                .to_ascii_lowercase()
+                .contains(&obsolete_runtime_instruction),
+            "AGENTS.md contains an obsolete coding-agent runtime instruction"
+        );
+    }
+}
+
+fn inspect_text_path(
+    path: &Path,
+    forbidden: &str,
+    allowed_inventory_files: &[PathBuf],
+    description: &str,
+) {
     if allowed_inventory_files
         .iter()
         .any(|allowed| allowed == path)
     {
         return;
     }
+    assert!(
+        !path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains(forbidden),
+        "{} path contains {description}",
+        path.display(),
+    );
     if path.is_dir() {
         for entry in fs::read_dir(path)
             .unwrap_or_else(|error| panic!("could not read {}: {error}", path.display()))
         {
             let entry = entry.expect("repository directory entry should be readable");
-            inspect_text_path(&entry.path(), forbidden, allowed_inventory_files);
+            inspect_text_path(
+                &entry.path(),
+                forbidden,
+                allowed_inventory_files,
+                description,
+            );
         }
         return;
     }
@@ -1985,8 +2069,8 @@ fn inspect_text_path(path: &Path, forbidden: &str, allowed_inventory_files: &[Pa
     };
     assert!(
         !contents.to_ascii_lowercase().contains(forbidden),
-        "{} contains a reference to the scaffolding project",
-        path.display()
+        "{} contains {description}",
+        path.display(),
     );
 }
 

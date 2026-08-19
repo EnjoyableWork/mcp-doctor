@@ -4,8 +4,7 @@ Thank you for helping make MCP server diagnostics safer and more useful.
 
 ## Before opening a change
 
-- Search existing GitHub issues and the
-  [mcp-doctor Linear project](https://linear.app/enjoyablework/project/mcp-doctor-category-leadership-ff35a964e5d3).
+- Search existing public GitHub issues and pull requests.
 - Use a public issue for ordinary bugs and feature proposals.
 - Use the private route in [SECURITY.md](SECURITY.md) for suspected
   vulnerabilities, credentials, or diagnostics that could expose private
@@ -13,11 +12,12 @@ Thank you for helping make MCP server diagnostics safer and more useful.
 - Never attach secrets, real authentication headers, private endpoints, user
   configuration, database content, or unredacted server output.
 
-For a material change, identify the governing Linear issue or propose one with
-a focused outcome, dependencies, safety impact, acceptance evidence, and a
-deterministic definition of done. Linear is the sole authority for delivery
-priority, sequencing, ownership, status, and completion; do not add a roadmap,
-ticket board, decision log, or progress mirror to the repository.
+For a material change, open or identify a public GitHub issue when discussion
+is useful, and make the pull request self-contained with a focused outcome,
+dependencies, safety impact, acceptance evidence, and deterministic definition
+of done. Private planning may motivate work, but it is not repository authority
+and must not be required to review the change. Do not add a roadmap, ticket
+board, private-decision log, or progress mirror to the repository.
 
 ## Development setup
 
@@ -49,11 +49,11 @@ cargo deny --all-features --locked check
 - Keep one observable outcome per pull request.
 - Preserve passive-by-default behavior and every existing execution limit.
 - Add the narrowest useful regression test for changed behavior.
-- Add a dependency only when the governing ticket demonstrates a concrete need
+- Add a dependency only when the public pull request demonstrates a concrete need
   that the standard library and existing graph cannot meet. Follow the
   maintenance, provenance, exact-version, feature, transitive-graph, and update
   review in [AGENTS.md](AGENTS.md), and record the decision and evidence in the
-  governing Linear issue and pull request.
+  public pull request.
 - Treat every Dependabot pull request as a proposal. Do not enable auto-merge.
   For each Rust dependency, standalone CI tool, or GitHub Action change, record
   the old and new exact identities plus release notes, upstream maintenance and
@@ -66,8 +66,8 @@ cargo deny --all-features --locked check
 - Keep errors and assertions structural so failures cannot print untrusted
   payloads or secrets.
 - Update the focused repository contract for changed product behavior or
-  public claims, and update the Linear issue for delivery status, decisions,
-  risks, and evidence links.
+  public claims, and keep the public pull request sufficient to review its
+  decisions, risks, and evidence links.
 - Follow Conventional Commits: `<type>[optional scope]: <imperative summary>`.
 
 ## Pull requests
