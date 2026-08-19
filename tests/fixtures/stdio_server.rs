@@ -43,6 +43,9 @@ fn main() -> ExitCode {
         Some("catalog-invalid-resources") => catalog_invalid_resources(),
         Some("catalog-duplicate") => catalog_duplicate(),
         Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
+        Some("tool-description-quality") => tool_description_quality(),
+        Some("tool-description-non-string") => tool_description_non_string(),
+        Some("tool-description-finding-limit") => tool_description_finding_limit(),
         Some("schema-invalid") => schema_invalid(),
         Some("schema-unsupported-pattern") => schema_unsupported_pattern(),
         Some("schema-external") => schema_external(&remaining),
@@ -59,6 +62,7 @@ fn main() -> ExitCode {
         Some("snapshot-invalid-shape") => snapshot_invalid_shape(),
         Some("snapshot-started-marker") => snapshot_started_marker(&remaining),
         Some("legacy-success") => legacy_success(),
+        Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
         Some("legacy-schema-external") => legacy_schema_external(),
@@ -413,6 +417,7 @@ fn legacy_success() -> ExitCode {
         json!({
             "tools": [{
                 "name": "synthetic.passive",
+                "description": "A synthetic passive tool.",
                 "inputSchema": input_schema,
                 "outputSchema": output_schema
             }],
@@ -469,6 +474,7 @@ fn legacy_tool_schema(input_schema: Value) -> ExitCode {
         json!({
             "tools": [{
                 "name": "synthetic.legacy-bounded",
+                "description": "A synthetic legacy bounded tool.",
                 "inputSchema": input_schema
             }]
         }),
@@ -513,6 +519,7 @@ fn legacy_ambiguous_schema() -> ExitCode {
         json!({
             "tools": [{
                 "name": "synthetic.ambiguous-schema",
+                "description": "A synthetic ambiguous-schema tool.",
                 "inputSchema": {"type": "object"}
             }]
         }),
@@ -1077,6 +1084,113 @@ fn catalog_repeated_cursor() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn tool_description_quality() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tool_description_quality_tools()
+        }),
+    )
+}
+
+fn legacy_tool_description_quality() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-legacy-quality", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(2, json!({"tools": tool_description_quality_tools()}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn tool_description_quality_tools() -> Vec<Value> {
+    const SENTINEL: &str = "synthetic-private-tool-description-never-report-61";
+    let schema = || {
+        json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "additionalProperties": false
+        })
+    };
+    vec![
+        json!({
+            "name": format!("{SENTINEL}-missing"),
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": format!("{SENTINEL}-empty"),
+            "description": "",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": format!("{SENTINEL}-blank"),
+            "description": "\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}\u{0085}\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}",
+            "inputSchema": schema()
+        }),
+        json!({
+            "name": format!("{SENTINEL}-usable"),
+            "description": format!("Use the {SENTINEL} tool for a synthetic bounded operation."),
+            "inputSchema": schema()
+        }),
+    ]
+}
+
+fn tool_description_non_string() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic-private-non-string-description-never-report-61",
+                "description": {"synthetic-private-value-never-report-61": true},
+                "inputSchema": {
+                    "$schema": DRAFT_2020_12,
+                    "type": "object"
+                }
+            }]
+        }),
+    )
+}
+
+fn tool_description_finding_limit() -> ExitCode {
+    let tools = (0..300)
+        .map(|index| {
+            json!({
+                "name": format!("synthetic-private-quality-limit-{index}"),
+                "inputSchema": {
+                    "$schema": DRAFT_2020_12,
+                    "type": "object"
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tools
+        }),
+    )
+}
+
 fn schema_invalid() -> ExitCode {
     serve_single_catalog(
         "tools",
@@ -1191,6 +1305,7 @@ fn schema_external(arguments: &[OsString]) -> ExitCode {
         "cacheScope": "private",
         "tools": [{
             "name": "synthetic.external",
+            "description": "A synthetic external-reference tool.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1215,6 +1330,7 @@ fn schema_depth_limit() -> ExitCode {
         "cacheScope": "private",
         "tools": [{
             "name": "synthetic.deep",
+            "description": "A synthetic deeply nested schema tool.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1298,6 +1414,7 @@ fn single_tool_result(input_schema: Value) -> Value {
         "cacheScope": "private",
         "tools": [{
             "name": "synthetic.bounded",
+            "description": "A synthetic bounded tool.",
             "inputSchema": input_schema
         }]
     })

@@ -17,6 +17,8 @@ const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
 const CATALOG_SENTINEL: &str = "synthetic-secret-payload-never-report-7f2c";
 const REPORT_ONLY_HUMAN: &str = include_str!("fixtures/reports/unsupported-revision.txt");
 const REPORT_ONLY_JSON: &str = include_str!("fixtures/reports/unsupported-revision.json");
+const TOOL_DESCRIPTION_QUALITY_HUMAN: &str =
+    include_str!("fixtures/reports/tool-description-quality.finding.txt");
 
 fn fixture() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_mcp-doctor-stdio-fixture"))
@@ -431,6 +433,177 @@ fn valid_paginated_catalogs_and_complex_local_schemas_pass_passively() {
     assert!(stdout.contains("outcome passed"), "{stdout}");
     assert!(!stdout.contains("synthetic-private-cursor"), "{stdout}");
     assert!(!stdout.contains("tools/call"), "{stdout}");
+}
+
+#[test]
+fn missing_and_blank_tool_descriptions_are_value_free_across_reporters_and_revisions() {
+    const SENTINEL: &str = "synthetic-private-tool-description-never-report-61";
+    const REMEDIATION: &str =
+        "Provide a concise description of what the tool does and when to select it.";
+    let human_output = run_mode("tool-description-quality");
+    let json_output = run_json_mode("tool-description-quality");
+    let environment = TestEnvironment::new();
+    let junit_output = junit_inspect_command(&environment, "tool-description-quality")
+        .output()
+        .expect("mcp-doctor should project description warnings as JUnit");
+    let (human, human_stderr) = text(&human_output);
+    let (json_text, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
+    let report = json_report(&json_output);
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+
+    assert!(human_output.status.success(), "{human}\n{human_stderr}");
+    assert!(json_output.status.success(), "{report:#}\n{json_stderr}");
+    assert!(junit_output.status.success(), "{junit}\n{junit_stderr}");
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert!(junit_stderr.is_empty());
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert_eq!(report["primary_diagnosis"], serde_json::Value::Null);
+    assert_eq!(report["summary"]["warned"], 1);
+    assert_eq!(junit_summary.failures, 0);
+    assert!(human.contains("WARN  discovery.catalogs"), "{human}");
+    assert!(
+        human.contains(TOOL_DESCRIPTION_QUALITY_HUMAN),
+        "the human report should retain the reviewed quality-finding golden output: {human}"
+    );
+    assert!(
+        junit.contains("report_outcome=passed\nexit_code=0"),
+        "{junit}"
+    );
+
+    let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 3, "{report:#}");
+    for (index, finding) in findings.iter().enumerate() {
+        let location = format!("tools[{index}].description");
+        assert_eq!(finding["code"], "MCP-QUALITY-001");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["protocol_revision"], "2026-07-28");
+        assert_eq!(finding["location"], location);
+        assert_eq!(
+            finding["message"],
+            "An advertised tool has no usable description."
+        );
+        assert_eq!(finding["remediation"], REMEDIATION);
+        assert!(human.contains("MCP-QUALITY-001"), "{human}");
+        assert!(human.contains(&location), "{human}");
+        assert!(human.contains(REMEDIATION), "{human}");
+        assert!(
+            junit.contains(&format!("finding[{index}].code=MCP-QUALITY-001")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].location={location}")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].remediation={REMEDIATION}")),
+            "{junit}"
+        );
+    }
+    assert!(!human.contains("tools[3].description"), "{human}");
+    assert!(!json_text.contains("tools[3].description"), "{json_text}");
+    assert!(!junit.contains("tools[3].description"), "{junit}");
+    for output in [human, json_text, junit.as_str()] {
+        assert!(!output.contains(SENTINEL), "{output}");
+        assert!(!output.contains("synthetic-private"), "{output}");
+    }
+    assert_report_findings_are_actionable(&report, human);
+
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-tool-description-quality",
+        )
+        .output()
+        .expect("mcp-doctor should inspect legacy descriptions through the shared rule");
+        let (legacy_json, legacy_stderr) = text(&output);
+        let legacy = json_report(&output);
+        assert!(
+            output.status.success(),
+            "{revision}: {legacy:#}\n{legacy_stderr}"
+        );
+        assert!(legacy_stderr.is_empty());
+        assert_eq!(legacy["outcome"], "passed");
+        let legacy_findings = find_json_check(&legacy, "discovery.catalogs")["findings"]
+            .as_array()
+            .expect("the legacy discovery check should contain findings");
+        assert_eq!(legacy_findings.len(), 3, "{legacy:#}");
+        for (index, finding) in legacy_findings.iter().enumerate() {
+            assert_eq!(finding["code"], "MCP-QUALITY-001");
+            assert_eq!(finding["severity"], "warning");
+            assert_eq!(finding["protocol_revision"], revision);
+            assert_eq!(finding["location"], format!("tools[{index}].description"));
+            assert_eq!(finding["remediation"], REMEDIATION);
+        }
+        assert!(!legacy_json.contains(SENTINEL), "{legacy_json}");
+        assert!(!legacy_json.contains("synthetic-private"), "{legacy_json}");
+    }
+}
+
+#[test]
+fn non_string_tool_descriptions_remain_catalog_errors_without_quality_duplicates() {
+    let output = run_json_mode("tool-description-non-string");
+    let (stdout, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 1, "{report:#}");
+    assert_eq!(findings[0]["code"], "MCP-CATALOG-001");
+    assert_eq!(findings[0]["location"], "tools[0].description");
+    assert_eq!(findings[0]["evidence"]["expected"], "string");
+    assert_eq!(findings[0]["evidence"]["observed"], "object");
+    assert!(!stdout.contains("MCP-QUALITY-001"), "{stdout}");
+    assert!(!stdout.contains("synthetic-private"), "{stdout}");
+}
+
+#[test]
+fn tool_description_warnings_truncate_deterministically_at_the_report_limit() {
+    let first = run_json_mode("tool-description-finding-limit");
+    let second = run_json_mode("tool-description-finding-limit");
+    let (stdout, stderr) = text(&first);
+    let report = json_report(&first);
+
+    assert_eq!(first.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(
+        first.stdout, second.stdout,
+        "quality truncation must be stable"
+    );
+    let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should contain bounded findings");
+    let quality = findings
+        .iter()
+        .filter(|finding| finding["code"] == "MCP-QUALITY-001")
+        .collect::<Vec<_>>();
+    let limits = findings
+        .iter()
+        .filter(|finding| finding["code"] == "MCP-LIMIT-001")
+        .collect::<Vec<_>>();
+    assert_eq!(quality.len(), 254, "{report:#}");
+    assert_eq!(limits.len(), 1, "{report:#}");
+    assert_eq!(
+        quality.first().expect("a first warning")["location"],
+        "tools[0].description"
+    );
+    assert_eq!(
+        quality.last().expect("a last warning")["location"],
+        "tools[253].description"
+    );
+    assert_eq!(limits[0]["evidence"]["limit"], "report_findings");
+    assert_eq!(limits[0]["evidence"]["maximum"], 256);
+    assert!(!stdout.contains("synthetic-private"), "{stdout}");
 }
 
 #[test]

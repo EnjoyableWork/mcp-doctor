@@ -1,0 +1,7 @@
+      MCP-QUALITY-001  warning
+      Where: tools[0].description
+      What: An advertised tool has no usable description.
+      Why: Agents may not reliably know when to select this tool.
+      Expected: Each advertised tool should provide a concise, non-blank description of what it does and when to select it.
+      Fix: Provide a concise description of what the tool does and when to select it.
+      Reference: mcp-doctor A1 normalization v1 tool-description quality contract

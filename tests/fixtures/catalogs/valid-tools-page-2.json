@@ -5,6 +5,7 @@
   "tools": [
     {
       "name": "synthetic.empty",
+      "description": "A synthetic empty-input tool.",
       "inputSchema": {
         "type": "object",
         "properties": {}

@@ -174,6 +174,7 @@ pub(super) enum FindingCode {
     CatalogContractInvalid,
     DuplicateCatalogIdentifier,
     PaginationCursorRepeated,
+    ToolDescriptionMissingOrBlank,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
     AmbiguousSchemaDialect,
@@ -224,6 +225,7 @@ impl FindingCode {
             Self::CatalogContractInvalid => "MCP-CATALOG-001",
             Self::DuplicateCatalogIdentifier => "MCP-CATALOG-002",
             Self::PaginationCursorRepeated => "MCP-CATALOG-003",
+            Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
@@ -250,7 +252,9 @@ impl FindingCode {
     pub(super) const fn severity(self) -> Severity {
         match self {
             Self::ProtocolRevisionConfirmed => Severity::Info,
-            Self::DeprecatedProtocolFeature | Self::AmbiguousSchemaDialect => Severity::Warning,
+            Self::DeprecatedProtocolFeature
+            | Self::ToolDescriptionMissingOrBlank
+            | Self::AmbiguousSchemaDialect => Severity::Warning,
             Self::ProcessStartFailed
             | Self::StdioIoFailed
             | Self::InvalidStdioMessage
@@ -351,6 +355,7 @@ impl FindingCode {
             Self::PaginationCursorRepeated => {
                 "A catalog repeated a pagination cursor and inspection stopped."
             }
+            Self::ToolDescriptionMissingOrBlank => "An advertised tool has no usable description.",
             Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
             Self::UnsupportedSchemaDialect => {
                 "A local schema uses an unsupported JSON Schema dialect."
@@ -471,6 +476,9 @@ impl FindingCode {
             }
             Self::PaginationCursorRepeated => {
                 "The repeated cursor would prevent discovery from reaching a complete result."
+            }
+            Self::ToolDescriptionMissingOrBlank => {
+                "Agents may not reliably know when to select this tool."
             }
             Self::SchemaContractInvalid => {
                 "Clients cannot safely construct or validate values from this schema."
@@ -607,6 +615,9 @@ impl FindingCode {
             Self::PaginationCursorRepeated => {
                 "Each nextCursor must advance the catalog or end pagination."
             }
+            Self::ToolDescriptionMissingOrBlank => {
+                "Each advertised tool should provide a concise, non-blank description of what it does and when to select it."
+            }
             Self::SchemaContractInvalid => {
                 "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects whose patterns use the supported linear-time subset."
             }
@@ -739,6 +750,9 @@ impl FindingCode {
             Self::PaginationCursorRepeated => {
                 "Return a new cursor for the next page or omit nextCursor on the final page."
             }
+            Self::ToolDescriptionMissingOrBlank => {
+                "Provide a concise description of what the tool does and when to select it."
+            }
             Self::SchemaContractInvalid => {
                 "Correct the schema at the reported structural location and validate it as Draft 2020-12; use the supported linear-time subset for patterns."
             }
@@ -833,6 +847,9 @@ impl FindingCode {
             Self::CatalogContractInvalid
             | Self::DuplicateCatalogIdentifier
             | Self::PaginationCursorRepeated => "selected MCP revision catalog contracts",
+            Self::ToolDescriptionMissingOrBlank => {
+                "mcp-doctor A1 normalization v1 tool-description quality contract"
+            }
             Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked => {
@@ -916,6 +933,7 @@ pub(super) enum LocationField {
     CacheScope,
     NextCursor,
     Name,
+    Description,
     Arguments,
     ListChanged,
     Subscribe,
@@ -1013,6 +1031,7 @@ impl LocationField {
             Self::CacheScope => "cacheScope",
             Self::NextCursor => "nextCursor",
             Self::Name => "name",
+            Self::Description => "description",
             Self::Arguments => "arguments",
             Self::ListChanged => "listChanged",
             Self::Subscribe => "subscribe",
@@ -1884,6 +1903,18 @@ impl Finding {
         )
     }
 
+    pub(super) fn tool_description_missing_or_blank(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::ToolDescriptionMissingOrBlank,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
     pub(super) fn schema_contract_invalid(
         revision: SupportedRevision,
         location: Location,
@@ -2352,6 +2383,11 @@ mod tests {
                 FindingCode::PaginationCursorRepeated,
                 "MCP-CATALOG-003",
                 Severity::Error,
+            ),
+            (
+                FindingCode::ToolDescriptionMissingOrBlank,
+                "MCP-QUALITY-001",
+                Severity::Warning,
             ),
             (
                 FindingCode::SchemaContractInvalid,

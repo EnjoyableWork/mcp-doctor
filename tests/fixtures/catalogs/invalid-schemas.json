@@ -5,6 +5,7 @@
   "tools": [
     {
       "name": "synthetic.invalid",
+      "description": "A synthetic invalid-schema tool.",
       "inputSchema": {
         "type": "object",
         "required": "synthetic-secret-required-never-report-7f2c"
@@ -12,6 +13,7 @@
     },
     {
       "name": "synthetic.unsupported",
+      "description": "A synthetic unsupported-dialect tool.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2077/schema",
         "type": "object"
@@ -19,12 +21,14 @@
     },
     {
       "name": "synthetic.root",
+      "description": "A synthetic invalid-root tool.",
       "inputSchema": {
         "type": "string"
       }
     },
     {
       "name": "synthetic.unresolved",
+      "description": "A synthetic unresolved-reference tool.",
       "inputSchema": {
         "type": "object",
         "$ref": "#/$defs/synthetic-private-missing-never-report-7f2c"
