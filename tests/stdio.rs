@@ -1606,9 +1606,12 @@ fn credential_literals_are_redacted_and_consistent_across_reporters_and_revision
         "tokenizer",
         "secretary",
     ];
-    for output in [human, json_text, junit.as_str()] {
-        for value in forbidden {
-            assert!(!output.contains(value), "report retained {value}: {output}");
+    for (reporter_index, output) in [human, json_text, junit.as_str()].into_iter().enumerate() {
+        for (canary_index, value) in forbidden.into_iter().enumerate() {
+            assert!(
+                !output.contains(value),
+                "reporter {reporter_index} retained redaction canary {canary_index}"
+            );
         }
     }
     assert_report_findings_are_actionable(&report, human);
@@ -1654,8 +1657,11 @@ fn credential_literals_are_redacted_and_consistent_across_reporters_and_revision
             })
             .collect::<Vec<_>>();
         assert_eq!(legacy_projection, modern_projection, "{legacy:#}");
-        for value in forbidden {
-            assert!(!legacy_json.contains(value), "{revision} retained {value}");
+        for (canary_index, value) in forbidden.into_iter().enumerate() {
+            assert!(
+                !legacy_json.contains(value),
+                "revision {revision} retained redaction canary {canary_index}"
+            );
         }
     }
 }
@@ -1748,6 +1754,256 @@ fn credential_literal_findings_truncate_deterministically_at_the_report_limit() 
     assert_eq!(catalog[0]["evidence"]["maximum"], 256);
     assert!(!stdout.contains("synthetic-security-limit-value-never-report-63"));
     assert!(!stdout.contains("password_"));
+}
+
+#[test]
+fn required_input_descriptions_are_ordinal_redacted_and_consistent_across_reporters_and_revisions()
+{
+    const REMEDIATION: &str =
+        "Describe the accepted value and any important constraints for this required input.";
+    let human_output = run_mode("required-input-descriptions");
+    let json_output = run_json_mode("required-input-descriptions");
+    let environment = TestEnvironment::new();
+    let junit_output = junit_inspect_command(&environment, "required-input-descriptions")
+        .output()
+        .expect("mcp-doctor should project required-input warnings as JUnit");
+    let (human, human_stderr) = text(&human_output);
+    let (json_text, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
+    let report = json_report(&json_output);
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+
+    assert!(human_output.status.success(), "{human}\n{human_stderr}");
+    assert!(json_output.status.success(), "{report:#}\n{json_stderr}");
+    assert!(junit_output.status.success(), "{junit}\n{junit_stderr}");
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert!(junit_stderr.is_empty());
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert_eq!(report["primary_diagnosis"], serde_json::Value::Null);
+    assert_eq!(report["summary"]["warned"], 1);
+    assert_eq!(junit_summary.failures, 0);
+    assert!(human.contains("WARN  schema.contracts"), "{human}");
+
+    let findings = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should contain required-input findings");
+    assert_eq!(findings.len(), 4, "{report:#}");
+    for (index, finding) in findings.iter().enumerate() {
+        let location = format!("tools[0].inputSchema.properties[{index}].description");
+        assert_eq!(finding["code"], "MCP-QUALITY-002");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["protocol_revision"], "2026-07-28");
+        assert_eq!(finding["location"], location);
+        assert_eq!(
+            finding["message"],
+            "A required advertised tool input has no usable description."
+        );
+        assert_eq!(finding["remediation"], REMEDIATION);
+        assert_eq!(finding["evidence"]["kind"], "none");
+        assert!(human.contains("MCP-QUALITY-002"), "{human}");
+        assert!(human.contains(&location), "{human}");
+        assert!(human.contains(REMEDIATION), "{human}");
+        assert!(
+            junit.contains(&format!("finding[{index}].code=MCP-QUALITY-002")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].location={location}")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].remediation={REMEDIATION}")),
+            "{junit}"
+        );
+    }
+    for omitted_index in [4, 5] {
+        let location = format!("tools[0].inputSchema.properties[{omitted_index}].description");
+        assert!(!human.contains(&location), "{human}");
+        assert!(!json_text.contains(&location), "{json_text}");
+        assert!(!junit.contains(&location), "{junit}");
+    }
+
+    let forbidden = [
+        "synthetic-required-input-private-value-never-report",
+        "synthetic-required-input-private-tool-never-report",
+        "argument_a_absent_never_report",
+        "argument_b_empty_never_report",
+        "argument_c_blank_never_report",
+        "argument_d_reference_never_report",
+        "argument_e_described_never_report",
+        "argument_f_optional_never_report",
+        "Referenced",
+        "Accepts one bounded",
+    ];
+    for output in [human, json_text, junit.as_str()] {
+        for value in forbidden {
+            assert!(!output.contains(value), "report retained {value}: {output}");
+        }
+    }
+    assert_report_findings_are_actionable(&report, human);
+
+    let modern_projection = findings
+        .iter()
+        .map(|finding| {
+            serde_json::json!({
+                "code": finding["code"],
+                "severity": finding["severity"],
+                "location": finding["location"],
+                "message": finding["message"],
+                "remediation": finding["remediation"],
+                "evidence": finding["evidence"]
+            })
+        })
+        .collect::<Vec<_>>();
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-required-input-descriptions",
+        )
+        .output()
+        .expect("mcp-doctor should reuse required-input semantics for legacy revisions");
+        let (legacy_json, legacy_stderr) = text(&output);
+        let legacy = json_report(&output);
+        assert!(
+            output.status.success(),
+            "{revision}: {legacy:#}\n{legacy_stderr}"
+        );
+        assert!(legacy_stderr.is_empty());
+        assert_eq!(legacy["outcome"], "passed");
+        let legacy_findings = find_json_check(&legacy, "schema.contracts")["findings"]
+            .as_array()
+            .expect("the legacy schema check should contain required-input findings");
+        let legacy_projection = legacy_findings
+            .iter()
+            .map(|finding| {
+                assert_eq!(finding["protocol_revision"], revision);
+                serde_json::json!({
+                    "code": finding["code"],
+                    "severity": finding["severity"],
+                    "location": finding["location"],
+                    "message": finding["message"],
+                    "remediation": finding["remediation"],
+                    "evidence": finding["evidence"]
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(legacy_projection, modern_projection, "{legacy:#}");
+        for value in forbidden {
+            assert!(!legacy_json.contains(value), "{revision} retained {value}");
+        }
+    }
+}
+
+#[test]
+fn required_input_quality_waits_for_each_schema_prerequisite() {
+    let output = run_json_mode("required-input-description-prerequisites");
+    let (stdout, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    let findings = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should retain prerequisite and eligible quality findings");
+    assert_eq!(findings.len(), 3, "{report:#}");
+    let invalid = findings
+        .iter()
+        .find(|finding| finding["code"] == "MCP-SCHEMA-001")
+        .expect("the invalid schema should retain its prerequisite finding");
+    assert!(
+        invalid["location"]
+            .as_str()
+            .is_some_and(|location| location.starts_with("tools[0].inputSchema.required")),
+        "{report:#}"
+    );
+    let external = findings
+        .iter()
+        .find(|finding| finding["code"] == "MCP-SCHEMA-003")
+        .expect("the external schema should retain its prerequisite finding");
+    assert_eq!(
+        external["location"],
+        "tools[1].inputSchema.properties[*].$ref"
+    );
+    let quality = findings
+        .iter()
+        .find(|finding| finding["code"] == "MCP-QUALITY-002")
+        .expect("the valid sibling schema should receive the quality finding");
+    assert_eq!(
+        quality["location"],
+        "tools[2].inputSchema.properties[0].description"
+    );
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-SCHEMA-001"
+    );
+    assert!(!stdout.contains("tools[0].inputSchema.properties[0].description"));
+    assert!(!stdout.contains("tools[1].inputSchema.properties[0].description"));
+    for (canary_index, forbidden) in [
+        "synthetic-invalid-required-input-never-report",
+        "synthetic-external-required-input-never-report",
+        "synthetic-valid-required-input-never-report",
+        "argument_invalid_never_report",
+        "argument_external_never_report",
+        "argument_valid_never_report",
+        "invalid.example",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(
+            !stdout.contains(forbidden),
+            "report retained redaction canary {canary_index}"
+        );
+    }
+}
+
+#[test]
+fn required_input_quality_truncates_deterministically_at_the_report_limit() {
+    let first = run_json_mode("required-input-description-finding-limit");
+    let second = run_json_mode("required-input-description-finding-limit");
+    let (stdout, stderr) = text(&first);
+    let report = json_report(&first);
+
+    assert_eq!(first.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(
+        first.stdout, second.stdout,
+        "quality truncation must be stable"
+    );
+    let findings = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should contain bounded quality findings");
+    assert!(!findings.is_empty(), "{report:#}");
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding["code"] == "MCP-QUALITY-002"),
+        "{report:#}"
+    );
+    assert_eq!(findings.len(), 254, "{report:#}");
+    assert_eq!(
+        findings.first().expect("a first quality finding")["location"],
+        "tools[0].inputSchema.properties[0].description"
+    );
+    assert_eq!(
+        findings.last().expect("a last quality finding")["location"],
+        "tools[253].inputSchema.properties[0].description"
+    );
+    let catalog = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the catalog check should retain the report bound");
+    assert_eq!(catalog.len(), 1, "{report:#}");
+    assert_eq!(catalog[0]["code"], "MCP-LIMIT-001");
+    assert_eq!(catalog[0]["evidence"]["limit"], "report_findings");
+    assert_eq!(catalog[0]["evidence"]["maximum"], 256);
+    assert!(!stdout.contains("synthetic_required_input_"));
+    assert!(!stdout.contains("synthetic-required-input-tool-"));
 }
 
 #[test]

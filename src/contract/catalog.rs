@@ -658,6 +658,7 @@ enum FindingBucket {
     Catalog,
     Quality,
     Schema,
+    SchemaQuality,
     Security,
 }
 
@@ -882,6 +883,7 @@ fn scan_credential_literals(
             .unwrap_or(u64::MAX)
             .saturating_add(1);
         if !budget.observe(identifier_work) {
+            scan.findings.clear();
             scan.limit = Some((property_location, budget.violation()));
             return scan;
         }
@@ -895,6 +897,7 @@ fn scan_credential_literals(
         for keyword in CredentialSchemaKeyword::ALL {
             let keyword_location = property_location.clone().field(keyword.location_field());
             if !budget.observe(1) {
+                scan.findings.clear();
                 scan.limit = Some((keyword_location, budget.violation()));
                 return scan;
             }
@@ -909,6 +912,7 @@ fn scan_credential_literals(
                     let mut count = 0_u64;
                     for candidate in value.as_array().into_iter().flatten() {
                         if !budget.observe(1) {
+                            scan.findings.clear();
                             scan.limit = Some((keyword_location, budget.violation()));
                             return scan;
                         }
@@ -936,6 +940,100 @@ fn scan_credential_literals(
     scan
 }
 
+#[derive(Default)]
+struct RequiredInputDescriptionScan {
+    findings: Vec<Finding>,
+    limit: Option<(Location, LimitViolation)>,
+}
+
+/// Inspects only direct property annotations after the complete local schema
+/// gate succeeds. Local references remain schema-validation inputs; their
+/// targets are not treated as descriptions for the property wrapper.
+fn scan_required_input_descriptions(
+    revision: SupportedRevision,
+    schema: &Value,
+    base: Location,
+    budget: &SchemaWorkBudget,
+) -> RequiredInputDescriptionScan {
+    let Some(schema) = schema.as_object() else {
+        return RequiredInputDescriptionScan::default();
+    };
+    let Some(required) = schema.get("required").and_then(Value::as_array) else {
+        return RequiredInputDescriptionScan::default();
+    };
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return RequiredInputDescriptionScan::default();
+    };
+
+    let mut scan = RequiredInputDescriptionScan::default();
+    let mut required_identifiers = BTreeSet::new();
+    for (required_index, required) in required.iter().enumerate() {
+        let Some(identifier) = required.as_str() else {
+            continue;
+        };
+        let location = base
+            .clone()
+            .field(LocationField::Required)
+            .index(required_index);
+        let identifier_work = u64::try_from(identifier.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        if !budget.observe(identifier_work) {
+            scan.findings.clear();
+            scan.limit = Some((location, budget.violation()));
+            return scan;
+        }
+        required_identifiers.insert(identifier);
+    }
+
+    for (property_index, (identifier, property_schema)) in properties.iter().enumerate() {
+        let property_location = base
+            .clone()
+            .field(LocationField::Properties)
+            .index(property_index);
+        let identifier_work = u64::try_from(identifier.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        if !budget.observe(identifier_work) {
+            scan.findings.clear();
+            scan.limit = Some((property_location, budget.violation()));
+            return scan;
+        }
+        if !required_identifiers.contains(identifier.as_str()) {
+            continue;
+        }
+
+        let description_location = property_location.field(LocationField::Description);
+        let description = property_schema
+            .as_object()
+            .and_then(|schema| schema.get("description"));
+        let description_work = description
+            .and_then(Value::as_str)
+            .map_or(1, |description| {
+                u64::try_from(description.len())
+                    .unwrap_or(u64::MAX)
+                    .saturating_add(1)
+            });
+        if !budget.observe(description_work) {
+            scan.findings.clear();
+            scan.limit = Some((description_location, budget.violation()));
+            return scan;
+        }
+        if !description
+            .and_then(Value::as_str)
+            .is_some_and(|description| !is_a1_v1_blank(description))
+        {
+            scan.findings
+                .push(Finding::required_input_description_missing_or_blank(
+                    revision,
+                    description_location,
+                ));
+        }
+    }
+
+    scan
+}
+
 struct Analyzer {
     limits: DiagnosticLimits,
     revision: Vec<Finding>,
@@ -943,6 +1041,7 @@ struct Analyzer {
     catalog: Vec<Finding>,
     quality: Vec<Finding>,
     schema: Vec<Finding>,
+    schema_quality: Vec<Finding>,
     security: Vec<Finding>,
     stored_findings: usize,
     finding_capacity: usize,
@@ -974,6 +1073,7 @@ impl Analyzer {
             catalog: Vec::new(),
             quality: Vec::new(),
             schema: Vec::new(),
+            schema_quality: Vec::new(),
             security: Vec::new(),
             stored_findings: 0,
             finding_capacity: maximum.saturating_sub(reserved_findings),
@@ -1002,6 +1102,7 @@ impl Analyzer {
             FindingBucket::Catalog => self.catalog.contains(&finding),
             FindingBucket::Quality => self.quality.contains(&finding),
             FindingBucket::Schema => self.schema.contains(&finding),
+            FindingBucket::SchemaQuality => self.schema_quality.contains(&finding),
             FindingBucket::Security => self.security.contains(&finding),
         };
         if duplicate {
@@ -1014,6 +1115,7 @@ impl Analyzer {
                 FindingBucket::Catalog => self.catalog.push(finding),
                 FindingBucket::Quality => self.quality.push(finding),
                 FindingBucket::Schema => self.schema.push(finding),
+                FindingBucket::SchemaQuality => self.schema_quality.push(finding),
                 FindingBucket::Security => self.security.push(finding),
             }
             self.stored_findings += 1;
@@ -1021,19 +1123,31 @@ impl Analyzer {
             let displaced = self
                 .quality
                 .pop()
+                .or_else(|| self.schema_quality.pop())
                 .or_else(|| self.schema.pop())
                 .or_else(|| self.catalog.pop());
             if displaced.is_some() {
                 self.security.push(finding);
             }
             self.finding_overflow = true;
-        } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
+        } else if !matches!(
+            bucket,
+            FindingBucket::Quality | FindingBucket::SchemaQuality
+        ) && self
+            .quality
+            .pop()
+            .or_else(|| self.schema_quality.pop())
+            .is_some()
+        {
             match bucket {
                 FindingBucket::Revision => self.revision.push(finding),
                 FindingBucket::Envelope => self.envelope.push(finding),
                 FindingBucket::Catalog => self.catalog.push(finding),
                 FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
                 FindingBucket::Schema => self.schema.push(finding),
+                FindingBucket::SchemaQuality => {
+                    unreachable!("schema-quality findings do not displace findings")
+                }
                 FindingBucket::Security => unreachable!("security findings use priority storage"),
             }
             self.finding_overflow = true;
@@ -1049,6 +1163,7 @@ impl Analyzer {
         let removed = self
             .quality
             .pop()
+            .or_else(|| self.schema_quality.pop())
             .or_else(|| self.schema.pop())
             .or_else(|| self.catalog.pop())
             .or_else(|| self.envelope.pop())
@@ -1473,20 +1588,36 @@ impl Analyzer {
         }
         let schema_budget = self.analyze_schema(input_schema, input_location.clone());
         if input_root_valid && let Some(budget) = schema_budget {
-            let scan = scan_credential_literals(
+            let credential_scan = scan_credential_literals(
                 SupportedRevision::CURRENT,
                 input_schema,
-                input_location,
+                input_location.clone(),
                 &budget,
             );
-            for finding in scan.findings {
+            for finding in credential_scan.findings {
                 self.push(FindingBucket::Security, finding);
             }
-            if let Some((location, violation)) = scan.limit {
+            if let Some((location, violation)) = credential_scan.limit {
                 self.push(
                     FindingBucket::Schema,
                     Finding::limit_exceeded(SupportedRevision::CURRENT, location, violation),
                 );
+            } else {
+                let quality_scan = scan_required_input_descriptions(
+                    SupportedRevision::CURRENT,
+                    input_schema,
+                    input_location,
+                    &budget,
+                );
+                for finding in quality_scan.findings {
+                    self.push(FindingBucket::SchemaQuality, finding);
+                }
+                if let Some((location, violation)) = quality_scan.limit {
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::limit_exceeded(SupportedRevision::CURRENT, location, violation),
+                    );
+                }
             }
         }
         if self.validate_http_headers
@@ -1949,6 +2080,7 @@ impl Analyzer {
         self.finish_overflow();
         self.catalog.append(&mut self.quality);
         self.schema.append(&mut self.security);
+        self.schema.append(&mut self.schema_quality);
         let downstream_skip_reason = if self
             .envelope
             .iter()
@@ -2460,6 +2592,7 @@ struct LegacyAnalyzer {
     catalog: Vec<Finding>,
     quality: Vec<Finding>,
     schema: Vec<Finding>,
+    schema_quality: Vec<Finding>,
     security: Vec<Finding>,
     capacity: usize,
     stored: usize,
@@ -2490,6 +2623,7 @@ impl LegacyAnalyzer {
             catalog: Vec::new(),
             quality: Vec::new(),
             schema: Vec::new(),
+            schema_quality: Vec::new(),
             security: Vec::new(),
             capacity: maximum.saturating_sub(reserved_findings),
             stored: 0,
@@ -2516,6 +2650,7 @@ impl LegacyAnalyzer {
             FindingBucket::Catalog => &mut self.catalog,
             FindingBucket::Quality => &mut self.quality,
             FindingBucket::Schema => &mut self.schema,
+            FindingBucket::SchemaQuality => &mut self.schema_quality,
             FindingBucket::Security => &mut self.security,
         };
         if destination.contains(&finding) {
@@ -2528,19 +2663,31 @@ impl LegacyAnalyzer {
             let displaced = self
                 .quality
                 .pop()
+                .or_else(|| self.schema_quality.pop())
                 .or_else(|| self.schema.pop())
                 .or_else(|| self.catalog.pop());
             if displaced.is_some() {
                 self.security.push(finding);
             }
             self.overflow = true;
-        } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
+        } else if !matches!(
+            bucket,
+            FindingBucket::Quality | FindingBucket::SchemaQuality
+        ) && self
+            .quality
+            .pop()
+            .or_else(|| self.schema_quality.pop())
+            .is_some()
+        {
             let destination = match bucket {
                 FindingBucket::Revision => &mut self.revision,
                 FindingBucket::Envelope => &mut self.envelope,
                 FindingBucket::Catalog => &mut self.catalog,
                 FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
                 FindingBucket::Schema => &mut self.schema,
+                FindingBucket::SchemaQuality => {
+                    unreachable!("schema-quality findings do not displace findings")
+                }
                 FindingBucket::Security => unreachable!("security findings use priority storage"),
             };
             destination.push(finding);
@@ -2906,16 +3053,36 @@ impl LegacyAnalyzer {
         }
         let schema_budget = self.analyze_legacy_schema(input_schema, input_location.clone());
         if input_root_valid && let Some(budget) = schema_budget {
-            let scan =
-                scan_credential_literals(self.revision_kind, input_schema, input_location, &budget);
-            for finding in scan.findings {
+            let credential_scan = scan_credential_literals(
+                self.revision_kind,
+                input_schema,
+                input_location.clone(),
+                &budget,
+            );
+            for finding in credential_scan.findings {
                 self.push(FindingBucket::Security, finding);
             }
-            if let Some((location, violation)) = scan.limit {
+            if let Some((location, violation)) = credential_scan.limit {
                 self.push(
                     FindingBucket::Schema,
                     Finding::limit_exceeded(self.revision_kind, location, violation),
                 );
+            } else {
+                let quality_scan = scan_required_input_descriptions(
+                    self.revision_kind,
+                    input_schema,
+                    input_location,
+                    &budget,
+                );
+                for finding in quality_scan.findings {
+                    self.push(FindingBucket::SchemaQuality, finding);
+                }
+                if let Some((location, violation)) = quality_scan.limit {
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::limit_exceeded(self.revision_kind, location, violation),
+                    );
+                }
             }
         }
         if let Some(output_schema) = tool.get("outputSchema") {
@@ -3284,6 +3451,7 @@ impl LegacyAnalyzer {
             let removed = self
                 .quality
                 .pop()
+                .or_else(|| self.schema_quality.pop())
                 .or_else(|| self.schema.pop())
                 .or_else(|| self.catalog.pop())
                 .or_else(|| self.envelope.pop())
@@ -3304,6 +3472,7 @@ impl LegacyAnalyzer {
         }
         self.catalog.append(&mut self.quality);
         self.schema.append(&mut self.security);
+        self.schema.append(&mut self.schema_quality);
         let envelope_failed = self
             .envelope
             .iter()
@@ -3662,8 +3831,8 @@ mod tests {
         CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
         RequestKind, ToolDescriptionDiagnosis, classify_json_rpc_error, diagnose_tool_description,
         encode_request, has_credential_identifier_segment, normalize_credential_identifier,
-        percent_decode, resolve_local_reference, scan_credential_literals, schema_child_location,
-        validate_local_schema_with_policy,
+        percent_decode, resolve_local_reference, scan_credential_literals,
+        scan_required_input_descriptions, schema_child_location, validate_local_schema_with_policy,
     };
     use crate::contract::model::{
         FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField, Severity,
@@ -3773,6 +3942,120 @@ mod tests {
         assert_eq!(location.to_string(), "tools[0].inputSchema.properties[0]");
         assert_eq!(violation.kind().as_str(), "schema_evaluation_steps");
         assert_eq!(violation.maximum(), 0);
+    }
+
+    #[test]
+    fn required_input_description_scan_is_direct_ordinal_and_value_free() {
+        let schema = json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "$defs": {
+                "referenced": {
+                    "type": "string",
+                    "description": "synthetic referenced description never report"
+                }
+            },
+            "properties": {
+                "a_missing_never_report": {"type": "string"},
+                "b_empty_never_report": {"type": "string", "description": ""},
+                "c_blank_never_report": {"type": "string", "description": "\u{2003}\u{3000}"},
+                "d_reference_never_report": {"$ref": "#/$defs/referenced"},
+                "e_described_never_report": {
+                    "type": "string",
+                    "description": "A bounded synthetic value."
+                },
+                "f_optional_never_report": {"type": "string"}
+            },
+            "required": [
+                "d_reference_never_report",
+                "c_blank_never_report",
+                "e_described_never_report",
+                "a_missing_never_report",
+                "b_empty_never_report"
+            ]
+        });
+        let budget = SchemaWorkBudget::new(100_000);
+        let scan = scan_required_input_descriptions(
+            SupportedRevision::CURRENT,
+            &schema,
+            Location::root(LocationField::Tools)
+                .index(4)
+                .field(LocationField::InputSchema),
+            &budget,
+        );
+
+        assert!(scan.limit.is_none());
+        assert_eq!(scan.findings.len(), 4);
+        for (index, finding) in scan.findings.iter().enumerate() {
+            assert_eq!(
+                finding.code(),
+                FindingCode::RequiredInputDescriptionMissingOrBlank
+            );
+            assert_eq!(finding.severity(), Severity::Warning);
+            assert_eq!(finding.revision(), SupportedRevision::CURRENT);
+            assert_eq!(
+                finding.location().to_string(),
+                format!("tools[4].inputSchema.properties[{index}].description")
+            );
+            assert_eq!(finding.evidence(), &FindingEvidence::None);
+        }
+    }
+
+    #[test]
+    fn required_input_description_scan_charges_the_existing_schema_work_budget() {
+        let schema = json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "properties": {
+                "synthetic_private_name_never_report": {"type": "string"}
+            },
+            "required": ["synthetic_private_name_never_report"]
+        });
+        let budget = SchemaWorkBudget::new(0);
+        let scan = scan_required_input_descriptions(
+            SupportedRevision::CURRENT,
+            &schema,
+            Location::root(LocationField::Tools)
+                .index(0)
+                .field(LocationField::InputSchema),
+            &budget,
+        );
+
+        assert!(scan.findings.is_empty());
+        let (location, violation) = scan.limit.expect("the zero budget must stop the scan");
+        assert_eq!(location.to_string(), "tools[0].inputSchema.required[0]");
+        assert_eq!(violation.kind().as_str(), "schema_evaluation_steps");
+        assert_eq!(violation.maximum(), 0);
+    }
+
+    #[test]
+    fn required_input_description_scan_discards_partial_results_at_its_work_limit() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "bbbbbbbb": {"type": "string"}
+            },
+            "required": ["a", "bbbbbbbb"]
+        });
+        let budget = SchemaWorkBudget::new(14);
+        let scan = scan_required_input_descriptions(
+            SupportedRevision::CURRENT,
+            &schema,
+            Location::root(LocationField::Tools)
+                .index(0)
+                .field(LocationField::InputSchema),
+            &budget,
+        );
+
+        assert!(
+            scan.findings.is_empty(),
+            "a bounded scan must not report a partial quality result"
+        );
+        let (location, violation) = scan.limit.expect("the second property must exceed work");
+        assert_eq!(location.to_string(), "tools[0].inputSchema.properties[1]");
+        assert_eq!(violation.kind().as_str(), "schema_evaluation_steps");
+        assert_eq!(violation.maximum(), 14);
     }
 
     #[test]

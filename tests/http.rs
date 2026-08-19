@@ -1029,6 +1029,40 @@ fn credential_literal_response() -> FixtureResponse {
     }))
 }
 
+fn required_input_description_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic-private-http-required-input-never-report",
+                "description": "Performs one bounded synthetic remote operation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "argument_described_never_report": {
+                            "type": "string",
+                            "description": "Accepts one synthetic private value never report."
+                        },
+                        "argument_missing_never_report": {
+                            "type": "string",
+                            "default": "synthetic-http-required-input-value-never-report"
+                        },
+                        "argument_optional_never_report": {"type": "string"}
+                    },
+                    "required": [
+                        "argument_missing_never_report",
+                        "argument_described_never_report"
+                    ]
+                }
+            }]
+        }
+    }))
+}
+
 fn workflow_tools_response() -> FixtureResponse {
     FixtureResponse::json(json!({
         "jsonrpc": "2.0",
@@ -4495,6 +4529,71 @@ fn passive_http_credential_literal_uses_only_the_advertised_catalog_request() {
     assert!(!stdout.contains("synthetic-private-http-security-never-report-63"));
     assert!(!stdout.contains("synthetic-http-credential-never-report-63"));
     assert!(!stdout.contains("privateKey"));
+}
+
+#[test]
+fn passive_http_required_input_quality_uses_only_the_advertised_catalog_request() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                required_input_description_response(),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_eq!(outcome.request_failures, 0);
+    let findings = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "schema.contracts")
+        .expect("the schema check should exist")["findings"]
+        .as_array()
+        .expect("the schema check should contain findings");
+    assert_eq!(findings.len(), 1, "{report:#}");
+    assert_eq!(findings[0]["code"], "MCP-QUALITY-002");
+    assert_eq!(findings[0]["severity"], "warning");
+    assert_eq!(
+        findings[0]["location"],
+        "tools[0].inputSchema.properties[1].description"
+    );
+    assert_eq!(findings[0]["evidence"]["kind"], "none");
+    for (canary_index, forbidden) in [
+        "synthetic-private-http-required-input-never-report",
+        "synthetic-http-required-input-value-never-report",
+        "argument_described_never_report",
+        "argument_missing_never_report",
+        "argument_optional_never_report",
+        "Accepts one synthetic private value never report.",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(
+            !stdout.contains(forbidden),
+            "report retained redaction canary {canary_index}"
+        );
+    }
 }
 
 #[test]

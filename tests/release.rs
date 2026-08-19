@@ -944,6 +944,27 @@ fn command_guide_freezes_the_a1_tool_description_contract() {
 }
 
 #[test]
+fn command_guide_records_the_required_input_description_contract() {
+    let commands = repository_file("docs/commands.md");
+
+    for contract in [
+        "### Required-input description quality",
+        "`MCP-QUALITY-002`",
+        "`tools[index].inputSchema.properties[index].description`",
+        "finite `A1\nnormalization v1` whitespace set",
+        "A local-reference\nwrapper therefore needs its own description",
+        "Optional properties and names in\n`required` that have no direct `properties` entry are not diagnosed",
+        "instead of a partial\nrequired-input quality result",
+        "adds no request, tool call, dependency,\nor LLM evaluation",
+    ] {
+        assert!(
+            commands.contains(contract),
+            "the command guide should retain the required-input quality contract: {contract}"
+        );
+    }
+}
+
+#[test]
 fn command_guide_records_the_rejection_boundary() {
     let commands = repository_file("docs/commands.md");
     let agents = repository_file("AGENTS.md");

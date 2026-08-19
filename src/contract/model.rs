@@ -177,6 +177,7 @@ pub(super) enum FindingCode {
     PaginationCursorRepeated,
     CatalogMethodRejected,
     ToolDescriptionMissingOrBlank,
+    RequiredInputDescriptionMissingOrBlank,
     ToolDescriptionPlaceholderOrNameOnly,
     CredentialLiteralExposed,
     SchemaContractInvalid,
@@ -233,6 +234,7 @@ impl FindingCode {
             Self::PaginationCursorRepeated => "MCP-CATALOG-003",
             Self::CatalogMethodRejected => "MCP-CATALOG-004",
             Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
+            Self::RequiredInputDescriptionMissingOrBlank => "MCP-QUALITY-002",
             Self::ToolDescriptionPlaceholderOrNameOnly => "MCP-QUALITY-003",
             Self::CredentialLiteralExposed => "MCP-SECURITY-001",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
@@ -264,6 +266,7 @@ impl FindingCode {
             Self::ProtocolRevisionConfirmed => Severity::Info,
             Self::DeprecatedProtocolFeature
             | Self::ToolDescriptionMissingOrBlank
+            | Self::RequiredInputDescriptionMissingOrBlank
             | Self::ToolDescriptionPlaceholderOrNameOnly
             | Self::AmbiguousSchemaDialect => Severity::Warning,
             Self::ProcessStartFailed
@@ -377,6 +380,9 @@ impl FindingCode {
                 "The server rejected a catalog method required by the selected revision."
             }
             Self::ToolDescriptionMissingOrBlank => "An advertised tool has no usable description.",
+            Self::RequiredInputDescriptionMissingOrBlank => {
+                "A required advertised tool input has no usable description."
+            }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "An advertised tool description provides no selection guidance."
             }
@@ -515,6 +521,9 @@ impl FindingCode {
             }
             Self::ToolDescriptionMissingOrBlank => {
                 "Agents may not reliably know when to select this tool."
+            }
+            Self::RequiredInputDescriptionMissingOrBlank => {
+                "Agents may not reliably know which value or constraints the required input accepts."
             }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Agents may mistake a placeholder or repeated name for usable selection guidance."
@@ -669,6 +678,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => {
                 "Each advertised tool should provide a concise, non-blank description of what it does and when to select it."
             }
+            Self::RequiredInputDescriptionMissingOrBlank => {
+                "Each required advertised tool input should describe its accepted value and important constraints."
+            }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Each advertised tool should describe what it does and when to select it instead of using a placeholder or repeating its name."
             }
@@ -819,6 +831,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => {
                 "Provide a concise description of what the tool does and when to select it."
             }
+            Self::RequiredInputDescriptionMissingOrBlank => {
+                "Describe the accepted value and any important constraints for this required input."
+            }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Replace the placeholder or name-only description with what the tool does and when to select it."
             }
@@ -926,6 +941,9 @@ impl FindingCode {
             | Self::CatalogMethodRejected => "selected MCP revision catalog contracts",
             Self::ToolDescriptionMissingOrBlank | Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "mcp-doctor A1 normalization v1 tool-description quality contract"
+            }
+            Self::RequiredInputDescriptionMissingOrBlank => {
+                "mcp-doctor required-input description quality contract"
             }
             Self::CredentialLiteralExposed => {
                 "mcp-doctor credential-literal input-schema safety contract"
@@ -2170,6 +2188,18 @@ impl Finding {
         )
     }
 
+    pub(super) fn required_input_description_missing_or_blank(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::RequiredInputDescriptionMissingOrBlank,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
     pub(super) fn tool_description_placeholder_or_name_only(
         revision: SupportedRevision,
         location: Location,
@@ -2692,6 +2722,11 @@ mod tests {
             (
                 FindingCode::ToolDescriptionMissingOrBlank,
                 "MCP-QUALITY-001",
+                Severity::Warning,
+            ),
+            (
+                FindingCode::RequiredInputDescriptionMissingOrBlank,
+                "MCP-QUALITY-002",
                 Severity::Warning,
             ),
             (

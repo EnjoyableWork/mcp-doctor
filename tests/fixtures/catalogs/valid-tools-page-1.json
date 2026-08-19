@@ -32,6 +32,7 @@
         },
         "properties": {
           "mode": {
+            "description": "Selects the bounded synthetic operating mode.",
             "enum": [
               "safe",
               "dry-run"

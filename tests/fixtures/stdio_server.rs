@@ -57,6 +57,13 @@ fn main() -> ExitCode {
         Some("credential-literals") => credential_literals(),
         Some("credential-literals-combined") => credential_literals_combined(),
         Some("credential-literal-finding-limit") => credential_literal_finding_limit(),
+        Some("required-input-descriptions") => required_input_descriptions(),
+        Some("required-input-description-prerequisites") => {
+            required_input_description_prerequisites()
+        }
+        Some("required-input-description-finding-limit") => {
+            required_input_description_finding_limit()
+        }
         Some("schema-invalid") => schema_invalid(),
         Some("schema-unsupported-pattern") => schema_unsupported_pattern(),
         Some("schema-external") => schema_external(&remaining),
@@ -84,6 +91,7 @@ fn main() -> ExitCode {
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
         Some("legacy-tool-description-placeholder") => legacy_tool_description_placeholder(),
         Some("legacy-credential-literals") => legacy_credential_literals(),
+        Some("legacy-required-input-descriptions") => legacy_required_input_descriptions(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
         Some("legacy-schema-external") => legacy_schema_external(),
@@ -1731,6 +1739,170 @@ fn credential_literal_finding_limit() -> ExitCode {
                             "default": "synthetic-security-limit-value-never-report-63"
                         }
                     }
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tools
+        }),
+    )
+}
+
+fn required_input_descriptions() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": required_input_description_tools()
+        }),
+    )
+}
+
+fn legacy_required_input_descriptions() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-legacy-required-input-quality", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(2, json!({"tools": required_input_description_tools()}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn required_input_description_tools() -> Vec<Value> {
+    const SENTINEL: &str = "synthetic-required-input-private-value-never-report";
+    vec![json!({
+        "name": "synthetic-required-input-private-tool-never-report",
+        "description": "Performs one bounded synthetic operation.",
+        "inputSchema": {
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "$defs": {
+                "referenced": {
+                    "type": "string",
+                    "description": format!("Referenced {SENTINEL} annotation must not be inherited or reported.")
+                }
+            },
+            "properties": {
+                "argument_a_absent_never_report": {
+                    "type": "string",
+                    "default": SENTINEL
+                },
+                "argument_b_empty_never_report": {
+                    "type": "string",
+                    "description": "",
+                    "examples": [SENTINEL]
+                },
+                "argument_c_blank_never_report": {
+                    "type": "string",
+                    "description": "\u{0009}\u{00A0}\u{2003}\u{3000}"
+                },
+                "argument_d_reference_never_report": {
+                    "$ref": "#/$defs/referenced"
+                },
+                "argument_e_described_never_report": {
+                    "type": "string",
+                    "description": format!("Accepts one bounded {SENTINEL} value.")
+                },
+                "argument_f_optional_never_report": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "argument_d_reference_never_report",
+                "argument_c_blank_never_report",
+                "argument_e_described_never_report",
+                "argument_a_absent_never_report",
+                "argument_b_empty_never_report"
+            ],
+            "additionalProperties": false
+        }
+    })]
+}
+
+fn required_input_description_prerequisites() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-invalid-required-input-never-report",
+                    "description": "Performs one bounded synthetic operation.",
+                    "inputSchema": {
+                        "$schema": DRAFT_2020_12,
+                        "type": "object",
+                        "properties": {
+                            "argument_invalid_never_report": {"type": "string"}
+                        },
+                        "required": "argument_invalid_never_report"
+                    }
+                },
+                {
+                    "name": "synthetic-external-required-input-never-report",
+                    "description": "Performs one bounded synthetic operation.",
+                    "inputSchema": {
+                        "$schema": DRAFT_2020_12,
+                        "type": "object",
+                        "properties": {
+                            "argument_external_never_report": {
+                                "$ref": "https://invalid.example/synthetic-private-schema-never-fetch"
+                            }
+                        },
+                        "required": ["argument_external_never_report"]
+                    }
+                },
+                {
+                    "name": "synthetic-valid-required-input-never-report",
+                    "description": "Performs one bounded synthetic operation.",
+                    "inputSchema": {
+                        "$schema": DRAFT_2020_12,
+                        "type": "object",
+                        "properties": {
+                            "argument_valid_never_report": {"type": "string"}
+                        },
+                        "required": ["argument_valid_never_report"]
+                    }
+                }
+            ]
+        }),
+    )
+}
+
+fn required_input_description_finding_limit() -> ExitCode {
+    let tools = (0..300)
+        .map(|index| {
+            let property = format!("synthetic_required_input_{index}_never_report");
+            json!({
+                "name": format!("synthetic-required-input-tool-{index}-never-report"),
+                "description": "Performs one bounded synthetic operation.",
+                "inputSchema": {
+                    "$schema": DRAFT_2020_12,
+                    "type": "object",
+                    "properties": {
+                        (&property): {"type": "string"}
+                    },
+                    "required": [property]
                 }
             })
         })
