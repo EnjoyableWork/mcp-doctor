@@ -67,6 +67,7 @@
     "skipped": 1,
     "passed": 1,
     "warned": 0,
+    "incomplete": 0,
     "failed": 1,
     "required_skipped": 0,
     "findings": {

@@ -1,5 +1,8 @@
 mod support;
 
+#[path = "fixtures/schema_gate_corpus.rs"]
+mod schema_gate_corpus;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -926,6 +929,24 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
                     "required": ["ok"],
                     "additionalProperties": false
                 }
+            }]
+        }
+    }))
+}
+
+fn schema_gate_tools_response(input_schema: Value) -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic.remote-schema-gate",
+                "description": "A wholly synthetic passive remote schema gate fixture.",
+                "annotations": {"readOnlyHint": true, "destructiveHint": false},
+                "inputSchema": input_schema
             }]
         }
     }))
@@ -4194,6 +4215,67 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     assert_redacted(&output, &endpoint, &[TOOL]);
+}
+
+#[test]
+fn passive_http_schema_work_exhaustion_is_incomplete_without_an_extra_request() {
+    for case_id in schema_gate_corpus::CASES {
+        let input_schema = schema_gate_corpus::schema(case_id)
+            .expect("every fixed representative case should have a schema");
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::reply(
+                    ExpectedRequest::method("server/discover"),
+                    discovery_response(json!({"tools": {}})),
+                ),
+                PlannedExchange::reply(
+                    ExpectedRequest::method("tools/list"),
+                    schema_gate_tools_response(input_schema),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = remote_command(&environment, "inspect", &endpoint);
+        command.arg("--format").arg("json");
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(
+            output.status.code(),
+            Some(3),
+            "{case_id}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty(), "{case_id}: {stderr}");
+        assert_eq!(outcome.accepted_connections, 2, "{case_id}");
+        assert_eq!(outcome.valid_requests, 2, "{case_id}");
+        assert_eq!(outcome.unexpected_connections, 0, "{case_id}");
+        assert_eq!(outcome.request_failures, 0, "{case_id}");
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(report["outcome"], "incomplete");
+        assert_eq!(report["exit_code"], 3);
+        let schema = report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["id"] == "schema.contracts")
+            .expect("the schema check should be retained");
+        assert_eq!(schema["state"], "performed");
+        assert_eq!(schema["outcome"], "incomplete");
+        assert_eq!(schema["findings"][0]["code"], "MCP-SCHEMA-005");
+        assert_eq!(
+            schema["findings"][0]["evidence"]["phase"],
+            "compile_construction"
+        );
+        assert_redacted(
+            &output,
+            &endpoint,
+            &["Synthetic private schema sentinel never report 7f2c"],
+        );
+    }
 }
 
 #[test]

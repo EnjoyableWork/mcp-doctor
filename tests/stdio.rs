@@ -2,7 +2,11 @@
 
 mod support;
 
+#[path = "fixtures/schema_gate_corpus.rs"]
+mod schema_gate_corpus;
+
 use std::ffi::OsStr;
+use std::fs;
 use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::path::Path;
@@ -165,6 +169,26 @@ fn text(output: &Output) -> (&str, &str) {
 
 fn json_report(output: &Output) -> serde_json::Value {
     parse_and_validate_report(&output.stdout)
+}
+
+fn structural_metrics(value: &serde_json::Value) -> (usize, usize) {
+    let mut nodes = 0_usize;
+    let mut maximum_depth = 0_usize;
+    let mut stack = vec![(value, 1_usize)];
+    while let Some((value, depth)) = stack.pop() {
+        nodes += 1;
+        maximum_depth = maximum_depth.max(depth);
+        match value {
+            serde_json::Value::Array(values) => {
+                stack.extend(values.iter().map(|value| (value, depth + 1)));
+            }
+            serde_json::Value::Object(values) => {
+                stack.extend(values.values().map(|value| (value, depth + 1)));
+            }
+            _ => {}
+        }
+    }
+    (nodes, maximum_depth)
 }
 
 #[test]
@@ -1804,7 +1828,6 @@ fn schema_depth_and_catalog_item_bounds_stop_with_named_findings() {
         ("schema-node-limit", "schema_nodes"),
         ("schema-ref-depth-limit", "schema_ref_depth"),
         ("schema-evaluation-limit", "schema_evaluation_steps"),
-        ("schema-validator-work-limit", "schema_evaluation_steps"),
         ("schema-error-limit", "validation_errors"),
         ("catalog-item-limit", "catalog_items"),
         ("report-finding-limit", "report_findings"),
@@ -1819,6 +1842,138 @@ fn schema_depth_and_catalog_item_bounds_stop_with_named_findings() {
         assert!(stdout.contains("maximum"), "{mode}: {stdout}");
         assert!(!stdout.contains("synthetic-private-property"), "{stdout}");
     }
+}
+
+#[test]
+fn representative_schema_work_exhaustion_is_typed_incomplete_across_stdio_artifacts() {
+    for case_id in schema_gate_corpus::CASES {
+        let schema = schema_gate_corpus::schema(case_id)
+            .expect("every fixed representative case should have a schema");
+        let bytes = serde_json::to_vec(&schema)
+            .expect("the fixed representative schema should serialize")
+            .len();
+        let (nodes, depth) = structural_metrics(&schema);
+        assert!((1_536..=2_048).contains(&bytes), "{case_id}: {bytes}");
+        assert!(nodes <= 160, "{case_id}: {nodes}");
+        assert!(depth <= 8, "{case_id}: {depth}");
+
+        let environment = TestEnvironment::new();
+        let json_path = environment.artifact_path("schema-incomplete.json");
+        let junit_path = environment.artifact_path("schema-incomplete.xml");
+        let output = environment
+            .command()
+            .arg("inspect")
+            .arg("--protocol-version")
+            .arg("2025-11-25")
+            .arg("--format")
+            .arg("json")
+            .arg("--json-report")
+            .arg(&json_path)
+            .arg("--junit-report")
+            .arg(&junit_path)
+            .arg("--")
+            .arg(fixture())
+            .arg("schema-gate")
+            .arg(case_id)
+            .output()
+            .expect("the built CLI should inspect the fixed passive schema once");
+        let (_, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(3), "{case_id}: {stderr}");
+        assert!(stderr.is_empty(), "{case_id}: {stderr}");
+
+        let report = json_report(&output);
+        let artifact = parse_and_validate_report(
+            &fs::read(&json_path).expect("the JSON artifact should be readable"),
+        );
+        assert_eq!(artifact, report);
+        assert_eq!(report["outcome"], "incomplete");
+        assert_eq!(report["exit_code"], 3);
+        assert_eq!(report["summary"]["incomplete"], 1);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            "MCP-SCHEMA-005"
+        );
+        let schema_check = find_json_check(&report, "schema.contracts");
+        assert_eq!(schema_check["state"], "performed");
+        assert_eq!(schema_check["outcome"], "incomplete");
+        let finding = &schema_check["findings"][0];
+        assert_eq!(finding["code"], "MCP-SCHEMA-005");
+        assert_eq!(finding["location"], "tools[0].inputSchema");
+        assert_eq!(finding["evidence"]["kind"], "schema_validation_limit");
+        assert_eq!(finding["evidence"]["phase"], "compile_construction");
+        assert_eq!(finding["evidence"]["limit"], "schema_evaluation_steps");
+        assert_eq!(finding["evidence"]["unit"], "count");
+        assert_eq!(finding["evidence"]["observed"], 100_001);
+        assert_eq!(finding["evidence"]["maximum"], 100_000);
+        let rendered = std::str::from_utf8(&output.stdout).expect("report should be UTF-8");
+        assert!(!rendered.contains("Synthetic private schema sentinel never report 7f2c"));
+
+        let (junit, summary) = parse_and_validate_junit(
+            &fs::read(&junit_path).expect("the JUnit artifact should be readable"),
+        );
+        assert_eq!(summary.failures, 0);
+        assert_eq!(
+            summary.skipped,
+            report["summary"]["skipped"].as_u64().unwrap() as usize + 1
+        );
+        assert!(junit.contains("<skipped message=\"incomplete\">"));
+        assert!(junit.contains("finding[0].evidence.phase=compile_construction"));
+        assert!(!junit.contains("Synthetic private schema sentinel never report 7f2c"));
+    }
+}
+
+#[test]
+fn schema_incomplete_preserves_phase_and_true_failure_precedence() {
+    let meta = run_json_mode("schema-validator-work-limit");
+    let meta_report = json_report(&meta);
+    assert_eq!(meta.status.code(), Some(3));
+    assert_eq!(meta_report["outcome"], "incomplete");
+    let meta_finding = &find_json_check(&meta_report, "schema.contracts")["findings"][0];
+    assert_eq!(meta_finding["code"], "MCP-SCHEMA-005");
+    assert_eq!(meta_finding["evidence"]["phase"], "meta_validation");
+
+    let preliminary = run_json_mode("schema-evaluation-limit");
+    let preliminary_report = json_report(&preliminary);
+    assert_eq!(preliminary.status.code(), Some(1));
+    assert_eq!(preliminary_report["outcome"], "failed");
+    assert_eq!(
+        find_json_check(&preliminary_report, "schema.contracts")["findings"][0]["code"],
+        "MCP-LIMIT-001"
+    );
+
+    let invalid = run_json_mode("schema-invalid");
+    let invalid_report = json_report(&invalid);
+    assert_eq!(invalid.status.code(), Some(1));
+    assert_eq!(invalid_report["outcome"], "failed");
+    assert!(
+        find_json_check(&invalid_report, "schema.contracts")["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["code"] == "MCP-SCHEMA-001")
+    );
+
+    let mixed = run_json_mode("schema-mixed-failure-incomplete");
+    let mixed_report = json_report(&mixed);
+    assert_eq!(mixed.status.code(), Some(1));
+    assert_eq!(mixed_report["outcome"], "failed");
+    assert_eq!(
+        find_json_check(&mixed_report, "schema.contracts")["outcome"],
+        "failed"
+    );
+    let mixed_codes = find_json_check(&mixed_report, "schema.contracts")["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|finding| finding["code"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(mixed_codes.contains(&"MCP-SCHEMA-001"));
+    assert!(mixed_codes.contains(&"MCP-SCHEMA-005"));
+    assert_eq!(
+        mixed_report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-SCHEMA-001"
+    );
 }
 
 #[test]
@@ -1844,10 +1999,13 @@ fn find_json_check<'a>(report: &'a serde_json::Value, id: &str) -> &'a serde_jso
 fn assert_human_json_summary_and_limits_match(human: &str, report: &serde_json::Value) {
     let summary = &report["summary"];
     let summary_line = format!(
-        "{} failed · {} warned · {} passed · {} skipped · outcome {} · exit {}",
+        "{} failed · {} incomplete · {} warned · {} passed · {} skipped · outcome {} · exit {}",
         summary["failed"]
             .as_u64()
             .expect("failed should be a count"),
+        summary["incomplete"]
+            .as_u64()
+            .expect("incomplete should be a count"),
         summary["warned"]
             .as_u64()
             .expect("warned should be a count"),

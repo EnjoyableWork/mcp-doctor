@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::limits::LimitViolation;
+use super::limits::{LimitKind, LimitViolation};
 use super::protocol::{RevisionAdvertisementSummary, SupportedRevision};
 use super::redaction::RedactedValue;
 
@@ -181,6 +181,7 @@ pub(super) enum FindingCode {
     UnsupportedSchemaDialect,
     AmbiguousSchemaDialect,
     ExternalSchemaReferenceBlocked,
+    SchemaValidationIncomplete,
     ScenarioInvalid,
     SecretReferenceInvalid,
     ScenarioSchemaInvalid,
@@ -234,6 +235,7 @@ impl FindingCode {
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
             Self::AmbiguousSchemaDialect => "MCP-SCHEMA-004",
+            Self::SchemaValidationIncomplete => "MCP-SCHEMA-005",
             Self::ScenarioInvalid => "MCP-SCENARIO-001",
             Self::SecretReferenceInvalid => "MCP-SCENARIO-002",
             Self::ScenarioSchemaInvalid => "MCP-SCENARIO-003",
@@ -285,6 +287,7 @@ impl FindingCode {
             | Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked
+            | Self::SchemaValidationIncomplete
             | Self::ScenarioInvalid
             | Self::SecretReferenceInvalid
             | Self::ScenarioSchemaInvalid
@@ -377,6 +380,9 @@ impl FindingCode {
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "A schema requires prohibited external reference retrieval."
+            }
+            Self::SchemaValidationIncomplete => {
+                "mcp-doctor could not complete local schema validation within its work bound."
             }
             Self::ScenarioInvalid => "The check scenario does not match its versioned contract.",
             Self::SecretReferenceInvalid => {
@@ -509,6 +515,9 @@ impl FindingCode {
             }
             Self::ExternalSchemaReferenceBlocked => {
                 "Resolving this contract would require network or file access that was not authorized."
+            }
+            Self::SchemaValidationIncomplete => {
+                "Schema validity remains unknown, so reporting it as valid or invalid would be misleading."
             }
             Self::ScenarioInvalid => {
                 "The declared cases cannot be replayed deterministically or within their safety boundary."
@@ -654,6 +663,9 @@ impl FindingCode {
             Self::ExternalSchemaReferenceBlocked => {
                 "mcp-doctor accepts only references contained in the local schema being checked."
             }
+            Self::SchemaValidationIncomplete => {
+                "Local Draft 2020-12 validation must complete within the fixed schema-work bound or report incomplete evidence."
+            }
             Self::ScenarioInvalid => {
                 "The file must be one strict supported mcp-doctor scenario JSON document within its finite case or step bounds."
             }
@@ -795,6 +807,9 @@ impl FindingCode {
             Self::ExternalSchemaReferenceBlocked => {
                 "Inline the referenced schema or move it into local $defs and use a fragment reference."
             }
+            Self::SchemaValidationIncomplete => {
+                "Provide a minimized, wholly synthetic reproducer through the private project support route, then rerun with a release that can complete validation within the same bound."
+            }
             Self::ScenarioInvalid => "Correct the reported scenario structure and rerun check.",
             Self::SecretReferenceInvalid => {
                 "Correct the environment reference or null placeholder, provide the value, and rerun check."
@@ -886,6 +901,9 @@ impl FindingCode {
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked => {
                 "selected MCP revision Tool contract and JSON Schema Draft 2020-12"
+            }
+            Self::SchemaValidationIncomplete => {
+                "mcp-doctor bounded local JSON Schema Draft 2020-12 validation contract"
             }
             Self::AmbiguousSchemaDialect => "MCP 2025-06-18 Tool schema contract",
             Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
@@ -1707,12 +1725,31 @@ impl JsonRpcErrorKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum SchemaValidationPhase {
+    MetaValidation,
+    CompileConstruction,
+}
+
+impl SchemaValidationPhase {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::MetaValidation => "meta_validation",
+            Self::CompileConstruction => "compile_construction",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum FindingEvidence {
     None,
     RevisionAdvertisement(RevisionAdvertisementSummary),
     RedactedObservation(RedactedValue),
     LimitViolation(LimitViolation),
+    SchemaValidationLimit {
+        phase: SchemaValidationPhase,
+        violation: LimitViolation,
+    },
     RuleViolation(RuleViolation),
     JsonRpcError(JsonRpcErrorKind),
 }
@@ -1953,6 +1990,25 @@ impl Finding {
             revision,
             location,
             FindingEvidence::LimitViolation(violation),
+        )
+    }
+
+    pub(super) fn schema_validation_incomplete(
+        revision: SupportedRevision,
+        location: Location,
+        phase: SchemaValidationPhase,
+        violation: LimitViolation,
+    ) -> Self {
+        assert_eq!(
+            violation.kind(),
+            LimitKind::SchemaEvaluationSteps,
+            "schema validation incomplete evidence must use the schema work bound"
+        );
+        Self::new(
+            FindingCode::SchemaValidationIncomplete,
+            revision,
+            location,
+            FindingEvidence::SchemaValidationLimit { phase, violation },
         )
     }
 
@@ -2304,12 +2360,17 @@ impl Finding {
     pub(super) const fn is_independent_safety(&self) -> bool {
         self.code.is_independent_safety()
     }
+
+    pub(super) const fn is_incomplete(&self) -> bool {
+        matches!(self.code, FindingCode::SchemaValidationIncomplete)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum CheckOutcome {
     Passed,
     Warning,
+    Incomplete,
     Failed,
 }
 
@@ -2318,6 +2379,7 @@ impl CheckOutcome {
         match self {
             Self::Passed => "passed",
             Self::Warning => "warning",
+            Self::Incomplete => "incomplete",
             Self::Failed => "failed",
         }
     }
@@ -2326,6 +2388,7 @@ impl CheckOutcome {
         match self {
             Self::Passed => "PASS",
             Self::Warning => "WARN",
+            Self::Incomplete => "INCOMPLETE",
             Self::Failed => "FAIL",
         }
     }
@@ -2409,9 +2472,11 @@ impl CheckResult {
         let findings = self.findings()?;
         if findings
             .iter()
-            .any(|finding| finding.severity().is_failure())
+            .any(|finding| finding.severity().is_failure() && !finding.is_incomplete())
         {
             Some(CheckOutcome::Failed)
+        } else if findings.iter().any(Finding::is_incomplete) {
+            Some(CheckOutcome::Incomplete)
         } else if findings
             .iter()
             .any(|finding| finding.severity() == Severity::Warning)
@@ -2427,8 +2492,9 @@ impl CheckResult {
 mod tests {
     use super::{
         CheckId, CheckOutcome, CheckResult, Finding, FindingCode, JsonRpcErrorKind, Location,
-        LocationField, Requirement, Severity, SkipReason,
+        LocationField, Requirement, RuleViolation, SchemaValidationPhase, Severity, SkipReason,
     };
+    use crate::contract::limits::{LimitKind, LimitViolation};
     use crate::contract::protocol::SupportedRevision;
 
     #[test]
@@ -2539,6 +2605,11 @@ mod tests {
                 FindingCode::AmbiguousSchemaDialect,
                 "MCP-SCHEMA-004",
                 Severity::Warning,
+            ),
+            (
+                FindingCode::SchemaValidationIncomplete,
+                "MCP-SCHEMA-005",
+                Severity::Error,
             ),
             (
                 FindingCode::ScenarioInvalid,
@@ -2738,5 +2809,37 @@ mod tests {
         assert!(performed.skip_reason().is_none());
         assert!(skipped.outcome().is_none());
         assert_eq!(skipped.skip_reason(), Some(SkipReason::NotAuthorized));
+    }
+
+    #[test]
+    fn incomplete_schema_evidence_is_distinct_and_true_failure_wins() {
+        let location = Location::root(LocationField::Tools)
+            .index(0)
+            .field(LocationField::InputSchema);
+        let incomplete = Finding::schema_validation_incomplete(
+            SupportedRevision::CURRENT,
+            location.clone(),
+            SchemaValidationPhase::CompileConstruction,
+            LimitViolation::new(LimitKind::SchemaEvaluationSteps, 100_001, 100_000)
+                .expect("the synthetic evidence should exceed the fixed bound"),
+        );
+        let incomplete_only = CheckResult::performed(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            vec![incomplete.clone()],
+        );
+        assert_eq!(incomplete_only.outcome(), Some(CheckOutcome::Incomplete));
+
+        let invalid = Finding::schema_contract_invalid(
+            SupportedRevision::CURRENT,
+            location,
+            RuleViolation::InvalidDraft202012 { error_count: 1 },
+        );
+        let mixed = CheckResult::performed(
+            CheckId::SchemaContracts,
+            Requirement::Required,
+            vec![incomplete, invalid],
+        );
+        assert_eq!(mixed.outcome(), Some(CheckOutcome::Failed));
     }
 }

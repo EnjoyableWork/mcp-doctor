@@ -9,6 +9,9 @@ use std::thread;
 use serde_json::Value;
 use serde_json::json;
 
+#[path = "schema_gate_corpus.rs"]
+mod schema_gate_corpus;
+
 const MIB: usize = 1024 * 1024;
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
 const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -58,6 +61,8 @@ fn main() -> ExitCode {
         Some("schema-ref-depth-limit") => schema_ref_depth_limit(),
         Some("schema-evaluation-limit") => schema_evaluation_limit(),
         Some("schema-validator-work-limit") => schema_validator_work_limit(),
+        Some("schema-gate") => schema_gate(&remaining),
+        Some("schema-mixed-failure-incomplete") => schema_mixed_failure_incomplete(),
         Some("schema-error-limit") => schema_error_limit(),
         Some("catalog-item-limit") => catalog_item_limit(),
         Some("report-finding-limit") => report_finding_limit(),
@@ -1698,6 +1703,71 @@ fn schema_validator_work_limit() -> ExitCode {
         "properties": properties
     }));
     serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_gate(arguments: &[OsString]) -> ExitCode {
+    let Some(case_id) = arguments.first().and_then(|value| value.to_str()) else {
+        return ExitCode::from(2);
+    };
+    if !schema_gate_corpus::CASES.contains(&case_id) {
+        return ExitCode::from(2);
+    }
+    let Some(input_schema) = schema_gate_corpus::schema(case_id) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    if revision != "2025-11-25" {
+        return ExitCode::from(2);
+    }
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-schema-gate", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "tools": [{
+                "name": "synthetic.schema-gate",
+                "description": "A wholly synthetic passive schema gate fixture.",
+                "inputSchema": input_schema
+            }]
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn schema_mixed_failure_incomplete() -> ExitCode {
+    let input_schema = schema_gate_corpus::schema("nested-required")
+        .expect("the fixed synthetic schema should exist");
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic.invalid",
+                    "description": "A wholly synthetic invalid schema fixture.",
+                    "inputSchema": {"type": "object", "required": "synthetic-invalid"}
+                },
+                {
+                    "name": "synthetic.incomplete",
+                    "description": "A wholly synthetic bounded validation fixture.",
+                    "inputSchema": input_schema
+                }
+            ]
+        }),
+    )
 }
 
 fn schema_error_limit() -> ExitCode {

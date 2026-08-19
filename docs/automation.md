@@ -53,6 +53,14 @@ secrets removed. Passive `inspect` adds a typed `protocol_selection` object:
 requested mode, fixed path, selected supported revision when established, and
 bounded process-launch, lifecycle-request, notification, and fallback counts.
 The human header and JUnit properties carry the same value-free evidence.
+When bounded local schema meta-validation or validator construction cannot
+finish after preliminary structural gates pass, the shared result retains a
+performed `schema.contracts` check with outcome `incomplete` and
+`MCP-SCHEMA-005`. JSON includes only the phase, fixed limit name and unit,
+observed count, maximum count, and structural location. JUnit projects that
+performed incomplete check as skipped/incomplete rather than a failure or
+pass. A genuine failure in the same report still takes precedence while the
+incomplete evidence remains visible.
 
 Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
@@ -106,9 +114,11 @@ Every input must satisfy the embedded report schema and its summary, severity,
 outcome, exit, revision, primary diagnosis, independent findings, and causal
 skips. When present, passive protocol-selection evidence must also have a
 coherent mode, path, selected revision, and bounded counts; it is preserved in
-the member report. Failure outranks incomplete, which outranks pass: only
-all-pass input passes. There is no waiver, score, baseline, deduplication,
-majority rule, or severity override.
+the member report. Typed performed-incomplete schema evidence is validated as
+strictly as its check outcome, summary, primary diagnosis, and exit. Failure
+outranks incomplete, which outranks pass: only all-pass input passes.
+There is no waiver, score, baseline, deduplication, majority rule, or severity
+override.
 
 All-pass exits `0`, any failure exits `1`, and otherwise incomplete exits `3`.
 Invalid, unreadable, aliased, over-limit input or an unsafe destination exits

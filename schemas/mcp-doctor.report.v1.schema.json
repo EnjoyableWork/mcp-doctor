@@ -469,6 +469,9 @@
         "warned": {
           "$ref": "#/$defs/bounded_count"
         },
+        "incomplete": {
+          "$ref": "#/$defs/bounded_count"
+        },
         "failed": {
           "$ref": "#/$defs/bounded_count"
         },
@@ -676,6 +679,41 @@
       },
       "additionalProperties": true
     },
+    "evidence_schema_validation_limit": {
+      "type": "object",
+      "required": [
+        "kind",
+        "phase",
+        "limit",
+        "unit",
+        "observed",
+        "maximum"
+      ],
+      "properties": {
+        "kind": {
+          "const": "schema_validation_limit"
+        },
+        "phase": {
+          "enum": [
+            "meta_validation",
+            "compile_construction"
+          ]
+        },
+        "limit": {
+          "const": "schema_evaluation_steps"
+        },
+        "unit": {
+          "const": "count"
+        },
+        "observed": {
+          "$ref": "#/$defs/positive_count"
+        },
+        "maximum": {
+          "$ref": "#/$defs/positive_count"
+        }
+      },
+      "additionalProperties": true
+    },
     "evidence_rule_violation": {
       "type": "object",
       "required": [
@@ -791,6 +829,9 @@
           "$ref": "#/$defs/evidence_limit_violation"
         },
         {
+          "$ref": "#/$defs/evidence_schema_validation_limit"
+        },
+        {
           "$ref": "#/$defs/evidence_rule_violation"
         },
         {
@@ -879,6 +920,7 @@
           "enum": [
             "passed",
             "warning",
+            "incomplete",
             "failed"
           ]
         },

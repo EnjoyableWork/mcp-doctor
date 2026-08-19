@@ -244,6 +244,7 @@ pub(super) struct ReportSummary {
     skipped: usize,
     passed: usize,
     warned: usize,
+    incomplete: usize,
     failed: usize,
     required_skipped: usize,
     findings: SeverityCounts,
@@ -312,7 +313,11 @@ impl DiagnosticReport {
         let summary = summarize(&checks);
         let outcome = if summary.failed > 0 {
             OverallOutcome::Failed
-        } else if summary.required == 0 || summary.performed == 0 || summary.required_skipped > 0 {
+        } else if summary.incomplete > 0
+            || summary.required == 0
+            || summary.performed == 0
+            || summary.required_skipped > 0
+        {
             OverallOutcome::Incomplete
         } else {
             OverallOutcome::Passed
@@ -484,7 +489,9 @@ fn classify_findings(checks: &[CheckResult]) -> (Option<Diagnosis>, Vec<FindingR
                 .findings()?
                 .iter()
                 .filter(|finding| {
-                    finding.severity().is_failure() && !finding.is_independent_safety()
+                    finding.severity().is_failure()
+                        && !finding.is_incomplete()
+                        && !finding.is_independent_safety()
                 })
                 .map(|finding| FindingReference::new(check.id(), finding))
                 .collect::<Vec<_>>();
@@ -498,7 +505,21 @@ fn classify_findings(checks: &[CheckResult]) -> (Option<Diagnosis>, Vec<FindingR
                 let findings = check
                     .findings()?
                     .iter()
-                    .filter(|finding| finding.severity().is_failure())
+                    .filter(|finding| finding.severity().is_failure() && !finding.is_incomplete())
+                    .map(|finding| FindingReference::new(check.id(), finding))
+                    .collect::<Vec<_>>();
+                (!findings.is_empty()).then_some(Diagnosis {
+                    check: check.id(),
+                    findings,
+                })
+            })
+        })
+        .or_else(|| {
+            checks.iter().find_map(|check| {
+                let findings = check
+                    .findings()?
+                    .iter()
+                    .filter(|finding| finding.is_incomplete())
                     .map(|finding| FindingReference::new(check.id(), finding))
                     .collect::<Vec<_>>();
                 (!findings.is_empty()).then_some(Diagnosis {
@@ -530,6 +551,7 @@ fn summarize(checks: &[CheckResult]) -> ReportSummary {
             match check.outcome().expect("performed checks have an outcome") {
                 CheckOutcome::Passed => summary.passed += 1,
                 CheckOutcome::Warning => summary.warned += 1,
+                CheckOutcome::Incomplete => summary.incomplete += 1,
                 CheckOutcome::Failed => summary.failed += 1,
             }
         } else {
@@ -775,8 +797,9 @@ impl HumanReporter {
         output.push('\n');
         writeln!(
             output,
-            "{} failed · {} warned · {} passed · {} skipped · outcome {} · exit {}",
+            "{} failed · {} incomplete · {} warned · {} passed · {} skipped · outcome {} · exit {}",
             summary.failed,
+            summary.incomplete,
             summary.warned,
             summary.passed,
             summary.skipped,
@@ -1027,6 +1050,19 @@ fn write_human_evidence(output: &mut BoundedOutput, finding: &Finding) {
             )
             .expect("the bounded report writer records limit failures");
         }
+        FindingEvidence::SchemaValidationLimit { phase, violation } => {
+            writeln!(
+                output,
+                "      phase {} · {} observed {} {}; maximum {} {}",
+                phase.as_str(),
+                violation.kind().as_str(),
+                violation.observed(),
+                violation.kind().unit().as_str(),
+                violation.maximum(),
+                violation.kind().unit().as_str()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
         FindingEvidence::RuleViolation(violation) => {
             write_human_rule(output, *violation);
         }
@@ -1075,13 +1111,17 @@ impl JunitReporter {
         writeln!(
             output,
             "<testsuites name=\"mcp-doctor\" tests=\"{}\" failures=\"{}\" errors=\"0\" skipped=\"{}\" time=\"0\">",
-            summary.checks, summary.failed, summary.skipped
+            summary.checks,
+            summary.failed,
+            summary.skipped + summary.incomplete
         )
         .expect("the bounded report writer records limit failures");
         writeln!(
             output,
             "  <testsuite name=\"mcp-doctor\" tests=\"{}\" failures=\"{}\" errors=\"0\" skipped=\"{}\" time=\"0\">",
-            summary.checks, summary.failed, summary.skipped
+            summary.checks,
+            summary.failed,
+            summary.skipped + summary.incomplete
         )
         .expect("the bounded report writer records limit failures");
 
@@ -1141,13 +1181,22 @@ fn write_junit_testcase(
         }
         writeln!(output, "      </skipped>")
             .expect("the bounded report writer records limit failures");
+    } else if check.outcome() == Some(CheckOutcome::Incomplete) {
+        output.push_str("      <skipped message=\"incomplete\">");
+        write_xml_line(
+            output,
+            "skip_description",
+            "mcp-doctor could not complete this performed check within its fixed work bound",
+        );
+        writeln!(output, "      </skipped>")
+            .expect("the bounded report writer records limit failures");
     } else if check.outcome() == Some(CheckOutcome::Failed) {
         let findings = check
             .findings()
             .expect("a performed failed check has findings");
         let first_failure = findings
             .iter()
-            .find(|finding| finding.severity().is_failure())
+            .find(|finding| finding.severity().is_failure() && !finding.is_incomplete())
             .expect("a failed check has one failing finding");
         write!(output, "      <failure message=\"")
             .expect("the bounded report writer records limit failures");
@@ -1405,6 +1454,44 @@ fn write_junit_evidence(output: &mut BoundedOutput, index: usize, finding: &Find
         }
         FindingEvidence::LimitViolation(violation) => {
             write_indexed_xml_line(output, "finding", index, "evidence.kind", "limit_violation");
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.limit",
+                violation.kind().as_str(),
+            );
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.unit",
+                violation.kind().unit().as_str(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.observed",
+                violation.observed(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.maximum",
+                violation.maximum(),
+            );
+        }
+        FindingEvidence::SchemaValidationLimit { phase, violation } => {
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.kind",
+                "schema_validation_limit",
+            );
+            write_indexed_xml_line(output, "finding", index, "evidence.phase", phase.as_str());
             write_indexed_xml_line(
                 output,
                 "finding",
@@ -1932,6 +2019,13 @@ enum JsonEvidence {
         observed: u64,
         maximum: u64,
     },
+    SchemaValidationLimit {
+        phase: &'static str,
+        limit: &'static str,
+        unit: &'static str,
+        observed: u64,
+        maximum: u64,
+    },
     RuleViolation {
         rule: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1971,6 +2065,15 @@ impl JsonEvidence {
                 observed: violation.observed(),
                 maximum: violation.maximum(),
             },
+            FindingEvidence::SchemaValidationLimit { phase, violation } => {
+                Self::SchemaValidationLimit {
+                    phase: phase.as_str(),
+                    limit: violation.kind().as_str(),
+                    unit: violation.kind().unit().as_str(),
+                    observed: violation.observed(),
+                    maximum: violation.maximum(),
+                }
+            }
             FindingEvidence::RuleViolation(violation) => Self::RuleViolation {
                 rule: violation.as_str(),
                 expected: violation.expected_shape().map(|shape| shape.as_str()),
@@ -1998,7 +2101,7 @@ mod tests {
     };
     use crate::contract::model::{
         CheckId, CheckResult, ExpectedShape, Finding, FindingCode, JsonKind, Location,
-        LocationField, Requirement, RuleViolation, SkipReason,
+        LocationField, Requirement, RuleViolation, SchemaValidationPhase, SkipReason,
     };
     use crate::contract::protocol::SupportedRevision;
     use crate::contract::redaction::Sensitive;
@@ -2465,6 +2568,84 @@ mod tests {
         assert_eq!(report.outcome(), OverallOutcome::Failed);
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
         assert_eq!(report.summary().required_skipped, 1);
+    }
+
+    #[test]
+    fn performed_schema_incomplete_is_primary_exit_three_and_reporter_safe() {
+        let location = Location::root(LocationField::Tools)
+            .index(0)
+            .field(LocationField::InputSchema);
+        let incomplete = Finding::schema_validation_incomplete(
+            SupportedRevision::CURRENT,
+            location.clone(),
+            SchemaValidationPhase::CompileConstruction,
+            LimitViolation::new(LimitKind::SchemaEvaluationSteps, 100_001, 100_000)
+                .expect("the synthetic evidence should exceed the fixed bound"),
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            vec![CheckResult::performed(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                vec![incomplete.clone()],
+            )],
+        )
+        .expect("performed incomplete evidence should satisfy the report contract");
+
+        assert_eq!(report.outcome(), OverallOutcome::Incomplete);
+        assert_eq!(report.exit_status(), ExitStatus::Incomplete);
+        assert_eq!(report.summary().incomplete, 1);
+        assert_eq!(
+            report.primary_diagnosis().unwrap().findings()[0].code(),
+            FindingCode::SchemaValidationIncomplete
+        );
+
+        let human = HumanReporter::render(&report);
+        let json = JsonReporter::render(&report).expect("typed report should serialize");
+        let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        for rendered in [&human, &json, &junit] {
+            assert!(rendered.contains("MCP-SCHEMA-005"));
+            assert!(rendered.contains("compile_construction"));
+            assert!(rendered.contains("schema_evaluation_steps"));
+            assert!(rendered.contains("100001"));
+            assert!(rendered.contains("100000"));
+        }
+        assert!(human.contains("INCOMPLETE schema.contracts"));
+        let json_value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_stable_report(&json_value);
+        assert_eq!(json_value["checks"][0]["state"], "performed");
+        assert_eq!(json_value["checks"][0]["outcome"], "incomplete");
+        assert_common_junit_document(&junit, 1, 0, 1);
+        assert!(junit.contains("<skipped message=\"incomplete\">"));
+
+        let invalid = Finding::schema_contract_invalid(
+            SupportedRevision::CURRENT,
+            location,
+            RuleViolation::InvalidDraft202012 { error_count: 1 },
+        );
+        let mixed = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::M1_DEFAULTS,
+            vec![CheckResult::performed(
+                CheckId::SchemaContracts,
+                Requirement::Required,
+                vec![incomplete, invalid],
+            )],
+        )
+        .expect("mixed genuine and incomplete evidence should satisfy the report contract");
+        assert_eq!(mixed.outcome(), OverallOutcome::Failed);
+        assert_eq!(mixed.summary().failed, 1);
+        assert_eq!(mixed.summary().incomplete, 0);
+        assert_eq!(
+            mixed.primary_diagnosis().unwrap().findings()[0].code(),
+            FindingCode::SchemaContractInvalid
+        );
+        assert!(
+            JsonReporter::render(&mixed)
+                .unwrap()
+                .contains("MCP-SCHEMA-005")
+        );
     }
 
     #[test]

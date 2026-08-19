@@ -66,8 +66,12 @@ name is rejected before target preparation.
 - `schema_evaluation_steps` is one deterministic operation budget spanning the
   preliminary schema/instance walk, Draft 2020-12 meta-validation, validator
   construction, local-reference fan-out, and actual instance access. String,
-  pattern, equality, collection, combinator, and uniqueness work either fits
-  that budget or stops with `MCP-LIMIT-001` before the affected tool call.
+  pattern, equality, collection, combinator, and uniqueness work must fit that
+  budget before the affected tool call. Preliminary structural or work excess
+  is `MCP-LIMIT-001`. Exhaustion during meta-validation or validator
+  construction after those gates is the typed `MCP-SCHEMA-005` tool-limitation
+  evidence and makes the performed check incomplete; it never becomes a pass,
+  warning, limit increase, retry, or authority to call the tool.
 - Pattern evaluation uses the validator's linear-time regular-expression
   engine with fixed 100,000-byte compiled-size and DFA-cache limits. The same
   ECMA-262 translation is inspected as maintained HIR before construction;

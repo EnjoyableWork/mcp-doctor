@@ -30,4 +30,4 @@ SKIP  discovery.catalogs     required · the protocol revision is unsupported ·
 SKIP  schema.contracts       required · the protocol revision is unsupported · blocked by protocol.revision (MCP-PROTOCOL-002 at server.supportedVersions)
 SKIP  runtime.tools          optional · active behavior was not authorized
 
-1 failed · 0 warned · 2 passed · 3 skipped · outcome failed · exit 1
+1 failed · 0 incomplete · 0 warned · 2 passed · 3 skipped · outcome failed · exit 1

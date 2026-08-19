@@ -1974,9 +1974,10 @@ fn advertised_and_scenario_schemas_are_local_bounded_and_checked_before_activity
         .output()
         .expect("schema work exhaustion should be rejected before target preparation");
     let (stdout, stderr) = text(&output);
-    assert_eq!(output.status.code(), Some(2), "{stdout}\n{stderr}");
+    assert_eq!(output.status.code(), Some(3), "{stdout}\n{stderr}");
     assert!(stderr.is_empty());
-    assert!(stdout.contains("MCP-LIMIT-001"), "{stdout}");
+    assert!(stdout.contains("MCP-SCHEMA-005"), "{stdout}");
+    assert!(stdout.contains("compile_construction"), "{stdout}");
     assert!(stdout.contains("schema_evaluation_steps"), "{stdout}");
     assert!(!marker.exists());
 }

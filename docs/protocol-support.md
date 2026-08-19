@@ -157,3 +157,12 @@ Before matching, the translated pattern's bounded structural complexity,
 including counted-repetition expansion and character-class ranges, is charged
 against all potentially inspected instance text under
 `schema_evaluation_steps`.
+
+Preliminary schema byte, node, depth, reference-depth, and work excess remains
+a server-facing `MCP-LIMIT-001` failure. If the schema passes those gates but
+the bounded Draft 2020-12 meta-validator or validator construction reaches the
+same fixed work ceiling, schema validity is unknown: `mcp-doctor` reports
+`MCP-SCHEMA-005` with phase `meta_validation` or `compile_construction`, keeps
+the check performed, and returns incomplete evidence with exit `3` unless an
+independent genuine failure takes precedence. This distinction does not raise
+the limit, guess validity, retrieve a reference, or permit an active tool call.

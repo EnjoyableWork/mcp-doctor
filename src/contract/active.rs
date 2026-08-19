@@ -1165,8 +1165,12 @@ fn render_prestart_failure(
         ));
     }
     let report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
-        .expect("a scenario configuration failure is a valid report")
-        .with_exit_status(ExitStatus::InvocationError);
+        .expect("a scenario configuration failure is a valid report");
+    let report = if report.exit_status() == ExitStatus::Incomplete {
+        report
+    } else {
+        report.with_exit_status(ExitStatus::InvocationError)
+    };
     Diagnostic::from_report(report)
 }
 

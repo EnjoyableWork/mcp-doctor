@@ -484,6 +484,7 @@ enum CheckState {
 enum CheckOutcome {
     Passed,
     Warning,
+    Incomplete,
     Failed,
 }
 
@@ -492,6 +493,7 @@ impl CheckOutcome {
         match self {
             Self::Passed => "passed",
             Self::Warning => "warning",
+            Self::Incomplete => "incomplete",
             Self::Failed => "failed",
         }
     }
@@ -700,6 +702,8 @@ struct ReportSummary {
     skipped: u64,
     passed: u64,
     warned: u64,
+    #[serde(default)]
+    incomplete: u64,
     failed: u64,
     required_skipped: u64,
     findings: SeverityCounts,
@@ -781,6 +785,13 @@ enum Evidence {
         observed: u64,
         maximum: u64,
     },
+    SchemaValidationLimit {
+        phase: SchemaValidationPhase,
+        limit: String,
+        unit: String,
+        observed: u64,
+        maximum: u64,
+    },
     RuleViolation {
         rule: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -808,6 +819,13 @@ enum StableJsonRpcErrorKind {
     InvalidParams,
     InternalError,
     Other,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SchemaValidationPhase {
+    MetaValidation,
+    CompileConstruction,
 }
 
 impl StableJsonRpcErrorKind {
@@ -856,6 +874,9 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
                 match expected {
                     CheckOutcome::Passed => summary.passed = summary.passed.saturating_add(1),
                     CheckOutcome::Warning => summary.warned = summary.warned.saturating_add(1),
+                    CheckOutcome::Incomplete => {
+                        summary.incomplete = summary.incomplete.saturating_add(1);
+                    }
                     CheckOutcome::Failed => summary.failed = summary.failed.saturating_add(1),
                 }
             }
@@ -909,6 +930,27 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
                     AggregateErrorKind::InputSemantic,
                 ));
             }
+            match (&*finding.code, finding.severity, &finding.evidence) {
+                (
+                    "MCP-SCHEMA-005",
+                    Severity::Error,
+                    Evidence::SchemaValidationLimit {
+                        limit,
+                        unit,
+                        observed,
+                        maximum,
+                        ..
+                    },
+                ) if limit == "schema_evaluation_steps"
+                    && unit == "count"
+                    && observed > maximum => {}
+                ("MCP-SCHEMA-005", _, _) | (_, _, Evidence::SchemaValidationLimit { .. }) => {
+                    return Err(AggregateError::invocation(
+                        AggregateErrorKind::InputSemantic,
+                    ));
+                }
+                _ => {}
+            }
             summary.findings.observe(finding.severity);
         }
     }
@@ -920,7 +962,11 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
     }
     let expected_outcome = if summary.failed > 0 {
         ReportOutcome::Failed
-    } else if summary.required == 0 || summary.performed == 0 || summary.required_skipped > 0 {
+    } else if summary.incomplete > 0
+        || summary.required == 0
+        || summary.performed == 0
+        || summary.required_skipped > 0
+    {
         ReportOutcome::Incomplete
     } else {
         ReportOutcome::Passed
@@ -942,20 +988,41 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
         (Some(diagnosis), ReportOutcome::Failed) => {
             for finding in &diagnosis.findings {
                 budget.observe_work(1)?;
-                if !reference_resolves(
-                    report,
-                    &diagnosis.check_id,
-                    &finding.code,
-                    &finding.location,
-                    true,
-                ) {
+                if finding.code == "MCP-SCHEMA-005"
+                    || !reference_resolves(
+                        report,
+                        &diagnosis.check_id,
+                        &finding.code,
+                        &finding.location,
+                        true,
+                    )
+                {
                     return Err(AggregateError::invocation(
                         AggregateErrorKind::InputSemantic,
                     ));
                 }
             }
         }
-        (None, ReportOutcome::Passed | ReportOutcome::Incomplete) => {}
+        (Some(diagnosis), ReportOutcome::Incomplete) if summary.incomplete > 0 => {
+            for finding in &diagnosis.findings {
+                budget.observe_work(1)?;
+                if finding.code != "MCP-SCHEMA-005"
+                    || !reference_resolves(
+                        report,
+                        &diagnosis.check_id,
+                        &finding.code,
+                        &finding.location,
+                        true,
+                    )
+                {
+                    return Err(AggregateError::invocation(
+                        AggregateErrorKind::InputSemantic,
+                    ));
+                }
+            }
+        }
+        (None, ReportOutcome::Passed) => {}
+        (None, ReportOutcome::Incomplete) if summary.incomplete == 0 => {}
         _ => {
             return Err(AggregateError::invocation(
                 AggregateErrorKind::InputSemantic,
@@ -1036,8 +1103,16 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
 }
 
 fn outcome_for_findings(findings: &[StableFinding]) -> CheckOutcome {
-    if findings.iter().any(|finding| finding.severity.is_failure()) {
+    if findings
+        .iter()
+        .any(|finding| finding.severity.is_failure() && finding.code != "MCP-SCHEMA-005")
+    {
         CheckOutcome::Failed
+    } else if findings
+        .iter()
+        .any(|finding| finding.code == "MCP-SCHEMA-005")
+    {
+        CheckOutcome::Incomplete
     } else if findings
         .iter()
         .any(|finding| finding.severity == Severity::Warning)
