@@ -31,6 +31,10 @@
       "description": "The safe official revision returned by a selected initialize handshake. Omitted for transports or failures without such a handshake.",
       "$ref": "#/$defs/protocol_revision"
     },
+    "protocol_selection": {
+      "description": "Bounded, value-free evidence describing how passive inspection selected or attempted its protocol revision.",
+      "$ref": "#/$defs/protocol_selection"
+    },
     "primary_diagnosis": {
       "oneOf": [
         {
@@ -96,6 +100,54 @@
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
       "maxLength": 10
+    },
+    "protocol_selection": {
+      "type": "object",
+      "required": [
+        "mode",
+        "path",
+        "process_launches",
+        "lifecycle_requests",
+        "lifecycle_notifications",
+        "fallbacks"
+      ],
+      "properties": {
+        "mode": {
+          "enum": ["auto", "exact"]
+        },
+        "path": {
+          "enum": [
+            "exact_pin",
+            "modern_discovery",
+            "stdio_legacy_initialization",
+            "http_legacy_initialization"
+          ]
+        },
+        "selected_revision": {
+          "$ref": "#/$defs/protocol_revision"
+        },
+        "process_launches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lifecycle_requests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lifecycle_notifications": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fallbacks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": true
     },
     "check_id": {
       "type": "string",

@@ -2,6 +2,15 @@
   "schema_version": "mcp-doctor.report/v1",
   "schema_stability": "stable",
   "protocol_revision": "2026-07-28",
+  "protocol_selection": {
+    "mode": "exact",
+    "path": "exact_pin",
+    "selected_revision": "2026-07-28",
+    "process_launches": 1,
+    "lifecycle_requests": 1,
+    "lifecycle_notifications": 0,
+    "fallbacks": 0
+  },
   "primary_diagnosis": {
     "check_id": "protocol.revision",
     "findings": [

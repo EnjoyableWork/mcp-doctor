@@ -332,6 +332,15 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
             "findings": []
         }),
     );
+    stdio["protocol_selection"] = json!({
+        "mode": "auto",
+        "path": "modern_discovery",
+        "selected_revision": "2026-07-28",
+        "process_launches": 1,
+        "lifecycle_requests": 1,
+        "lifecycle_notifications": 0,
+        "fallbacks": 0
+    });
     recompute_report(&mut stdio);
     let first = write_report(&environment, "first.json", &stdio);
     let mut legacy = passed_report();
@@ -367,6 +376,15 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
             "findings": []
         }),
     );
+    legacy["protocol_selection"] = json!({
+        "mode": "auto",
+        "path": "http_legacy_initialization",
+        "selected_revision": "2025-11-25",
+        "process_launches": 0,
+        "lifecycle_requests": 2,
+        "lifecycle_notifications": 1,
+        "fallbacks": 1
+    });
     recompute_report(&mut legacy);
     let second = write_report(&environment, "second.json", &legacy);
     let output_path = environment.artifact_path("aggregate.json");
@@ -416,6 +434,14 @@ fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifac
     assert_eq!(
         aggregate["members"][1]["report"]["negotiated_protocol_revision"],
         "2025-11-25"
+    );
+    assert_eq!(
+        aggregate["members"][0]["report"]["protocol_selection"],
+        stdio["protocol_selection"]
+    );
+    assert_eq!(
+        aggregate["members"][1]["report"]["protocol_selection"],
+        legacy["protocol_selection"]
     );
     assert_eq!(
         aggregate["members"][1]["report"]["checks"][1]["reproduction"]["seed"],
@@ -912,6 +938,40 @@ fn schema_semantic_and_malformed_failures_are_atomic_and_value_free() {
             {
                 let mut report = passed_report();
                 report["negotiated_protocol_revision"] = json!("2025-11-25");
+                report
+            },
+            false,
+        ),
+        (
+            "selection-mode-path-mismatch.json",
+            {
+                let mut report = passed_report();
+                report["protocol_selection"] = json!({
+                    "mode": "auto",
+                    "path": "exact_pin",
+                    "selected_revision": "2026-07-28",
+                    "process_launches": 1,
+                    "lifecycle_requests": 1,
+                    "lifecycle_notifications": 0,
+                    "fallbacks": 0
+                });
+                report
+            },
+            false,
+        ),
+        (
+            "selection-revision-mismatch.json",
+            {
+                let mut report = passed_report();
+                report["protocol_selection"] = json!({
+                    "mode": "exact",
+                    "path": "exact_pin",
+                    "selected_revision": "2025-11-25",
+                    "process_launches": 1,
+                    "lifecycle_requests": 1,
+                    "lifecycle_notifications": 1,
+                    "fallbacks": 0
+                });
                 report
             },
             false,

@@ -20,6 +20,13 @@ Choose the least-active diagnostic that answers your question:
 
 ## Passive `inspect`
 
+Omitting `--protocol-version`, or selecting `auto`, performs bounded passive
+revision selection. STDIO `auto` may consume the discovery bound, fully stop
+and reap the first process, then start the exact command once more for legacy
+initialization. An explicit `2026-07-28`, `2025-11-25`, or `2025-06-18` is a
+hard pin: it runs only that lifecycle and, for STDIO, starts the target once.
+Neither mode calls a tool.
+
 Inspect a local STDIO server without calling any tools. Put the command you
 already use to start the server after `--`:
 
@@ -33,17 +40,20 @@ For Streamable HTTP, pass the endpoint URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
-See [MCP revision support](protocol-support.md) for explicit legacy selection,
-the exact support matrix, and schema-dialect behavior. See the
+See [MCP revision support](protocol-support.md) for the finite `auto` paths,
+explicit hard pins, the exact support matrix, and schema-dialect behavior. See the
 [safety model](safety.md) for network gates, cleanup, and hard limits.
 
-A well-formed JSON-RPC error on the selected revision's first lifecycle method
-is an `MCP-PROTOCOL-006` revision-layer diagnosis, because catalog validity is
-not yet known. Errors from later capability-advertised catalog methods are
-`MCP-CATALOG-004` findings at the exact method response. Human, JSON, and JUnit
-reports expose only the fixed error kind and a standard JSON-RPC code when one
-applies; they never retain the error message, data, or application-defined
-numeric code.
+In exact mode, a well-formed JSON-RPC error on the selected revision's first
+lifecycle method is an `MCP-PROTOCOL-006` revision-layer diagnosis, because
+catalog validity is not yet known. In `auto`, a recognized modern response is
+conclusive; a non-modern STDIO error or the exact Streamable HTTP `400` legacy
+signal may enter the one legacy path described in the revision contract.
+Errors from later capability-advertised catalog methods are `MCP-CATALOG-004`
+findings at the exact method response. Human, JSON, and JUnit reports expose
+only structural selection evidence, the fixed error kind, and a standard
+JSON-RPC code when one applies; they never retain error prose, data, bodies,
+or application-defined numeric codes.
 
 ## Single-tool reviewed `check` scenarios
 
@@ -254,9 +264,9 @@ or error messages.
 ## Contract snapshots and offline diffs
 
 Contract snapshots are explicit developer artifacts, not ordinary reports.
-Create one during passive inspection of the default MCP `2026-07-28` revision,
-or an explicitly selected MCP `2025-11-25` or `2025-06-18` revision, by naming
-the same new path twice:
+Create one during passive inspection of the revision selected by default
+`auto`, or with an explicit `2026-07-28`, `2025-11-25`, or `2025-06-18` hard
+pin, by naming the same new path twice:
 
 ```bash
 mcp-doctor inspect \

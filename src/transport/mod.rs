@@ -15,6 +15,7 @@ pub(crate) struct ProbeRequest {
     method: String,
     principal_name: Option<String>,
     mirrored_fields: Vec<MirroredField>,
+    protocol_revision: Option<&'static str>,
 }
 
 impl ProbeRequest {
@@ -46,6 +47,7 @@ impl ProbeRequest {
             method,
             principal_name,
             mirrored_fields: Vec::new(),
+            protocol_revision: None,
         }
     }
 
@@ -71,11 +73,17 @@ impl ProbeRequest {
             method,
             principal_name: None,
             mirrored_fields: Vec::new(),
+            protocol_revision: None,
         }
     }
 
     pub(crate) fn with_mirrored_fields(mut self, fields: Vec<MirroredField>) -> Self {
         self.mirrored_fields = fields;
+        self
+    }
+
+    pub(crate) fn with_protocol_revision(mut self, revision: &'static str) -> Self {
+        self.protocol_revision = Some(revision);
         self
     }
 
@@ -102,6 +110,10 @@ impl ProbeRequest {
     pub(crate) fn mirrored_fields(&self) -> &[MirroredField] {
         &self.mirrored_fields
     }
+
+    pub(crate) const fn protocol_revision(&self) -> Option<&'static str> {
+        self.protocol_revision
+    }
 }
 
 impl fmt::Debug for ProbeRequest {
@@ -113,6 +125,7 @@ impl fmt::Debug for ProbeRequest {
             .field("value", &"[REDACTED]")
             .field("byte_count", &self.bytes.len())
             .field("mirrored_field_count", &self.mirrored_fields.len())
+            .field("protocol_revision", &self.protocol_revision)
             .finish()
     }
 }
@@ -153,6 +166,34 @@ impl fmt::Debug for MirroredField {
 
 pub(crate) trait Conversation {
     fn next_request(&mut self, previous: Option<&ProbeResponse>) -> Option<ProbeRequest>;
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub(crate) struct LifecycleInteractionCounts {
+    requests: u64,
+    notifications: u64,
+}
+
+impl LifecycleInteractionCounts {
+    pub(crate) fn observe(&mut self, request: &ProbeRequest) {
+        match request.method() {
+            "server/discover" | "initialize" if request.expects_response() => {
+                self.requests = self.requests.saturating_add(1);
+            }
+            "notifications/initialized" if !request.expects_response() => {
+                self.notifications = self.notifications.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) const fn requests(self) -> u64 {
+        self.requests
+    }
+
+    pub(crate) const fn notifications(self) -> u64 {
+        self.notifications
+    }
 }
 
 pub(crate) struct ProbeResponse {

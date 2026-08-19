@@ -1,12 +1,20 @@
 # MCP revision support
 
-`mcp-doctor` uses MCP `2026-07-28` by default. A supported legacy revision must
-be selected exactly with `--protocol-version`; revision selection never
-auto-detects, retries, falls back, or downgrades.
+Passive `mcp-doctor inspect` defaults to bounded `--protocol-version auto`.
+It selects only a mutually supported revision compiled into this binary and
+uses the transport-defined modern-or-legacy era path below. An explicit
+supported revision remains a strict hard pin. Active commands keep MCP
+`2026-07-28` as their sole implicit revision; supported legacy activity still
+requires an exact `--protocol-version`.
 
 ## Select a revision
 
 ```bash
+# Explicitly request the same bounded passive default
+mcp-doctor inspect \
+  --protocol-version auto \
+  -- node ./dist/server.js
+
 # Passive legacy STDIO inspection
 mcp-doctor inspect \
   --protocol-version 2025-11-25 \
@@ -25,22 +33,53 @@ mcp-doctor check \
   -- node ./dist/server.js --stdio
 ```
 
+The compiled modern set is exactly MCP `2026-07-28`. `auto` sends one
+`server/discover`. A valid modern result selects `2026-07-28` only when its
+bounded `supportedVersions` contains that revision. A recognized modern error
+is conclusive and never enters legacy initialization; because this binary has
+no second compiled modern revision, an `UnsupportedProtocolVersionError`
+without a mutual revision fails at `protocol.revision` without retransmission
+or sequential guessing.
+
+For STDIO, a non-modern well-formed JSON-RPC error, clean pre-response exit, or
+the exact discovery deadline is finite legacy-era evidence. `mcp-doctor` first
+closes, terminates when needed, and reaps that process tree. It may then start
+the byte-for-byte selected command once more and send one `initialize` offering
+`2025-11-25`; only an exact `2025-11-25` response or supported `2025-06-18`
+counter-offer is accepted. Invalid framing or JSON, start or I/O failure,
+resource or total limit, and cleanup failure are terminal and never authorize
+the second launch. The two non-overlapping phases share one original total
+deadline and the existing cumulative byte, message, stdout, stderr, output,
+and finding budgets.
+
+For Streamable HTTP, `auto` prepares the canonical endpoint, network and
+credential gates, trust, bounded DNS answer set, and peer authority once. It
+enters legacy initialization only after exact HTTP `400 Bad Request` with an
+empty bounded body or a body that is not a recognized modern JSON-RPC error.
+The legacy request uses the same endpoint, pinned address set, peer checks, and
+credential authority without re-resolution. A recognized modern error, any
+other status, redirect, timeout, TLS, trust, peer, framing, encoding, body,
+limit, or cleanup failure is terminal. There are zero application retries and
+zero redirects, and both eras share the original deadline and aggregate
+budgets.
+
 Legacy inspection performs only `initialize`, one
 `notifications/initialized`, and capability-advertised `tools/list`,
 `prompts/list`, `resources/list`, and `resources/templates/list` operations. It
 does not call tools, list retained tasks, read resources, get prompts, or answer
-server requests.
+server requests. Reports add value-free mode, selected revision when
+established, fixed path, process-launch, lifecycle-request, notification, and
+fallback counts. They discard error prose and data, bodies, server identity and
+instructions, commands and paths, endpoints and network values, credentials,
+environment names and values, catalog identifiers, cursors, and stderr.
 
-If the first `server/discover` or `initialize` request receives a well-formed
-JSON-RPC error, passive inspection reports `MCP-PROTOCOL-006` at the exact
-lifecycle response. The rejection occurs before revision or catalog validity
-can be established, so the correction is to confirm the intended revision and
-rerun an exact selection; it is not classified as a malformed catalog and does
-not trigger fallback. A later error from an advertised fixed catalog method is
-reported separately as `MCP-CATALOG-004` at that method's response. Reports
-retain only a value-free error kind and, for the five standard JSON-RPC errors,
-the standard numeric code; messages, data, and application-defined codes are
-discarded.
+An explicit revision bypasses `auto`: it sends one selected lifecycle, never
+probes another era, never retries, and never falls back. A well-formed JSON-RPC
+error on its first `server/discover` or `initialize` is `MCP-PROTOCOL-006` at
+the exact lifecycle response. A later error from an advertised fixed catalog
+method is `MCP-CATALOG-004` at that method's response. Reports retain only a
+value-free error kind and, for the five standard JSON-RPC errors, the standard
+numeric code; messages, data, and application-defined codes are discarded.
 
 Explicit MCP `2025-11-25` and `2025-06-18` `check` and `break` preserve every
 active authorization gate, call only immediate tools, never start tasks or
@@ -51,9 +90,10 @@ generation or `tools/call`.
 
 ## Support matrix
 
-**Legend:** ✅ = supported; ❌ = not supported. A supported legacy entry still
-requires exact `--protocol-version` selection. Each status cell includes an
-invisible `mcp-doctor-support=supported|unsupported` source token for agents
+**Legend:** ✅ = supported; ❌ = not supported. Passive `inspect` can select a
+supported legacy entry through bounded `auto` or an exact hard pin. Active
+legacy entries require an exact `--protocol-version`. Each status cell includes
+an invisible `mcp-doctor-support=supported|unsupported` source token for agents
 reading the Markdown. For automation,
 `mcp-doctor capabilities --format json` is the authoritative machine-readable
 contract.

@@ -89,6 +89,60 @@ fn current_inspect_command(
     command
 }
 
+fn auto_legacy_inspect_command(
+    environment: &TestEnvironment,
+    format: Option<&str>,
+    explicit_auto: bool,
+    signal: &str,
+    selected_revision: &str,
+) -> Command {
+    let mut command = environment.command();
+    command.arg("inspect");
+    if explicit_auto {
+        command.arg("--protocol-version").arg("auto");
+    }
+    if let Some(format) = format {
+        command.arg("--format").arg(format);
+    }
+    command
+        .arg("--")
+        .arg(fixture())
+        .arg("auto-legacy")
+        .arg(environment.artifact_path("auto-process-state"))
+        .arg(signal)
+        .arg(selected_revision);
+    command
+}
+
+fn assert_protocol_selection(
+    report: &serde_json::Value,
+    mode: &str,
+    path: &str,
+    selected_revision: Option<&str>,
+    counts: [u64; 4],
+) {
+    let [
+        process_launches,
+        lifecycle_requests,
+        lifecycle_notifications,
+        fallbacks,
+    ] = counts;
+    let selection = &report["protocol_selection"];
+    assert_eq!(selection["mode"], mode);
+    assert_eq!(selection["path"], path);
+    match selected_revision {
+        Some(revision) => assert_eq!(selection["selected_revision"], revision),
+        None => assert!(selection.get("selected_revision").is_none()),
+    }
+    assert_eq!(selection["process_launches"], process_launches);
+    assert_eq!(selection["lifecycle_requests"], lifecycle_requests);
+    assert_eq!(
+        selection["lifecycle_notifications"],
+        lifecycle_notifications
+    );
+    assert_eq!(selection["fallbacks"], fallbacks);
+}
+
 fn run_mode(mode: &str) -> Output {
     let environment = TestEnvironment::new();
     inspect_command(&environment, mode)
@@ -141,6 +195,7 @@ fn explicit_legacy_stdio_revisions_initialize_once_and_remain_passive() {
         let report = json_report(&output);
         assert_eq!(report["protocol_revision"], revision);
         assert_eq!(report["negotiated_protocol_revision"], revision);
+        assert_protocol_selection(&report, "exact", "exact_pin", Some(revision), [1, 1, 1, 0]);
         assert_eq!(report["outcome"], "passed");
         assert_eq!(report["summary"]["failed"], 0);
         let artifact = parse_and_validate_report(
@@ -244,6 +299,13 @@ fn explicit_current_lifecycle_rejections_are_revision_diagnoses_in_every_reporte
         assert_eq!(json.status.code(), Some(1), "{json_text}\n{json_stderr}");
         assert!(json_stderr.is_empty());
         let report = json_report(&json);
+        assert_protocol_selection(
+            &report,
+            "exact",
+            "exact_pin",
+            Some("2026-07-28"),
+            [1, 1, 0, 0],
+        );
         assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
         let revision = find_json_check(&report, "protocol.revision");
         assert_eq!(revision["state"], "performed");
@@ -543,6 +605,395 @@ fn successful_inspection_is_passive_and_cleans_up() {
 }
 
 #[test]
+fn default_and_explicit_auto_select_modern_stdio_once() {
+    for explicit_auto in [false, true] {
+        let environment = TestEnvironment::new();
+        let unexpected_request = environment.artifact_path("unexpected-request");
+        let mut command = environment.command();
+        command.arg("inspect");
+        if explicit_auto {
+            command.arg("--protocol-version").arg("auto");
+        }
+        let output = command
+            .arg("--format")
+            .arg("json")
+            .arg("--")
+            .arg(fixture())
+            .arg("success")
+            .arg(&unexpected_request)
+            .output()
+            .expect("mcp-doctor should auto-select the current STDIO revision");
+        let (stdout, stderr) = text(&output);
+
+        assert!(output.status.success(), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "modern_discovery",
+            Some("2026-07-28"),
+            [1, 1, 0, 0],
+        );
+        assert_eq!(report["protocol_revision"], "2026-07-28");
+        assert!(!unexpected_request.exists());
+    }
+}
+
+#[test]
+fn auto_stdio_legacy_signals_restart_once_and_select_supported_revisions() {
+    for (signal, selected_revision, explicit_auto) in [
+        ("method-not-found", "2025-11-25", false),
+        ("invalid-params", "2025-11-25", true),
+        ("application-error", "2025-06-18", false),
+    ] {
+        let environment = TestEnvironment::new();
+        let output = auto_legacy_inspect_command(
+            &environment,
+            Some("json"),
+            explicit_auto,
+            signal,
+            selected_revision,
+        )
+        .output()
+        .expect("mcp-doctor should restart once for a finite STDIO legacy signal");
+        let (stdout, stderr) = text(&output);
+
+        assert!(
+            output.status.success(),
+            "{signal} {selected_revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "stdio_legacy_initialization",
+            Some(selected_revision),
+            [2, 2, 1, 1],
+        );
+        assert_eq!(report["protocol_revision"], selected_revision);
+        assert_eq!(report["negotiated_protocol_revision"], selected_revision);
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+    }
+}
+
+#[test]
+fn auto_stdio_selection_evidence_matches_human_json_and_junit_reporters() {
+    let environment = TestEnvironment::new();
+    let json_path = environment.artifact_path("auto-report.json");
+    let junit_path = environment.artifact_path("auto-report.xml");
+    let output = environment
+        .command()
+        .arg("inspect")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("auto-legacy")
+        .arg(environment.artifact_path("auto-process-state"))
+        .arg("method-not-found")
+        .arg("2025-06-18")
+        .output()
+        .expect("mcp-doctor should render one auto-selected result in every reporter");
+    let (stdout, stderr) = text(&output);
+
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert!(stdout.contains(
+        "protocol negotiation · mode=auto · path=stdio_legacy_initialization · selected=2025-06-18 · process_launches=2 · lifecycle_requests=2 · lifecycle_notifications=1 · fallbacks=1"
+    ));
+    let report = parse_and_validate_report(
+        &std::fs::read(&json_path).expect("the auto JSON report should exist"),
+    );
+    assert_protocol_selection(
+        &report,
+        "auto",
+        "stdio_legacy_initialization",
+        Some("2025-06-18"),
+        [2, 2, 1, 1],
+    );
+    let (junit, _) = parse_and_validate_junit(
+        &std::fs::read(&junit_path).expect("the auto JUnit report should exist"),
+    );
+    for evidence in [
+        "protocol_selection.mode=auto",
+        "protocol_selection.path=stdio_legacy_initialization",
+        "protocol_selection.selected_revision=2025-06-18",
+        "protocol_selection.process_launches=2",
+        "protocol_selection.lifecycle_requests=2",
+        "protocol_selection.lifecycle_notifications=1",
+        "protocol_selection.fallbacks=1",
+    ] {
+        assert!(junit.contains(evidence), "missing {evidence}: {junit}");
+    }
+    assert!(!stdout.contains(REDACTION_SENTINEL));
+    assert!(!junit.contains(REDACTION_SENTINEL));
+}
+
+#[test]
+fn auto_stdio_clean_exit_and_discovery_timeout_are_bounded_legacy_signals() {
+    for signal in ["clean-exit", "timeout"] {
+        let environment = TestEnvironment::new();
+        let output =
+            auto_legacy_inspect_command(&environment, Some("json"), false, signal, "2025-11-25")
+                .output()
+                .expect("mcp-doctor should bound the STDIO era probe and restart once");
+        let (stdout, stderr) = text(&output);
+
+        assert!(output.status.success(), "{signal}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "stdio_legacy_initialization",
+            Some("2025-11-25"),
+            [2, 2, 1, 1],
+        );
+    }
+}
+
+#[test]
+fn auto_stdio_modern_evidence_never_enters_the_legacy_wire_era() {
+    for advertisement in ["no-mutual", "contradictory", "limit"] {
+        let environment = TestEnvironment::new();
+        let marker = environment.artifact_path("single-modern-process");
+        let output = environment
+            .command()
+            .arg("inspect")
+            .arg("--format")
+            .arg("json")
+            .arg("--")
+            .arg(fixture())
+            .arg("auto-modern-error")
+            .arg(&marker)
+            .arg(advertisement)
+            .output()
+            .expect("mcp-doctor should fail closed on recognized modern evidence");
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"][0]["code"],
+            if advertisement == "contradictory" {
+                "MCP-PROTOCOL-006"
+            } else if advertisement == "limit" {
+                "MCP-LIMIT-001"
+            } else {
+                "MCP-PROTOCOL-002"
+            }
+        );
+        if advertisement == "limit" {
+            let finding = &find_json_check(&report, "protocol.revision")["findings"][0];
+            assert_eq!(finding["code"], "MCP-LIMIT-001");
+            assert_eq!(finding["evidence"]["limit"], "protocol_revisions");
+            assert_eq!(finding["evidence"]["observed"], 33);
+            assert_eq!(finding["evidence"]["maximum"], 32);
+        }
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+    }
+
+    let environment = TestEnvironment::new();
+    let marker = environment.artifact_path("single-modern-process");
+    let output = environment
+        .command()
+        .arg("inspect")
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("auto-modern-no-mutual")
+        .arg(&marker)
+        .output()
+        .expect("mcp-doctor should not treat a modern result as legacy authority");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let report = json_report(&output);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+    assert!(!stdout.contains(REDACTION_SENTINEL));
+
+    let environment = TestEnvironment::new();
+    let marker = environment.artifact_path("single-invalid-modern-process");
+    let output = environment
+        .command()
+        .arg("inspect")
+        .arg("--format")
+        .arg("json")
+        .arg("--")
+        .arg(fixture())
+        .arg("auto-modern-invalid-result")
+        .arg(&marker)
+        .output()
+        .expect("an invalid modern result must stop before catalog work");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let report = json_report(&output);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.envelope");
+    assert!(!stdout.contains(REDACTION_SENTINEL));
+}
+
+#[test]
+fn auto_stdio_terminal_failures_and_cleanup_never_restart() {
+    for mode in ["malformed", "oversized-message", "message-count"] {
+        let environment = TestEnvironment::new();
+        let output = json_inspect_command(&environment, mode)
+            .output()
+            .expect("mcp-doctor should fail a terminal STDIO probe without fallback");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{mode}: {stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+    }
+
+    let environment = TestEnvironment::new();
+    let output = auto_legacy_inspect_command(
+        &environment,
+        Some("json"),
+        false,
+        "malformed-exit",
+        "2025-11-25",
+    )
+    .output()
+    .expect("partial output must override an apparent clean legacy signal");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let report = json_report(&output);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+    assert!(stdout.contains("MCP-TRANSPORT-003"));
+
+    let environment = TestEnvironment::new();
+    let output = auto_legacy_inspect_command(
+        &environment,
+        Some("json"),
+        false,
+        "method-not-found",
+        "2025-11-25",
+    )
+    .env("MCP_DOCTOR_INTERNAL_TEST_CLEANUP_FAILURE", "1")
+    .output()
+    .expect("mcp-doctor should stop auto selection on cleanup failure");
+    let (stdout, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let report = json_report(&output);
+    assert_protocol_selection(&report, "auto", "modern_discovery", None, [1, 1, 0, 0]);
+    assert!(
+        report["independent_findings"]
+            .as_array()
+            .is_some_and(|findings| !findings.is_empty())
+    );
+}
+
+#[test]
+fn auto_stdio_rejects_unsupported_or_unknown_legacy_counteroffers() {
+    for selected_revision in [
+        "2025-03-26",
+        "synthetic-private-unknown-revision-never-report-7f2c",
+    ] {
+        let environment = TestEnvironment::new();
+        let output = auto_legacy_inspect_command(
+            &environment,
+            Some("json"),
+            false,
+            "method-not-found",
+            selected_revision,
+        )
+        .output()
+        .expect("mcp-doctor should reject a non-supported legacy counteroffer");
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "stdio_legacy_initialization",
+            None,
+            [2, 2, 0, 1],
+        );
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        if selected_revision.starts_with("synthetic-private-") {
+            assert!(!stdout.contains(selected_revision));
+        }
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+    }
+}
+
+#[test]
+fn auto_stdio_uses_one_cumulative_output_and_message_budget() {
+    for (signal, limit) in [
+        ("cumulative-stderr", "stderr_bytes"),
+        ("cumulative-messages", "message_count"),
+    ] {
+        let environment = TestEnvironment::new();
+        let output =
+            auto_legacy_inspect_command(&environment, Some("json"), false, signal, "2025-11-25")
+                .output()
+                .expect("mcp-doctor should preserve aggregate STDIO budgets across phases");
+        let (stdout, stderr) = text(&output);
+
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{signal}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_protocol_selection(
+            &report,
+            "auto",
+            "stdio_legacy_initialization",
+            None,
+            [2, 2, 0, 1],
+        );
+        assert!(stdout.contains(limit), "{signal}: {stdout}");
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+    }
+
+    let environment = TestEnvironment::new();
+    let output = auto_legacy_inspect_command(
+        &environment,
+        Some("json"),
+        false,
+        "method-not-found",
+        "2025-11-25",
+    )
+    .env("MCP_DOCTOR_INTERNAL_TEST_EXHAUST_AUTO_TOTAL_BUDGET", "1")
+    .output()
+    .expect("mcp-doctor should preserve the original total deadline across phases");
+    let (stdout, stderr) = text(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+    assert!(stderr.is_empty());
+    let report = json_report(&output);
+    assert_protocol_selection(
+        &report,
+        "auto",
+        "stdio_legacy_initialization",
+        None,
+        [1, 1, 0, 1],
+    );
+    let finding = &find_json_check(&report, "transport.stdio")["findings"][0];
+    assert_eq!(finding["code"], "MCP-LIMIT-001");
+    assert_eq!(finding["evidence"]["limit"], "total_time");
+    assert!(!stdout.contains(REDACTION_SENTINEL));
+}
+
+#[test]
 fn target_arguments_are_passed_literally_without_expansion() {
     let environment = TestEnvironment::new();
     let output = inspect_command(&environment, "literal-arguments")
@@ -608,7 +1059,10 @@ fn every_stdio_output_boundary_fails_at_its_named_limit() {
 
 #[test]
 fn an_unresponsive_server_hits_the_discovery_deadline() {
-    let output = run_mode("timeout");
+    let environment = TestEnvironment::new();
+    let output = current_inspect_command(&environment, None, "timeout")
+        .output()
+        .expect("mcp-doctor should bound exact-current discovery");
     let (stdout, stderr) = text(&output);
 
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
@@ -954,8 +1408,15 @@ fn slow_start_profile_is_reported_without_expanding_capacity_or_activity() {
 
 #[test]
 fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
-    let human_output = run_mode("protocol-unsupported");
-    let json_output = run_json_mode("protocol-unsupported");
+    let human_environment = TestEnvironment::new();
+    let json_environment = TestEnvironment::new();
+    let human_output = current_inspect_command(&human_environment, None, "protocol-unsupported")
+        .output()
+        .expect("mcp-doctor should render the exact-current diagnosis");
+    let json_output =
+        current_inspect_command(&json_environment, Some("json"), "protocol-unsupported")
+            .output()
+            .expect("mcp-doctor should render the exact-current JSON diagnosis");
     let (human, human_stderr) = text(&human_output);
     let (json, json_stderr) = text(&json_output);
 

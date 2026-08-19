@@ -14,8 +14,9 @@ mcp-doctor capabilities --format json
 
 This command emits deterministic `mcp-doctor.capabilities/v1` JSON containing
 the product version; exact command, transport, and MCP revision matrix;
-recognized-unsupported revisions; report, scenario, generator, snapshot, diff,
-aggregate, and capability contract versions; reporter availability;
+recognized-unsupported revisions; passive selection default, modes, compiled
+modern set, exact pins, transport paths and maxima; report, scenario,
+generator, snapshot, diff, aggregate, and capability contract versions; reporter availability;
 `mcp-doctor.exit/v1`; named hard limit profiles; and compile-time process-tree
 and file-identity capabilities. Capability discovery reports only fixed compiled facts.
 
@@ -48,7 +49,10 @@ Target-facing diagnostics render the same immutable, redacted result:
 
 JSON follows the stable, schema-backed `mcp-doctor.report/v1` contract. JUnit
 projects the same checks into conservative XML; both machine formats keep
-secrets removed.
+secrets removed. Passive `inspect` adds a typed `protocol_selection` object:
+requested mode, fixed path, selected supported revision when established, and
+bounded process-launch, lifecycle-request, notification, and fallback counts.
+The human header and JUnit properties carry the same value-free evidence.
 
 Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
@@ -100,9 +104,11 @@ Members are identified only by zero-based input ordinal. Known safe fields are
 retained; compatible unknown optional properties are discarded, not echoed.
 Every input must satisfy the embedded report schema and its summary, severity,
 outcome, exit, revision, primary diagnosis, independent findings, and causal
-skips. Failure outranks incomplete, which outranks pass: only all-pass input
-passes. There is no waiver, score, baseline, deduplication, majority rule, or
-severity override.
+skips. When present, passive protocol-selection evidence must also have a
+coherent mode, path, selected revision, and bounded counts; it is preserved in
+the member report. Failure outranks incomplete, which outranks pass: only
+all-pass input passes. There is no waiver, score, baseline, deduplication,
+majority rule, or severity override.
 
 All-pass exits `0`, any failure exits `1`, and otherwise incomplete exits `3`.
 Invalid, unreadable, aliased, over-limit input or an unsafe destination exits

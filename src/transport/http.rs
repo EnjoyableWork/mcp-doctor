@@ -20,7 +20,7 @@ use reqwest::{Certificate, Client, StatusCode, Url};
 use serde_json::Value;
 use tokio::time::Instant;
 
-use super::{Conversation, ProbeRequest, ProbeResponse};
+use super::{Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse};
 use crate::bound_file::BoundFile;
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
@@ -115,6 +115,7 @@ pub(crate) enum HttpLimit {
     MessageBytes,
     AggregateOutputBytes,
     MessageCount,
+    ProtocolRevisions,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -146,6 +147,9 @@ pub(crate) enum ResponseFailure {
     InvalidMessage,
     InvalidSse,
     HeaderMismatch,
+    MissingRequiredClientCapability,
+    ContradictoryProtocolVersion,
+    LegacyEra,
     InvalidSession,
     SessionChanged,
     SessionRequired { status: u16 },
@@ -372,6 +376,7 @@ enum AddressClass {
     Prohibited,
 }
 
+#[derive(Clone)]
 struct Credentials {
     fields: Vec<(HeaderName, HeaderValue)>,
 }
@@ -392,6 +397,7 @@ impl fmt::Debug for Credentials {
     }
 }
 
+#[derive(Clone)]
 struct CanonicalEndpoint {
     url: Url,
     host: String,
@@ -413,6 +419,7 @@ impl fmt::Debug for CanonicalEndpoint {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct HttpTarget {
     endpoint: CanonicalEndpoint,
     addresses: Vec<SocketAddr>,
@@ -436,6 +443,10 @@ impl fmt::Debug for HttpTarget {
 }
 
 impl HttpTarget {
+    pub(crate) fn same_authority(&self) -> Self {
+        self.clone()
+    }
+
     pub(crate) async fn prepare<R: Resolver>(
         options: RemoteOptions,
         limits: HttpLimits,
@@ -1115,15 +1126,23 @@ pub(crate) struct HttpRun {
     failure: Option<HttpFailure>,
     tls_applicable: bool,
     session_cleanup_failed: bool,
+    lifecycle_interactions: LifecycleInteractionCounts,
 }
 
 #[derive(Debug, Default)]
-struct ResponseBudget {
+pub(crate) struct HttpBudget {
     output_bytes: u64,
     message_count: u64,
+    #[cfg(feature = "internal-test-fixtures")]
+    force_total_exhausted: bool,
 }
 
-impl ResponseBudget {
+impl HttpBudget {
+    #[cfg(feature = "internal-test-fixtures")]
+    pub(crate) fn exhaust_total_for_test(&mut self) {
+        self.force_total_exhausted = true;
+    }
+
     fn observe_output(&mut self, bytes: usize, limits: HttpLimits) -> Result<(), HttpFailure> {
         let observed = self
             .output_bytes
@@ -1169,6 +1188,14 @@ impl HttpRun {
     pub(crate) const fn session_cleanup_failed(&self) -> bool {
         self.session_cleanup_failed
     }
+
+    pub(crate) const fn lifecycle_request_count(&self) -> u64 {
+        self.lifecycle_interactions.requests()
+    }
+
+    pub(crate) const fn lifecycle_notification_count(&self) -> u64 {
+        self.lifecycle_interactions.notifications()
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -1186,6 +1213,7 @@ pub(crate) struct HttpTransport {
     protocol_revision: &'static str,
     initialize_handshake: bool,
     accept_server_requests: bool,
+    auto_probe: bool,
     session: Option<SessionId>,
 }
 
@@ -1198,6 +1226,7 @@ impl fmt::Debug for HttpTransport {
             .field("protocol_revision", &self.protocol_revision)
             .field("initialize_handshake", &self.initialize_handshake)
             .field("accept_server_requests", &self.accept_server_requests)
+            .field("auto_probe", &self.auto_probe)
             .field("session_present", &self.session.is_some())
             .finish()
     }
@@ -1209,7 +1238,13 @@ impl HttpTransport {
         protocol_revision: &'static str,
         initialize_handshake: bool,
     ) -> Result<Self, HttpFailure> {
-        Self::build(target, protocol_revision, initialize_handshake, false)
+        Self::build(
+            target,
+            protocol_revision,
+            initialize_handshake,
+            false,
+            false,
+        )
     }
 
     pub(crate) fn new_for_active_protocol(
@@ -1222,7 +1257,12 @@ impl HttpTransport {
             protocol_revision,
             initialize_handshake,
             initialize_handshake,
+            false,
         )
+    }
+
+    pub(crate) fn new_for_auto_probe(target: HttpTarget) -> Result<Self, HttpFailure> {
+        Self::build(target, PROTOCOL_REVISION, false, false, true)
     }
 
     fn build(
@@ -1230,6 +1270,7 @@ impl HttpTransport {
         protocol_revision: &'static str,
         initialize_handshake: bool,
         accept_server_requests: bool,
+        auto_probe: bool,
     ) -> Result<Self, HttpFailure> {
         install_ring_provider();
         let selected = connection_candidates(&target.addresses);
@@ -1260,6 +1301,7 @@ impl HttpTransport {
             protocol_revision,
             initialize_handshake,
             accept_server_requests,
+            auto_probe,
             session: None,
         })
     }
@@ -1272,15 +1314,38 @@ impl HttpTransport {
             protocol_revision: PROTOCOL_REVISION,
             initialize_handshake: false,
             accept_server_requests: false,
+            auto_probe: false,
             session: None,
         }
     }
 
-    pub(crate) async fn probe<C: Conversation>(mut self, conversation: &mut C) -> HttpRun {
+    pub(crate) async fn probe<C: Conversation>(self, conversation: &mut C) -> HttpRun {
+        let mut budget = HttpBudget::default();
+        self.probe_with_budget(conversation, &mut budget).await
+    }
+
+    pub(crate) async fn probe_with_budget<C: Conversation>(
+        mut self,
+        conversation: &mut C,
+        response_budget: &mut HttpBudget,
+    ) -> HttpRun {
+        #[cfg(feature = "internal-test-fixtures")]
+        if response_budget.force_total_exhausted {
+            return HttpRun {
+                responses: Vec::new(),
+                failure: Some(HttpFailure::timeout(
+                    HttpLimit::TotalTime,
+                    self.target.limits.total_ms,
+                )),
+                tls_applicable: self.target.endpoint.https,
+                session_cleanup_failed: false,
+                lifecycle_interactions: LifecycleInteractionCounts::default(),
+            };
+        }
         let total_deadline =
             self.target.started + Duration::from_millis(self.target.limits.total_ms);
         let mut responses = Vec::new();
-        let mut response_budget = ResponseBudget::default();
+        let mut lifecycle_interactions = LifecycleInteractionCounts::default();
         let failure = loop {
             if Instant::now() > total_deadline {
                 break Some(HttpFailure::timeout(
@@ -1292,6 +1357,7 @@ impl HttpTransport {
             let Some(request) = request else {
                 break None;
             };
+            lifecycle_interactions.observe(&request);
             let stage_kind = if responses.is_empty() {
                 HttpLimit::DiscoveryTime
             } else {
@@ -1312,8 +1378,7 @@ impl HttpTransport {
             } else {
                 (stage_deadline, stage_kind, stage_ms)
             };
-            match tokio::time::timeout_at(deadline, self.exchange(&request, &mut response_budget))
-                .await
+            match tokio::time::timeout_at(deadline, self.exchange(&request, response_budget)).await
             {
                 Ok(Ok(Some(response))) => responses.push(response),
                 Ok(Ok(None)) => {}
@@ -1322,7 +1387,7 @@ impl HttpTransport {
             }
         };
         let session_cleanup_failed = self
-            .teardown_session(total_deadline, &mut response_budget)
+            .teardown_session(total_deadline, response_budget)
             .await
             .is_err();
         HttpRun {
@@ -1334,14 +1399,18 @@ impl HttpTransport {
             failure,
             tls_applicable: self.target.endpoint.https,
             session_cleanup_failed,
+            lifecycle_interactions,
         }
     }
 
     async fn exchange(
         &mut self,
         request: &ProbeRequest,
-        response_budget: &mut ResponseBudget,
+        response_budget: &mut HttpBudget,
     ) -> Result<Option<ProbeResponse>, HttpFailure> {
+        if let Some(revision) = request.protocol_revision() {
+            self.protocol_revision = revision;
+        }
         let request_bytes = u64::try_from(request.as_bytes().len()).unwrap_or(u64::MAX);
         if request_bytes > self.target.limits.message_bytes {
             return Err(HttpFailure::limit(
@@ -1434,7 +1503,7 @@ impl HttpTransport {
         &mut self,
         request: &ProbeRequest,
         mut response: ConnectorResponse,
-        response_budget: &mut ResponseBudget,
+        response_budget: &mut HttpBudget,
     ) -> Result<Option<ProbeResponse>, HttpFailure> {
         validate_response_field_budget(&response.headers, self.target.limits)?;
         self.observe_session(&response.headers, request.method() == "initialize")?;
@@ -1505,6 +1574,41 @@ impl HttpTransport {
             )
             .await?;
             response_budget.observe_message(self.target.limits)?;
+            if self.auto_probe
+                && request.method() == "server/discover"
+                && status == StatusCode::BAD_REQUEST
+            {
+                let modern = classify_modern_protocol_error(
+                    &body,
+                    request.id(),
+                    self.protocol_revision,
+                    self.target.limits.protocol_revisions,
+                );
+                if let Some(ModernProtocolError::RevisionLimit { observed }) = modern {
+                    return Err(HttpFailure::limit(
+                        HttpLimit::ProtocolRevisions,
+                        observed,
+                        self.target.limits.protocol_revisions,
+                    ));
+                }
+                return Err(HttpFailure::Response(match modern {
+                    Some(ModernProtocolError::HeaderMismatch) => ResponseFailure::HeaderMismatch,
+                    Some(ModernProtocolError::MissingRequiredClientCapability) => {
+                        ResponseFailure::MissingRequiredClientCapability
+                    }
+                    Some(ModernProtocolError::UnsupportedProtocolVersion) => {
+                        ResponseFailure::UnsupportedProtocolVersion
+                    }
+                    Some(ModernProtocolError::ContradictoryProtocolVersion) => {
+                        ResponseFailure::ContradictoryProtocolVersion
+                    }
+                    Some(ModernProtocolError::Invalid) => ResponseFailure::InvalidMessage,
+                    Some(ModernProtocolError::RevisionLimit { .. }) => {
+                        unreachable!("the revision limit returned above")
+                    }
+                    None => ResponseFailure::LegacyEra,
+                }));
+            }
             if !self.initialize_handshake
                 && status == StatusCode::BAD_REQUEST
                 && json_response
@@ -1602,7 +1706,7 @@ impl HttpTransport {
     async fn teardown_session(
         &self,
         total_deadline: Instant,
-        response_budget: &mut ResponseBudget,
+        response_budget: &mut HttpBudget,
     ) -> Result<(), HttpFailure> {
         let Some(session) = &self.session else {
             return Ok(());
@@ -1966,7 +2070,7 @@ async fn collect_body(
     response: &mut ConnectorResponse,
     maximum: u64,
     limits: HttpLimits,
-    response_budget: &mut ResponseBudget,
+    response_budget: &mut HttpBudget,
 ) -> Result<Vec<u8>, HttpFailure> {
     let mut body = Vec::new();
     while let Some(chunk) = response.body.next_chunk().await? {
@@ -1990,7 +2094,7 @@ async fn collect_sse_response(
     allow_empty_priming_event: bool,
     accept_server_requests: bool,
     limits: HttpLimits,
-    response_budget: &mut ResponseBudget,
+    response_budget: &mut HttpBudget,
 ) -> Result<Vec<u8>, HttpFailure> {
     let mut decoder = SseDecoder::new(
         request_id,
@@ -2101,6 +2205,82 @@ fn is_unsupported_protocol_version(
             )
         })
         .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ModernProtocolError {
+    HeaderMismatch,
+    MissingRequiredClientCapability,
+    UnsupportedProtocolVersion,
+    ContradictoryProtocolVersion,
+    Invalid,
+    RevisionLimit { observed: u64 },
+}
+
+fn classify_modern_protocol_error(
+    bytes: &[u8],
+    request_id: i64,
+    requested_revision: &str,
+    maximum_revisions: u64,
+) -> Option<ModernProtocolError> {
+    let value: Value = serde_json::from_slice(bytes).ok()?;
+    let object = value.as_object()?;
+    let error = object.get("error")?.as_object()?;
+    let code = error.get("code").and_then(Value::as_i64)?;
+    if !matches!(code, -32022..=-32020) {
+        return None;
+    }
+    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+        || object.get("id").and_then(Value::as_i64) != Some(request_id)
+        || object.contains_key("result")
+        || object.contains_key("method")
+    {
+        return Some(ModernProtocolError::Invalid);
+    }
+    if !error.get("message").is_some_and(Value::is_string) {
+        return Some(ModernProtocolError::Invalid);
+    }
+    match code {
+        -32020 => Some(ModernProtocolError::HeaderMismatch),
+        -32021 => Some(
+            if error
+                .get("data")
+                .and_then(Value::as_object)
+                .and_then(|data| data.get("requiredCapabilities"))
+                .is_some_and(Value::is_object)
+            {
+                ModernProtocolError::MissingRequiredClientCapability
+            } else {
+                ModernProtocolError::Invalid
+            },
+        ),
+        -32022 => {
+            let Some(data) = error.get("data").and_then(Value::as_object) else {
+                return Some(ModernProtocolError::Invalid);
+            };
+            let Some(supported) = data.get("supported").and_then(Value::as_array) else {
+                return Some(ModernProtocolError::Invalid);
+            };
+            let observed = u64::try_from(supported.len()).unwrap_or(u64::MAX);
+            if observed > maximum_revisions {
+                return Some(ModernProtocolError::RevisionLimit { observed });
+            }
+            if data.get("requested").and_then(Value::as_str) != Some(requested_revision)
+                || !supported.iter().all(Value::is_string)
+            {
+                return Some(ModernProtocolError::Invalid);
+            }
+            if supported
+                .iter()
+                .any(|revision| revision.as_str() == Some(requested_revision))
+            {
+                Some(ModernProtocolError::ContradictoryProtocolVersion)
+            } else {
+                Some(ModernProtocolError::UnsupportedProtocolVersion)
+            }
+        }
+        _ => unreachable!("the reserved modern code range was checked"),
+    }
 }
 
 struct SseDecoder {
@@ -2387,9 +2567,10 @@ mod tests {
     use crate::transport::{Conversation, MirroredField, ProbeRequest, ProbeResponse};
 
     use super::{
-        AddressClass, BodyFuture, Connector, ConnectorRequest, ConnectorResponse, HttpFailure,
-        HttpLimit, HttpLimits, HttpTarget, HttpTransport, RemoteOptions, ResolutionFailure,
-        Resolver, ResponseBody, ResponseFailure, SseDecoder, TargetFailure, classify_address,
+        AddressClass, BodyFuture, Connector, ConnectorRequest, ConnectorResponse, HttpBudget,
+        HttpFailure, HttpLimit, HttpLimits, HttpTarget, HttpTransport, ModernProtocolError,
+        RemoteOptions, ResolutionFailure, Resolver, ResponseBody, ResponseFailure, SseDecoder,
+        TargetFailure, classify_address, classify_modern_protocol_error,
         collect_resolver_addresses, connection_candidates, encode_mcp_value,
         is_unsupported_protocol_version, parse_endpoint, read_trust_file,
         remaining_connection_time, reserved_field, valid_bearer_token, valid_custom_value,
@@ -2628,6 +2809,125 @@ mod tests {
             endpoint: endpoint.to_owned(),
             ..RemoteOptions::default()
         }
+    }
+
+    #[test]
+    fn shared_http_budget_carries_output_and_messages_across_era_phases() {
+        let mut limits = limits();
+        limits.aggregate_output_bytes = 10;
+        limits.message_count = 2;
+
+        let mut output_budget = HttpBudget::default();
+        assert_eq!(output_budget.observe_output(6, limits), Ok(()));
+        assert_eq!(
+            output_budget.observe_output(5, limits),
+            Err(HttpFailure::Limit {
+                kind: HttpLimit::AggregateOutputBytes,
+                observed: 11,
+                maximum: 10,
+            })
+        );
+
+        let mut message_budget = HttpBudget::default();
+        assert_eq!(message_budget.observe_message(limits), Ok(()));
+        assert_eq!(message_budget.observe_message(limits), Ok(()));
+        assert_eq!(
+            message_budget.observe_message(limits),
+            Err(HttpFailure::Limit {
+                kind: HttpLimit::MessageCount,
+                observed: 3,
+                maximum: 2,
+            })
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn same_authority_clone_reuses_one_resolution_and_original_deadline() {
+        let resolver = FixedResolver::new(vec![address("8.8.8.8", 443)]);
+        let target = HttpTarget::prepare(
+            options("https://synthetic.example/mcp"),
+            limits(),
+            &resolver,
+        )
+        .await
+        .expect("the synthetic public target should prepare");
+        assert_eq!(resolver.call_count(), 1);
+
+        let same_authority = target.same_authority();
+        assert_eq!(resolver.call_count(), 1);
+        assert_eq!(same_authority.addresses, target.addresses);
+        assert_eq!(same_authority.endpoint.url, target.endpoint.url);
+        assert_eq!(same_authority.started, target.started);
+        assert_eq!(same_authority.limits, target.limits);
+    }
+
+    #[test]
+    fn modern_error_classifier_is_structural_bounded_and_never_guesses() {
+        let encode = |error: serde_json::Value| {
+            serde_json::to_vec(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": error
+            }))
+            .expect("the synthetic modern error should serialize")
+        };
+        let classify = |error| classify_modern_protocol_error(&encode(error), 1, "2026-07-28", 2);
+
+        assert_eq!(
+            classify(serde_json::json!({"code": -32020, "message": "synthetic"})),
+            Some(ModernProtocolError::HeaderMismatch)
+        );
+        assert_eq!(
+            classify(serde_json::json!({
+                "code": -32021,
+                "message": "synthetic",
+                "data": {"requiredCapabilities": {}}
+            })),
+            Some(ModernProtocolError::MissingRequiredClientCapability)
+        );
+        assert_eq!(
+            classify(serde_json::json!({
+                "code": -32022,
+                "message": "synthetic",
+                "data": {"requested": "2026-07-28", "supported": ["2025-11-25"]}
+            })),
+            Some(ModernProtocolError::UnsupportedProtocolVersion)
+        );
+        assert_eq!(
+            classify(serde_json::json!({
+                "code": -32022,
+                "message": "synthetic",
+                "data": {"requested": "2026-07-28", "supported": ["2026-07-28"]}
+            })),
+            Some(ModernProtocolError::ContradictoryProtocolVersion)
+        );
+        assert_eq!(
+            classify(serde_json::json!({
+                "code": -32022,
+                "message": "synthetic",
+                "data": {
+                    "requested": "2026-07-28",
+                    "supported": ["2025-11-25", "2025-06-18", "2025-03-26"]
+                }
+            })),
+            Some(ModernProtocolError::RevisionLimit { observed: 3 })
+        );
+        assert_eq!(
+            classify(serde_json::json!({"code": -32022, "message": 7})),
+            Some(ModernProtocolError::Invalid)
+        );
+        let malformed_envelope = serde_json::to_vec(&serde_json::json!({
+            "error": {"code": -32022, "message": "synthetic"}
+        }))
+        .unwrap();
+        assert_eq!(
+            classify_modern_protocol_error(&malformed_envelope, 1, "2026-07-28", 2),
+            Some(ModernProtocolError::Invalid)
+        );
+        assert_eq!(
+            classify(serde_json::json!({"code": -32601, "message": "synthetic"})),
+            None
+        );
     }
 
     fn address(ip: &str, port: u16) -> SocketAddr {

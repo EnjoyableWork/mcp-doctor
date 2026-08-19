@@ -566,6 +566,8 @@ struct StableReport {
     protocol_revision: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     negotiated_protocol_revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol_selection: Option<StableProtocolSelection>,
     primary_diagnosis: Option<Diagnosis>,
     independent_findings: Vec<FindingReference>,
     outcome: ReportOutcome,
@@ -573,6 +575,34 @@ struct StableReport {
     limits: ReportLimits,
     summary: ReportSummary,
     checks: Vec<StableCheck>,
+}
+
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+struct StableProtocolSelection {
+    mode: StableProtocolSelectionMode,
+    path: StableProtocolSelectionPath,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_revision: Option<String>,
+    process_launches: u64,
+    lifecycle_requests: u64,
+    lifecycle_notifications: u64,
+    fallbacks: u64,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum StableProtocolSelectionMode {
+    Auto,
+    Exact,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum StableProtocolSelectionPath {
+    ExactPin,
+    ModernDiscovery,
+    StdioLegacyInitialization,
+    HttpLegacyInitialization,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -948,6 +978,44 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
         return Err(AggregateError::invocation(
             AggregateErrorKind::InputSemantic,
         ));
+    }
+
+    if let Some(selection) = &report.protocol_selection {
+        let counts_valid = selection.process_launches <= 2
+            && selection.lifecycle_requests <= 2
+            && selection.lifecycle_notifications <= 1
+            && selection.fallbacks <= 1;
+        let selected_valid = selection
+            .selected_revision
+            .as_ref()
+            .is_none_or(|revision| revision == &report.protocol_revision);
+        let shape_valid = match (selection.mode, selection.path) {
+            (StableProtocolSelectionMode::Exact, StableProtocolSelectionPath::ExactPin) => {
+                selection.selected_revision.as_ref() == Some(&report.protocol_revision)
+                    && selection.fallbacks == 0
+            }
+            (StableProtocolSelectionMode::Auto, StableProtocolSelectionPath::ModernDiscovery) => {
+                selection.fallbacks == 0
+            }
+            (
+                StableProtocolSelectionMode::Auto,
+                StableProtocolSelectionPath::StdioLegacyInitialization,
+            ) => {
+                selection.fallbacks == 1
+                    && matches!(selection.process_launches, 1..=2)
+                    && matches!(selection.lifecycle_requests, 1..=2)
+            }
+            (
+                StableProtocolSelectionMode::Auto,
+                StableProtocolSelectionPath::HttpLegacyInitialization,
+            ) => selection.fallbacks == 1 && selection.process_launches == 0,
+            _ => false,
+        };
+        if !counts_valid || !selected_valid || !shape_valid {
+            return Err(AggregateError::invocation(
+                AggregateErrorKind::InputSemantic,
+            ));
+        }
     }
 
     for finding in &report.independent_findings {
