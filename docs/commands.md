@@ -400,6 +400,37 @@ tool name, description, or raw catalog item. The shared rule applies to passive
 STDIO and Streamable HTTP inspection for every supported revision without an
 extra request or any tool call.
 
+### Required-input description quality
+
+After an advertised tool input schema passes its structural, dialect,
+reference, meta-schema, compilation, and work-budget gates, passive `inspect`
+reports `MCP-QUALITY-002` as a warning for each direct property that is named by
+the root `required` array but lacks a usable direct `description`. A description
+is usable when it is a string that is not blank under the finite `A1
+normalization v1` whitespace set above.
+
+Each finding is located at
+`tools[index].inputSchema.properties[index].description`. It retains only the
+code, warning severity, selected revision, ordinal location, and fixed
+corrective prose. Tool names, property names, descriptions, defaults, examples,
+schemas, and reference targets are not retained or rendered. The correction is
+to describe the accepted value and any important constraints for the required
+input.
+
+The rule inspects only the direct property annotation. A local-reference
+wrapper therefore needs its own description; a description on the referenced
+target is not inherited for this diagnostic. Optional properties and names in
+`required` that have no direct `properties` entry are not diagnosed. The rule
+does not infer intent, follow external references, or inspect nested required
+properties.
+
+An invalid, unsupported, externally referenced, incomplete, or over-limit
+schema receives its prerequisite schema diagnosis instead of a partial
+required-input quality result for that schema. The scan reuses the existing
+schema-work and report-finding budgets, applies to passive STDIO and Streamable
+HTTP for every supported revision, and adds no request, tool call, dependency,
+or LLM evaluation.
+
 ### Credential-literal input safety
 
 After an advertised tool input schema passes its existing local schema gates,
