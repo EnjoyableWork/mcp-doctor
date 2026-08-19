@@ -5,7 +5,8 @@ This record originated with
 audit was performed on 2026-08-14 from `main` commit `3472952` and extended on
 2026-08-16 for the release-only correction. It covers every tracked Rust test,
 shell or PowerShell script, and GitHub Actions workflow. `AGENTS.md` contains
-the concise operating policy; Linear owns current delivery state.
+the concise operating policy. This audit records an immutable public boundary,
+not current delivery state.
 
 ## Audit method
 
@@ -105,7 +106,8 @@ it.
 
 Adding a command, runner, Action-provided tool, container runtime, standalone
 executable, sleep, positive retry, or timing primitive requires this inventory,
-the governing Linear issue, and the policy regression to be updated together.
+a self-contained public change rationale, and the policy regression to be
+updated together.
 
 ## Preserved failure evidence and completion gate
 

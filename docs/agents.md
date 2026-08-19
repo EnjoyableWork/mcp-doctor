@@ -193,7 +193,7 @@ support claim for `0.3.3`, a later Codex version, or independent adoption.
 
 These are scoped integration observations, not deterministic model-correctness,
 adoption, universal compatibility, or independent-use evidence.
-[Read the bounded recorder and withheld-claim record](assurance/mcpd-035-agent-skill.md).
+[Read the bounded recorder and withheld-claim record](assurance/v0.3.2-agent-skill.md).
 
 ## Primary host documentation
 

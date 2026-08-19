@@ -87,8 +87,8 @@
       "reason": "repository code and secret scanning do not implement or prove a general MCP security scanner"
     },
     {
-      "surface": "complete_m4_assurance_baseline",
-      "reason": "MCPD-014 is only one scoped input to the later MCPD-018 assessment"
+      "surface": "complete_assurance_baseline",
+      "reason": "This repository-security projection is only one scoped input to a complete-assurance assessment"
     }
   ]
 }

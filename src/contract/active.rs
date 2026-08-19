@@ -188,7 +188,7 @@ impl ActiveScenario {
                 json_kind(Some(cases_value)),
             )
         })?;
-        let maximum_cases = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        let maximum_cases = DiagnosticLimits::DEFAULTS.values().active_cases;
         if cases_array.is_empty() {
             return Err(ScenarioFailure::one(Finding::scenario_invalid(
                 scenario_location().field(LocationField::Cases),
@@ -349,7 +349,7 @@ impl ActiveScenario {
                 json_kind(Some(steps_value)),
             )
         })?;
-        let maximum_steps = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        let maximum_steps = DiagnosticLimits::DEFAULTS.values().active_cases;
         let maximum_items = usize::try_from(maximum_steps).unwrap_or(usize::MAX);
         if target_env.len() > maximum_items
             || target_env
@@ -696,7 +696,7 @@ impl ActiveScenario {
             )));
         }
         let observed = u64::try_from(requested_cases).unwrap_or(u64::MAX);
-        let maximum = DiagnosticLimits::M1_DEFAULTS.values().active_cases;
+        let maximum = DiagnosticLimits::DEFAULTS.values().active_cases;
         if observed > maximum {
             return Err(ScenarioFailure::one(Finding::limit_exceeded(
                 SupportedRevision::CURRENT,
@@ -807,9 +807,7 @@ impl ActiveScenario {
     {
         let mut aggregate_bytes = 0_u64;
         let workflow = self.is_workflow();
-        let maximum_aggregate = DiagnosticLimits::M1_DEFAULTS
-            .values()
-            .aggregate_output_bytes;
+        let maximum_aggregate = DiagnosticLimits::DEFAULTS.values().aggregate_output_bytes;
         for (case_index, case) in self.cases.iter_mut().enumerate() {
             let case_location = if workflow {
                 workflow_step_location(case_index)
@@ -1075,7 +1073,7 @@ pub(crate) fn render_generation_configuration_failure_for_revision(
     revision: ActiveProtocolRevision,
 ) -> Diagnostic {
     let maximum =
-        usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
+        usize::try_from(DiagnosticLimits::DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
     let case_checks = (requested_cases > 0 && requested_cases <= maximum)
         .then(|| (0..requested_cases).map(CheckId::RuntimeToolCase).collect());
     render_prestart_failure(
@@ -1164,7 +1162,7 @@ fn render_prestart_failure(
             SkipReason::PrerequisiteFailed,
         ));
     }
-    let report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+    let report = DiagnosticReport::new(revision, DiagnosticLimits::DEFAULTS, checks)
         .expect("a scenario configuration failure is a valid report");
     let report = if report.exit_status() == ExitStatus::Incomplete {
         report
@@ -1237,7 +1235,7 @@ pub(crate) fn render_authorization_failure_for_revision(
             SkipReason::AuthorizationFailed,
         )
     }));
-    let report = DiagnosticReport::new(revision, DiagnosticLimits::M1_DEFAULTS, checks)
+    let report = DiagnosticReport::new(revision, DiagnosticLimits::DEFAULTS, checks)
         .expect("an active authorization failure is a valid report")
         .with_exit_status(ExitStatus::InvocationError);
     Diagnostic::from_report(report)
@@ -1441,7 +1439,7 @@ impl ActiveConversation {
                 .saturating_sub(u64::try_from(serialized_len(&Value::Null)).unwrap_or(u64::MAX))
                 .saturating_add(u64::try_from(*bytes).unwrap_or(u64::MAX))
         });
-        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let values = DiagnosticLimits::DEFAULTS.values();
         if observed > values.instance_bytes {
             return Err(ArgumentReferenceFailure::Limit(
                 LimitViolation::new(LimitKind::InstanceBytes, observed, values.instance_bytes)
@@ -1506,7 +1504,7 @@ impl ActiveConversation {
                     .ok_or(CaptureFailure::Missing)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let values = DiagnosticLimits::DEFAULTS.values();
         let mut added_bytes = 0_u64;
         for (_, value) in &captures {
             let observed = u64::try_from(serialized_len(value)).unwrap_or(u64::MAX);
@@ -2029,7 +2027,7 @@ impl ActiveConversation {
             self.stop_before_cases(SkipReason::PrerequisiteFailed);
             return;
         };
-        let maximum_revisions = DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions;
+        let maximum_revisions = DiagnosticLimits::DEFAULTS.values().protocol_revisions;
         let observed_revisions = u64::try_from(versions.len()).unwrap_or(u64::MAX);
         if observed_revisions > maximum_revisions {
             self.revision = PhaseState::Performed(vec![Finding::limit_exceeded(
@@ -2180,7 +2178,7 @@ impl ActiveConversation {
         self.observed_items = self
             .observed_items
             .saturating_add(u64::try_from(tools.len()).unwrap_or(u64::MAX));
-        let maximum_items = DiagnosticLimits::M1_DEFAULTS.values().catalog_items;
+        let maximum_items = DiagnosticLimits::DEFAULTS.values().catalog_items;
         if self.observed_items > maximum_items {
             findings.push(Finding::limit_exceeded(
                 revision,
@@ -2916,9 +2914,8 @@ impl ActiveConversation {
                     }
                 }),
         );
-        let mut report =
-            DiagnosticReport::new(report_revision, DiagnosticLimits::M1_DEFAULTS, checks)
-                .expect("the active application must construct a valid diagnostic report");
+        let mut report = DiagnosticReport::new(report_revision, DiagnosticLimits::DEFAULTS, checks)
+            .expect("the active application must construct a valid diagnostic report");
         if let Some(negotiated_revision) = self.negotiated_revision {
             report = report.with_negotiated_revision(negotiated_revision);
         }
@@ -2927,7 +2924,7 @@ impl ActiveConversation {
 
     fn fit_report_finding_budget(&mut self, transport_findings: usize) {
         let revision = self.revision();
-        let maximum = usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings)
+        let maximum = usize::try_from(DiagnosticLimits::DEFAULTS.values().report_findings)
             .unwrap_or(usize::MAX);
         let total = transport_findings
             .saturating_add(phase_finding_count(&self.envelope))
@@ -3047,7 +3044,7 @@ fn cap_active_phase_findings(
     cap_active_phase_to_budget(
         findings,
         capacity,
-        DiagnosticLimits::M1_DEFAULTS
+        DiagnosticLimits::DEFAULTS
             .values()
             .report_findings
             .saturating_add(1),
@@ -3063,7 +3060,7 @@ fn cap_active_phase_to_budget(
     location: Location,
     revision: SupportedRevision,
 ) -> Vec<Finding> {
-    let maximum = DiagnosticLimits::M1_DEFAULTS.values().report_findings;
+    let maximum = DiagnosticLimits::DEFAULTS.values().report_findings;
     findings.retain(|finding| {
         !matches!(
             finding.evidence(),
@@ -3088,7 +3085,7 @@ fn cap_active_phase_to_budget(
 }
 
 fn report_finding_capacity() -> usize {
-    usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings).unwrap_or(usize::MAX)
+    usize::try_from(DiagnosticLimits::DEFAULTS.values().report_findings).unwrap_or(usize::MAX)
 }
 
 fn validate_optional_output(
@@ -3119,7 +3116,7 @@ fn is_url_elicitation_required(response: &Map<String, Value>) -> bool {
         return false;
     };
     let maximum =
-        usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
+        usize::try_from(DiagnosticLimits::DEFAULTS.values().active_cases).unwrap_or(usize::MAX);
     elicitations.len() <= maximum
         && elicitations.iter().all(|elicitation| {
             let Some(elicitation) = elicitation.as_object() else {
@@ -3353,7 +3350,7 @@ fn parse_target_environment(root: &Map<String, Value>) -> Result<Vec<String>, Sc
 
 fn check_instance_bytes(value: &Value, location: Location) -> Result<(), ScenarioFailure> {
     let observed = u64::try_from(serialized_len(value)).unwrap_or(u64::MAX);
-    let maximum = DiagnosticLimits::M1_DEFAULTS.values().instance_bytes;
+    let maximum = DiagnosticLimits::DEFAULTS.values().instance_bytes;
     if observed > maximum {
         return Err(ScenarioFailure::one(Finding::limit_exceeded(
             SupportedRevision::CURRENT,
@@ -3535,7 +3532,7 @@ where
 {
     let mut resolved = Vec::new();
     let mut aggregate_bytes = 0_u64;
-    let maximum_bytes = DiagnosticLimits::M1_DEFAULTS.values().instance_bytes;
+    let maximum_bytes = DiagnosticLimits::DEFAULTS.values().instance_bytes;
     for (index, name) in scenario.target_environment_names().enumerate() {
         let Some(value) = lookup(name) else {
             return Err(ScenarioFailure::one(Finding::secret_reference_invalid(

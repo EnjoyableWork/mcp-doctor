@@ -75,7 +75,7 @@ if ! jq -e '
   (.excluded_evidence | map(.surface)) == [
     "partner_only_public_repository_secret_alerts",
     "mcp_doctor_product_security_scanner",
-    "complete_m4_assurance_baseline"
+    "complete_assurance_baseline"
   ]
 ' "$canonical_path" >/dev/null 2>&1; then
   printf 'canonical security-control configuration is invalid\n' >&2

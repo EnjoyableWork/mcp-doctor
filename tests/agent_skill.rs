@@ -100,7 +100,7 @@ fn canonical_skill_is_one_portable_passive_instruction_file() {
 #[test]
 fn guide_is_release_bound_reversible_and_host_scoped() {
     let guide = repository_file("docs/agents.md");
-    let evidence = repository_file("docs/assurance/mcpd-035-agent-skill.md");
+    let evidence = repository_file("docs/assurance/v0.3.2-agent-skill.md");
     let readme = repository_file("README.md");
 
     for contract in [
@@ -129,7 +129,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "Cursor Agent | `2026.05.20-2b5dd59`",
         "Kiro IDE | `1.0.288`",
         "Kiro Crew | `0.1.3`",
-        "assurance/mcpd-035-agent-skill.md",
+        "assurance/v0.3.2-agent-skill.md",
         "last\nverified route is Codex CLI `0.147.0`",
     ] {
         assert!(guide.contains(contract), "guide should preserve {contract}");

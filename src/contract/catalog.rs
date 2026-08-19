@@ -122,7 +122,7 @@ fn is_unsupported_protocol_error(object: &Map<String, Value>) -> bool {
         && error.get("message").is_some_and(Value::is_string)
         && data.get("requested").and_then(Value::as_str) == Some(PROTOCOL_REVISION)
         && u64::try_from(supported.len()).unwrap_or(u64::MAX)
-            <= DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions
+            <= DiagnosticLimits::DEFAULTS.values().protocol_revisions
         && supported.iter().all(Value::is_string)
         && !supported
             .iter()
@@ -142,7 +142,7 @@ fn unsupported_protocol_revision_limit(object: &Map<String, Value>) -> Option<Li
     LimitViolation::new(
         LimitKind::ProtocolRevisions,
         u64::try_from(supported.len()).unwrap_or(u64::MAX),
-        DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions,
+        DiagnosticLimits::DEFAULTS.values().protocol_revisions,
     )
     .ok()
 }
@@ -211,10 +211,7 @@ impl PassiveCatalogConversation {
     }
 
     pub(crate) fn for_revision(revision: SupportedRevision) -> Self {
-        Self::with_catalog_limit(
-            revision,
-            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
-        )
+        Self::with_catalog_limit(revision, DiagnosticLimits::DEFAULTS.values().catalog_items)
     }
 
     fn with_catalog_limit(revision: SupportedRevision, maximum_items: u64) -> Self {
@@ -255,7 +252,7 @@ impl PassiveCatalogConversation {
     pub(crate) fn for_auto_modern() -> Self {
         Self::with_options(
             SupportedRevision::CURRENT,
-            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
+            DiagnosticLimits::DEFAULTS.values().catalog_items,
             true,
             false,
         )
@@ -264,7 +261,7 @@ impl PassiveCatalogConversation {
     pub(crate) fn for_auto_legacy() -> Self {
         Self::with_options(
             SupportedRevision::V2025_11_25,
-            DiagnosticLimits::M1_DEFAULTS.values().catalog_items,
+            DiagnosticLimits::DEFAULTS.values().catalog_items,
             false,
             true,
         )
@@ -534,7 +531,7 @@ fn selected_modern_revision(response: &ProbeResponse) -> Option<SupportedRevisio
     }
     let supported = result.get("supportedVersions")?.as_array()?;
     (u64::try_from(supported.len()).unwrap_or(u64::MAX)
-        <= DiagnosticLimits::M1_DEFAULTS.values().protocol_revisions
+        <= DiagnosticLimits::DEFAULTS.values().protocol_revisions
         && supported.iter().all(Value::is_string)
         && supported
             .iter()
@@ -821,7 +818,7 @@ struct Analyzer {
 
 impl Analyzer {
     fn new(reserved_findings: usize, validate_http_headers: bool, auto_discovery: bool) -> Self {
-        let limits = DiagnosticLimits::M1_DEFAULTS;
+        let limits = DiagnosticLimits::DEFAULTS;
         let maximum = usize::try_from(limits.values().report_findings).unwrap_or(usize::MAX);
         Self {
             limits,
@@ -2127,9 +2124,7 @@ pub(super) struct LocalValidator {
 
 impl LocalValidator {
     pub(super) fn compile(schema: &Value) -> Result<Self, InstanceValidationIssue> {
-        let maximum = DiagnosticLimits::M1_DEFAULTS
-            .values()
-            .schema_evaluation_steps;
+        let maximum = DiagnosticLimits::DEFAULTS.values().schema_evaluation_steps;
         let validator =
             BudgetedValidator::compile(schema, maximum).map_err(|issue| match issue {
                 SchemaWorkIssue::Limit(limit) => InstanceValidationIssue::Limit(limit),
@@ -2141,7 +2136,7 @@ impl LocalValidator {
     }
 
     pub(super) fn validate(&self, instance: &Value) -> Result<(), InstanceValidationIssue> {
-        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let values = DiagnosticLimits::DEFAULTS.values();
         let bytes = u64::try_from(serialized_len(instance)).unwrap_or(u64::MAX);
         if bytes > values.instance_bytes {
             return Err(InstanceValidationIssue::Limit(
@@ -2290,7 +2285,7 @@ struct LegacyAnalyzer {
 
 impl LegacyAnalyzer {
     fn new(revision: SupportedRevision, reserved_findings: usize) -> Self {
-        let limits = DiagnosticLimits::M1_DEFAULTS;
+        let limits = DiagnosticLimits::DEFAULTS;
         let maximum = usize::try_from(limits.values().report_findings).unwrap_or(usize::MAX);
         Self {
             revision_kind: revision,
@@ -3740,7 +3735,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_defaults_to_the_m1_catalog_limit() {
+    fn conversation_uses_the_default_catalog_limit() {
         let conversation = PassiveCatalogConversation::new();
         assert_eq!(conversation.maximum_items, 10_000);
     }

@@ -1,13 +1,13 @@
-# MCPD-013 emergency-bypass exercise
+# Emergency-bypass control exercise — 2026-08-11
 
-This is a bounded control exercise for `DEC-035`, not a production incident or
-an assurance claim.
+This is a bounded exercise of the documented emergency-bypass control, not a
+production incident or an assurance claim.
 
 ## Start record
 
 | Field | Recorded value |
 | --- | --- |
-| Incident ID | `MCPD-013-EXERCISE-20260811-01` |
+| Exercise record | `emergency-bypass-2026-08-11` |
 | Reason | Prove that the documented emergency path can merge exactly one dedicated pull request without weakening direct-update, deletion, or non-fast-forward protection, and can then return to an empty standing-bypass state. |
 | Protected base | `main` at `09765f6fe13eb050de32033fc6d51b3e8b5da37f` |
 | Exact change commit | Recorded in the dedicated pull request because a commit cannot contain its own identifier. |

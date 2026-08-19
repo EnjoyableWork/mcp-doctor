@@ -66,7 +66,7 @@ pub(super) fn generate_inputs(
     base_seed: u64,
     case_count: usize,
 ) -> Result<Vec<GeneratedInput>, GenerationFailure> {
-    let limits = DiagnosticLimits::M1_DEFAULTS.values();
+    let limits = DiagnosticLimits::DEFAULTS.values();
     if case_count == 0 {
         return Err(GenerationFailure::Unavailable);
     }
@@ -202,7 +202,7 @@ pub(super) fn generate_invalid_inputs(
                 .len(),
         )
         .unwrap_or(u64::MAX);
-        let limits = DiagnosticLimits::M1_DEFAULTS.values();
+        let limits = DiagnosticLimits::DEFAULTS.values();
         if bytes > limits.instance_bytes {
             return Err(GenerationFailure::Limit(
                 LimitViolation::new(LimitKind::InstanceBytes, bytes, limits.instance_bytes)
@@ -465,7 +465,7 @@ fn unexpected_property(
                 break name;
             }
             index = index.saturating_add(1);
-            if index > DiagnosticLimits::M1_DEFAULTS.values().generation_attempts {
+            if index > DiagnosticLimits::DEFAULTS.values().generation_attempts {
                 return Ok(None);
             }
         };
@@ -530,7 +530,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
         depth: u64,
     ) -> Result<Option<Value>, GenerationFailure> {
         self.tick()?;
-        let limits = DiagnosticLimits::M1_DEFAULTS.values();
+        let limits = DiagnosticLimits::DEFAULTS.values();
         if depth > limits.schema_depth {
             return Err(GenerationFailure::Limit(
                 LimitViolation::new(LimitKind::SchemaDepth, depth, limits.schema_depth)
@@ -697,7 +697,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
         object: &'root Map<String, Value>,
         depth: u64,
     ) -> Result<Vec<Value>, GenerationFailure> {
-        let limits = DiagnosticLimits::M1_DEFAULTS.values();
+        let limits = DiagnosticLimits::DEFAULTS.values();
         let minimum = integer_keyword(object, "minItems").unwrap_or(0);
         let maximum = integer_keyword(object, "maxItems");
         if minimum > limits.generation_steps {
@@ -748,7 +748,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
     }
 
     fn string(&mut self, object: &'root Map<String, Value>) -> Result<String, GenerationFailure> {
-        let limits = DiagnosticLimits::M1_DEFAULTS.values();
+        let limits = DiagnosticLimits::DEFAULTS.values();
         let minimum = integer_keyword(object, "minLength").unwrap_or(0);
         let maximum = integer_keyword(object, "maxLength");
         if minimum.saturating_add(2) > limits.instance_bytes {
@@ -1092,7 +1092,7 @@ fn integer_keyword(object: &Map<String, Value>, keyword: &str) -> Option<u64> {
 }
 
 fn tick(steps: &mut u64) -> Result<(), GenerationFailure> {
-    let maximum = DiagnosticLimits::M1_DEFAULTS.values().generation_steps;
+    let maximum = DiagnosticLimits::DEFAULTS.values().generation_steps;
     *steps = steps.saturating_add(1);
     if *steps > maximum {
         return Err(GenerationFailure::Limit(

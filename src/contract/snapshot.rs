@@ -304,7 +304,7 @@ impl SnapshotDestination {
     }
 
     pub(crate) fn persist(&self, bytes: &[u8]) -> Result<(), SnapshotDestinationError> {
-        let values = DiagnosticLimits::M1_DEFAULTS.values();
+        let values = DiagnosticLimits::DEFAULTS.values();
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > values.aggregate_output_bytes {
             return Err(SnapshotDestinationError::Write);
         }
@@ -763,9 +763,7 @@ fn encode_snapshot(snapshot: &ContractSnapshot) -> Result<Vec<u8>, SnapshotInput
     let mut bytes = serde_json::to_vec_pretty(snapshot)
         .map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
     bytes.push(b'\n');
-    let maximum = DiagnosticLimits::M1_DEFAULTS
-        .values()
-        .aggregate_output_bytes;
+    let maximum = DiagnosticLimits::DEFAULTS.values().aggregate_output_bytes;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > maximum {
         return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
     }
@@ -790,7 +788,7 @@ fn normalize_and_validate(snapshot: &mut ContractSnapshot) -> Result<(), Snapsho
         .saturating_add(snapshot.catalogs.prompts.contracts.len())
         .saturating_add(snapshot.catalogs.resources.contracts.len())
         .saturating_add(snapshot.catalogs.resource_templates.contracts.len());
-    let maximum = DiagnosticLimits::M1_DEFAULTS.values().catalog_items;
+    let maximum = DiagnosticLimits::DEFAULTS.values().catalog_items;
     if u64::try_from(total_items).unwrap_or(u64::MAX) > maximum {
         return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
     }
@@ -911,7 +909,7 @@ fn normalize_prompt_catalog(
             .arguments
             .sort_by(|left, right| left.name.cmp(&right.name));
         if u64::try_from(contract.arguments.len()).unwrap_or(u64::MAX)
-            > DiagnosticLimits::M1_DEFAULTS.values().catalog_items
+            > DiagnosticLimits::DEFAULTS.values().catalog_items
         {
             return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
         }
@@ -1122,7 +1120,7 @@ fn canonical_key(value: &Value) -> String {
 }
 
 fn validate_schema(schema: &Value) -> Result<(), SnapshotInputError> {
-    let values = DiagnosticLimits::M1_DEFAULTS.values();
+    let values = DiagnosticLimits::DEFAULTS.values();
     let bytes = serde_json::to_vec(schema)
         .map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > values.schema_bytes {
@@ -1177,9 +1175,7 @@ fn validate_reference_depth(
     maximum: u64,
 ) -> Result<(), SnapshotInputError> {
     let mut work = 0_u64;
-    let maximum_work = DiagnosticLimits::M1_DEFAULTS
-        .values()
-        .schema_evaluation_steps;
+    let maximum_work = DiagnosticLimits::DEFAULTS.values().schema_evaluation_steps;
     for reference in references {
         let mut active = BTreeSet::new();
         follow_reference(
@@ -1267,9 +1263,7 @@ fn collect_references(
 fn read_snapshot(path: &Path) -> Result<ContractSnapshot, SnapshotInputError> {
     let bound =
         BoundFile::open(path).map_err(|_| SnapshotInputError::new(SnapshotInputKind::Malformed))?;
-    let maximum = DiagnosticLimits::M1_DEFAULTS
-        .values()
-        .aggregate_output_bytes;
+    let maximum = DiagnosticLimits::DEFAULTS.values().aggregate_output_bytes;
     if bound.metadata().len() > maximum {
         return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
     }
@@ -1591,7 +1585,7 @@ fn compare_snapshots(before: &ContractSnapshot, after: &ContractSnapshot) -> Con
 }
 
 fn maximum_diff_findings() -> usize {
-    usize::try_from(DiagnosticLimits::M1_DEFAULTS.values().report_findings).unwrap_or(usize::MAX)
+    usize::try_from(DiagnosticLimits::DEFAULTS.values().report_findings).unwrap_or(usize::MAX)
 }
 
 fn push_diff_finding(findings: &mut Vec<DiffFinding>, finding: DiffFinding) {
@@ -2448,7 +2442,7 @@ fn render_diff_report(report: ContractDiffReport, format: DiffFormat) -> Rendere
     match rendered {
         Ok(output)
             if u64::try_from(output.len()).unwrap_or(u64::MAX)
-                <= DiagnosticLimits::M1_DEFAULTS.values().report_bytes =>
+                <= DiagnosticLimits::DEFAULTS.values().report_bytes =>
         {
             RenderedContractDiff {
                 output,

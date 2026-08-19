@@ -1,11 +1,11 @@
-# M2 adoption checkpoint conclusion
+# Public adoption checkpoint conclusion
 
 - Opened: 2026-08-10
 - Closed: 2026-08-10
 - Release under review: `mcp-doctor` `v0.1.0`
 - Initial baseline: zero independent adoption reports at opening
 - Closing baseline: zero independent adoption reports
-- Public collection record: [M2 adoption checkpoint issue 5](https://github.com/EnjoyableWork/mcp-doctor/issues/5)
+- Public collection record: [adoption checkpoint issue #5](https://github.com/EnjoyableWork/mcp-doctor/issues/5)
 
 This checkpoint asked whether the passive preflight earned repeat use before
 the project added active tool calls, remote targets, adversarial generation, or
@@ -15,7 +15,8 @@ publication nor this checkpoint proves adoption. This record makes no adoption o
 
 The owner closed the checkpoint because independently timed evidence can take
 days, weeks, or months to arrive and is not a suitable hard gate on planned
-feature work. Independent evidence remains useful, but it does not block M3.
+feature work. Independent evidence remains useful, but it does not block later
+scoped feature work.
 
 ## What future useful evidence looks like
 
@@ -46,7 +47,7 @@ That remains a useful evidence target, not a prerequisite or proof by itself.
 Future evidence should show whether people found the report correct and
 actionable and whether they chose to use it again.
 
-M3 may proceed in order after each ticket's predecessor, design decisions,
+Later scoped feature work may proceed after its public design, dependencies,
 safety boundary, and acceptance evidence are ready. Future evidence may
 reprioritize, narrow, defer, or cancel a capability. Its absence does not block
 otherwise ready scoped work, and it must never be presented as validation.
