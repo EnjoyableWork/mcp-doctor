@@ -1,0 +1,100 @@
+name: MCP server preflight
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mcp-doctor-preflight.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "scripts/verify-mcp-doctor-preflight-reports.sh"
+      - "tests/fixtures/stdio_server.rs"
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: Repository-owned acceptance fixture
+        required: true
+        default: passing
+        type: choice
+        options:
+          - passing
+          - diagnosed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-doctor-preflight-${{ github.workflow }}-${{ github.ref }}-${{ inputs.fixture || 'passing' }}
+  cancel-in-progress: false
+
+env:
+  MCP_DOCTOR_VERSION: 0.3.3
+
+jobs:
+  preflight:
+    name: Passive preflight (${{ inputs.fixture || 'passing' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the selected server source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the repository-owned synthetic server
+        run: >-
+          cargo build --release --locked
+          --features internal-test-fixtures
+          --bin mcp-doctor-stdio-fixture
+
+      - name: Install the exact released mcp-doctor
+        run: |
+          set -euo pipefail
+          install_root="$RUNNER_TEMP/mcp-doctor-preflight"
+          cargo install mcp-doctor \
+            --version "=$MCP_DOCTOR_VERSION" \
+            --locked \
+            --root "$install_root"
+          test "$("$install_root/bin/mcp-doctor" --version)" = \
+            "mcp-doctor $MCP_DOCTOR_VERSION"
+
+      - name: Prepare deterministic report destinations
+        run: mkdir -p artifacts/mcp-doctor
+
+      - name: Diagnose the selected MCP server without calling tools
+        env:
+          PREFLIGHT_FIXTURE: ${{ inputs.fixture || 'passing' }}
+        run: |
+          set -euo pipefail
+          case "$PREFLIGHT_FIXTURE" in
+            passing) fixture_mode=catalog-valid ;;
+            diagnosed) fixture_mode=protocol-unsupported ;;
+            *) exit 2 ;;
+          esac
+          "$RUNNER_TEMP/mcp-doctor-preflight/bin/mcp-doctor" inspect \
+            --protocol-version 2026-07-28 \
+            --json-report artifacts/mcp-doctor/report.json \
+            --junit-report artifacts/mcp-doctor/report.junit.xml \
+            -- \
+            ./target/release/mcp-doctor-stdio-fixture "$fixture_mode" \
+            >/dev/null
+
+      - name: Verify the safe report boundary
+        if: ${{ always() }}
+        run: >-
+          ./scripts/verify-mcp-doctor-preflight-reports.sh
+          artifacts/mcp-doctor/report.json
+          artifacts/mcp-doctor/report.junit.xml
+
+      - name: Upload the safe reports without masking the diagnostic exit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mcp-doctor-preflight-${{ inputs.fixture || 'passing' }}
+          path: |
+            artifacts/mcp-doctor/report.json
+            artifacts/mcp-doctor/report.junit.xml
+          if-no-files-found: error
+          retention-days: 7

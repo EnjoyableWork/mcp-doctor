@@ -184,6 +184,7 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
         expected_paths,
         BTreeSet::from([
             ".github/workflows/ci.yml".to_owned(),
+            ".github/workflows/mcp-doctor-preflight.yml".to_owned(),
             ".github/workflows/release-preflight.yml".to_owned(),
         ])
     );

@@ -125,23 +125,44 @@ member reports use the separate
 offline validators should load both local schemas and must not retrieve either
 at runtime.
 
-## Bring it into CI
+## GitHub Actions starter
 
-Run the same check in a pull request. Its exit remains the gate while one run
-produces stable JSON and JUnit:
+The repository publishes a copyable
+[least-permission preflight workflow](../.github/workflows/mcp-doctor-preflight.yml).
+It demonstrates all four parts of the CI contract in one job:
 
-```yaml
-- name: Diagnose MCP server
-  run: >-
-    mcp-doctor inspect
-    --json-report artifacts/mcp-doctor.json
-    --junit-report artifacts/mcp-doctor.xml
-    --
-    ./target/release/my-mcp-server --stdio
-```
+1. install exact released `mcp-doctor 0.3.3` with Cargo's locked source
+   contract;
+2. run noninteractive passive `inspect` against one explicit STDIO target and
+   exact MCP `2026-07-28` revision;
+3. write versioned JSON and JUnit reports to fixed repository-local paths and
+   upload both under one deterministic artifact name for seven days; and
+4. leave the diagnostic process exit authoritative while the `always()` report
+   verification and upload steps still run.
 
-A failed required check returns non-zero. Your CI system uploads or consumes
-the explicit paths; `mcp-doctor` performs no provider-specific upload. Each
-JUnit diagnostic check becomes one test case, while JSON and JUnit preserve
-stdout's outcome, primary diagnosis, causal skips, and safe evidence. Reports
-remain deterministic, bounded, and secret-free.
+The checked-in target is unmistakably synthetic and repository-owned. To use
+the workflow in an MCP server repository, copy it and replace only the
+synthetic build step, the executable and literal arguments after `--`, and the
+`pull_request.paths` entries with that repository's server-owned paths. Keep
+the exact `mcp-doctor` version, immutable action commits, explicit
+`contents: read` permission, fixed report destinations, report verification,
+and unconditional upload behavior under review when updating the copy.
+
+The example grants no tool-call, side-effect, credential, private-network,
+cleartext, target-discovery, production-target, or external-schema authority.
+Do not add any of those gates merely to make a CI target start. Select a
+synthetic or repository-owned server that can run within the documented
+constrained STDIO environment; diagnose production separately and explicitly.
+
+For pull requests, exit `0` keeps the job successful. Exit `1`, `2`, `3`, or
+`4` fails the diagnostic step and therefore the job even when both reports are
+uploaded successfully afterward. `actions/upload-artifact` is only the CI
+carrier: `mcp-doctor` remains responsible for producing the two immutable,
+redacted projections from one run and never receives provider credentials.
+
+This repository runs the passing fixture only when the workflow or its owned
+fixture contract changes. Maintainers can manually dispatch either `passing`
+or `diagnosed` to reproduce the acceptance evidence without contacting a real
+server. The diagnosed dispatch is intentionally red: its non-success result
+must remain the job conclusion while the named report artifact remains
+downloadable.
