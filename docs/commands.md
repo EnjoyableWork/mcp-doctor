@@ -329,6 +329,39 @@ failure without secrets or raw production data. Related problems identify the
 first actionable cause, skip only dependent checks with a reason, and keep
 independent checks running.
 
+### Tool-description quality
+
+Passive `inspect` reports `MCP-QUALITY-001` as a warning at
+`tools[index].description` when an otherwise inspectable tool omits its
+description or supplies a blank string. The correction is to provide a concise
+description of what the tool does and when to select it. The `A1 Partial`
+rubric contract detects missing and blank descriptions, but does not grade
+placeholders, name-only prose, duplicates, readability, jargon, or token
+efficiency.
+
+`A1 normalization v1` defines blank deterministically as an empty string or a
+string containing only these Unicode scalar values:
+
+- `U+0009`–`U+000D`
+- `U+0020`
+- `U+0085`
+- `U+00A0`
+- `U+1680`
+- `U+2000`–`U+200A`
+- `U+2028`
+- `U+2029`
+- `U+202F`
+- `U+205F`
+- `U+3000`
+
+The rule does not use locale, runtime whitespace tables, or an LLM. A
+non-string description remains `MCP-CATALOG-001`, without a duplicate quality
+warning. Human, JSON, and JUnit reports retain only the code, warning severity,
+selected revision, indexed field location, and fixed corrective prose—not the
+tool name, description, or raw catalog item. The shared rule applies to passive
+STDIO and Streamable HTTP inspection for every supported revision without an
+extra request or any tool call.
+
 ```text
 PRIMARY DIAGNOSIS · schema
 

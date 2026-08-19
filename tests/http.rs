@@ -893,6 +893,7 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
             "cacheScope": "private",
             "tools": [{
                 "name": TOOL,
+                "description": "A synthetic remote tool.",
                 "annotations": {"readOnlyHint": true, "destructiveHint": false},
                 "inputSchema": {
                     "type": "object",
@@ -907,6 +908,29 @@ fn tools_response(with_mirrored_field: bool) -> FixtureResponse {
                     "additionalProperties": false
                 }
             }]
+        }
+    }))
+}
+
+fn tool_description_quality_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-private-http-missing-description-never-report-61",
+                    "inputSchema": {"type": "object"}
+                },
+                {
+                    "name": "synthetic-private-http-usable-description-never-report-61",
+                    "description": "A synthetic private description that must not be reported.",
+                    "inputSchema": {"type": "object"}
+                }
+            ]
         }
     }))
 }
@@ -1039,6 +1063,7 @@ fn legacy_tools_response(id: i64, next_cursor: Option<&str>) -> FixtureResponse 
     let tools = if id == 2 {
         vec![json!({
             "name": "synthetic.legacy-passive",
+            "description": "A synthetic legacy passive tool.",
             "inputSchema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
@@ -3231,6 +3256,53 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     assert_redacted(&output, &endpoint, &[TOOL]);
+}
+
+#[test]
+fn passive_http_description_quality_uses_only_the_advertised_catalog_request() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                tool_description_quality_response(),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_eq!(outcome.request_failures, 0);
+    let findings = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "discovery.catalogs")
+        .expect("the discovery check should exist")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 1, "{report:#}");
+    assert_eq!(findings[0]["code"], "MCP-QUALITY-001");
+    assert_eq!(findings[0]["severity"], "warning");
+    assert_eq!(findings[0]["location"], "tools[0].description");
+    assert!(!stdout.contains("synthetic-private"), "{stdout}");
+    assert!(!stdout.contains("private description"), "{stdout}");
 }
 
 #[test]

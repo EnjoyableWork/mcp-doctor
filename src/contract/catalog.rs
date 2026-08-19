@@ -463,7 +463,63 @@ enum FindingBucket {
     Revision,
     Envelope,
     Catalog,
+    Quality,
     Schema,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ToolDescriptionDiagnosis {
+    Usable,
+    MissingOrBlank(Finding),
+    Invalid(Finding),
+}
+
+fn diagnose_tool_description(
+    revision: SupportedRevision,
+    tool_location: Location,
+    tool: &Map<String, Value>,
+) -> ToolDescriptionDiagnosis {
+    let location = tool_location.field(LocationField::Description);
+    match tool.get("description") {
+        None => ToolDescriptionDiagnosis::MissingOrBlank(
+            Finding::tool_description_missing_or_blank(revision, location),
+        ),
+        Some(Value::String(description)) if is_a1_v1_blank(description) => {
+            ToolDescriptionDiagnosis::MissingOrBlank(Finding::tool_description_missing_or_blank(
+                revision, location,
+            ))
+        }
+        Some(Value::String(_)) => ToolDescriptionDiagnosis::Usable,
+        Some(description) => ToolDescriptionDiagnosis::Invalid(Finding::catalog_contract_invalid(
+            revision,
+            location,
+            RuleViolation::ExpectedShape {
+                expected: ExpectedShape::String,
+                observed: json_kind(Some(description)),
+            },
+        )),
+    }
+}
+
+fn is_a1_v1_blank(description: &str) -> bool {
+    description.chars().all(is_a1_v1_whitespace)
+}
+
+const fn is_a1_v1_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'..='\u{000D}'
+            | '\u{0020}'
+            | '\u{0085}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+    )
 }
 
 struct Analyzer {
@@ -471,6 +527,7 @@ struct Analyzer {
     revision: Vec<Finding>,
     envelope: Vec<Finding>,
     catalog: Vec<Finding>,
+    quality: Vec<Finding>,
     schema: Vec<Finding>,
     stored_findings: usize,
     finding_capacity: usize,
@@ -499,6 +556,7 @@ impl Analyzer {
             revision: Vec::new(),
             envelope: Vec::new(),
             catalog: Vec::new(),
+            quality: Vec::new(),
             schema: Vec::new(),
             stored_findings: 0,
             finding_capacity: maximum.saturating_sub(reserved_findings),
@@ -524,6 +582,7 @@ impl Analyzer {
             FindingBucket::Revision => self.revision.contains(&finding),
             FindingBucket::Envelope => self.envelope.contains(&finding),
             FindingBucket::Catalog => self.catalog.contains(&finding),
+            FindingBucket::Quality => self.quality.contains(&finding),
             FindingBucket::Schema => self.schema.contains(&finding),
         };
         if duplicate {
@@ -534,9 +593,19 @@ impl Analyzer {
                 FindingBucket::Revision => self.revision.push(finding),
                 FindingBucket::Envelope => self.envelope.push(finding),
                 FindingBucket::Catalog => self.catalog.push(finding),
+                FindingBucket::Quality => self.quality.push(finding),
                 FindingBucket::Schema => self.schema.push(finding),
             }
             self.stored_findings += 1;
+        } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
+            match bucket {
+                FindingBucket::Revision => self.revision.push(finding),
+                FindingBucket::Envelope => self.envelope.push(finding),
+                FindingBucket::Catalog => self.catalog.push(finding),
+                FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
+                FindingBucket::Schema => self.schema.push(finding),
+            }
+            self.finding_overflow = true;
         } else {
             self.finding_overflow = true;
         }
@@ -547,8 +616,9 @@ impl Analyzer {
             return;
         }
         let removed = self
-            .schema
+            .quality
             .pop()
+            .or_else(|| self.schema.pop())
             .or_else(|| self.catalog.pop())
             .or_else(|| self.envelope.pop())
             .or_else(|| self.revision.pop());
@@ -865,6 +935,16 @@ impl Analyzer {
 
     fn analyze_tool(&mut self, index: usize, tool: &Map<String, Value>) {
         let location = CatalogKind::Tools.location().index(index);
+        match diagnose_tool_description(SupportedRevision::CURRENT, location.clone(), tool) {
+            ToolDescriptionDiagnosis::Usable => {}
+            ToolDescriptionDiagnosis::MissingOrBlank(finding) => {
+                self.push(FindingBucket::Quality, finding);
+            }
+            ToolDescriptionDiagnosis::Invalid(finding) => {
+                self.push(FindingBucket::Catalog, finding);
+                self.tools_catalog_valid = false;
+            }
+        }
         let Some(input_schema) = tool.get("inputSchema") else {
             self.push(
                 FindingBucket::Schema,
@@ -1336,6 +1416,7 @@ impl Analyzer {
 
     fn into_checks(mut self) -> Vec<CheckResult> {
         self.finish_overflow();
+        self.catalog.append(&mut self.quality);
         let downstream_skip_reason = if self
             .envelope
             .iter()
@@ -1834,6 +1915,7 @@ struct LegacyAnalyzer {
     revision: Vec<Finding>,
     envelope: Vec<Finding>,
     catalog: Vec<Finding>,
+    quality: Vec<Finding>,
     schema: Vec<Finding>,
     capacity: usize,
     stored: usize,
@@ -1861,6 +1943,7 @@ impl LegacyAnalyzer {
             revision: Vec::new(),
             envelope: Vec::new(),
             catalog: Vec::new(),
+            quality: Vec::new(),
             schema: Vec::new(),
             capacity: maximum.saturating_sub(reserved_findings),
             stored: 0,
@@ -1884,6 +1967,7 @@ impl LegacyAnalyzer {
             FindingBucket::Revision => &mut self.revision,
             FindingBucket::Envelope => &mut self.envelope,
             FindingBucket::Catalog => &mut self.catalog,
+            FindingBucket::Quality => &mut self.quality,
             FindingBucket::Schema => &mut self.schema,
         };
         if destination.contains(&finding) {
@@ -1892,6 +1976,16 @@ impl LegacyAnalyzer {
         if self.stored < self.capacity {
             destination.push(finding);
             self.stored += 1;
+        } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
+            let destination = match bucket {
+                FindingBucket::Revision => &mut self.revision,
+                FindingBucket::Envelope => &mut self.envelope,
+                FindingBucket::Catalog => &mut self.catalog,
+                FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
+                FindingBucket::Schema => &mut self.schema,
+            };
+            destination.push(finding);
+            self.overflow = true;
         } else {
             self.overflow = true;
         }
@@ -2181,6 +2275,16 @@ impl LegacyAnalyzer {
     }
 
     fn analyze_tool(&mut self, base: Location, tool: &Map<String, Value>) {
+        match diagnose_tool_description(self.revision_kind, base.clone(), tool) {
+            ToolDescriptionDiagnosis::Usable => {}
+            ToolDescriptionDiagnosis::MissingOrBlank(finding) => {
+                self.push(FindingBucket::Quality, finding);
+            }
+            ToolDescriptionDiagnosis::Invalid(finding) => {
+                self.push(FindingBucket::Catalog, finding);
+                self.tools_catalog_valid = false;
+            }
+        }
         let Some(input_schema) = tool.get("inputSchema") else {
             self.expected_shape(
                 FindingBucket::Schema,
@@ -2568,8 +2672,9 @@ impl LegacyAnalyzer {
     fn finish(mut self) -> Vec<CheckResult> {
         if self.overflow && self.capacity > 0 {
             let removed = self
-                .schema
+                .quality
                 .pop()
+                .or_else(|| self.schema.pop())
                 .or_else(|| self.catalog.pop())
                 .or_else(|| self.envelope.pop())
                 .or_else(|| self.revision.pop());
@@ -2586,6 +2691,7 @@ impl LegacyAnalyzer {
                 ));
             }
         }
+        self.catalog.append(&mut self.quality);
         let envelope_failed = self
             .envelope
             .iter()
@@ -2933,14 +3039,15 @@ fn collect_local_references(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, json};
+    use serde_json::{Map, Value, json};
 
     use super::{
         CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
-        RequestKind, encode_request, percent_decode, resolve_local_reference,
-        schema_child_location, validate_local_schema_with_policy,
+        RequestKind, ToolDescriptionDiagnosis, diagnose_tool_description, encode_request,
+        percent_decode, resolve_local_reference, schema_child_location,
+        validate_local_schema_with_policy,
     };
-    use crate::contract::model::{FindingCode, Location, LocationField};
+    use crate::contract::model::{FindingCode, FindingEvidence, Location, LocationField, Severity};
     use crate::contract::protocol::SupportedRevision;
 
     #[test]
@@ -2973,6 +3080,96 @@ mod tests {
             assert!(!text.contains("resources/read"));
             assert!(!text.contains("initialize"));
         }
+    }
+
+    #[test]
+    fn a1_v1_tool_description_normalization_is_exact_and_value_free() {
+        let revisions = [
+            SupportedRevision::V2025_06_18,
+            SupportedRevision::V2025_11_25,
+            SupportedRevision::V2026_07_28,
+        ];
+        let whitespace_scalars = [
+            0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020, 0x0085, 0x00A0, 0x1680, 0x2000, 0x2001,
+            0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x2028, 0x2029,
+            0x202F, 0x205F, 0x3000,
+        ];
+
+        for revision in revisions {
+            for description in std::iter::once(String::new())
+                .chain(whitespace_scalars.map(|scalar| {
+                    char::from_u32(scalar)
+                        .expect("the A1 blank set contains Unicode scalar values")
+                        .to_string()
+                }))
+                .chain(std::iter::once(
+                    whitespace_scalars
+                        .into_iter()
+                        .map(|scalar| {
+                            char::from_u32(scalar)
+                                .expect("the A1 blank set contains Unicode scalar values")
+                        })
+                        .collect(),
+                ))
+            {
+                let mut tool = Map::new();
+                tool.insert("description".to_owned(), Value::String(description));
+                let ToolDescriptionDiagnosis::MissingOrBlank(finding) = diagnose_tool_description(
+                    revision,
+                    Location::root(LocationField::Tools).index(7),
+                    &tool,
+                ) else {
+                    panic!("every A1 v1 blank string should receive the quality diagnosis");
+                };
+                assert_eq!(finding.code(), FindingCode::ToolDescriptionMissingOrBlank);
+                assert_eq!(finding.severity(), Severity::Warning);
+                assert_eq!(finding.revision(), revision);
+                assert_eq!(finding.location().to_string(), "tools[7].description");
+                assert_eq!(finding.evidence(), &FindingEvidence::None);
+            }
+
+            let ToolDescriptionDiagnosis::MissingOrBlank(finding) = diagnose_tool_description(
+                revision,
+                Location::root(LocationField::Tools).index(8),
+                &Map::new(),
+            ) else {
+                panic!("an absent description should receive the quality diagnosis");
+            };
+            assert_eq!(finding.code(), FindingCode::ToolDescriptionMissingOrBlank);
+            assert_eq!(finding.location().to_string(), "tools[8].description");
+            assert_eq!(finding.evidence(), &FindingEvidence::None);
+        }
+
+        for description in [
+            "A synthetic tool description.",
+            " \tselect this synthetic tool",
+            "\u{200B}",
+            "\u{FEFF}",
+        ] {
+            let tool = json!({"description": description});
+            assert_eq!(
+                diagnose_tool_description(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::Tools).index(0),
+                    tool.as_object().expect("the fixture should be an object"),
+                ),
+                ToolDescriptionDiagnosis::Usable,
+                "characters outside the fixed A1 v1 set must not be trimmed"
+            );
+        }
+
+        let invalid = json!({"description": 42});
+        let ToolDescriptionDiagnosis::Invalid(finding) = diagnose_tool_description(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Tools).index(9),
+            invalid
+                .as_object()
+                .expect("the fixture should be an object"),
+        ) else {
+            panic!("a non-string description should remain a catalog-contract error");
+        };
+        assert_eq!(finding.code(), FindingCode::CatalogContractInvalid);
+        assert_eq!(finding.location().to_string(), "tools[9].description");
     }
 
     #[test]
