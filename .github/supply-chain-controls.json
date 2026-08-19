@@ -170,9 +170,10 @@
   },
   "workflow_inventory": {
     "checked_in": [
-      ".github/workflows/ci.yml",
-      ".github/workflows/compatibility.yml",
-      ".github/workflows/release-authorization-negative.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/compatibility.yml",
+    ".github/workflows/mcp-doctor-preflight.yml",
+    ".github/workflows/release-authorization-negative.yml",
       ".github/workflows/release-channels.yml",
       ".github/workflows/release-preflight.yml",
       ".github/workflows/release.yml"
@@ -193,6 +194,16 @@
   "untrusted_workflows": [
     {
       "path": ".github/workflows/ci.yml",
+      "event": "pull_request",
+      "permissions": {
+        "contents": "read"
+      },
+      "github_hosted_only": true,
+      "stored_secrets": false,
+      "privileged_assets": false
+    },
+    {
+      "path": ".github/workflows/mcp-doctor-preflight.yml",
       "event": "pull_request",
       "permissions": {
         "contents": "read"

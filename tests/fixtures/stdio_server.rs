@@ -354,6 +354,7 @@ fn report_single_run(arguments: &[OsString]) -> ExitCode {
 }
 
 fn protocol_unsupported() -> ExitCode {
+    eprintln!("synthetic-private-ci-stderr-never-report-7f2c");
     let mut input = io::BufReader::new(io::stdin().lock());
     read_request(&mut input, 1, "server/discover", None);
     write_result(
