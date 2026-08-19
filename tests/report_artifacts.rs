@@ -8,8 +8,9 @@ use std::process::{Command, Output};
 
 use serde_json::{Value, json};
 use support::{
-    TestEnvironment, parse_and_validate_junit, parse_and_validate_markdown,
-    parse_and_validate_report, run_with_report_link_mutation, run_with_report_publication_mutation,
+    TestEnvironment, parse_and_validate_badge, parse_and_validate_junit,
+    parse_and_validate_markdown, parse_and_validate_report, run_with_report_link_mutation,
+    run_with_report_publication_mutation,
 };
 
 const REVIEWED_TOOL: &str = "synthetic.reviewed";
@@ -28,9 +29,19 @@ fn add_json_junit_destinations(command: &mut Command, json: &Path, junit: &Path)
         .arg(junit);
 }
 
-fn add_report_destinations(command: &mut Command, json: &Path, junit: &Path, markdown: &Path) {
+fn add_report_destinations(
+    command: &mut Command,
+    json: &Path,
+    junit: &Path,
+    markdown: &Path,
+    badge: &Path,
+) {
     add_json_junit_destinations(command, json, junit);
-    command.arg("--markdown-report").arg(markdown);
+    command
+        .arg("--markdown-report")
+        .arg(markdown)
+        .arg("--badge-report")
+        .arg(badge);
 }
 
 fn text(output: &Output) -> (&str, &str) {
@@ -44,6 +55,7 @@ fn assert_artifact_parity(
     json_path: &Path,
     junit_path: &Path,
     markdown_path: &Path,
+    badge_path: &Path,
     expected_outcome: &str,
     expected_exit: i64,
 ) -> Value {
@@ -53,6 +65,9 @@ fn assert_artifact_parity(
     let (junit, summary) = parse_and_validate_junit(&junit_bytes);
     let markdown = parse_and_validate_markdown(
         &fs::read(markdown_path).expect("the requested Markdown artifact should exist"),
+    );
+    let badge = parse_and_validate_badge(
+        &fs::read(badge_path).expect("the requested badge artifact should exist"),
     );
 
     assert_eq!(report["outcome"], expected_outcome);
@@ -71,6 +86,15 @@ fn assert_artifact_parity(
     assert!(markdown.contains(&format!("| Checks | {} |", checks.len())));
     assert!(markdown.contains(&format!("| Failed | {} |", report["summary"]["failed"])));
     assert!(markdown.contains(&format!("| Skipped | {} |", report["summary"]["skipped"])));
+    assert_eq!(
+        badge["message"],
+        match expected_outcome {
+            "passed" => "pass",
+            "failed" => "fail",
+            "incomplete" => "incomplete",
+            outcome => panic!("unsupported diagnostic outcome: {outcome}"),
+        }
+    );
     for check in checks {
         let id = check["id"]
             .as_str()
@@ -193,10 +217,17 @@ fn existing_stdout_formats_are_byte_identical_and_one_run_writes_all_artifacts()
         let json_path = environment.artifact_path("report.json");
         let junit_path = environment.artifact_path("report.xml");
         let markdown_path = environment.artifact_path("report.md");
+        let badge_path = environment.artifact_path("badge.json");
         let run_marker = environment.artifact_path("one-run.marker");
         let mut command = environment.command();
         command.arg("inspect").arg("--format").arg(format);
-        add_report_destinations(&mut command, &json_path, &junit_path, &markdown_path);
+        add_report_destinations(
+            &mut command,
+            &json_path,
+            &junit_path,
+            &markdown_path,
+            &badge_path,
+        );
         let output = command
             .arg("--")
             .arg(fixture())
@@ -210,13 +241,27 @@ fn existing_stdout_formats_are_byte_identical_and_one_run_writes_all_artifacts()
         assert!(stderr.is_empty());
         assert_eq!(output.stdout, baseline.stdout, "{format} stdout changed");
         assert_eq!(fs::read(&run_marker).unwrap(), b"one target run");
-        assert_artifact_parity(&json_path, &junit_path, &markdown_path, "passed", 0);
+        assert_artifact_parity(
+            &json_path,
+            &junit_path,
+            &markdown_path,
+            &badge_path,
+            "passed",
+            0,
+        );
         let artifact_bytes = [
             fs::read(&json_path).unwrap(),
             fs::read(&junit_path).unwrap(),
             fs::read(&markdown_path).unwrap(),
+            fs::read(&badge_path).unwrap(),
         ];
-        for protected in [&json_path, &junit_path, &markdown_path, &run_marker] {
+        for protected in [
+            &json_path,
+            &junit_path,
+            &markdown_path,
+            &badge_path,
+            &run_marker,
+        ] {
             let protected = protected.to_string_lossy();
             assert!(
                 !output
@@ -240,7 +285,7 @@ fn existing_stdout_formats_are_byte_identical_and_one_run_writes_all_artifacts()
             );
         }
         #[cfg(unix)]
-        for artifact in [&json_path, &junit_path, &markdown_path] {
+        for artifact in [&json_path, &junit_path, &markdown_path, &badge_path] {
             use std::os::unix::fs::PermissionsExt as _;
             assert_eq!(
                 fs::metadata(artifact).unwrap().permissions().mode() & 0o777,
@@ -257,6 +302,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
     let failed_json = failed_environment.artifact_path("failed.json");
     let failed_junit = failed_environment.artifact_path("failed.xml");
     let failed_markdown = failed_environment.artifact_path("failed.md");
+    let failed_badge = failed_environment.artifact_path("failed-badge.json");
     let mut failed_command = failed_environment.command();
     failed_command.arg("inspect");
     add_report_destinations(
@@ -264,6 +310,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
         &failed_json,
         &failed_junit,
         &failed_markdown,
+        &failed_badge,
     );
     let failed = failed_command
         .arg("--")
@@ -274,7 +321,14 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
     assert_eq!(failed.status.code(), Some(1), "{:?}", text(&failed));
     assert!(failed.stderr.is_empty());
     assert!(text(&failed).0.contains("outcome failed · exit 1"));
-    assert_artifact_parity(&failed_json, &failed_junit, &failed_markdown, "failed", 1);
+    assert_artifact_parity(
+        &failed_json,
+        &failed_junit,
+        &failed_markdown,
+        &failed_badge,
+        "failed",
+        1,
+    );
 
     let incomplete_environment = TestEnvironment::new();
     let scenario = write_scenario(
@@ -284,6 +338,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
     let incomplete_json = incomplete_environment.artifact_path("incomplete.json");
     let incomplete_junit = incomplete_environment.artifact_path("incomplete.xml");
     let incomplete_markdown = incomplete_environment.artifact_path("incomplete.md");
+    let incomplete_badge = incomplete_environment.artifact_path("incomplete-badge.json");
     let mut incomplete_command = incomplete_environment.command();
     incomplete_command
         .arg("check")
@@ -296,6 +351,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
         &incomplete_json,
         &incomplete_junit,
         &incomplete_markdown,
+        &incomplete_badge,
     );
     let incomplete = incomplete_command
         .arg("--")
@@ -310,6 +366,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
         &incomplete_json,
         &incomplete_junit,
         &incomplete_markdown,
+        &incomplete_badge,
         "incomplete",
         3,
     );
@@ -319,6 +376,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
     let rejected_json = rejected_environment.artifact_path("rejected.json");
     let rejected_junit = rejected_environment.artifact_path("rejected.xml");
     let rejected_markdown = rejected_environment.artifact_path("rejected.md");
+    let rejected_badge = rejected_environment.artifact_path("rejected-badge.json");
     let target_marker = rejected_environment.artifact_path("target-started.marker");
     let mut rejected_command = rejected_environment.command();
     rejected_command
@@ -332,6 +390,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
         &rejected_json,
         &rejected_junit,
         &rejected_markdown,
+        &rejected_badge,
     );
     let rejected = rejected_command
         .arg("--")
@@ -350,6 +409,7 @@ fn failed_and_incomplete_diagnostics_publish_all_artifacts_with_their_diagnostic
         &rejected_json,
         &rejected_junit,
         &rejected_markdown,
+        &rejected_badge,
         "failed",
         2,
     );
@@ -362,6 +422,7 @@ fn active_check_and_break_fan_out_without_replaying_execution() {
     let check_json = check_environment.artifact_path("check.json");
     let check_junit = check_environment.artifact_path("check.xml");
     let check_markdown = check_environment.artifact_path("check.md");
+    let check_badge = check_environment.artifact_path("check-badge.json");
     let check_run = check_environment.artifact_path("check-run.marker");
     let mut check_command = check_environment.command();
     check_command
@@ -375,6 +436,7 @@ fn active_check_and_break_fan_out_without_replaying_execution() {
         &check_json,
         &check_junit,
         &check_markdown,
+        &check_badge,
     );
     let checked = check_command
         .arg("--")
@@ -386,12 +448,20 @@ fn active_check_and_break_fan_out_without_replaying_execution() {
     assert!(checked.status.success(), "{:?}", text(&checked));
     assert!(checked.stderr.is_empty());
     assert_eq!(fs::read(check_run).unwrap(), b"one target run");
-    assert_artifact_parity(&check_json, &check_junit, &check_markdown, "passed", 0);
+    assert_artifact_parity(
+        &check_json,
+        &check_junit,
+        &check_markdown,
+        &check_badge,
+        "passed",
+        0,
+    );
 
     let break_environment = TestEnvironment::new();
     let break_json = break_environment.artifact_path("break.json");
     let break_junit = break_environment.artifact_path("break.xml");
     let break_markdown = break_environment.artifact_path("break.md");
+    let break_badge = break_environment.artifact_path("break-badge.json");
     let break_run = break_environment.artifact_path("break-run.marker");
     let observations = break_environment.artifact_path("observations.json");
     let mut break_command = break_environment.command();
@@ -412,6 +482,7 @@ fn active_check_and_break_fan_out_without_replaying_execution() {
         &break_json,
         &break_junit,
         &break_markdown,
+        &break_badge,
     );
     let broken = break_command
         .arg("--")
@@ -427,7 +498,14 @@ fn active_check_and_break_fan_out_without_replaying_execution() {
     assert_eq!(fs::read(break_run).unwrap(), b"one target run");
     let observations: Value = serde_json::from_slice(&fs::read(observations).unwrap()).unwrap();
     assert_eq!(observations.as_array().map(Vec::len), Some(1));
-    assert_artifact_parity(&break_json, &break_junit, &break_markdown, "passed", 0);
+    assert_artifact_parity(
+        &break_json,
+        &break_junit,
+        &break_markdown,
+        &break_badge,
+        "passed",
+        0,
+    );
 }
 
 fn assert_preactivity_rejection(
@@ -489,6 +567,19 @@ fn destination_conflicts_and_creation_failures_are_rejected_before_activity() {
     );
     assert_eq!(fs::read(existing_markdown).unwrap(), b"unchanged Markdown");
 
+    let existing_badge_environment = TestEnvironment::new();
+    let existing_badge = existing_badge_environment.artifact_path("existing-badge.json");
+    fs::write(&existing_badge, b"unchanged badge").unwrap();
+    assert_preactivity_rejection(
+        &existing_badge_environment,
+        |command| {
+            command.arg("--badge-report").arg(&existing_badge);
+        },
+        "already exists",
+        &[&existing_badge],
+    );
+    assert_eq!(fs::read(existing_badge).unwrap(), b"unchanged badge");
+
     let duplicate_environment = TestEnvironment::new();
     let duplicate = duplicate_environment.artifact_path("duplicate.out");
     assert_preactivity_rejection(
@@ -496,6 +587,21 @@ fn destination_conflicts_and_creation_failures_are_rejected_before_activity() {
         |command| add_json_junit_destinations(command, &duplicate, &duplicate),
         "distinct report destinations",
         &[&duplicate],
+    );
+
+    let badge_collision_environment = TestEnvironment::new();
+    let badge_collision = badge_collision_environment.artifact_path("badge-collision.out");
+    assert_preactivity_rejection(
+        &badge_collision_environment,
+        |command| {
+            command
+                .arg("--markdown-report")
+                .arg(&badge_collision)
+                .arg("--badge-report")
+                .arg(&badge_collision);
+        },
+        "distinct report destinations",
+        &[&badge_collision],
     );
 
     let repeated_environment = TestEnvironment::new();
@@ -617,10 +723,17 @@ fn render_write_and_cleanup_failures_are_visible_and_publish_no_artifact_set() {
         let json_path = environment.artifact_path("report.json");
         let junit_path = environment.artifact_path("report.xml");
         let markdown_path = environment.artifact_path("report.md");
+        let badge_path = environment.artifact_path("badge.json");
         let marker = environment.artifact_path("one-run.marker");
         let mut command = environment.command();
         command.arg("inspect").env(hook, "1");
-        add_report_destinations(&mut command, &json_path, &junit_path, &markdown_path);
+        add_report_destinations(
+            &mut command,
+            &json_path,
+            &junit_path,
+            &markdown_path,
+            &badge_path,
+        );
         let output = command
             .arg("--")
             .arg(fixture())
@@ -649,7 +762,17 @@ fn render_write_and_cleanup_failures_are_visible_and_publish_no_artifact_set() {
             !markdown_path.exists(),
             "{hook}: partial Markdown artifact remained"
         );
-        for protected in [&json_path, &junit_path, &markdown_path, &marker] {
+        assert!(
+            !badge_path.exists(),
+            "{hook}: partial badge artifact remained"
+        );
+        for protected in [
+            &json_path,
+            &junit_path,
+            &markdown_path,
+            &badge_path,
+            &marker,
+        ] {
             let protected = protected.to_string_lossy();
             assert!(!stdout.contains(protected.as_ref()));
             assert!(!stderr.contains(protected.as_ref()));
@@ -786,32 +909,39 @@ fn replaced_junit_stage_rolls_back_the_already_published_json_artifact() {
 }
 
 #[test]
-fn replaced_markdown_stage_rolls_back_json_and_junit_without_deleting_the_replacement() {
+fn replaced_badge_stage_rolls_back_json_junit_and_markdown_without_deleting_the_replacement() {
     let environment = TestEnvironment::new();
     let json_path = environment.artifact_path("report.json");
     let junit_path = environment.artifact_path("report.xml");
     let markdown_path = environment.artifact_path("report.md");
-    let retained_stage = environment.artifact_path("retained-markdown-stage");
+    let badge_path = environment.artifact_path("badge.json");
+    let retained_stage = environment.artifact_path("retained-badge-stage");
     let marker = environment.artifact_path("one-run.marker");
     let mut replacement_stage = None;
     let mut command = environment.command();
     command.arg("inspect");
-    add_report_destinations(&mut command, &json_path, &junit_path, &markdown_path);
+    add_report_destinations(
+        &mut command,
+        &json_path,
+        &junit_path,
+        &markdown_path,
+        &badge_path,
+    );
     command
         .arg("--")
         .arg(fixture())
         .arg("report-single-run")
         .arg(&marker);
-    let output = run_with_report_publication_mutation(&mut command, &markdown_path, || {
+    let output = run_with_report_publication_mutation(&mut command, &badge_path, || {
         let stages = ordered_report_stages(&environment.artifact_path(""));
         assert_eq!(
             stages.len(),
-            3,
-            "JSON, JUnit, and Markdown stages should be prepared"
+            4,
+            "JSON, JUnit, Markdown, and badge stages should be prepared"
         );
-        let stage = stages[2].clone();
+        let stage = stages[3].clone();
         fs::rename(&stage, &retained_stage)?;
-        fs::write(&stage, b"foreign Markdown stage")?;
+        fs::write(&stage, b"foreign badge stage")?;
         replacement_stage = Some(stage);
         Ok(())
     });
@@ -831,22 +961,27 @@ fn replaced_markdown_stage_rolls_back_json_and_junit_without_deleting_the_replac
     assert!(!junit_path.exists(), "the JUnit artifact should roll back");
     assert!(
         !markdown_path.exists(),
+        "the Markdown artifact should roll back"
+    );
+    assert!(
+        !badge_path.exists(),
         "the replacement must not become output"
     );
-    let replacement_stage = replacement_stage.expect("the Markdown stage should be replaced");
+    let replacement_stage = replacement_stage.expect("the badge stage should be replaced");
     assert_eq!(
         fs::read(&replacement_stage).unwrap(),
-        b"foreign Markdown stage"
+        b"foreign badge stage"
     );
     assert!(
         fs::read(&retained_stage)
-            .expect("the identity-bound Markdown stage should remain available to the fixture")
-            .starts_with(b"<!-- mcp-doctor.markdown/v1 -->")
+            .expect("the identity-bound badge stage should remain available to the fixture")
+            .starts_with(b"{")
     );
     for private in [
         &json_path,
         &junit_path,
         &markdown_path,
+        &badge_path,
         &retained_stage,
         &replacement_stage,
         &marker,
@@ -977,11 +1112,18 @@ fn report_failure_exit_takes_precedence_over_a_diagnostic_failure_exit() {
     let json_path = environment.artifact_path("report.json");
     let junit_path = environment.artifact_path("report.xml");
     let markdown_path = environment.artifact_path("report.md");
+    let badge_path = environment.artifact_path("badge.json");
     let mut command = environment.command();
     command
         .arg("inspect")
         .env("MCP_DOCTOR_INTERNAL_TEST_REPORT_WRITE_FAILURE", "1");
-    add_report_destinations(&mut command, &json_path, &junit_path, &markdown_path);
+    add_report_destinations(
+        &mut command,
+        &json_path,
+        &junit_path,
+        &markdown_path,
+        &badge_path,
+    );
     let output = command
         .arg("--")
         .arg(fixture())
@@ -999,5 +1141,6 @@ fn report_failure_exit_takes_precedence_over_a_diagnostic_failure_exit() {
     assert!(!json_path.exists());
     assert!(!junit_path.exists());
     assert!(!markdown_path.exists());
+    assert!(!badge_path.exists());
     assert_no_report_stages(&environment.artifact_path(""));
 }

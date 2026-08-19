@@ -96,12 +96,18 @@ impl ReportArtifactDestinations {
         json: Option<PathBuf>,
         junit: Option<PathBuf>,
         markdown: Option<PathBuf>,
+        badge: Option<PathBuf>,
         reserved_paths: &[&Path],
     ) -> Result<Self, ReportArtifactError> {
-        let requested_paths = [json.as_ref(), junit.as_ref(), markdown.as_ref()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let requested_paths = [
+            json.as_ref(),
+            junit.as_ref(),
+            markdown.as_ref(),
+            badge.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
         if requested_paths.iter().enumerate().any(|(index, path)| {
             requested_paths[index + 1..]
                 .iter()
@@ -115,11 +121,12 @@ impl ReportArtifactDestinations {
             .map(|path| destination_identity(path))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut destinations = Vec::with_capacity(3);
+        let mut destinations = Vec::with_capacity(4);
         for (format, path) in [
             (ReportArtifactFormat::Json, json),
             (ReportArtifactFormat::Junit, junit),
             (ReportArtifactFormat::Markdown, markdown),
+            (ReportArtifactFormat::Badge, badge),
         ] {
             let Some(path) = path else {
                 continue;
@@ -168,6 +175,12 @@ impl ReportArtifactDestinations {
         self.destinations
             .iter()
             .any(|destination| destination.format == ReportArtifactFormat::Markdown)
+    }
+
+    pub(crate) fn requests_badge(&self) -> bool {
+        self.destinations
+            .iter()
+            .any(|destination| destination.format == ReportArtifactFormat::Badge)
     }
 
     pub(crate) fn persist(
@@ -552,6 +565,11 @@ mod tests {
                 output: "<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor diagnostic report\n"
                     .to_owned(),
             },
+            RenderedReportArtifact {
+                format: ReportArtifactFormat::Badge,
+                output: "{\"schemaVersion\":1,\"label\":\"mcp-doctor\",\"message\":\"pass\",\"color\":\"brightgreen\"}\n"
+                    .to_owned(),
+            },
         ]
     }
 
@@ -575,16 +593,19 @@ mod tests {
         let json = root.path().join("report.json");
         let junit = root.path().join("report.xml");
         let markdown = root.path().join("report.md");
+        let badge = root.path().join("badge.json");
         let destinations = ReportArtifactDestinations::prepare(
             Some(json.clone()),
             Some(junit.clone()),
             Some(markdown.clone()),
+            Some(badge.clone()),
             &[],
         )
         .expect("distinct new destinations should prepare");
         assert!(destinations.requests_json());
         assert!(destinations.requests_junit());
         assert!(destinations.requests_markdown());
+        assert!(destinations.requests_badge());
 
         destinations
             .persist(artifacts())
@@ -602,6 +623,10 @@ mod tests {
             fs::read_to_string(markdown).expect("Markdown should be readable"),
             "<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor diagnostic report\n"
         );
+        assert_eq!(
+            fs::read_to_string(badge).expect("badge should be readable"),
+            "{\"schemaVersion\":1,\"label\":\"mcp-doctor\",\"message\":\"pass\",\"color\":\"brightgreen\"}\n"
+        );
         assert_no_stages(root.path());
     }
 
@@ -611,7 +636,7 @@ mod tests {
         let existing = root.path().join("existing.json");
         fs::write(&existing, "unchanged").expect("the existing fixture should be written");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(existing.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(existing.clone()), None, None, None, &[])
                 .expect_err("an existing destination should fail"),
             ReportArtifactError::ExistingOutput
         );
@@ -619,7 +644,7 @@ mod tests {
         let directory = root.path().join("directory");
         fs::create_dir(&directory).expect("the directory fixture should be created");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(directory), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(directory), None, None, None, &[])
                 .expect_err("a non-regular destination should fail"),
             ReportArtifactError::NonRegularOutput
         );
@@ -629,6 +654,7 @@ mod tests {
             ReportArtifactDestinations::prepare(
                 Some(duplicate.clone()),
                 Some(duplicate),
+                None,
                 None,
                 &[],
             )
@@ -641,6 +667,7 @@ mod tests {
                 Some(markdown_duplicate.clone()),
                 None,
                 Some(markdown_duplicate),
+                None,
                 &[],
             )
             .expect_err("a Markdown duplicate should fail"),
@@ -652,12 +679,24 @@ mod tests {
         let direct = root.path().join("aliased");
         let indirect = subdirectory.join("..").join("aliased");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(direct.clone()), Some(indirect), None, &[])
-                .expect_err("resolved aliases should fail"),
+            ReportArtifactDestinations::prepare(
+                Some(direct.clone()),
+                Some(indirect),
+                None,
+                None,
+                &[],
+            )
+            .expect_err("resolved aliases should fail"),
             ReportArtifactError::AliasedDestination
         );
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(direct.clone()), None, None, &[&direct])
+            ReportArtifactDestinations::prepare(
+                Some(direct.clone()),
+                None,
+                None,
+                None,
+                &[&direct],
+            )
                 .expect_err("a reserved artifact path should fail"),
             ReportArtifactError::AliasedDestination
         );
@@ -674,7 +713,7 @@ mod tests {
         let root = TempDir::new().expect("a disposable root should be created");
         let raced = root.path().join("raced.json");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(raced.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(raced.clone()), None, None, None, &[])
                 .expect("the initial destination should prepare");
         fs::write(&raced, "external").expect("the race fixture should be written");
         let failure = destinations
@@ -688,7 +727,7 @@ mod tests {
 
         let mismatched = root.path().join("mismatched.json");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(mismatched.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(mismatched.clone()), None, None, None, &[])
                 .expect("the mismatch destination should prepare");
         assert_eq!(
             destinations
@@ -705,9 +744,14 @@ mod tests {
         let root = TempDir::new().expect("a disposable root should be created");
         let json = root.path().join("report.json");
         let junit = root.path().join("report.xml");
-        let destinations =
-            ReportArtifactDestinations::prepare(Some(json.clone()), Some(junit.clone()), None, &[])
-                .expect("both initial destinations should prepare");
+        let destinations = ReportArtifactDestinations::prepare(
+            Some(json.clone()),
+            Some(junit.clone()),
+            None,
+            None,
+            &[],
+        )
+        .expect("both initial destinations should prepare");
         fs::write(&junit, "external").expect("the second destination should be raced");
         let mut rendered = artifacts();
         rendered.truncate(2);
@@ -732,7 +776,7 @@ mod tests {
         let output = root.path().join("report.json");
         let retained = root.path().join("retained-stage");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, None, &[])
                 .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
@@ -768,7 +812,7 @@ mod tests {
         let target = root.path().join("external-target");
         fs::write(&target, "external target").expect("the external target should be written");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, None, &[])
                 .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
@@ -807,7 +851,7 @@ mod tests {
         let output = root.path().join("report.json");
         let retained = root.path().join("retained-stage");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, None, &[])
                 .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should move");
@@ -832,8 +876,9 @@ mod tests {
     fn an_injected_publication_limit_rolls_back_without_sleeping_or_retrying() {
         let root = TempDir::new().expect("a disposable root should be created");
         let json = root.path().join("aggregate.json");
-        let destinations = ReportArtifactDestinations::prepare(Some(json.clone()), None, None, &[])
-            .expect("the aggregate destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(json.clone()), None, None, None, &[])
+                .expect("the aggregate destination should prepare");
         let calls = Cell::new(0_u64);
         let error = destinations
             .persist_checked(vec![artifacts().remove(0)], || {

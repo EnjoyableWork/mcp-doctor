@@ -7,8 +7,8 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 use support::{
-    TestEnvironment, parse_and_validate_junit, parse_and_validate_markdown,
-    parse_and_validate_report,
+    TestEnvironment, parse_and_validate_badge, parse_and_validate_junit,
+    parse_and_validate_markdown, parse_and_validate_report,
 };
 
 const TOOL: &str = "synthetic.reviewed";
@@ -77,6 +77,7 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
     let json_artifact = environment.artifact_path("reject-report.json");
     let junit = environment.artifact_path("reject-report.xml");
     let markdown_path = environment.artifact_path("reject-report.md");
+    let badge_path = environment.artifact_path("reject-badge.json");
     let output = stdio_reject_command(&environment, 4242)
         .arg("--format")
         .arg("json")
@@ -86,6 +87,8 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
         .arg(&junit)
         .arg("--markdown-report")
         .arg(&markdown_path)
+        .arg("--badge-report")
+        .arg(&badge_path)
         .arg("--")
         .arg(fixture())
         .arg("reject-success")
@@ -148,6 +151,9 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
     assert!(markdown.contains("| Outcome | `passed` |"));
     assert!(markdown.contains("`mutation=missing_arguments`"));
     assert!(markdown.contains("`runtime.tools.case[0]`"));
+    let badge_bytes = fs::read(&badge_path).unwrap();
+    let badge = parse_and_validate_badge(&badge_bytes);
+    assert_eq!(badge["message"], "pass");
     for forbidden in [
         TOOL,
         REDACTION_SENTINEL,
@@ -159,11 +165,18 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
         json_artifact.to_str().unwrap(),
         junit.to_str().unwrap(),
         markdown_path.to_str().unwrap(),
+        badge_path.to_str().unwrap(),
     ] {
         assert!(!document.contains(forbidden), "JUnit disclosed {forbidden}");
         assert!(
             !markdown.contains(forbidden),
             "Markdown disclosed {forbidden}"
+        );
+        assert!(
+            !badge_bytes
+                .windows(forbidden.len())
+                .any(|window| window == forbidden.as_bytes()),
+            "badge disclosed {forbidden}"
         );
     }
     assert_redacted(

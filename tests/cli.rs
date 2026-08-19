@@ -80,6 +80,8 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--markdown-report <PATH>"));
     assert!(stdout.contains("mcp-doctor.markdown/v1"));
+    assert!(stdout.contains("--badge-report <PATH>"));
+    assert!(stdout.contains("mcp-doctor.badge/v1 Shields endpoint JSON"));
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
     assert!(stdout.contains("--snapshot <PATH>"));
     assert!(stdout.contains("--allow-sensitive-snapshot <EXACT-PATH>"));
@@ -115,6 +117,7 @@ fn diff_help_is_explicitly_local_and_has_only_human_or_json_output() {
         "--json-report",
         "--junit-report",
         "--markdown-report",
+        "--badge-report",
         "--limit-profile",
     ] {
         assert!(
@@ -146,6 +149,7 @@ fn aggregate_help_is_explicitly_offline_bounded_and_requires_an_artifact() {
         "--json-report",
         "--junit-report",
         "--markdown-report",
+        "--badge-report",
         "--scenario",
         "--target",
         "--limit-profile",
@@ -345,6 +349,7 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--markdown-report <PATH>"));
+    assert!(stdout.contains("--badge-report <PATH>"));
     assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
     assert!(stdout.contains("[possible values: default, slow-start]"));
 }
@@ -400,6 +405,7 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--markdown-report <PATH>"));
+    assert!(stdout.contains("--badge-report <PATH>"));
     assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
     assert!(stdout.contains("[possible values: default, slow-start]"));
 }
@@ -515,6 +521,7 @@ fn reject_help_documents_fixed_current_revision_authority() {
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
     assert!(stdout.contains("--markdown-report <PATH>"));
+    assert!(stdout.contains("--badge-report <PATH>"));
     assert!(!stdout.contains("--limit-profile"));
 }
 

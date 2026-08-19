@@ -298,6 +298,10 @@ struct ReportArgs {
     /// Write deterministic mcp-doctor.markdown/v1 to one explicit new file.
     #[arg(long, value_name = "PATH")]
     markdown_report: Option<PathBuf>,
+
+    /// Write fixed mcp-doctor.badge/v1 Shields endpoint JSON to one explicit new file.
+    #[arg(long, value_name = "PATH")]
+    badge_report: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -469,6 +473,7 @@ impl ReportArgs {
             self.json_report.clone(),
             self.junit_report.clone(),
             self.markdown_report.clone(),
+            self.badge_report.clone(),
             reserved_paths,
         )?;
         let request = contract::ReportRequest::new(
@@ -476,6 +481,7 @@ impl ReportArgs {
             destinations.requests_json(),
             destinations.requests_junit(),
             destinations.requests_markdown(),
+            destinations.requests_badge(),
         );
         Ok((request, destinations))
     }
@@ -734,6 +740,7 @@ async fn main() -> ExitCode {
             let deadline = aggregate::AggregateDeadline::start();
             let destinations = match report_artifacts::ReportArtifactDestinations::prepare(
                 Some(arguments.output),
+                None,
                 None,
                 None,
                 &[],

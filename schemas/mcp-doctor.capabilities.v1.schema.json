@@ -385,6 +385,9 @@
         "markdown_report": {
           "$ref": "#/$defs/nonempty_contract_versions"
         },
+        "badge_report": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
         "generator": {
           "$ref": "#/$defs/nonempty_contract_versions"
         },

@@ -16,8 +16,9 @@ This command emits deterministic `mcp-doctor.capabilities/v1` JSON containing
 the product version; exact command, transport, and MCP revision matrix;
 recognized-unsupported revisions; passive selection default, modes, compiled
 modern set, exact pins, transport paths and maxima; report, scenario,
-generator, snapshot, diff, aggregate, Markdown artifact, and capability contract
-versions; stdout and artifact reporter availability; `mcp-doctor.exit/v1`;
+generator, snapshot, diff, aggregate, Markdown artifact, badge artifact, and
+capability contract versions; stdout and artifact reporter availability;
+`mcp-doctor.exit/v1`;
 named hard limit profiles; and compile-time process-tree and file-identity
 capabilities. Capability discovery reports only fixed compiled facts.
 
@@ -48,10 +49,11 @@ Target-facing diagnostics render the same immutable, redacted result:
 | JSON | `--format json` | Agents and automation |
 | JUnit | `--format junit` | CI test interfaces |
 | Markdown artifact | `--markdown-report <PATH>` | Pull-request summaries and reviewable build artifacts |
+| Badge artifact | `--badge-report <PATH>` | Shields endpoint badges backed by one diagnostic outcome |
 
-Human, JSON, and JUnit are stdout selections. Markdown is artifact-only: it is
-not a `--format` value and never changes the selected stdout projection or
-process exit.
+Human, JSON, and JUnit are stdout selections. Markdown and badge reports are
+artifact-only: neither is a `--format` value, and neither changes the selected
+stdout projection or process exit.
 
 JSON follows the stable, schema-backed `mcp-doctor.report/v1` contract. JUnit
 projects the same checks into conservative XML. Markdown follows the
@@ -81,6 +83,21 @@ and one final newline. Apart from its required version comment, it contains no
 raw HTML, timestamps, local paths, target identifiers, untrusted values,
 terminal escapes, remote images, or external assets.
 
+The badge artifact is deterministic `mcp-doctor.badge/v1` JSON for the
+[Shields endpoint format](https://shields.io/badges/endpoint-badge). Its entire
+surface is fixed and derived only from the typed overall outcome:
+
+| `schemaVersion` | `label` | Diagnostic outcome | `message` | `color` |
+| ---: | --- | --- | --- | --- |
+| `1` | `mcp-doctor` | `passed` | `pass` | `brightgreen` |
+| `1` | `mcp-doctor` | `failed` | `fail` | `red` |
+| `1` | `mcp-doctor` | `incomplete` | `incomplete` | `lightgrey` |
+
+The object has exactly those four fields. It contains no score, grade, count,
+product or protocol version, target, path, identifier, timestamp, URL, dynamic
+label, or untrusted text. It is a compact projection of one run, not a
+certification, verification, conformance result, or promise about another run.
+
 Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
 | Exit | Stable meaning | In practice |
@@ -93,7 +110,7 @@ Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
 The command-specific sections define the exact outcome behind each code.
 
-Keep the stdout report while also writing all three artifact projections from
+Keep the stdout report while also writing all four artifact projections from
 the same diagnostic run with explicit new-file destinations:
 
 ```bash
@@ -101,21 +118,35 @@ mcp-doctor inspect \
   --json-report artifacts/mcp-doctor.json \
   --junit-report artifacts/mcp-doctor.xml \
   --markdown-report artifacts/mcp-doctor.md \
+  --badge-report artifacts/mcp-doctor-badge.json \
   -- node ./dist/server.js --stdio
 ```
 
-`--json-report`, `--junit-report`, and `--markdown-report` also apply to
-`check`, `break`, and `reject`. Each parent directory must already exist, each
-destination must be distinct and not already exist, and `-` is not a file
-destination. `mcp-doctor` validates those conditions before target or network
-activity, runs the diagnostic once, and renders every requested report from one
-immutable redacted result in fixed JSON, JUnit, Markdown order under one shared
-aggregate output bound.
+`--json-report`, `--junit-report`, `--markdown-report`, and `--badge-report`
+also apply to `check`, `break`, and `reject`. Each parent directory must already
+exist, each destination must be distinct and not already exist, and `-` is not
+a file destination. `mcp-doctor` validates those conditions before target or
+network activity, runs the diagnostic once, and renders every requested report
+from one immutable redacted result in fixed JSON, JUnit, Markdown, badge order
+under one shared aggregate output bound.
 
 A failed or incomplete diagnostic still publishes every requested file when
 reporting succeeds and retains exit `1` or `3`; a render, write, publication,
 rollback, or cleanup failure cannot report success, removes every
 identity-owned partial artifact, and exits `4`.
+
+To render the file through a badge service, publish the fixed JSON with your
+ordinary artifact hosting and point Shields at that public file. For example,
+after separately hosting it at
+`https://artifacts.example/mcp-doctor-badge.json`:
+
+```markdown
+![mcp-doctor](https://img.shields.io/endpoint?url=https%3A%2F%2Fartifacts.example%2Fmcp-doctor-badge.json)
+```
+
+`mcp-doctor` writes only the local artifact. It does not publish files, operate
+a hosted endpoint, contact Shields, or grant the badge any authority beyond the
+single diagnostic run that produced it.
 
 ## Offline diagnostic aggregates
 
@@ -186,12 +217,13 @@ the exact `mcp-doctor` version, immutable action commits, explicit
 `contents: read` permission, fixed report destinations, report verification,
 and unconditional upload behavior under review when updating the copy.
 
-The exact `0.3.3` binary used by this released starter predates the Markdown
-artifact contract, so this workflow deliberately requests only JSON and JUnit.
-A copied workflow may add `--markdown-report` and upload that third file only
-after its pinned binary advertises `markdown` under the diagnostic command's
-`artifact_reporters` capability and `mcp-doctor.markdown/v1` under
-`schema_versions.markdown_report`.
+The exact `0.3.3` binary used by this released starter predates the Markdown and
+badge artifact contracts, so this workflow deliberately requests only JSON and
+JUnit. A copied workflow may add either artifact only after its pinned binary
+advertises the corresponding `markdown` or `badge` entry under the diagnostic
+command's `artifact_reporters` capability and its
+`mcp-doctor.markdown/v1` or `mcp-doctor.badge/v1` contract under
+`schema_versions.markdown_report` or `schema_versions.badge_report`.
 
 The example grants no tool-call, side-effect, credential, private-network,
 cleartext, target-discovery, production-target, or external-schema authority.

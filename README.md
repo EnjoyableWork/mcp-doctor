@@ -75,6 +75,19 @@ For Streamable HTTP, pass the endpoint URL:
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
+For CI presentation, the same run can write a deterministic Shields endpoint
+artifact without changing stdout or the diagnostic exit:
+
+```bash
+mcp-doctor inspect \
+  --badge-report artifacts/mcp-doctor-badge.json \
+  -- node ./dist/server.js --stdio
+```
+
+The badge reports only `pass`, `fail`, or `incomplete` for that run; it is not a
+certification or conformance claim. See [Automation and CI](docs/automation.md)
+for the fixed four-field contract and multi-report fan-out.
+
 `inspect` selects a mutually supported compiled revision, validates the MCP
 conversation, checks advertised features and schemas, reports the earliest
 actionable failure, and cleans up. It never calls a tool.
@@ -158,7 +171,7 @@ compatibility evidence. For automation,
 | Diagnose through a coding agent | [Coding-agent guide](docs/agents.md) |
 | Run scenarios, generated cases, rejection checks, or diffs | [Diagnostic commands](docs/commands.md) |
 | Select an MCP revision or understand compatibility evidence | [MCP revision support](docs/protocol-support.md) |
-| Produce JSON, JUnit, or Markdown reports; interpret exits; aggregate reports; or configure CI | [Automation and CI](docs/automation.md) |
+| Produce JSON, JUnit, Markdown, or badge reports; interpret exits; aggregate reports; or configure CI | [Automation and CI](docs/automation.md) |
 | Understand execution, network, cleanup, redaction, and hard limits | [Safety model](docs/safety.md) |
 | Verify or publish release artifacts | [Release guide](docs/release.md) |
 | Report a suspected vulnerability | [Security policy](SECURITY.md) |
@@ -185,8 +198,8 @@ Homebrew operations, dependencies, unlisted assets, or future releases.
   bounded. Local commands bypass the shell and managed children are reaped.
 - Remote connections use verified direct HTTPS by default. Private,
   cleartext-loopback, and credentialed targets require exact separate gates.
-- Human, JSON, JUnit, and Markdown output share one redacted result without raw
-  arguments, results, credentials, headers, stderr, or server logs.
+- Human, JSON, JUnit, Markdown, and badge output share one redacted result
+  without raw arguments, results, credentials, headers, stderr, or server logs.
 
 The [safety model](docs/safety.md) contains the complete operational boundary.
 
