@@ -167,6 +167,7 @@ pub(super) enum FindingCode {
     UnsupportedProtocolRevision,
     InvalidProtocolRevisionValue,
     ProtocolRevisionMismatch,
+    LifecycleMethodRejected,
     DeprecatedProtocolFeature,
     LimitExceeded,
     CleanupFailed,
@@ -174,6 +175,7 @@ pub(super) enum FindingCode {
     CatalogContractInvalid,
     DuplicateCatalogIdentifier,
     PaginationCursorRepeated,
+    CatalogMethodRejected,
     ToolDescriptionMissingOrBlank,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
@@ -219,12 +221,14 @@ impl FindingCode {
             Self::InvalidProtocolRevisionValue => "MCP-PROTOCOL-003",
             Self::DeprecatedProtocolFeature => "MCP-PROTOCOL-004",
             Self::ProtocolRevisionMismatch => "MCP-PROTOCOL-005",
+            Self::LifecycleMethodRejected => "MCP-PROTOCOL-006",
             Self::LimitExceeded => "MCP-LIMIT-001",
             Self::CleanupFailed => "MCP-SAFETY-001",
             Self::SessionCleanupFailed => "MCP-SAFETY-002",
             Self::CatalogContractInvalid => "MCP-CATALOG-001",
             Self::DuplicateCatalogIdentifier => "MCP-CATALOG-002",
             Self::PaginationCursorRepeated => "MCP-CATALOG-003",
+            Self::CatalogMethodRejected => "MCP-CATALOG-004",
             Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
@@ -272,10 +276,12 @@ impl FindingCode {
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
             | Self::ProtocolRevisionMismatch
+            | Self::LifecycleMethodRejected
             | Self::LimitExceeded
             | Self::CatalogContractInvalid
             | Self::DuplicateCatalogIdentifier
             | Self::PaginationCursorRepeated
+            | Self::CatalogMethodRejected
             | Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked
@@ -338,6 +344,9 @@ impl FindingCode {
             Self::ProtocolRevisionMismatch => {
                 "The server negotiated a different protocol revision than the explicit selection."
             }
+            Self::LifecycleMethodRejected => {
+                "The server rejected the selected revision's lifecycle method."
+            }
             Self::DeprecatedProtocolFeature => {
                 "The server advertises a feature deprecated by this protocol revision."
             }
@@ -354,6 +363,9 @@ impl FindingCode {
             }
             Self::PaginationCursorRepeated => {
                 "A catalog repeated a pagination cursor and inspection stopped."
+            }
+            Self::CatalogMethodRejected => {
+                "The server rejected a catalog method required by the selected revision."
             }
             Self::ToolDescriptionMissingOrBlank => "An advertised tool has no usable description.",
             Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
@@ -456,6 +468,9 @@ impl FindingCode {
             Self::ProtocolRevisionMismatch => {
                 "Continuing would silently downgrade, upgrade, or misapply protocol rules."
             }
+            Self::LifecycleMethodRejected => {
+                "Revision and catalog validity cannot be established from the rejected lifecycle request."
+            }
             Self::DeprecatedProtocolFeature => {
                 "Deprecated behavior may stop working in a future protocol revision."
             }
@@ -476,6 +491,9 @@ impl FindingCode {
             }
             Self::PaginationCursorRepeated => {
                 "The repeated cursor would prevent discovery from reaching a complete result."
+            }
+            Self::CatalogMethodRejected => {
+                "The selected-revision catalog cannot be inspected without a valid method result."
             }
             Self::ToolDescriptionMissingOrBlank => {
                 "Agents may not reliably know when to select this tool."
@@ -594,6 +612,9 @@ impl FindingCode {
             Self::ProtocolRevisionMismatch => {
                 "InitializeResult.protocolVersion must exactly equal the explicitly selected revision."
             }
+            Self::LifecycleMethodRejected => {
+                "The server must return a valid result for the explicitly selected revision's lifecycle method."
+            }
             Self::DeprecatedProtocolFeature => {
                 "Servers should avoid features deprecated by MCP 2026-07-28."
             }
@@ -614,6 +635,9 @@ impl FindingCode {
             }
             Self::PaginationCursorRepeated => {
                 "Each nextCursor must advance the catalog or end pagination."
+            }
+            Self::CatalogMethodRejected => {
+                "Each advertised catalog method must return a valid result for the explicitly selected revision."
             }
             Self::ToolDescriptionMissingOrBlank => {
                 "Each advertised tool should provide a concise, non-blank description of what it does and when to select it."
@@ -731,6 +755,9 @@ impl FindingCode {
             Self::ProtocolRevisionMismatch => {
                 "Return the selected revision exactly, or rerun with an explicit supported selection; mcp-doctor will not fall back."
             }
+            Self::LifecycleMethodRejected => {
+                "Confirm the intended revision, then rerun with the exact selection; supported alternatives are --protocol-version 2025-11-25 and --protocol-version 2025-06-18. mcp-doctor did not infer or fall back to another revision."
+            }
             Self::DeprecatedProtocolFeature => "Remove or replace the deprecated capability.",
             Self::LimitExceeded => {
                 "Reduce the reported data or work below the maximum, then rerun the same command."
@@ -749,6 +776,9 @@ impl FindingCode {
             }
             Self::PaginationCursorRepeated => {
                 "Return a new cursor for the next page or omit nextCursor on the final page."
+            }
+            Self::CatalogMethodRejected => {
+                "Implement or correct the reported selected-revision catalog method, then rerun the same explicit selection."
             }
             Self::ToolDescriptionMissingOrBlank => {
                 "Provide a concise description of what the tool does and when to select it."
@@ -843,10 +873,12 @@ impl FindingCode {
             | Self::UnsupportedProtocolRevision
             | Self::InvalidProtocolRevisionValue
             | Self::ProtocolRevisionMismatch
+            | Self::LifecycleMethodRejected
             | Self::DeprecatedProtocolFeature => "selected MCP revision lifecycle contract",
             Self::CatalogContractInvalid
             | Self::DuplicateCatalogIdentifier
-            | Self::PaginationCursorRepeated => "selected MCP revision catalog contracts",
+            | Self::PaginationCursorRepeated
+            | Self::CatalogMethodRejected => "selected MCP revision catalog contracts",
             Self::ToolDescriptionMissingOrBlank => {
                 "mcp-doctor A1 normalization v1 tool-description quality contract"
             }
@@ -910,6 +942,13 @@ pub(super) enum LocationField {
     ProtocolVersion,
     NegotiatedProtocolVersion,
     Server,
+    ServerDiscover,
+    Initialize,
+    ToolsList,
+    PromptsList,
+    ResourcesList,
+    ResourceTemplatesList,
+    Response,
     ServerInfo,
     Version,
     Instructions,
@@ -1008,6 +1047,13 @@ impl LocationField {
             Self::ProtocolVersion => "io.modelcontextprotocol/protocolVersion",
             Self::NegotiatedProtocolVersion => "protocolVersion",
             Self::Server => "server",
+            Self::ServerDiscover => "server/discover",
+            Self::Initialize => "initialize",
+            Self::ToolsList => "tools/list",
+            Self::PromptsList => "prompts/list",
+            Self::ResourcesList => "resources/list",
+            Self::ResourceTemplatesList => "resources/templates/list",
+            Self::Response => "response",
             Self::ServerInfo => "serverInfo",
             Self::Version => "version",
             Self::Instructions => "instructions",
@@ -1613,6 +1659,54 @@ impl RuleViolation {
     }
 }
 
+/// A value-free classification of one well-formed JSON-RPC error. Only the
+/// five protocol-defined codes are retained; application-defined codes,
+/// messages, and data never cross the diagnostic boundary.
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum JsonRpcErrorKind {
+    ParseError,
+    InvalidRequest,
+    MethodNotFound,
+    InvalidParams,
+    InternalError,
+    Other,
+}
+
+impl JsonRpcErrorKind {
+    pub(super) const fn from_code(code: i64) -> Self {
+        match code {
+            -32700 => Self::ParseError,
+            -32600 => Self::InvalidRequest,
+            -32601 => Self::MethodNotFound,
+            -32602 => Self::InvalidParams,
+            -32603 => Self::InternalError,
+            _ => Self::Other,
+        }
+    }
+
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ParseError => "parse_error",
+            Self::InvalidRequest => "invalid_request",
+            Self::MethodNotFound => "method_not_found",
+            Self::InvalidParams => "invalid_params",
+            Self::InternalError => "internal_error",
+            Self::Other => "other",
+        }
+    }
+
+    pub(super) const fn code(self) -> Option<i64> {
+        match self {
+            Self::ParseError => Some(-32700),
+            Self::InvalidRequest => Some(-32600),
+            Self::MethodNotFound => Some(-32601),
+            Self::InvalidParams => Some(-32602),
+            Self::InternalError => Some(-32603),
+            Self::Other => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum FindingEvidence {
     None,
@@ -1620,6 +1714,7 @@ pub(super) enum FindingEvidence {
     RedactedObservation(RedactedValue),
     LimitViolation(LimitViolation),
     RuleViolation(RuleViolation),
+    JsonRpcError(JsonRpcErrorKind),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -1823,6 +1918,19 @@ impl Finding {
         )
     }
 
+    pub(super) fn lifecycle_method_rejected(
+        revision: SupportedRevision,
+        location: Location,
+        error: JsonRpcErrorKind,
+    ) -> Self {
+        Self::new(
+            FindingCode::LifecycleMethodRejected,
+            revision,
+            location,
+            FindingEvidence::JsonRpcError(error),
+        )
+    }
+
     pub(super) fn deprecated_protocol_feature(
         revision: SupportedRevision,
         location: Location,
@@ -1876,6 +1984,19 @@ impl Finding {
             revision,
             location,
             FindingEvidence::RuleViolation(violation),
+        )
+    }
+
+    pub(super) fn catalog_method_rejected(
+        revision: SupportedRevision,
+        location: Location,
+        error: JsonRpcErrorKind,
+    ) -> Self {
+        Self::new(
+            FindingCode::CatalogMethodRejected,
+            revision,
+            location,
+            FindingEvidence::JsonRpcError(error),
         )
     }
 
@@ -2305,8 +2426,8 @@ impl CheckResult {
 #[cfg(test)]
 mod tests {
     use super::{
-        CheckId, CheckOutcome, CheckResult, Finding, FindingCode, Location, LocationField,
-        Requirement, Severity, SkipReason,
+        CheckId, CheckOutcome, CheckResult, Finding, FindingCode, JsonRpcErrorKind, Location,
+        LocationField, Requirement, Severity, SkipReason,
     };
     use crate::contract::protocol::SupportedRevision;
 
@@ -2358,6 +2479,11 @@ mod tests {
                 "MCP-PROTOCOL-005",
                 Severity::Error,
             ),
+            (
+                FindingCode::LifecycleMethodRejected,
+                "MCP-PROTOCOL-006",
+                Severity::Error,
+            ),
             (FindingCode::LimitExceeded, "MCP-LIMIT-001", Severity::Error),
             (
                 FindingCode::CleanupFailed,
@@ -2382,6 +2508,11 @@ mod tests {
             (
                 FindingCode::PaginationCursorRepeated,
                 "MCP-CATALOG-003",
+                Severity::Error,
+            ),
+            (
+                FindingCode::CatalogMethodRejected,
+                "MCP-CATALOG-004",
                 Severity::Error,
             ),
             (
@@ -2554,6 +2685,36 @@ mod tests {
             .field(LocationField::Required);
 
         assert_eq!(location.to_string(), "tools[3].inputSchema.required");
+        assert_eq!(
+            Location::root(LocationField::ServerDiscover)
+                .field(LocationField::Response)
+                .to_string(),
+            "server/discover.response"
+        );
+        assert_eq!(
+            Location::root(LocationField::ResourceTemplatesList)
+                .field(LocationField::Response)
+                .to_string(),
+            "resources/templates/list.response"
+        );
+    }
+
+    #[test]
+    fn json_rpc_error_evidence_retains_only_protocol_defined_codes() {
+        let cases = [
+            (-32700, JsonRpcErrorKind::ParseError, Some(-32700)),
+            (-32600, JsonRpcErrorKind::InvalidRequest, Some(-32600)),
+            (-32601, JsonRpcErrorKind::MethodNotFound, Some(-32601)),
+            (-32602, JsonRpcErrorKind::InvalidParams, Some(-32602)),
+            (-32603, JsonRpcErrorKind::InternalError, Some(-32603)),
+            (-31999, JsonRpcErrorKind::Other, None),
+        ];
+
+        for (code, kind, retained) in cases {
+            assert_eq!(JsonRpcErrorKind::from_code(code), kind);
+            assert_eq!(kind.code(), retained);
+            assert!(!kind.as_str().is_empty());
+        }
     }
 
     #[test]

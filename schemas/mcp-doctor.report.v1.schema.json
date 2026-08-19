@@ -660,6 +660,70 @@
       },
       "additionalProperties": true
     },
+    "evidence_json_rpc_error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "error_kind", "code"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "parse_error"},
+            "code": {"const": -32700}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["kind", "error_kind", "code"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "invalid_request"},
+            "code": {"const": -32600}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["kind", "error_kind", "code"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "method_not_found"},
+            "code": {"const": -32601}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["kind", "error_kind", "code"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "invalid_params"},
+            "code": {"const": -32602}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["kind", "error_kind", "code"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "internal_error"},
+            "code": {"const": -32603}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["kind", "error_kind"],
+          "properties": {
+            "kind": {"const": "json_rpc_error"},
+            "error_kind": {"const": "other"}
+          },
+          "not": {"required": ["code"]},
+          "additionalProperties": true
+        }
+      ]
+    },
     "evidence": {
       "oneOf": [
         {
@@ -676,6 +740,9 @@
         },
         {
           "$ref": "#/$defs/evidence_rule_violation"
+        },
+        {
+          "$ref": "#/$defs/evidence_json_rpc_error"
         }
       ]
     },

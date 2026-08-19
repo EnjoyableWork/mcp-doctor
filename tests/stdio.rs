@@ -72,6 +72,23 @@ fn legacy_inspect_command(
     command
 }
 
+fn current_inspect_command(
+    environment: &TestEnvironment,
+    format: Option<&str>,
+    mode: &str,
+) -> Command {
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--protocol-version")
+        .arg("2026-07-28");
+    if let Some(format) = format {
+        command.arg("--format").arg(format);
+    }
+    command.arg("--").arg(fixture()).arg(mode);
+    command
+}
+
 fn run_mode(mode: &str) -> Output {
     let environment = TestEnvironment::new();
     inspect_command(&environment, mode)
@@ -207,6 +224,237 @@ fn legacy_stdio_revision_mismatch_and_malformed_values_fail_without_fallback() {
         assert!(stdout.contains("MCP-PROTOCOL-003"), "{stdout}");
         assert!(!stdout.contains(REDACTION_SENTINEL), "{stdout}");
     }
+}
+
+#[test]
+fn explicit_current_lifecycle_rejections_are_revision_diagnoses_in_every_reporter() {
+    for (mode, error_kind, code) in [
+        (
+            "passive-lifecycle-method-not-found",
+            "method_not_found",
+            -32601,
+        ),
+        ("passive-lifecycle-invalid-params", "invalid_params", -32602),
+    ] {
+        let environment = TestEnvironment::new();
+        let json = current_inspect_command(&environment, Some("json"), mode)
+            .output()
+            .expect("mcp-doctor should diagnose the selected lifecycle rejection");
+        let (json_text, json_stderr) = text(&json);
+        assert_eq!(json.status.code(), Some(1), "{json_text}\n{json_stderr}");
+        assert!(json_stderr.is_empty());
+        let report = json_report(&json);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        let revision = find_json_check(&report, "protocol.revision");
+        assert_eq!(revision["state"], "performed");
+        assert_eq!(revision["outcome"], "failed");
+        let finding = &revision["findings"][0];
+        assert_eq!(finding["code"], "MCP-PROTOCOL-006");
+        assert_eq!(finding["location"], "server/discover.response");
+        assert_eq!(finding["evidence"]["kind"], "json_rpc_error");
+        assert_eq!(finding["evidence"]["error_kind"], error_kind);
+        assert_eq!(finding["evidence"]["code"], code);
+        assert_eq!(
+            find_json_check(&report, "protocol.envelope")["outcome"],
+            "passed"
+        );
+        for check_id in ["discovery.catalogs", "schema.contracts"] {
+            let check = find_json_check(&report, check_id);
+            assert_eq!(check["state"], "skipped");
+            assert_eq!(check["skip_reason"], "prerequisite_failed");
+            assert_eq!(check["blocked_by"]["check_id"], "protocol.revision");
+        }
+        assert!(!json_text.contains("MCP-CATALOG-001"));
+        assert!(!json_text.contains(REDACTION_SENTINEL));
+
+        let human = current_inspect_command(&environment, None, mode)
+            .output()
+            .expect("mcp-doctor should render the lifecycle diagnosis for a person");
+        let (human_text, human_stderr) = text(&human);
+        assert_eq!(human.status.code(), Some(1), "{human_text}\n{human_stderr}");
+        assert!(human_stderr.is_empty());
+        assert!(human_text.contains("PRIMARY DIAGNOSIS · protocol.revision"));
+        assert!(human_text.contains("MCP-PROTOCOL-006 · server/discover.response"));
+        assert!(human_text.contains(&format!("json_rpc_error {error_kind} · code {code}")));
+        assert!(human_text.contains("--protocol-version 2025-11-25"));
+        assert!(human_text.contains("--protocol-version 2025-06-18"));
+        assert!(!human_text.contains(REDACTION_SENTINEL));
+
+        let junit = current_inspect_command(&environment, Some("junit"), mode)
+            .output()
+            .expect("mcp-doctor should project the lifecycle diagnosis as JUnit");
+        assert_eq!(junit.status.code(), Some(1), "{:?}", text(&junit));
+        let (junit_text, summary) = parse_and_validate_junit(&junit.stdout);
+        assert_eq!(summary.failures, 1);
+        assert!(junit_text.contains("type=\"MCP-PROTOCOL-006\""));
+        assert!(junit_text.contains("finding[0].location=server/discover.response"));
+        assert!(junit_text.contains(&format!("finding[0].evidence.error_kind={error_kind}")));
+        assert!(junit_text.contains(&format!("finding[0].evidence.code={code}")));
+        assert!(!junit_text.contains(REDACTION_SENTINEL));
+    }
+}
+
+#[test]
+fn application_defined_lifecycle_error_codes_are_never_retained() {
+    let environment = TestEnvironment::new();
+    for format in [None, Some("json"), Some("junit")] {
+        let output =
+            current_inspect_command(&environment, format, "passive-lifecycle-application-error")
+                .output()
+                .expect("mcp-doctor should redact an application-defined lifecycle error");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1), "{stdout}\n{stderr}");
+        assert!(stderr.is_empty());
+        assert!(stdout.contains("MCP-PROTOCOL-006"));
+        assert!(stdout.contains("other"));
+        assert!(!stdout.contains("-31999"));
+        assert!(!stdout.contains("918273"));
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+        if format == Some("json") {
+            let report = json_report(&output);
+            let evidence =
+                &find_json_check(&report, "protocol.revision")["findings"][0]["evidence"];
+            assert_eq!(evidence["error_kind"], "other");
+            assert!(evidence.get("code").is_none());
+        } else if format == Some("junit") {
+            parse_and_validate_junit(&output.stdout);
+        }
+    }
+}
+
+#[test]
+fn explicit_legacy_lifecycle_rejections_stop_at_the_revision_layer() {
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-lifecycle-method-not-found",
+        )
+        .output()
+        .expect("mcp-doctor should diagnose a selected legacy lifecycle rejection");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_eq!(report["protocol_revision"], revision);
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        let finding = &find_json_check(&report, "protocol.revision")["findings"][0];
+        assert_eq!(finding["code"], "MCP-PROTOCOL-006");
+        assert_eq!(finding["location"], "initialize.response");
+        assert_eq!(finding["evidence"]["error_kind"], "method_not_found");
+        assert_eq!(finding["evidence"]["code"], -32601);
+        assert_eq!(
+            find_json_check(&report, "protocol.envelope")["outcome"],
+            "passed"
+        );
+        assert_eq!(
+            find_json_check(&report, "discovery.catalogs")["skip_reason"],
+            "prerequisite_failed"
+        );
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+        assert!(!stdout.contains("MCP-CATALOG-001"));
+    }
+}
+
+#[test]
+fn selected_revision_catalog_rejections_name_each_fixed_method() {
+    let locations = [
+        "tools/list.response",
+        "prompts/list.response",
+        "resources/list.response",
+        "resources/templates/list.response",
+    ];
+    for (revision, legacy, mode) in [
+        ("2026-07-28", false, "passive-catalog-method-errors"),
+        ("2025-11-25", true, "legacy-catalog-method-errors"),
+        ("2025-06-18", true, "legacy-catalog-method-errors"),
+    ] {
+        let environment = TestEnvironment::new();
+        let output = if legacy {
+            legacy_inspect_command(&environment, revision, Some("json"), mode)
+        } else {
+            current_inspect_command(&environment, Some("json"), mode)
+        }
+        .output()
+        .expect("mcp-doctor should diagnose selected-revision catalog rejections");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{revision}: {stdout}\n{stderr}"
+        );
+        assert!(stderr.is_empty());
+        let report = json_report(&output);
+        assert_eq!(
+            report["primary_diagnosis"]["check_id"],
+            "discovery.catalogs"
+        );
+        assert_eq!(
+            find_json_check(&report, "protocol.revision")["outcome"],
+            "passed"
+        );
+        let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+            .as_array()
+            .expect("catalog findings should be an array");
+        assert_eq!(findings.len(), locations.len(), "{report:#}");
+        for (finding, location) in findings.iter().zip(locations) {
+            assert_eq!(finding["code"], "MCP-CATALOG-004");
+            assert_eq!(finding["location"], location);
+            assert_eq!(finding["evidence"]["error_kind"], "method_not_found");
+            assert_eq!(finding["evidence"]["code"], -32601);
+        }
+        assert_eq!(
+            find_json_check(&report, "schema.contracts")["skip_reason"],
+            "prerequisite_failed"
+        );
+        assert!(!stdout.contains("MCP-CATALOG-001"));
+        assert!(!stdout.contains(REDACTION_SENTINEL));
+    }
+}
+
+#[test]
+fn current_catalog_rejection_human_and_junit_reports_match_json_diagnosis() {
+    let environment = TestEnvironment::new();
+    let human = current_inspect_command(&environment, None, "passive-catalog-method-errors")
+        .output()
+        .expect("mcp-doctor should render catalog rejections for a person");
+    let (human_text, human_stderr) = text(&human);
+    assert_eq!(human.status.code(), Some(1), "{human_text}\n{human_stderr}");
+    assert!(human_stderr.is_empty());
+    assert!(human_text.contains("PRIMARY DIAGNOSIS · discovery.catalogs"));
+    for location in [
+        "tools/list.response",
+        "prompts/list.response",
+        "resources/list.response",
+        "resources/templates/list.response",
+    ] {
+        assert!(
+            human_text.contains(&format!("MCP-CATALOG-004 · {location}")),
+            "{human_text}"
+        );
+    }
+    assert!(human_text.contains("json_rpc_error method_not_found · code -32601"));
+    assert!(!human_text.contains(REDACTION_SENTINEL));
+
+    let junit =
+        current_inspect_command(&environment, Some("junit"), "passive-catalog-method-errors")
+            .output()
+            .expect("mcp-doctor should project catalog rejections as JUnit");
+    assert_eq!(junit.status.code(), Some(1), "{:?}", text(&junit));
+    let (junit_text, summary) = parse_and_validate_junit(&junit.stdout);
+    assert_eq!(summary.failures, 1);
+    assert!(junit_text.contains("type=\"MCP-CATALOG-004\""));
+    assert!(junit_text.contains("finding["));
+    assert!(junit_text.contains(".evidence.kind=json_rpc_error"));
+    assert!(junit_text.contains(".evidence.error_kind=method_not_found"));
+    assert!(junit_text.contains(".evidence.code=-32601"));
+    assert!(!junit_text.contains(REDACTION_SENTINEL));
 }
 
 #[test]

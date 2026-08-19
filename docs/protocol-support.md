@@ -31,6 +31,17 @@ Legacy inspection performs only `initialize`, one
 does not call tools, list retained tasks, read resources, get prompts, or answer
 server requests.
 
+If the first `server/discover` or `initialize` request receives a well-formed
+JSON-RPC error, passive inspection reports `MCP-PROTOCOL-006` at the exact
+lifecycle response. The rejection occurs before revision or catalog validity
+can be established, so the correction is to confirm the intended revision and
+rerun an exact selection; it is not classified as a malformed catalog and does
+not trigger fallback. A later error from an advertised fixed catalog method is
+reported separately as `MCP-CATALOG-004` at that method's response. Reports
+retain only a value-free error kind and, for the five standard JSON-RPC errors,
+the standard numeric code; messages, data, and application-defined codes are
+discarded.
+
 Explicit MCP `2025-11-25` and `2025-06-18` `check` and `break` preserve every
 active authorization gate, call only immediate tools, never start tasks or
 answer server requests, and leave required additional input incomplete without

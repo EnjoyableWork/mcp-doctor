@@ -7,8 +7,8 @@ use serde_json::{Map, Value, json};
 use super::http_headers::validate_annotations;
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
-    CheckId, CheckResult, ExpectedShape, Finding, JsonKind, Location, LocationField, Requirement,
-    RuleViolation, SkipReason,
+    CheckId, CheckResult, ExpectedShape, Finding, JsonKind, JsonRpcErrorKind, Location,
+    LocationField, Requirement, RuleViolation, SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_server_revision};
 use super::schema_budget::{
@@ -82,6 +82,30 @@ impl CatalogKind {
     fn location(self) -> Location {
         Location::root(self.location_field())
     }
+
+    fn response_location(self) -> Location {
+        let method = match self {
+            Self::Tools => LocationField::ToolsList,
+            Self::Prompts => LocationField::PromptsList,
+            Self::Resources => LocationField::ResourcesList,
+            Self::ResourceTemplates => LocationField::ResourceTemplatesList,
+        };
+        Location::root(method).field(LocationField::Response)
+    }
+}
+
+fn classify_json_rpc_error(object: &Map<String, Value>) -> Option<JsonRpcErrorKind> {
+    let error = object.get("error")?.as_object()?;
+    let code = error.get("code")?.as_number()?;
+    if !code.is_i64() && !code.is_u64() {
+        return None;
+    }
+    error.get("message").filter(|value| value.is_string())?;
+    Some(
+        code.as_i64()
+            .map(JsonRpcErrorKind::from_code)
+            .unwrap_or(JsonRpcErrorKind::Other),
+    )
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -646,7 +670,19 @@ impl Analyzer {
         let Some(object) = value.as_object() else {
             unreachable!("the transport accepted only JSON-RPC objects")
         };
-        if object.contains_key("error") {
+        if let Some(error) = classify_json_rpc_error(object) {
+            self.revision_checked = true;
+            self.revision_block = Some(SkipReason::PrerequisiteFailed);
+            self.push(
+                FindingBucket::Revision,
+                Finding::lifecycle_method_rejected(
+                    SupportedRevision::CURRENT,
+                    Location::root(LocationField::ServerDiscover).field(LocationField::Response),
+                    error,
+                ),
+            );
+            return;
+        } else if object.contains_key("error") {
             self.push(
                 FindingBucket::Envelope,
                 Finding::catalog_contract_invalid(
@@ -791,7 +827,20 @@ impl Analyzer {
             .as_object()
             .expect("the transport accepted a JSON-RPC object");
         let base = kind.location();
-        if object.contains_key("error") {
+        if let Some(error) = classify_json_rpc_error(object) {
+            self.push(
+                FindingBucket::Catalog,
+                Finding::catalog_method_rejected(
+                    SupportedRevision::CURRENT,
+                    kind.response_location(),
+                    error,
+                ),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        } else if object.contains_key("error") {
             self.push(
                 FindingBucket::Catalog,
                 Finding::catalog_contract_invalid(
@@ -1923,6 +1972,7 @@ struct LegacyAnalyzer {
     initialize_valid: bool,
     revision_checked: bool,
     revision_supported: bool,
+    revision_block: Option<SkipReason>,
     tools_advertised: bool,
     tools_catalog_valid: bool,
     catalog_limit_reached: bool,
@@ -1951,6 +2001,7 @@ impl LegacyAnalyzer {
             initialize_valid: false,
             revision_checked: false,
             revision_supported: false,
+            revision_block: None,
             tools_advertised: false,
             tools_catalog_valid: true,
             catalog_limit_reached: false,
@@ -2017,7 +2068,19 @@ impl LegacyAnalyzer {
             .as_object()
             .expect("the transport accepted a JSON-RPC object");
         let base = Location::root(LocationField::Server);
-        if object.contains_key("error") {
+        if let Some(error) = classify_json_rpc_error(object) {
+            self.revision_checked = true;
+            self.revision_block = Some(SkipReason::PrerequisiteFailed);
+            self.push(
+                FindingBucket::Revision,
+                Finding::lifecycle_method_rejected(
+                    self.revision_kind,
+                    Location::root(LocationField::Initialize).field(LocationField::Response),
+                    error,
+                ),
+            );
+            return;
+        } else if object.contains_key("error") {
             self.push(
                 FindingBucket::Envelope,
                 Finding::catalog_contract_invalid(
@@ -2131,7 +2194,20 @@ impl LegacyAnalyzer {
             .as_object()
             .expect("the transport accepted a JSON-RPC object");
         let base = kind.location();
-        if object.contains_key("error") {
+        if let Some(error) = classify_json_rpc_error(object) {
+            self.push(
+                FindingBucket::Catalog,
+                Finding::catalog_method_rejected(
+                    self.revision_kind,
+                    kind.response_location(),
+                    error,
+                ),
+            );
+            if kind == CatalogKind::Tools {
+                self.tools_catalog_valid = false;
+            }
+            return;
+        } else if object.contains_key("error") {
             self.push(
                 FindingBucket::Catalog,
                 Finding::catalog_contract_invalid(
@@ -2701,7 +2777,8 @@ impl LegacyAnalyzer {
             .iter()
             .any(|finding| finding.severity().is_failure());
         let downstream = if revision_failed {
-            SkipReason::UnsupportedRevision
+            self.revision_block
+                .unwrap_or(SkipReason::UnsupportedRevision)
         } else {
             SkipReason::PrerequisiteFailed
         };
@@ -3043,11 +3120,13 @@ mod tests {
 
     use super::{
         CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
-        RequestKind, ToolDescriptionDiagnosis, diagnose_tool_description, encode_request,
-        percent_decode, resolve_local_reference, schema_child_location,
+        RequestKind, ToolDescriptionDiagnosis, classify_json_rpc_error, diagnose_tool_description,
+        encode_request, percent_decode, resolve_local_reference, schema_child_location,
         validate_local_schema_with_policy,
     };
-    use crate::contract::model::{FindingCode, FindingEvidence, Location, LocationField, Severity};
+    use crate::contract::model::{
+        FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField, Severity,
+    };
     use crate::contract::protocol::SupportedRevision;
 
     #[test]
@@ -3282,5 +3361,38 @@ mod tests {
     fn conversation_defaults_to_the_m1_catalog_limit() {
         let conversation = PassiveCatalogConversation::new();
         assert_eq!(conversation.maximum_items, 10_000);
+    }
+
+    #[test]
+    fn json_rpc_error_classification_requires_structure_and_discards_values() {
+        for (code, expected) in [
+            (-32700, JsonRpcErrorKind::ParseError),
+            (-32600, JsonRpcErrorKind::InvalidRequest),
+            (-32601, JsonRpcErrorKind::MethodNotFound),
+            (-32602, JsonRpcErrorKind::InvalidParams),
+            (-32603, JsonRpcErrorKind::InternalError),
+            (-31999, JsonRpcErrorKind::Other),
+        ] {
+            let value = json!({
+                "error": {
+                    "code": code,
+                    "message": "synthetic-private-message-never-retain",
+                    "data": {"secret": "synthetic-private-data-never-retain"}
+                }
+            });
+            assert_eq!(
+                classify_json_rpc_error(value.as_object().unwrap()),
+                Some(expected)
+            );
+        }
+
+        for value in [
+            json!({"error": null}),
+            json!({"error": {"code": -32601}}),
+            json!({"error": {"code": -32601, "message": 7}}),
+            json!({"error": {"code": -32601.5, "message": "invalid"}}),
+        ] {
+            assert_eq!(classify_json_rpc_error(value.as_object().unwrap()), None);
+        }
     }
 }

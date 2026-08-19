@@ -37,6 +37,14 @@ See [MCP revision support](protocol-support.md) for explicit legacy selection,
 the exact support matrix, and schema-dialect behavior. See the
 [safety model](safety.md) for network gates, cleanup, and hard limits.
 
+A well-formed JSON-RPC error on the selected revision's first lifecycle method
+is an `MCP-PROTOCOL-006` revision-layer diagnosis, because catalog validity is
+not yet known. Errors from later capability-advertised catalog methods are
+`MCP-CATALOG-004` findings at the exact method response. Human, JSON, and JUnit
+reports expose only the fixed error kind and a standard JSON-RPC code when one
+applies; they never retain the error message, data, or application-defined
+numeric code.
+
 ## Single-tool reviewed `check` scenarios
 
 For one exact tool, `check` accepts a regular file containing strict
