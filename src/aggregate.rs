@@ -762,6 +762,35 @@ enum Evidence {
         #[serde(skip_serializing_if = "Option::is_none")]
         http_status: Option<u16>,
     },
+    JsonRpcError {
+        error_kind: StableJsonRpcErrorKind,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<i64>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum StableJsonRpcErrorKind {
+    ParseError,
+    InvalidRequest,
+    MethodNotFound,
+    InvalidParams,
+    InternalError,
+    Other,
+}
+
+impl StableJsonRpcErrorKind {
+    const fn standard_code(self) -> Option<i64> {
+        match self {
+            Self::ParseError => Some(-32700),
+            Self::InvalidRequest => Some(-32600),
+            Self::MethodNotFound => Some(-32601),
+            Self::InvalidParams => Some(-32602),
+            Self::InternalError => Some(-32603),
+            Self::Other => None,
+        }
+    }
 }
 
 fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(), AggregateError> {
@@ -838,6 +867,13 @@ fn validate_report(report: &StableReport, budget: &mut WorkBudget) -> Result<(),
             }
             if let Evidence::RevisionAdvertisement { required, .. } = &finding.evidence
                 && required != &report.protocol_revision
+            {
+                return Err(AggregateError::invocation(
+                    AggregateErrorKind::InputSemantic,
+                ));
+            }
+            if let Evidence::JsonRpcError { error_kind, code } = &finding.evidence
+                && *code != error_kind.standard_code()
             {
                 return Err(AggregateError::invocation(
                     AggregateErrorKind::InputSemantic,

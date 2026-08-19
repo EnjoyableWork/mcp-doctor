@@ -37,6 +37,10 @@ fn main() -> ExitCode {
         Some("catalog-valid") => catalog_valid(),
         Some("report-single-run") => report_single_run(&remaining),
         Some("protocol-unsupported") => protocol_unsupported(),
+        Some("passive-lifecycle-method-not-found") => passive_lifecycle_error(-32601),
+        Some("passive-lifecycle-invalid-params") => passive_lifecycle_error(-32602),
+        Some("passive-lifecycle-application-error") => passive_lifecycle_error(-31999),
+        Some("passive-catalog-method-errors") => passive_catalog_method_errors(),
         Some("layered-protocol-failure") => layered_protocol_failure(),
         Some("catalog-invalid") => catalog_invalid(),
         Some("catalog-blocks-schema") => catalog_blocks_schema(),
@@ -62,6 +66,8 @@ fn main() -> ExitCode {
         Some("snapshot-invalid-shape") => snapshot_invalid_shape(),
         Some("snapshot-started-marker") => snapshot_started_marker(&remaining),
         Some("legacy-success") => legacy_success(),
+        Some("legacy-lifecycle-method-not-found") => legacy_lifecycle_error(-32601),
+        Some("legacy-catalog-method-errors") => legacy_catalog_method_errors(),
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
@@ -374,6 +380,35 @@ fn protocol_unsupported() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn passive_lifecycle_error(code: i64) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_json_rpc_error(1, code);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn passive_catalog_method_errors() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({
+        "tools": {},
+        "prompts": {},
+        "resources": {}
+    }));
+    for (id, method) in [
+        (2, "tools/list"),
+        (3, "prompts/list"),
+        (4, "resources/list"),
+        (5, "resources/templates/list"),
+    ] {
+        read_request(&mut input, id, method, None);
+        write_json_rpc_error(id, -32601);
+    }
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
 fn legacy_success() -> ExitCode {
     eprintln!("synthetic-private-legacy-stderr-never-report-7f2c");
     let mut input = io::BufReader::new(io::stdin().lock());
@@ -432,6 +467,39 @@ fn legacy_success() -> ExitCode {
         Some("synthetic-private-legacy-cursor-never-report-7f2c"),
     );
     write_result(3, json!({"tools": []}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_lifecycle_error(code: i64) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let _revision = read_initialize(&mut input);
+    write_json_rpc_error(1, code);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_catalog_method_errors() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
+            "serverInfo": {"name": "synthetic-legacy", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    for (id, method) in [
+        (2, "tools/list"),
+        (3, "prompts/list"),
+        (4, "resources/list"),
+        (5, "resources/templates/list"),
+    ] {
+        read_legacy_request(&mut input, id, method, None);
+        write_json_rpc_error(id, -32601);
+    }
     assert_eof(&mut input);
     ExitCode::SUCCESS
 }
@@ -2966,6 +3034,21 @@ fn write_invalid_params(id: i64) {
             "code": -32602,
             "message": REDACTION_SENTINEL,
             "data": {"secret": REDACTION_SENTINEL}
+        }
+    }));
+}
+
+fn write_json_rpc_error(id: i64, code: i64) {
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": REDACTION_SENTINEL,
+            "data": {
+                "secret": REDACTION_SENTINEL,
+                "application_code": 918273
+            }
         }
     }));
 }

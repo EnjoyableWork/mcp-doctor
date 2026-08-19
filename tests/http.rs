@@ -140,6 +140,25 @@ impl LegacyExpectedRequest {
         }
     }
 
+    const fn catalog(
+        revision: &'static str,
+        session: Option<&'static str>,
+        method: &'static str,
+    ) -> Self {
+        Self {
+            verb: "POST",
+            method: Some(method),
+            revision,
+            protocol_header: true,
+            session,
+            cursor: None,
+            bearer: None,
+            custom: None,
+            name: None,
+            argument: None,
+        }
+    }
+
     const fn call(
         revision: &'static str,
         session: Option<&'static str>,
@@ -825,7 +844,7 @@ fn legacy_request_matches(request: &FixtureRequest, expected: LegacyExpectedRequ
                 && body["params"]["clientInfo"]["name"] == "mcp-doctor"
         }
         "notifications/initialized" => body.get("id").is_none() && body.get("params").is_none(),
-        "tools/list" => {
+        "tools/list" | "prompts/list" | "resources/list" | "resources/templates/list" => {
             body.get("id").and_then(Value::as_i64).is_some()
                 && body["params"].get("_meta").is_none()
                 && body["params"].get("cursor").and_then(Value::as_str) == expected.cursor
@@ -1035,6 +1054,18 @@ fn invalid_params_response(id: i64, message: &str) -> FixtureResponse {
         "error": {
             "code": -32602,
             "message": message
+        }
+    }))
+}
+
+fn json_rpc_error_response(id: i64, code: i64, message: &str) -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": message,
+            "data": {"synthetic_private_value": 918273}
         }
     }))
 }
@@ -3049,6 +3080,183 @@ fn unsupported_current_revision_is_a_protocol_diagnosis_without_replay_or_fallba
         &endpoint,
         &[MESSAGE_SENTINEL, TOOL, CASE_ID, scenario.to_str().unwrap()],
     );
+}
+
+#[test]
+fn passive_http_lifecycle_rejections_are_revision_diagnoses_without_replay() {
+    const SENTINEL: &str = "synthetic-lifecycle-error-never-report-4a91";
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![PlannedExchange::reply(
+            ExpectedRequest::method("server/discover"),
+            json_rpc_error_response(1, -32601, SENTINEL),
+        )],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--protocol-version")
+        .arg("2026-07-28")
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", text(&output));
+    assert_eq!(outcome.accepted_connections, 1);
+    assert_eq!(outcome.valid_requests, 1);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+    let finding = &report["primary_diagnosis"]["findings"][0];
+    assert_eq!(finding["code"], "MCP-PROTOCOL-006");
+    assert_eq!(finding["location"], "server/discover.response");
+    let stdout = text(&output).0;
+    assert!(!stdout.contains(SENTINEL));
+    assert!(!stdout.contains("918273"));
+    assert!(!stdout.contains("MCP-CATALOG-001"));
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn passive_http_catalog_rejections_name_each_selected_revision_method() {
+    const SENTINEL: &str = "synthetic-catalog-error-never-report-4a91";
+    let methods = [
+        "tools/list",
+        "prompts/list",
+        "resources/list",
+        "resources/templates/list",
+    ];
+    let mut exchanges = vec![PlannedExchange::reply(
+        ExpectedRequest::method("server/discover"),
+        discovery_response(json!({"tools": {}, "prompts": {}, "resources": {}})),
+    )];
+    for (offset, method) in methods.iter().enumerate() {
+        exchanges.push(PlannedExchange::reply(
+            ExpectedRequest::method(method),
+            json_rpc_error_response(i64::try_from(offset).unwrap() + 2, -32601, SENTINEL),
+        ));
+    }
+    let server = FixtureServer::spawn(WireMode::Http, exchanges, true);
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--protocol-version")
+        .arg("2026-07-28")
+        .arg("--format")
+        .arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", text(&output));
+    assert_eq!(outcome.accepted_connections, 5);
+    assert_eq!(outcome.valid_requests, 5);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"],
+        "discovery.catalogs"
+    );
+    let findings = report["primary_diagnosis"]["findings"]
+        .as_array()
+        .expect("catalog findings should be an array");
+    assert_eq!(findings.len(), methods.len());
+    for (finding, method) in findings.iter().zip(methods) {
+        assert_eq!(finding["code"], "MCP-CATALOG-004");
+        assert_eq!(finding["location"], format!("{method}.response"));
+    }
+    assert!(!text(&output).0.contains(SENTINEL));
+    assert_redacted(&output, &endpoint, &[SENTINEL]);
+}
+
+#[test]
+fn passive_legacy_http_rejections_preserve_exact_selection_and_request_counts() {
+    const SENTINEL: &str = "synthetic-legacy-error-never-report-4a91";
+    let methods = [
+        "tools/list",
+        "prompts/list",
+        "resources/list",
+        "resources/templates/list",
+    ];
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let lifecycle_server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize(revision),
+                json_rpc_error_response(1, -32602, SENTINEL),
+            )],
+            true,
+        );
+        let endpoint = lifecycle_server.endpoint();
+        let environment = TestEnvironment::new();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            Some("json"),
+        ));
+        let outcome = lifecycle_server.finish();
+        assert_eq!(output.status.code(), Some(1), "{:?}", text(&output));
+        assert_eq!(outcome.accepted_connections, 1);
+        assert_eq!(outcome.valid_requests, 1);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        let finding = &report["primary_diagnosis"]["findings"][0];
+        assert_eq!(report["primary_diagnosis"]["check_id"], "protocol.revision");
+        assert_eq!(finding["code"], "MCP-PROTOCOL-006");
+        assert_eq!(finding["location"], "initialize.response");
+
+        let mut exchanges = vec![
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialize(revision),
+                legacy_initialize_response(
+                    revision,
+                    json!({"tools": {}, "prompts": {}, "resources": {}}),
+                    None,
+                ),
+            ),
+            PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::initialized(revision, None),
+                FixtureResponse::accepted(),
+            ),
+        ];
+        for (offset, method) in methods.iter().enumerate() {
+            exchanges.push(PlannedExchange::legacy_reply(
+                LegacyExpectedRequest::catalog(revision, None, method),
+                json_rpc_error_response(i64::try_from(offset).unwrap() + 2, -32601, SENTINEL),
+            ));
+        }
+        let catalog_server = FixtureServer::spawn(WireMode::Http, exchanges, true);
+        let endpoint = catalog_server.endpoint();
+        let output = run(&mut legacy_remote_command(
+            &environment,
+            &endpoint,
+            revision,
+            Some("json"),
+        ));
+        let outcome = catalog_server.finish();
+        assert_eq!(output.status.code(), Some(1), "{:?}", text(&output));
+        assert_eq!(outcome.accepted_connections, 6);
+        assert_eq!(outcome.valid_requests, 6);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let report = parse_and_validate_report(&output.stdout);
+        assert_eq!(
+            report["primary_diagnosis"]["check_id"],
+            "discovery.catalogs"
+        );
+        let findings = report["primary_diagnosis"]["findings"]
+            .as_array()
+            .expect("legacy catalog findings should be an array");
+        assert_eq!(findings.len(), methods.len());
+        for (finding, method) in findings.iter().zip(methods) {
+            assert_eq!(finding["code"], "MCP-CATALOG-004");
+            assert_eq!(finding["location"], format!("{method}.response"));
+        }
+        assert!(!text(&output).0.contains(SENTINEL));
+    }
 }
 
 #[test]

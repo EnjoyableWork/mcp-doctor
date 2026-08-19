@@ -727,6 +727,32 @@ fn causal_skips_and_independent_safety_evidence_remain_visible() {
 }
 
 #[test]
+fn json_rpc_error_evidence_round_trips_through_aggregation() {
+    let environment = TestEnvironment::new();
+    let mut report = failed_report();
+    report["checks"][1]["findings"][0]["evidence"] = json!({
+        "kind": "json_rpc_error",
+        "error_kind": "method_not_found",
+        "code": -32601
+    });
+    let input = write_report(&environment, "json-rpc-error-report.json", &report);
+    let output_path = environment.artifact_path("aggregate.json");
+    let output = aggregate_command(&environment, &output_path, "json", &[input])
+        .output()
+        .expect("the safe JSON-RPC evidence should aggregate");
+    assert_eq!(output.status.code(), Some(1), "{:?}", text(&output));
+    let aggregate = parse_and_validate_aggregate(&output.stdout);
+    assert_eq!(
+        aggregate["members"][0]["report"]["checks"][1]["findings"][0]["evidence"],
+        json!({
+            "kind": "json_rpc_error",
+            "error_kind": "method_not_found",
+            "code": -32601
+        })
+    );
+}
+
+#[test]
 fn schema_semantic_and_malformed_failures_are_atomic_and_value_free() {
     let cases = [
         ("malformed.json", Value::String("not-json".to_owned()), true),
@@ -762,6 +788,32 @@ fn schema_semantic_and_malformed_failures_are_atomic_and_value_free() {
             {
                 let mut report = failed_report();
                 report["checks"][1]["findings"][0]["protocol_revision"] = json!("2025-11-25");
+                report
+            },
+            false,
+        ),
+        (
+            "json-rpc-code-mismatch.json",
+            {
+                let mut report = failed_report();
+                report["checks"][1]["findings"][0]["evidence"] = json!({
+                    "kind": "json_rpc_error",
+                    "error_kind": "method_not_found",
+                    "code": -32602
+                });
+                report
+            },
+            false,
+        ),
+        (
+            "json-rpc-application-code.json",
+            {
+                let mut report = failed_report();
+                report["checks"][1]["findings"][0]["evidence"] = json!({
+                    "kind": "json_rpc_error",
+                    "error_kind": "other",
+                    "code": -31999
+                });
                 report
             },
             false,

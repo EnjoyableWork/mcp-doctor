@@ -995,6 +995,15 @@ fn write_human_evidence(output: &mut BoundedOutput, finding: &Finding) {
         FindingEvidence::RuleViolation(violation) => {
             write_human_rule(output, *violation);
         }
+        FindingEvidence::JsonRpcError(error) => {
+            write!(output, "      json_rpc_error {}", error.as_str())
+                .expect("the bounded report writer records limit failures");
+            if let Some(code) = error.code() {
+                write!(output, " · code {code}")
+                    .expect("the bounded report writer records limit failures");
+            }
+            output.push('\n');
+        }
     }
 }
 
@@ -1393,6 +1402,19 @@ fn write_junit_evidence(output: &mut BoundedOutput, index: usize, finding: &Find
             }
             if let Some(status) = violation.http_status() {
                 write_indexed_number_line(output, "finding", index, "evidence.http_status", status);
+            }
+        }
+        FindingEvidence::JsonRpcError(error) => {
+            write_indexed_xml_line(output, "finding", index, "evidence.kind", "json_rpc_error");
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.error_kind",
+                error.as_str(),
+            );
+            if let Some(code) = error.code() {
+                write_indexed_number_line(output, "finding", index, "evidence.code", code);
             }
         }
     }
@@ -1848,6 +1870,11 @@ enum JsonEvidence {
         #[serde(skip_serializing_if = "Option::is_none")]
         http_status: Option<u16>,
     },
+    JsonRpcError {
+        error_kind: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<i64>,
+    },
 }
 
 impl JsonEvidence {
@@ -1877,6 +1904,10 @@ impl JsonEvidence {
                 observed: violation.observed().map(|kind| kind.as_str()),
                 error_count: violation.error_count(),
                 http_status: violation.http_status(),
+            },
+            FindingEvidence::JsonRpcError(error) => Self::JsonRpcError {
+                error_kind: error.as_str(),
+                code: error.code(),
             },
         }
     }
