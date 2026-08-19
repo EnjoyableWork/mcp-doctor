@@ -22,7 +22,7 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use serde_json::{Value, json};
 use support::{
     TestEnvironment, parse_and_validate_contract_snapshot, parse_and_validate_junit,
-    parse_and_validate_report,
+    parse_and_validate_markdown, parse_and_validate_report,
 };
 
 const TOOL: &str = "synthetic.remote-reviewed";
@@ -1443,6 +1443,25 @@ fn assert_report_artifacts(json_path: &std::path::Path, junit_path: &std::path::
     );
     assert_eq!(summary.failures, 0);
     assert!(document.contains("report_outcome=passed\nexit_code=0"));
+}
+
+fn assert_markdown_artifact(json_path: &std::path::Path, markdown_path: &std::path::Path) {
+    let report = parse_and_validate_report(
+        &fs::read(json_path).expect("the JSON report artifact should exist"),
+    );
+    let markdown = parse_and_validate_markdown(
+        &fs::read(markdown_path).expect("the Markdown report artifact should exist"),
+    );
+    assert_eq!(report["outcome"], "passed");
+    assert!(markdown.contains("| Outcome | `passed` |"));
+    assert!(markdown.contains("| Exit | `0` (`success`) |"));
+    assert!(markdown.contains(&format!("| Checks | {} |", report["summary"]["checks"])));
+    for check in report["checks"].as_array().into_iter().flatten() {
+        let id = check["id"]
+            .as_str()
+            .expect("every report check should have an identifier");
+        assert!(markdown.contains(&format!("`{id}`")));
+    }
 }
 
 fn legacy_success_exchanges(revision: &'static str) -> Vec<PlannedExchange> {
@@ -4286,12 +4305,15 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     let environment = TestEnvironment::new();
     let json_path = environment.artifact_path("remote-report.json");
     let junit_path = environment.artifact_path("remote-report.xml");
+    let markdown_path = environment.artifact_path("remote-report.md");
     let mut command = remote_command(&environment, "inspect", &endpoint);
     command
         .arg("--json-report")
         .arg(&json_path)
         .arg("--junit-report")
-        .arg(&junit_path);
+        .arg(&junit_path)
+        .arg("--markdown-report")
+        .arg(&markdown_path);
     let output = run(&mut command);
     let outcome = server.finish();
 
@@ -4300,8 +4322,19 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     assert_eq!(outcome.valid_requests, 2);
     assert_eq!(outcome.unexpected_connections, 0);
     assert_report_artifacts(&json_path, &junit_path);
+    assert_markdown_artifact(&json_path, &markdown_path);
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
+    let markdown = fs::read_to_string(&markdown_path).expect("Markdown should be readable");
+    for private in [
+        endpoint.as_str(),
+        TOOL,
+        json_path.to_str().unwrap(),
+        junit_path.to_str().unwrap(),
+        markdown_path.to_str().unwrap(),
+    ] {
+        assert!(!markdown.contains(private));
+    }
     assert_redacted(&output, &endpoint, &[TOOL]);
 }
 

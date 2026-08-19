@@ -4,8 +4,8 @@ use serde::Serialize;
 
 use crate::aggregate::AGGREGATE_SCHEMA_VERSION;
 use crate::contract::{
-    DIFF_SCHEMA_VERSION, ExitStatus, GENERATOR_VERSION, KnownRevision, ProtocolRevision,
-    REPORT_SCHEMA_VERSION, SCENARIO_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION,
+    DIFF_SCHEMA_VERSION, ExitStatus, GENERATOR_VERSION, KnownRevision, MARKDOWN_REPORT_VERSION,
+    ProtocolRevision, REPORT_SCHEMA_VERSION, SCENARIO_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION,
     WORKFLOW_SCHEMA_VERSION,
 };
 
@@ -23,18 +23,22 @@ const DIAGNOSTIC_LIMIT_SELECTABLE_FOR: &[&str] = &["break", "check", "inspect"];
 const HUMAN_REPORTER: &str = "human";
 const JSON_REPORTER: &str = "json";
 const JUNIT_REPORTER: &str = "junit";
+const MARKDOWN_REPORTER: &str = "markdown";
 
 const NO_SCHEMAS: &[&str] = &[];
+const NO_REPORTERS: &[&str] = &[];
 const AGGREGATE_SCHEMAS: &[&str] = &[AGGREGATE_SCHEMA_VERSION];
 const CAPABILITIES_SCHEMAS: &[&str] = &[CAPABILITIES_SCHEMA_VERSION];
 const CONTRACT_DIFF_SCHEMAS: &[&str] = &[DIFF_SCHEMA_VERSION];
 const CONTRACT_SNAPSHOT_SCHEMAS: &[&str] = &[SNAPSHOT_SCHEMA_VERSION];
 const DIAGNOSTIC_REPORT_SCHEMAS: &[&str] = &[REPORT_SCHEMA_VERSION];
+const MARKDOWN_REPORT_SCHEMAS: &[&str] = &[MARKDOWN_REPORT_VERSION];
 const GENERATOR_SCHEMAS: &[&str] = &[GENERATOR_VERSION];
 const SCENARIO_SCHEMAS: &[&str] = &[SCENARIO_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION];
 
 const HUMAN_JSON_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER];
 const DIAGNOSTIC_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER, JUNIT_REPORTER];
+const DIAGNOSTIC_ARTIFACT_REPORTERS: &[&str] = &[JSON_REPORTER, JUNIT_REPORTER, MARKDOWN_REPORTER];
 
 const CURRENT_REVISION: &str = ProtocolRevision::V2026_07_28.as_str();
 const V2025_11_25: &str = ProtocolRevision::V2025_11_25.as_str();
@@ -51,6 +55,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "aggregate",
         activity: "offline",
         reporters: HUMAN_JSON_REPORTERS,
+        artifact_reporters: NO_REPORTERS,
         input_schema_versions: DIAGNOSTIC_REPORT_SCHEMAS,
         output_schema_versions: AGGREGATE_SCHEMAS,
         generator_versions: NO_SCHEMAS,
@@ -60,6 +65,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "break",
         activity: "active",
         reporters: DIAGNOSTIC_REPORTERS,
+        artifact_reporters: DIAGNOSTIC_ARTIFACT_REPORTERS,
         input_schema_versions: NO_SCHEMAS,
         output_schema_versions: DIAGNOSTIC_REPORT_SCHEMAS,
         generator_versions: GENERATOR_SCHEMAS,
@@ -69,6 +75,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "capabilities",
         activity: "compiled_only",
         reporters: HUMAN_JSON_REPORTERS,
+        artifact_reporters: NO_REPORTERS,
         input_schema_versions: NO_SCHEMAS,
         output_schema_versions: CAPABILITIES_SCHEMAS,
         generator_versions: NO_SCHEMAS,
@@ -78,6 +85,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "check",
         activity: "active",
         reporters: DIAGNOSTIC_REPORTERS,
+        artifact_reporters: DIAGNOSTIC_ARTIFACT_REPORTERS,
         input_schema_versions: SCENARIO_SCHEMAS,
         output_schema_versions: DIAGNOSTIC_REPORT_SCHEMAS,
         generator_versions: NO_SCHEMAS,
@@ -87,6 +95,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "diff",
         activity: "offline",
         reporters: HUMAN_JSON_REPORTERS,
+        artifact_reporters: NO_REPORTERS,
         input_schema_versions: CONTRACT_SNAPSHOT_SCHEMAS,
         output_schema_versions: CONTRACT_DIFF_SCHEMAS,
         generator_versions: NO_SCHEMAS,
@@ -96,6 +105,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "inspect",
         activity: "passive",
         reporters: DIAGNOSTIC_REPORTERS,
+        artifact_reporters: DIAGNOSTIC_ARTIFACT_REPORTERS,
         input_schema_versions: NO_SCHEMAS,
         output_schema_versions: &[REPORT_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION],
         generator_versions: NO_SCHEMAS,
@@ -105,6 +115,7 @@ const COMMANDS: &[CommandCapability<'static>] = &[
         name: "reject",
         activity: "active",
         reporters: DIAGNOSTIC_REPORTERS,
+        artifact_reporters: DIAGNOSTIC_ARTIFACT_REPORTERS,
         input_schema_versions: NO_SCHEMAS,
         output_schema_versions: DIAGNOSTIC_REPORT_SCHEMAS,
         generator_versions: GENERATOR_SCHEMAS,
@@ -213,6 +224,10 @@ const REPORTERS: &[ReporterCapability<'static>] = &[
     ReporterCapability {
         name: JUNIT_REPORTER,
         machine_readable: true,
+    },
+    ReporterCapability {
+        name: MARKDOWN_REPORTER,
+        machine_readable: false,
     },
 ];
 
@@ -333,6 +348,7 @@ struct CommandCapability<'a> {
     name: &'a str,
     activity: &'a str,
     reporters: &'a [&'a str],
+    artifact_reporters: &'a [&'a str],
     input_schema_versions: &'a [&'a str],
     output_schema_versions: &'a [&'a str],
     generator_versions: &'a [&'a str],
@@ -383,6 +399,7 @@ struct SchemaVersions<'a> {
     contract_diff: &'a [&'a str],
     contract_snapshot: &'a [&'a str],
     diagnostic_report: &'a [&'a str],
+    markdown_report: &'a [&'a str],
     generator: &'a [&'a str],
     scenario: &'a [&'a str],
 }
@@ -495,6 +512,7 @@ fn manifest() -> CapabilitiesManifest<'static> {
             contract_diff: CONTRACT_DIFF_SCHEMAS,
             contract_snapshot: CONTRACT_SNAPSHOT_SCHEMAS,
             diagnostic_report: DIAGNOSTIC_REPORT_SCHEMAS,
+            markdown_report: MARKDOWN_REPORT_SCHEMAS,
             generator: GENERATOR_SCHEMAS,
             scenario: SCENARIO_SCHEMAS,
         },
@@ -574,10 +592,11 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
     for command in manifest.commands {
         writeln!(
             output,
-            "  {} · {} · reporters {} · limits {}",
+            "  {} · {} · reporters {} · artifacts {} · limits {}",
             command.name,
             command.activity,
             command.reporters.join(","),
+            command.artifact_reporters.join(","),
             command.limit_profile
         )
         .map_err(|_| CapabilitiesError::Render)?;

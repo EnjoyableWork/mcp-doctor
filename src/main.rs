@@ -294,6 +294,10 @@ struct ReportArgs {
     /// Write the JUnit projection to one explicit new file.
     #[arg(long, value_name = "PATH")]
     junit_report: Option<PathBuf>,
+
+    /// Write deterministic mcp-doctor.markdown/v1 to one explicit new file.
+    #[arg(long, value_name = "PATH")]
+    markdown_report: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -464,12 +468,14 @@ impl ReportArgs {
         let destinations = report_artifacts::ReportArtifactDestinations::prepare(
             self.json_report.clone(),
             self.junit_report.clone(),
+            self.markdown_report.clone(),
             reserved_paths,
         )?;
         let request = contract::ReportRequest::new(
             self.format.into(),
             destinations.requests_json(),
             destinations.requests_junit(),
+            destinations.requests_markdown(),
         );
         Ok((request, destinations))
     }
@@ -728,6 +734,7 @@ async fn main() -> ExitCode {
             let deadline = aggregate::AggregateDeadline::start();
             let destinations = match report_artifacts::ReportArtifactDestinations::prepare(
                 Some(arguments.output),
+                None,
                 None,
                 &[],
             ) {

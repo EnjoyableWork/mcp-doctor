@@ -191,6 +191,26 @@ pub fn parse_and_validate_report(bytes: &[u8]) -> serde_json::Value {
     validate_report_value(report)
 }
 
+pub fn parse_and_validate_markdown(bytes: &[u8]) -> String {
+    let document = std::str::from_utf8(bytes)
+        .expect("the Markdown report should be UTF-8")
+        .to_owned();
+    assert!(
+        document.starts_with("<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor diagnostic report\n"),
+        "the Markdown report should begin with its exact version marker and title"
+    );
+    assert!(document.ends_with('\n'));
+    assert!(!document.contains('\r'));
+    assert!(!document.contains('\u{1b}'));
+    assert!(!document.contains("!["));
+    let body = document
+        .strip_prefix("<!-- mcp-doctor.markdown/v1 -->\n")
+        .expect("the Markdown version marker should be present");
+    assert!(!body.contains('<'), "Markdown should not contain raw HTML");
+    assert!(!body.contains('>'), "Markdown should not contain raw HTML");
+    document
+}
+
 pub fn validate_report_value(report: serde_json::Value) -> serde_json::Value {
     let schema: serde_json::Value = serde_json::from_str(STABLE_REPORT_SCHEMA)
         .expect("the committed stable report schema should be JSON");

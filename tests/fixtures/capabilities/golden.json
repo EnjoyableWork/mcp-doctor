@@ -13,6 +13,7 @@
         "human",
         "json"
       ],
+      "artifact_reporters": [],
       "input_schema_versions": [
         "mcp-doctor.report/v1"
       ],
@@ -30,6 +31,11 @@
         "json",
         "junit"
       ],
+      "artifact_reporters": [
+        "json",
+        "junit",
+        "markdown"
+      ],
       "input_schema_versions": [],
       "output_schema_versions": [
         "mcp-doctor.report/v1"
@@ -46,6 +52,7 @@
         "human",
         "json"
       ],
+      "artifact_reporters": [],
       "input_schema_versions": [],
       "output_schema_versions": [
         "mcp-doctor.capabilities/v1"
@@ -60,6 +67,11 @@
         "human",
         "json",
         "junit"
+      ],
+      "artifact_reporters": [
+        "json",
+        "junit",
+        "markdown"
       ],
       "input_schema_versions": [
         "mcp-doctor.scenario/v1alpha1",
@@ -78,6 +90,7 @@
         "human",
         "json"
       ],
+      "artifact_reporters": [],
       "input_schema_versions": [
         "mcp-doctor.contract-snapshot/v1alpha1"
       ],
@@ -95,6 +108,11 @@
         "json",
         "junit"
       ],
+      "artifact_reporters": [
+        "json",
+        "junit",
+        "markdown"
+      ],
       "input_schema_versions": [],
       "output_schema_versions": [
         "mcp-doctor.report/v1",
@@ -110,6 +128,11 @@
         "human",
         "json",
         "junit"
+      ],
+      "artifact_reporters": [
+        "json",
+        "junit",
+        "markdown"
       ],
       "input_schema_versions": [],
       "output_schema_versions": [
@@ -269,6 +292,9 @@
     "diagnostic_report": [
       "mcp-doctor.report/v1"
     ],
+    "markdown_report": [
+      "mcp-doctor.markdown/v1"
+    ],
     "generator": [
       "mcp-doctor.generator/v1"
     ],
@@ -289,6 +315,10 @@
     {
       "name": "junit",
       "machine_readable": true
+    },
+    {
+      "name": "markdown",
+      "machine_readable": false
     }
   ],
   "exit_semantics": {

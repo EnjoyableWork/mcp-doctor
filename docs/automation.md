@@ -16,9 +16,10 @@ This command emits deterministic `mcp-doctor.capabilities/v1` JSON containing
 the product version; exact command, transport, and MCP revision matrix;
 recognized-unsupported revisions; passive selection default, modes, compiled
 modern set, exact pins, transport paths and maxima; report, scenario,
-generator, snapshot, diff, aggregate, and capability contract versions; reporter availability;
-`mcp-doctor.exit/v1`; named hard limit profiles; and compile-time process-tree
-and file-identity capabilities. Capability discovery reports only fixed compiled facts.
+generator, snapshot, diff, aggregate, Markdown artifact, and capability contract
+versions; stdout and artifact reporter availability; `mcp-doctor.exit/v1`;
+named hard limit profiles; and compile-time process-tree and file-identity
+capabilities. Capability discovery reports only fixed compiled facts.
 
 It does not inspect user configuration or host inventory, read credentials,
 start a process, resolve DNS, connect to a target, retrieve a schema, or call a
@@ -46,21 +47,39 @@ Target-facing diagnostics render the same immutable, redacted result:
 | Human | Default | Reading in a terminal |
 | JSON | `--format json` | Agents and automation |
 | JUnit | `--format junit` | CI test interfaces |
+| Markdown artifact | `--markdown-report <PATH>` | Pull-request summaries and reviewable build artifacts |
+
+Human, JSON, and JUnit are stdout selections. Markdown is artifact-only: it is
+not a `--format` value and never changes the selected stdout projection or
+process exit.
 
 JSON follows the stable, schema-backed `mcp-doctor.report/v1` contract. JUnit
-projects the same checks into conservative XML; both machine formats keep
-secrets removed. Passive `inspect` adds a typed `protocol_selection` object:
+projects the same checks into conservative XML. Markdown follows the
+deterministic `mcp-doctor.markdown/v1` projection and begins with
+`<!-- mcp-doctor.markdown/v1 -->`; all projections keep secrets removed.
+Passive `inspect` adds a typed `protocol_selection` object:
 requested mode, fixed path, selected supported revision when established, and
 bounded process-launch, lifecycle-request, notification, and fallback counts.
-The human header and JUnit properties carry the same value-free evidence.
+The human header, JUnit properties, and Markdown protocol-selection section
+carry the same value-free evidence.
 When bounded local schema meta-validation or validator construction cannot
 finish after preliminary structural gates pass, the shared result retains a
 performed `schema.contracts` check with outcome `incomplete` and
 `MCP-SCHEMA-005`. JSON includes only the phase, fixed limit name and unit,
 observed count, maximum count, and structural location. JUnit projects that
-performed incomplete check as skipped/incomplete rather than a failure or
-pass. A genuine failure in the same report still takes precedence while the
-incomplete evidence remains visible.
+performed incomplete check as skipped/incomplete rather than a failure or pass;
+Markdown identifies the same incomplete check and safe evidence. A genuine
+failure in the same report still takes precedence while the incomplete evidence
+remains visible.
+
+The Markdown artifact includes the product and report contract versions,
+selected and negotiated protocol revisions when present, outcome and stable
+exit meaning, complete summary counts, primary diagnosis, independent safety
+findings, causal skips, fixed corrective actions, checks, and the effective
+limit profile and values. It uses stable headings and ordering, LF line endings,
+and one final newline. Apart from its required version comment, it contains no
+raw HTML, timestamps, local paths, target identifiers, untrusted values,
+terminal escapes, remote images, or external assets.
 
 Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
@@ -74,26 +93,29 @@ Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
 The command-specific sections define the exact outcome behind each code.
 
-Keep the stdout report while also writing both machine projections from the
-same diagnostic run with explicit new-file destinations:
+Keep the stdout report while also writing all three artifact projections from
+the same diagnostic run with explicit new-file destinations:
 
 ```bash
 mcp-doctor inspect \
   --json-report artifacts/mcp-doctor.json \
   --junit-report artifacts/mcp-doctor.xml \
+  --markdown-report artifacts/mcp-doctor.md \
   -- node ./dist/server.js --stdio
 ```
 
-`--json-report` and `--junit-report` also apply to `check`, `break`, and
-`reject`. Each parent directory must already exist, each destination must be
-distinct and not already exist, and `-` is not a file destination.
-`mcp-doctor` validates those conditions before target or network activity,
-runs the diagnostic once, and renders every requested report from one
-immutable redacted result.
+`--json-report`, `--junit-report`, and `--markdown-report` also apply to
+`check`, `break`, and `reject`. Each parent directory must already exist, each
+destination must be distinct and not already exist, and `-` is not a file
+destination. `mcp-doctor` validates those conditions before target or network
+activity, runs the diagnostic once, and renders every requested report from one
+immutable redacted result in fixed JSON, JUnit, Markdown order under one shared
+aggregate output bound.
 
-A failed or incomplete diagnostic still publishes both files when reporting
-succeeds and retains exit `1` or `3`; a render, write, publication, or cleanup
-failure cannot report success and exits `4`.
+A failed or incomplete diagnostic still publishes every requested file when
+reporting succeeds and retains exit `1` or `3`; a render, write, publication,
+rollback, or cleanup failure cannot report success, removes every
+identity-owned partial artifact, and exits `4`.
 
 ## Offline diagnostic aggregates
 
@@ -163,6 +185,13 @@ synthetic build step, the executable and literal arguments after `--`, and the
 the exact `mcp-doctor` version, immutable action commits, explicit
 `contents: read` permission, fixed report destinations, report verification,
 and unconditional upload behavior under review when updating the copy.
+
+The exact `0.3.3` binary used by this released starter predates the Markdown
+artifact contract, so this workflow deliberately requests only JSON and JUnit.
+A copied workflow may add `--markdown-report` and upload that third file only
+after its pinned binary advertises `markdown` under the diagnostic command's
+`artifact_reporters` capability and `mcp-doctor.markdown/v1` under
+`schema_versions.markdown_report`.
 
 The example grants no tool-call, side-effect, credential, private-network,
 cleartext, target-discovery, production-target, or external-schema authority.

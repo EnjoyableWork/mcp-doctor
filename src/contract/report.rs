@@ -13,6 +13,7 @@ use super::protocol::{KnownRevision, ProtocolSelectionEvidence, SupportedRevisio
 use super::redaction::REDACTION_MARKER;
 
 pub(crate) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
+pub(crate) const MARKDOWN_REPORT_VERSION: &str = "mcp-doctor.markdown/v1";
 const AGGREGATE_REPORT_BYTES: u64 = 8_388_608;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -20,12 +21,14 @@ pub(crate) enum ReportFormat {
     Human,
     Json,
     Junit,
+    Markdown,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum ReportArtifactFormat {
     Json,
     Junit,
+    Markdown,
 }
 
 impl ReportArtifactFormat {
@@ -33,6 +36,7 @@ impl ReportArtifactFormat {
         match self {
             Self::Json => ReportFormat::Json,
             Self::Junit => ReportFormat::Junit,
+            Self::Markdown => ReportFormat::Markdown,
         }
     }
 }
@@ -42,6 +46,7 @@ pub(crate) struct ReportRequest {
     stdout: ReportFormat,
     json_artifact: bool,
     junit_artifact: bool,
+    markdown_artifact: bool,
 }
 
 impl ReportRequest {
@@ -49,16 +54,18 @@ impl ReportRequest {
         stdout: ReportFormat,
         json_artifact: bool,
         junit_artifact: bool,
+        markdown_artifact: bool,
     ) -> Self {
         Self {
             stdout,
             json_artifact,
             junit_artifact,
+            markdown_artifact,
         }
     }
 
     pub(crate) const fn stdout_only(stdout: ReportFormat) -> Self {
-        Self::new(stdout, false, false)
+        Self::new(stdout, false, false, false)
     }
 }
 
@@ -207,6 +214,16 @@ pub(crate) enum ExitStatus {
 impl ExitStatus {
     pub(crate) const fn code(self) -> u8 {
         self as u8
+    }
+
+    pub(crate) const fn meaning(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::DiagnosticFailure => "unsuccessful_result",
+            Self::InvocationError => "invalid_invocation_or_input",
+            Self::Incomplete => "incomplete_evidence",
+            Self::InternalError => "internal_or_output_failure",
+        }
     }
 }
 
@@ -622,6 +639,7 @@ pub(super) fn render_report(
         ReportFormat::Human => HumanReporter::try_render(report),
         ReportFormat::Json => JsonReporter::render(report),
         ReportFormat::Junit => JunitReporter::render(report),
+        ReportFormat::Markdown => MarkdownReporter::render(report),
     }
 }
 
@@ -648,10 +666,11 @@ fn render_reports_with_limit(
             maximum: aggregate_maximum,
         });
     }
-    let mut artifacts = Vec::with_capacity(2);
+    let mut artifacts = Vec::with_capacity(3);
     for (requested, format) in [
         (request.json_artifact, ReportArtifactFormat::Json),
         (request.junit_artifact, ReportArtifactFormat::Junit),
+        (request.markdown_artifact, ReportArtifactFormat::Markdown),
     ] {
         if !requested {
             continue;
@@ -1109,6 +1128,555 @@ fn write_human_rule(output: &mut BoundedOutput, violation: RuleViolation) {
             .expect("the bounded report writer records limit failures");
     }
     output.push('\n');
+}
+
+pub(super) struct MarkdownReporter;
+
+impl MarkdownReporter {
+    fn render(report: &DiagnosticReport) -> Result<String, ReportRenderError> {
+        let mut output = BoundedOutput::for_report(report);
+        writeln!(output, "<!-- {MARKDOWN_REPORT_VERSION} -->")
+            .expect("the bounded report writer records limit failures");
+        writeln!(output, "# mcp-doctor diagnostic report")
+            .expect("the bounded report writer records limit failures");
+        output.push('\n');
+        writeln!(output, "| Field | Value |")
+            .expect("the bounded report writer records limit failures");
+        writeln!(output, "| --- | --- |")
+            .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "| Product | `mcp-doctor {}` |",
+            env!("CARGO_PKG_VERSION")
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(output, "| Report contract | `{REPORT_SCHEMA_VERSION}` |")
+            .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "| Markdown contract | `{MARKDOWN_REPORT_VERSION}` |"
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "| Selected protocol revision | `{}` |",
+            report.revision()
+        )
+        .expect("the bounded report writer records limit failures");
+        match report.negotiated_revision() {
+            Some(revision) => writeln!(
+                output,
+                "| Negotiated protocol revision | `{}` |",
+                revision.as_str()
+            ),
+            None => writeln!(output, "| Negotiated protocol revision | Not present |"),
+        }
+        .expect("the bounded report writer records limit failures");
+        writeln!(output, "| Outcome | `{}` |", report.outcome().as_str())
+            .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "| Exit | `{}` (`{}`) |",
+            report.exit_status().code(),
+            report.exit_status().meaning()
+        )
+        .expect("the bounded report writer records limit failures");
+        writeln!(
+            output,
+            "| Limit profile | `{}` |",
+            report.limit_profile().as_str()
+        )
+        .expect("the bounded report writer records limit failures");
+
+        output.push('\n');
+        write_markdown_summary(&mut output, report.summary());
+        output.push('\n');
+        write_markdown_protocol_selection(&mut output, report);
+        output.push('\n');
+        write_markdown_diagnosis(&mut output, report);
+        output.push('\n');
+        write_markdown_causal_skips(&mut output, report);
+        output.push('\n');
+        write_markdown_limits(
+            &mut output,
+            report.limit_profile(),
+            report.limits().values(),
+        );
+        output.push('\n');
+        write_markdown_checks(&mut output, report);
+        output.finish()
+    }
+}
+
+fn write_markdown_summary(output: &mut BoundedOutput, summary: ReportSummary) {
+    writeln!(output, "## Summary").expect("the bounded report writer records limit failures");
+    output.push('\n');
+    writeln!(output, "| Measure | Count |")
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "| --- | ---: |").expect("the bounded report writer records limit failures");
+    for (name, count) in [
+        ("Checks", summary.checks),
+        ("Required", summary.required),
+        ("Optional", summary.optional),
+        ("Performed", summary.performed),
+        ("Skipped", summary.skipped),
+        ("Passed", summary.passed),
+        ("Warned", summary.warned),
+        ("Incomplete", summary.incomplete),
+        ("Failed", summary.failed),
+        ("Required skipped", summary.required_skipped),
+        ("Info findings", summary.findings.info),
+        ("Warning findings", summary.findings.warning),
+        ("Error findings", summary.findings.error),
+        ("Critical findings", summary.findings.critical),
+    ] {
+        writeln!(output, "| {name} | {count} |")
+            .expect("the bounded report writer records limit failures");
+    }
+}
+
+fn write_markdown_protocol_selection(output: &mut BoundedOutput, report: &DiagnosticReport) {
+    writeln!(output, "## Protocol selection")
+        .expect("the bounded report writer records limit failures");
+    output.push('\n');
+    let Some(selection) = report.protocol_selection() else {
+        writeln!(output, "No passive selection evidence is present.")
+            .expect("the bounded report writer records limit failures");
+        return;
+    };
+    writeln!(output, "- Mode: `{}`", selection.mode().as_str())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Path: `{}`", selection.path().as_str())
+        .expect("the bounded report writer records limit failures");
+    match selection.selected_revision() {
+        Some(revision) => writeln!(output, "- Selected revision: `{revision}`"),
+        None => writeln!(output, "- Selected revision: Not established"),
+    }
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Bounded work: `process_launches={}`, `lifecycle_requests={}`, `lifecycle_notifications={}`, `fallbacks={}`",
+        selection.process_launches(),
+        selection.lifecycle_requests(),
+        selection.lifecycle_notifications(),
+        selection.fallbacks()
+    )
+    .expect("the bounded report writer records limit failures");
+}
+
+fn report_finding<'a>(report: &'a DiagnosticReport, reference: &FindingReference) -> &'a Finding {
+    report
+        .checks()
+        .iter()
+        .find(|check| check.id() == reference.check())
+        .and_then(CheckResult::findings)
+        .and_then(|findings| {
+            findings.iter().find(|finding| {
+                finding.code() == reference.code() && finding.location() == reference.location()
+            })
+        })
+        .expect("a report finding reference must resolve within the same immutable report")
+}
+
+fn write_markdown_diagnosis(output: &mut BoundedOutput, report: &DiagnosticReport) {
+    writeln!(output, "## Primary diagnosis")
+        .expect("the bounded report writer records limit failures");
+    output.push('\n');
+    if let Some(diagnosis) = report.primary_diagnosis() {
+        writeln!(output, "- Check: `{}`", diagnosis.check())
+            .expect("the bounded report writer records limit failures");
+        for reference in diagnosis.findings() {
+            let finding = report_finding(report, reference);
+            writeln!(
+                output,
+                "- `{}` at `{}`: {}",
+                reference.code().as_str(),
+                reference.location(),
+                finding.remediation()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+    } else {
+        writeln!(output, "None.").expect("the bounded report writer records limit failures");
+    }
+
+    output.push('\n');
+    writeln!(output, "## Independent safety findings")
+        .expect("the bounded report writer records limit failures");
+    output.push('\n');
+    if report.independent_findings().is_empty() {
+        writeln!(output, "None.").expect("the bounded report writer records limit failures");
+        return;
+    }
+    for reference in report.independent_findings() {
+        let finding = report_finding(report, reference);
+        writeln!(
+            output,
+            "- `{}` in `{}` at `{}`: {}",
+            reference.code().as_str(),
+            reference.check(),
+            reference.location(),
+            finding.remediation()
+        )
+        .expect("the bounded report writer records limit failures");
+    }
+}
+
+fn write_markdown_causal_skips(output: &mut BoundedOutput, report: &DiagnosticReport) {
+    writeln!(output, "## Causal skips").expect("the bounded report writer records limit failures");
+    output.push('\n');
+    let mut wrote_skip = false;
+    for check in report.checks() {
+        let Some(reason) = check.skip_reason().filter(|reason| reason.is_causal()) else {
+            continue;
+        };
+        wrote_skip = true;
+        write!(
+            output,
+            "- `{}` (`{}`) was skipped: {}. Blocked by",
+            check.id(),
+            check.requirement().as_str(),
+            reason.description()
+        )
+        .expect("the bounded report writer records limit failures");
+        let diagnosis = report
+            .primary_diagnosis()
+            .expect("the report contract requires a diagnosis for a causal skip");
+        write!(output, " `{}` (", diagnosis.check())
+            .expect("the bounded report writer records limit failures");
+        for (index, finding) in diagnosis.findings().iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            write!(
+                output,
+                "`{}` at `{}`",
+                finding.code().as_str(),
+                finding.location()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+        writeln!(output, ").").expect("the bounded report writer records limit failures");
+    }
+    if !wrote_skip {
+        writeln!(output, "None.").expect("the bounded report writer records limit failures");
+    }
+}
+
+fn write_markdown_limits(
+    output: &mut BoundedOutput,
+    profile: DiagnosticLimitProfile,
+    values: LimitValues,
+) {
+    writeln!(output, "## Effective limits")
+        .expect("the bounded report writer records limit failures");
+    output.push('\n');
+    writeln!(output, "- Profile: `{}`", profile.as_str())
+        .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Time: `startup_ms={}`, `discovery_ms={}`, `request_ms={}`, `response_ms={}`, `shutdown_grace_ms={}`, `total_ms={}`",
+        values.startup_ms,
+        values.discovery_ms,
+        values.request_ms,
+        values.response_ms,
+        values.shutdown_grace_ms,
+        values.total_ms
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- I/O: `message_bytes={}`, `stdout_bytes={}`, `stderr_bytes={}`, `aggregate_output_bytes={}`, `message_count={}`",
+        values.message_bytes,
+        values.stdout_bytes,
+        values.stderr_bytes,
+        values.aggregate_output_bytes,
+        values.message_count
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Network: `endpoint_bytes={}`, `resolution_addresses={}`, `resolution_count={}`, `trust_bytes={}`, `trust_certificates={}`",
+        values.endpoint_bytes,
+        values.resolution_addresses,
+        values.resolution_count,
+        values.trust_bytes,
+        values.trust_certificates
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Request fields: `request_fields={}`, `request_field_name_bytes={}`, `request_field_value_bytes={}`, `request_fields_bytes={}`",
+        values.request_fields,
+        values.request_field_name_bytes,
+        values.request_field_value_bytes,
+        values.request_fields_bytes
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Response fields: `response_fields={}`, `response_field_name_bytes={}`, `response_field_value_bytes={}`, `response_fields_bytes={}`",
+        values.response_fields,
+        values.response_field_name_bytes,
+        values.response_field_value_bytes,
+        values.response_fields_bytes
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Discovery: `protocol_revisions={}`, `catalog_items={}`, `report_findings={}`, `report_bytes={}`",
+        values.protocol_revisions,
+        values.catalog_items,
+        values.report_findings,
+        values.report_bytes
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Schema: `schema_bytes={}`, `instance_bytes={}`, `schema_nodes={}`, `schema_depth={}`, `schema_ref_depth={}`, `schema_evaluation_steps={}`, `validation_errors={}`",
+        values.schema_bytes,
+        values.instance_bytes,
+        values.schema_nodes,
+        values.schema_depth,
+        values.schema_ref_depth,
+        values.schema_evaluation_steps,
+        values.validation_errors
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Generation: `active_cases={}`, `generation_attempts={}`, `generation_candidates={}`, `generation_steps={}`",
+        values.active_cases,
+        values.generation_attempts,
+        values.generation_candidates,
+        values.generation_steps
+    )
+    .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Activity: `redirects={}`, `retries={}`, `concurrency={}`",
+        values.redirects, values.retries, values.concurrency
+    )
+    .expect("the bounded report writer records limit failures");
+}
+
+fn write_markdown_checks(output: &mut BoundedOutput, report: &DiagnosticReport) {
+    writeln!(output, "## Checks").expect("the bounded report writer records limit failures");
+    for (check_index, check) in report.checks().iter().enumerate() {
+        output.push('\n');
+        writeln!(output, "### {}. `{}`", check_index + 1, check.id())
+            .expect("the bounded report writer records limit failures");
+        output.push('\n');
+        writeln!(output, "- Requirement: `{}`", check.requirement().as_str())
+            .expect("the bounded report writer records limit failures");
+        if let Some(outcome) = check.outcome() {
+            writeln!(output, "- State: `performed`")
+                .expect("the bounded report writer records limit failures");
+            writeln!(output, "- Outcome: `{}`", outcome.as_str())
+                .expect("the bounded report writer records limit failures");
+            write_markdown_reproduction(output, check.reproduction());
+            let findings = check.findings().expect("performed check findings exist");
+            if findings.is_empty() {
+                writeln!(output, "- Findings: None.")
+                    .expect("the bounded report writer records limit failures");
+            } else {
+                for (finding_index, finding) in findings.iter().enumerate() {
+                    write_markdown_finding(output, report, check, finding, finding_index + 1);
+                }
+            }
+        } else {
+            let reason = check.skip_reason().expect("skipped check has a reason");
+            writeln!(output, "- State: `skipped`")
+                .expect("the bounded report writer records limit failures");
+            writeln!(output, "- Skip reason: `{}`", reason.as_str())
+                .expect("the bounded report writer records limit failures");
+            writeln!(output, "- Explanation: {}", reason.description())
+                .expect("the bounded report writer records limit failures");
+            if reason.is_causal() {
+                let diagnosis = report
+                    .primary_diagnosis()
+                    .expect("the report contract requires a diagnosis for a causal skip");
+                writeln!(output, "- Blocked by check: `{}`", diagnosis.check())
+                    .expect("the bounded report writer records limit failures");
+            }
+            write_markdown_reproduction(output, check.reproduction());
+        }
+    }
+}
+
+fn write_markdown_reproduction(
+    output: &mut BoundedOutput,
+    reproduction: Option<&GeneratedCaseReproduction>,
+) {
+    let Some(reproduction) = reproduction else {
+        return;
+    };
+    let input = reproduction.input();
+    write!(
+        output,
+        "- Reproduction: `generator={}`, `seed={}`",
+        reproduction.generator(),
+        reproduction.seed()
+    )
+    .expect("the bounded report writer records limit failures");
+    if let Some(mutation_kind) = reproduction.mutation_kind() {
+        write!(output, ", `mutation={mutation_kind}`")
+            .expect("the bounded report writer records limit failures");
+    }
+    writeln!(
+        output,
+        ", `root={}`, `bytes={}`, `nodes={}`, `depth={}`, `null={}`, `boolean={}`, `number={}`, `string={}`, `array={}`, `array_items={}`, `object={}`, `object_members={}`",
+        input.root().as_str(),
+        input.byte_count(),
+        input.node_count(),
+        input.maximum_depth(),
+        input.nulls(),
+        input.booleans(),
+        input.numbers(),
+        input.strings(),
+        input.arrays(),
+        input.array_items(),
+        input.objects(),
+        input.object_members()
+    )
+    .expect("the bounded report writer records limit failures");
+}
+
+fn write_markdown_finding(
+    output: &mut BoundedOutput,
+    report: &DiagnosticReport,
+    check: &CheckResult,
+    finding: &Finding,
+    finding_index: usize,
+) {
+    output.push('\n');
+    writeln!(
+        output,
+        "#### Finding {finding_index}: `{}`",
+        finding.code().as_str()
+    )
+    .expect("the bounded report writer records limit failures");
+    output.push('\n');
+    writeln!(output, "- Severity: `{}`", finding.severity().as_str())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Protocol revision: `{}`", finding.revision())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Location: `{}`", finding.location())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- What: {}", finding.code().title())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Why: {}", finding.impact())
+        .expect("the bounded report writer records limit failures");
+    write_markdown_evidence(output, finding);
+    writeln!(output, "- Expected: {}", finding.expectation())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Corrective action: {}", finding.remediation())
+        .expect("the bounded report writer records limit failures");
+    writeln!(output, "- Reference: {}", finding.reference())
+        .expect("the bounded report writer records limit failures");
+    let primary = report.primary_diagnosis().is_some_and(|diagnosis| {
+        diagnosis.check() == check.id()
+            && diagnosis.findings().iter().any(|reference| {
+                reference.code() == finding.code() && reference.location() == finding.location()
+            })
+    });
+    writeln!(output, "- Primary diagnosis: `{primary}`")
+        .expect("the bounded report writer records limit failures");
+    writeln!(
+        output,
+        "- Independent safety finding: `{}`",
+        finding.is_independent_safety()
+    )
+    .expect("the bounded report writer records limit failures");
+}
+
+fn write_markdown_evidence(output: &mut BoundedOutput, finding: &Finding) {
+    match finding.evidence() {
+        FindingEvidence::None => {
+            writeln!(output, "- Evidence: None.")
+                .expect("the bounded report writer records limit failures");
+        }
+        FindingEvidence::RevisionAdvertisement(summary) => {
+            writeln!(
+                output,
+                "- Evidence: `required_revision={}`, `offered={}`, `recognized_legacy={}`, `unknown_date={}`, `opaque={}`",
+                finding.revision(),
+                summary.offered(),
+                summary.recognized_legacy(),
+                summary.unknown_date(),
+                summary.opaque()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+        FindingEvidence::RedactedObservation(observation) => {
+            writeln!(output, "- Evidence: observed {observation}")
+                .expect("the bounded report writer records limit failures");
+        }
+        FindingEvidence::LimitViolation(violation) => {
+            writeln!(
+                output,
+                "- Evidence: `limit={}`, `unit={}`, `observed={}`, `maximum={}`",
+                violation.kind().as_str(),
+                violation.kind().unit().as_str(),
+                violation.observed(),
+                violation.maximum()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+        FindingEvidence::SchemaValidationLimit { phase, violation } => {
+            writeln!(
+                output,
+                "- Evidence: `phase={}`, `limit={}`, `unit={}`, `observed={}`, `maximum={}`",
+                phase.as_str(),
+                violation.kind().as_str(),
+                violation.kind().unit().as_str(),
+                violation.observed(),
+                violation.maximum()
+            )
+            .expect("the bounded report writer records limit failures");
+        }
+        FindingEvidence::CredentialLiteral {
+            keyword,
+            literal_count,
+        } => {
+            writeln!(
+                output,
+                "- Evidence: `keyword={}`, `literal_count={literal_count}`",
+                keyword.as_str()
+            )
+            .expect("the bounded report writer records credential-literal evidence");
+        }
+        FindingEvidence::RuleViolation(violation) => {
+            write!(output, "- Evidence: `rule={}`", violation.as_str())
+                .expect("the bounded report writer records limit failures");
+            if let Some(expected) = violation.expected_shape() {
+                write!(output, ", `expected={}`", expected.as_str())
+                    .expect("the bounded report writer records limit failures");
+            }
+            if let Some(observed) = violation.observed() {
+                write!(output, ", `observed={}`", observed.as_str())
+                    .expect("the bounded report writer records limit failures");
+            }
+            if let Some(error_count) = violation.error_count() {
+                write!(output, ", `validation_errors={error_count}`")
+                    .expect("the bounded report writer records limit failures");
+            }
+            if let Some(status) = violation.http_status() {
+                write!(output, ", `http_status={status}`")
+                    .expect("the bounded report writer records limit failures");
+            }
+            output.push('\n');
+        }
+        FindingEvidence::JsonRpcError(error) => {
+            write!(output, "- Evidence: `json_rpc_error={}`", error.as_str())
+                .expect("the bounded report writer records limit failures");
+            if let Some(code) = error.code() {
+                write!(output, ", `code={code}`")
+                    .expect("the bounded report writer records limit failures");
+            }
+            output.push('\n');
+        }
+    }
 }
 
 pub(super) struct JunitReporter;
@@ -2141,8 +2709,9 @@ impl JsonEvidence {
 mod tests {
     use super::{
         BoundedOutput, DiagnosticReport, ExitStatus, HumanReporter, JsonReporter, JunitReporter,
-        OverallOutcome, ReportArtifactFormat, ReportContractError, ReportFormat, ReportRenderError,
-        ReportRequest, render_reports, render_reports_with_limit, write_xml_escaped,
+        MarkdownReporter, OverallOutcome, ReportArtifactFormat, ReportContractError, ReportFormat,
+        ReportRenderError, ReportRequest, render_reports, render_reports_with_limit,
+        write_xml_escaped,
     };
     use crate::contract::limits::{
         DiagnosticLimitProfile, DiagnosticLimits, LimitKind, LimitValues, LimitViolation,
@@ -2283,6 +2852,8 @@ mod tests {
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
         let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        let markdown =
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
         let json_value: serde_json::Value =
             serde_json::from_str(&json).expect("the JSON reporter should emit one value");
 
@@ -2298,6 +2869,10 @@ mod tests {
             junit,
             include_str!("../../tests/fixtures/contracts/failed-report.junit.xml")
         );
+        assert_eq!(
+            markdown,
+            include_str!("../../tests/fixtures/contracts/failed-report.md")
+        );
         assert_eq!(report.outcome(), OverallOutcome::Failed);
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
         assert_stable_report(&json_value);
@@ -2311,6 +2886,8 @@ mod tests {
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
         let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        let markdown =
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
         let value: serde_json::Value =
             serde_json::from_str(&json).expect("the JSON reporter should emit one value");
 
@@ -2322,14 +2899,51 @@ mod tests {
         assert_eq!(value["limits"]["startup_ms"], 30_000);
         assert_eq!(value["limits"]["total_ms"], 240_000);
         assert!(junit.contains("limits.profile=slow-start"));
+        assert!(markdown.contains("| Limit profile | `slow-start` |"));
+        assert!(markdown.contains("`startup_ms=30000`"));
+        assert!(markdown.contains("`total_ms=240000`"));
         assert_stable_report(&value);
         assert_common_junit_document(&junit, 3, 1, 1);
     }
 
     #[test]
+    fn markdown_pass_is_byte_stable_and_contains_no_active_content() {
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::DEFAULTS,
+            vec![passing_revision_check()],
+        )
+        .expect("the passing Markdown fixture should satisfy the report contract");
+        let first = MarkdownReporter::render(&report).expect("the Markdown report should fit");
+        let second = MarkdownReporter::render(&report).expect("the Markdown report should repeat");
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first,
+            include_str!("../../tests/fixtures/contracts/passed-report.md")
+        );
+        assert!(first.starts_with("<!-- mcp-doctor.markdown/v1 -->\n"));
+        assert!(first.ends_with('\n'));
+        assert!(!first.contains('\r'));
+        assert!(!first.contains('\u{1b}'));
+        assert!(!first.contains("!["));
+        let body = first
+            .strip_prefix("<!-- mcp-doctor.markdown/v1 -->\n")
+            .expect("the version marker should be exact");
+        assert!(!body.contains('<'));
+        assert!(!body.contains('>'));
+        assert!(first.contains("| Outcome | `passed` |"));
+        assert!(first.contains("| Exit | `0` (`success`) |"));
+        assert!(first.contains("| Checks | 1 |"));
+        assert!(first.contains("- Findings: None."));
+        assert!(first.contains("## Primary diagnosis\n\nNone."));
+        assert!(first.contains("## Causal skips\n\nNone."));
+    }
+
+    #[test]
     fn one_report_fans_out_in_fixed_order_under_one_aggregate_bound() {
         let report = synthetic_failed_report();
-        let request = ReportRequest::new(ReportFormat::Human, true, true);
+        let request = ReportRequest::new(ReportFormat::Human, true, true, true);
         let rendered = render_reports(&report, request)
             .expect("the synthetic report projections should fit their bounds");
 
@@ -2337,7 +2951,7 @@ mod tests {
             rendered.stdout,
             include_str!("../../tests/fixtures/contracts/failed-report.txt")
         );
-        assert_eq!(rendered.artifacts.len(), 2);
+        assert_eq!(rendered.artifacts.len(), 3);
         assert_eq!(rendered.artifacts[0].format, ReportArtifactFormat::Json);
         assert_eq!(
             rendered.artifacts[0].output,
@@ -2347,6 +2961,11 @@ mod tests {
         assert_eq!(
             rendered.artifacts[1].output,
             include_str!("../../tests/fixtures/contracts/failed-report.junit.xml")
+        );
+        assert_eq!(rendered.artifacts[2].format, ReportArtifactFormat::Markdown);
+        assert_eq!(
+            rendered.artifacts[2].output,
+            include_str!("../../tests/fixtures/contracts/failed-report.md")
         );
 
         let aggregate_bytes = rendered
@@ -2396,10 +3015,11 @@ mod tests {
         assert_eq!(HumanReporter::try_render(&report), expected);
         assert_eq!(JsonReporter::render(&report), expected);
         assert_eq!(JunitReporter::render(&report), expected);
+        assert_eq!(MarkdownReporter::render(&report), expected);
     }
 
     #[test]
-    fn junit_preserves_primary_independent_and_causal_relationships() {
+    fn junit_and_markdown_preserve_primary_independent_and_causal_relationships() {
         let cleanup = Finding::cleanup_failed(
             SupportedRevision::CURRENT,
             Location::root(LocationField::Process),
@@ -2435,6 +3055,11 @@ mod tests {
         )
         .expect("the relationship fixture should satisfy the report contract");
         let junit = JunitReporter::render(&report).expect("the JUnit report should fit");
+        let markdown = MarkdownReporter::render(&report).expect("the Markdown report should fit");
+        assert_eq!(
+            markdown,
+            include_str!("../../tests/fixtures/contracts/relationship-report.md")
+        );
 
         assert!(junit.contains("finding[0].independent_safety=true"));
         assert!(junit.contains("finding[0].primary=true"));
@@ -2442,6 +3067,14 @@ mod tests {
         assert!(junit.contains("blocked_by.finding[0].code=MCP-CATALOG-001"));
         assert!(junit.contains("report_outcome=failed\nexit_code=1"));
         assert_common_junit_document(&junit, 3, 2, 1);
+        assert!(markdown.contains("## Primary diagnosis"));
+        assert!(markdown.contains("- Check: `discovery.catalogs`"));
+        assert!(markdown.contains("`MCP-CATALOG-001` at `tools`"));
+        assert!(markdown.contains("## Independent safety findings"));
+        assert!(markdown.contains("`MCP-SAFETY-001` in `transport.stdio` at `process`"));
+        assert!(markdown.contains("## Causal skips"));
+        assert!(markdown.contains("`runtime.tools` (`required`) was skipped"));
+        assert!(markdown.contains("Blocked by `discovery.catalogs`"));
     }
 
     #[test]
@@ -2500,10 +3133,11 @@ mod tests {
         )
         .expect("redacted synthetic report should satisfy the contract");
         let rendered = format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
             HumanReporter::render(&report),
             JsonReporter::render(&report).expect("typed report should serialize"),
-            JunitReporter::render(&report).expect("typed report should serialize as JUnit")
+            JunitReporter::render(&report).expect("typed report should serialize as JUnit"),
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown")
         );
 
         assert!(rendered.contains("[REDACTED]"));
@@ -2539,8 +3173,9 @@ mod tests {
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
         let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
-
-        for rendered in [&human, &json, &junit] {
+        let markdown =
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
+        for rendered in [&human, &json, &junit, &markdown] {
             assert!(rendered.contains("MCP-CATALOG-001"));
             assert!(rendered.contains("prompts[0].arguments"));
             assert!(rendered.contains("expected_shape"));
@@ -2652,7 +3287,13 @@ mod tests {
         let human = HumanReporter::render(&report);
         let json = JsonReporter::render(&report).expect("typed report should serialize");
         let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
-        for rendered in [&human, &json, &junit] {
+        let markdown =
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
+        assert_eq!(
+            markdown,
+            include_str!("../../tests/fixtures/contracts/incomplete-report.md")
+        );
+        for rendered in [&human, &json, &junit, &markdown] {
             assert!(rendered.contains("MCP-SCHEMA-005"));
             assert!(rendered.contains("compile_construction"));
             assert!(rendered.contains("schema_evaluation_steps"));
@@ -2723,10 +3364,11 @@ mod tests {
         )
         .expect("unsupported revision report should satisfy the contract");
         let rendered = format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
             HumanReporter::render(&report),
             JsonReporter::render(&report).expect("typed report should serialize"),
-            JunitReporter::render(&report).expect("typed report should serialize as JUnit")
+            JunitReporter::render(&report).expect("typed report should serialize as JUnit"),
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown")
         );
 
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);

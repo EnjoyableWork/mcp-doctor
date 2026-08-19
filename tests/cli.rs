@@ -78,6 +78,8 @@ fn inspect_help_documents_local_and_remote_target_boundaries() {
     assert!(stdout.contains("[possible values: default, slow-start]"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--markdown-report <PATH>"));
+    assert!(stdout.contains("mcp-doctor.markdown/v1"));
     assert!(stdout.contains("--protocol-version <PROTOCOL_VERSION>"));
     assert!(stdout.contains("--snapshot <PATH>"));
     assert!(stdout.contains("--allow-sensitive-snapshot <EXACT-PATH>"));
@@ -112,6 +114,7 @@ fn diff_help_is_explicitly_local_and_has_only_human_or_json_output() {
         "--tls-ca-file",
         "--json-report",
         "--junit-report",
+        "--markdown-report",
         "--limit-profile",
     ] {
         assert!(
@@ -142,6 +145,7 @@ fn aggregate_help_is_explicitly_offline_bounded_and_requires_an_artifact() {
         "--tls-ca-file",
         "--json-report",
         "--junit-report",
+        "--markdown-report",
         "--scenario",
         "--target",
         "--limit-profile",
@@ -270,21 +274,23 @@ fn inspect_requires_exactly_one_local_or_remote_target() {
 
 #[test]
 fn inspect_rejects_an_unknown_report_format_before_starting_a_target() {
-    let output = run_cli(&[
-        "inspect",
-        "--format",
-        "xml",
-        "--",
-        "synthetic-target-must-not-start",
-    ]);
+    for format in ["xml", "markdown"] {
+        let output = run_cli(&[
+            "inspect",
+            "--format",
+            format,
+            "--",
+            "synthetic-target-must-not-start",
+        ]);
 
-    assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
 
-    let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
-    assert!(stderr.contains("invalid value 'xml'"));
-    assert!(stderr.contains("[possible values: human, json, junit]"));
-    assert!(!stderr.contains("No such file"));
+        let stderr = String::from_utf8(output.stderr).expect("error output should be UTF-8");
+        assert!(stderr.contains(&format!("invalid value '{format}'")));
+        assert!(stderr.contains("[possible values: human, json, junit]"));
+        assert!(!stderr.contains("No such file"));
+    }
 }
 
 #[test]
@@ -338,6 +344,7 @@ fn check_help_documents_every_redundant_active_gate() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--markdown-report <PATH>"));
     assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
     assert!(stdout.contains("[possible values: default, slow-start]"));
 }
@@ -392,6 +399,7 @@ fn break_help_documents_selection_consent_effect_seed_and_case_bounds() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--markdown-report <PATH>"));
     assert!(stdout.contains("--limit-profile <LIMIT_PROFILE>"));
     assert!(stdout.contains("[possible values: default, slow-start]"));
 }
@@ -506,6 +514,7 @@ fn reject_help_documents_fixed_current_revision_authority() {
     assert!(stdout.contains("--allow-credentials-to <EXACT-URL>"));
     assert!(stdout.contains("--json-report <PATH>"));
     assert!(stdout.contains("--junit-report <PATH>"));
+    assert!(stdout.contains("--markdown-report <PATH>"));
     assert!(!stdout.contains("--limit-profile"));
 }
 
