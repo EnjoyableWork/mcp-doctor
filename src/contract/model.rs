@@ -178,6 +178,7 @@ pub(super) enum FindingCode {
     CatalogMethodRejected,
     ToolDescriptionMissingOrBlank,
     ToolDescriptionPlaceholderOrNameOnly,
+    CredentialLiteralExposed,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
     AmbiguousSchemaDialect,
@@ -233,6 +234,7 @@ impl FindingCode {
             Self::CatalogMethodRejected => "MCP-CATALOG-004",
             Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
             Self::ToolDescriptionPlaceholderOrNameOnly => "MCP-QUALITY-003",
+            Self::CredentialLiteralExposed => "MCP-SECURITY-001",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
@@ -287,6 +289,7 @@ impl FindingCode {
             | Self::DuplicateCatalogIdentifier
             | Self::PaginationCursorRepeated
             | Self::CatalogMethodRejected
+            | Self::CredentialLiteralExposed
             | Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked
@@ -376,6 +379,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => "An advertised tool has no usable description.",
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "An advertised tool description provides no selection guidance."
+            }
+            Self::CredentialLiteralExposed => {
+                "An advertised input schema embeds a credential-like string literal."
             }
             Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
             Self::UnsupportedSchemaDialect => {
@@ -512,6 +518,9 @@ impl FindingCode {
             }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Agents may mistake a placeholder or repeated name for usable selection guidance."
+            }
+            Self::CredentialLiteralExposed => {
+                "An agent may copy or submit the advertised literal as if it were safe input."
             }
             Self::SchemaContractInvalid => {
                 "Clients cannot safely construct or validate values from this schema."
@@ -663,6 +672,9 @@ impl FindingCode {
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Each advertised tool should describe what it does and when to select it instead of using a placeholder or repeating its name."
             }
+            Self::CredentialLiteralExposed => {
+                "Credential-like input properties must not advertise non-empty string literals through default, const, examples, or enum."
+            }
             Self::SchemaContractInvalid => {
                 "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects whose patterns use the supported linear-time subset."
             }
@@ -810,6 +822,9 @@ impl FindingCode {
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Replace the placeholder or name-only description with what the tool does and when to select it."
             }
+            Self::CredentialLiteralExposed => {
+                "Remove the literal from the schema and obtain the credential through authorized server runtime configuration."
+            }
             Self::SchemaContractInvalid => {
                 "Correct the schema at the reported structural location and validate it as Draft 2020-12; use the supported linear-time subset for patterns."
             }
@@ -912,6 +927,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank | Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "mcp-doctor A1 normalization v1 tool-description quality contract"
             }
+            Self::CredentialLiteralExposed => {
+                "mcp-doctor credential-literal input-schema safety contract"
+            }
             Self::SchemaContractInvalid
             | Self::UnsupportedSchemaDialect
             | Self::ExternalSchemaReferenceBlocked => {
@@ -947,7 +965,10 @@ impl FindingCode {
     pub(super) const fn is_independent_safety(self) -> bool {
         matches!(
             self,
-            Self::CleanupFailed | Self::SessionCleanupFailed | Self::WorkflowCleanupFailed
+            Self::CleanupFailed
+                | Self::SessionCleanupFailed
+                | Self::CredentialLiteralExposed
+                | Self::WorkflowCleanupFailed
         )
     }
 }
@@ -1023,6 +1044,10 @@ pub(super) enum LocationField {
     Type,
     Pattern,
     Properties,
+    Default,
+    Const,
+    Examples,
+    Enum,
     Defs,
     Ref,
     DynamicRef,
@@ -1128,6 +1153,10 @@ impl LocationField {
             Self::Type => "type",
             Self::Pattern => "pattern",
             Self::Properties => "properties",
+            Self::Default => "default",
+            Self::Const => "const",
+            Self::Examples => "examples",
+            Self::Enum => "enum",
             Self::Defs => "$defs",
             Self::Ref => "$ref",
             Self::DynamicRef => "$dynamicRef",
@@ -1755,6 +1784,36 @@ impl SchemaValidationPhase {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum CredentialSchemaKeyword {
+    Default,
+    Const,
+    Examples,
+    Enum,
+}
+
+impl CredentialSchemaKeyword {
+    pub(super) const ALL: [Self; 4] = [Self::Default, Self::Const, Self::Examples, Self::Enum];
+
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Const => "const",
+            Self::Examples => "examples",
+            Self::Enum => "enum",
+        }
+    }
+
+    pub(super) const fn location_field(self) -> LocationField {
+        match self {
+            Self::Default => LocationField::Default,
+            Self::Const => LocationField::Const,
+            Self::Examples => LocationField::Examples,
+            Self::Enum => LocationField::Enum,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum FindingEvidence {
     None,
@@ -1764,6 +1823,10 @@ pub(super) enum FindingEvidence {
     SchemaValidationLimit {
         phase: SchemaValidationPhase,
         violation: LimitViolation,
+    },
+    CredentialLiteral {
+        keyword: CredentialSchemaKeyword,
+        literal_count: u64,
     },
     RuleViolation(RuleViolation),
     JsonRpcError(JsonRpcErrorKind),
@@ -2116,6 +2179,24 @@ impl Finding {
             revision,
             location,
             FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn credential_literal_exposed(
+        revision: SupportedRevision,
+        location: Location,
+        keyword: CredentialSchemaKeyword,
+        literal_count: u64,
+    ) -> Self {
+        debug_assert!(literal_count > 0);
+        Self::new(
+            FindingCode::CredentialLiteralExposed,
+            revision,
+            location,
+            FindingEvidence::CredentialLiteral {
+                keyword,
+                literal_count,
+            },
         )
     }
 

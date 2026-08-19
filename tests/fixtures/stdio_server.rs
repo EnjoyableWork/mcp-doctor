@@ -54,6 +54,9 @@ fn main() -> ExitCode {
         Some("tool-description-placeholder") => tool_description_placeholder(),
         Some("tool-description-non-string") => tool_description_non_string(),
         Some("tool-description-finding-limit") => tool_description_finding_limit(),
+        Some("credential-literals") => credential_literals(),
+        Some("credential-literals-combined") => credential_literals_combined(),
+        Some("credential-literal-finding-limit") => credential_literal_finding_limit(),
         Some("schema-invalid") => schema_invalid(),
         Some("schema-unsupported-pattern") => schema_unsupported_pattern(),
         Some("schema-external") => schema_external(&remaining),
@@ -80,6 +83,7 @@ fn main() -> ExitCode {
         Some("legacy-catalog-method-errors") => legacy_catalog_method_errors(),
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
         Some("legacy-tool-description-placeholder") => legacy_tool_description_placeholder(),
+        Some("legacy-credential-literals") => legacy_credential_literals(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
         Some("legacy-ambiguous-schema") => legacy_ambiguous_schema(),
         Some("legacy-schema-external") => legacy_schema_external(),
@@ -1560,6 +1564,173 @@ fn tool_description_finding_limit() -> ExitCode {
                 "inputSchema": {
                     "$schema": DRAFT_2020_12,
                     "type": "object"
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tools
+        }),
+    )
+}
+
+fn credential_literals() -> ExitCode {
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": credential_literal_tools()
+        }),
+    )
+}
+
+fn legacy_credential_literals() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-legacy-security", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(2, json!({"tools": credential_literal_tools()}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn credential_literal_tools() -> Vec<Value> {
+    const VALUE: &str = "synthetic-credential-literal-never-report-63";
+    let schema = |identifier: &str, keyword: &str, value: Value| {
+        let mut property = serde_json::Map::new();
+        property.insert("type".to_owned(), json!("string"));
+        property.insert(keyword.to_owned(), value);
+        json!({
+            "name": format!("synthetic-security-tool-{identifier}"),
+            "description": "Performs one bounded synthetic operation.",
+            "inputSchema": {
+                "$schema": DRAFT_2020_12,
+                "type": "object",
+                "properties": {(identifier): property},
+                "additionalProperties": false
+            }
+        })
+    };
+    let no_literal = |identifier: &str, property: Value| {
+        json!({
+            "name": format!("synthetic-security-negative-{identifier}"),
+            "description": "Performs one bounded synthetic operation.",
+            "inputSchema": {
+                "$schema": DRAFT_2020_12,
+                "type": "object",
+                "properties": {(identifier): property},
+                "additionalProperties": false
+            }
+        })
+    };
+
+    vec![
+        schema("passwordField", "default", json!(VALUE)),
+        schema("userPasswd", "const", json!(VALUE)),
+        schema("client_secret", "examples", json!([VALUE, "", 7])),
+        schema(
+            "authToken",
+            "enum",
+            json!([VALUE, "second-synthetic-value"]),
+        ),
+        schema("apikey", "default", json!(VALUE)),
+        schema("api_key", "const", json!(VALUE)),
+        schema("accessToken", "examples", json!([VALUE])),
+        schema("private-key", "enum", json!([VALUE])),
+        schema("serviceCredential", "default", json!(VALUE)),
+        no_literal("tokenizer", json!({"type": "string", "default": VALUE})),
+        no_literal("secretary", json!({"type": "string", "const": VALUE})),
+        no_literal("password", json!({"type": "string", "default": ""})),
+        no_literal("secret", json!({"type": "number", "default": 42})),
+        no_literal("token", json!({"type": "boolean", "const": false})),
+        no_literal(
+            "credential",
+            json!({"type": "string", "description": VALUE}),
+        ),
+        no_literal("apiKey", json!({"type": "string"})),
+        no_literal("region", json!({"type": "string", "enum": [VALUE]})),
+        no_literal(
+            "configuration",
+            json!({
+                "type": "object",
+                "properties": {
+                    "password": {"type": "string", "default": VALUE}
+                }
+            }),
+        ),
+    ]
+}
+
+fn credential_literals_combined() -> ExitCode {
+    const VALUE: &str = "synthetic-combined-credential-never-report-63";
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-invalid-schema-with-secret",
+                    "description": "Performs one bounded synthetic operation.",
+                    "inputSchema": {
+                        "$schema": DRAFT_2020_12,
+                        "type": "object",
+                        "properties": {
+                            "password": {"type": "string", "default": VALUE}
+                        },
+                        "required": "password"
+                    }
+                },
+                {
+                    "name": "synthetic-valid-schema-with-secret",
+                    "description": "Performs one bounded synthetic operation.",
+                    "inputSchema": {
+                        "$schema": DRAFT_2020_12,
+                        "type": "object",
+                        "properties": {
+                            "access_token": {"type": "string", "const": VALUE}
+                        }
+                    }
+                }
+            ]
+        }),
+    )
+}
+
+fn credential_literal_finding_limit() -> ExitCode {
+    let tools = (0..300)
+        .map(|index| {
+            json!({
+                "name": format!("synthetic-security-limit-tool-{index}"),
+                "description": "Performs one bounded synthetic operation.",
+                "inputSchema": {
+                    "$schema": DRAFT_2020_12,
+                    "type": "object",
+                    "properties": {
+                        (format!("password_{index}")): {
+                            "type": "string",
+                            "default": "synthetic-security-limit-value-never-report-63"
+                        }
+                    }
                 }
             })
         })

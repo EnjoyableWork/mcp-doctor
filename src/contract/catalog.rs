@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::sync::Arc;
 
 use jsonschema::paths::LocationSegment as SchemaLocationSegment;
 use serde_json::{Map, Value, json};
@@ -7,8 +8,9 @@ use serde_json::{Map, Value, json};
 use super::http_headers::validate_annotations;
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{
-    CheckId, CheckResult, ExpectedShape, Finding, JsonKind, JsonRpcErrorKind, Location,
-    LocationField, Requirement, RuleViolation, SchemaValidationPhase, SkipReason,
+    CheckId, CheckResult, CredentialSchemaKeyword, ExpectedShape, Finding, JsonKind,
+    JsonRpcErrorKind, Location, LocationField, Requirement, RuleViolation, SchemaValidationPhase,
+    SkipReason,
 };
 use super::protocol::{RevisionSelection, SupportedRevision, select_current_modern_revision};
 use super::schema_budget::{
@@ -656,6 +658,7 @@ enum FindingBucket {
     Catalog,
     Quality,
     Schema,
+    Security,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -790,6 +793,149 @@ impl Iterator for A1V1Normalized<'_> {
     }
 }
 
+const CREDENTIAL_IDENTIFIER_SEGMENTS: [&str; 6] = [
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "apikey",
+    "credential",
+];
+const CREDENTIAL_IDENTIFIER_PAIRS: [(&str, &str); 3] =
+    [("api", "key"), ("access", "token"), ("private", "key")];
+
+fn has_credential_identifier_segment(identifier: &str) -> bool {
+    let normalized = normalize_credential_identifier(identifier);
+    let segments = normalized.split('-').collect::<Vec<_>>();
+    segments
+        .iter()
+        .any(|segment| CREDENTIAL_IDENTIFIER_SEGMENTS.contains(segment))
+        || segments.windows(2).any(|pair| {
+            CREDENTIAL_IDENTIFIER_PAIRS
+                .iter()
+                .any(|expected| pair == [expected.0, expected.1])
+        })
+}
+
+/// Normalizes only ASCII identifier structure: punctuation and non-ASCII
+/// scalars delimit segments, ASCII letters are case-folded, and camel-case or
+/// acronym-to-word transitions add a delimiter. No locale or semantic
+/// inference participates in the credential rule.
+fn normalize_credential_identifier(identifier: &str) -> String {
+    let mut normalized = String::with_capacity(identifier.len());
+    let mut characters = identifier.chars().peekable();
+    let mut previous: Option<char> = None;
+    let mut pending_boundary = false;
+
+    while let Some(character) = characters.next() {
+        if !character.is_ascii_alphanumeric() {
+            pending_boundary = !normalized.is_empty();
+            previous = None;
+            continue;
+        }
+
+        let camel_boundary = character.is_ascii_uppercase()
+            && previous.is_some_and(|previous| {
+                previous.is_ascii_lowercase()
+                    || previous.is_ascii_digit()
+                    || (previous.is_ascii_uppercase()
+                        && characters.peek().is_some_and(char::is_ascii_lowercase))
+            });
+        if (pending_boundary || camel_boundary) && !normalized.ends_with('-') {
+            normalized.push('-');
+        }
+        normalized.push(character.to_ascii_lowercase());
+        pending_boundary = false;
+        previous = Some(character);
+    }
+
+    normalized
+}
+
+#[derive(Default)]
+struct CredentialLiteralScan {
+    findings: Vec<Finding>,
+    limit: Option<(Location, LimitViolation)>,
+}
+
+fn scan_credential_literals(
+    revision: SupportedRevision,
+    schema: &Value,
+    base: Location,
+    budget: &SchemaWorkBudget,
+) -> CredentialLiteralScan {
+    let Some(properties) = schema
+        .as_object()
+        .and_then(|schema| schema.get("properties"))
+        .and_then(Value::as_object)
+    else {
+        return CredentialLiteralScan::default();
+    };
+    let mut scan = CredentialLiteralScan::default();
+
+    for (property_index, (identifier, property_schema)) in properties.iter().enumerate() {
+        let property_location = base
+            .clone()
+            .field(LocationField::Properties)
+            .index(property_index);
+        let identifier_work = u64::try_from(identifier.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        if !budget.observe(identifier_work) {
+            scan.limit = Some((property_location, budget.violation()));
+            return scan;
+        }
+        if !has_credential_identifier_segment(identifier) {
+            continue;
+        }
+        let Some(property_schema) = property_schema.as_object() else {
+            continue;
+        };
+
+        for keyword in CredentialSchemaKeyword::ALL {
+            let keyword_location = property_location.clone().field(keyword.location_field());
+            if !budget.observe(1) {
+                scan.limit = Some((keyword_location, budget.violation()));
+                return scan;
+            }
+            let Some(value) = property_schema.get(keyword.as_str()) else {
+                continue;
+            };
+            let literal_count = match keyword {
+                CredentialSchemaKeyword::Default | CredentialSchemaKeyword::Const => {
+                    u64::from(value.as_str().is_some_and(|literal| !literal.is_empty()))
+                }
+                CredentialSchemaKeyword::Examples | CredentialSchemaKeyword::Enum => {
+                    let mut count = 0_u64;
+                    for candidate in value.as_array().into_iter().flatten() {
+                        if !budget.observe(1) {
+                            scan.limit = Some((keyword_location, budget.violation()));
+                            return scan;
+                        }
+                        if candidate
+                            .as_str()
+                            .is_some_and(|literal| !literal.is_empty())
+                        {
+                            count = count.saturating_add(1);
+                        }
+                    }
+                    count
+                }
+            };
+            if literal_count > 0 {
+                scan.findings.push(Finding::credential_literal_exposed(
+                    revision,
+                    keyword_location,
+                    keyword,
+                    literal_count,
+                ));
+            }
+        }
+    }
+
+    scan
+}
+
 struct Analyzer {
     limits: DiagnosticLimits,
     revision: Vec<Finding>,
@@ -797,6 +943,7 @@ struct Analyzer {
     catalog: Vec<Finding>,
     quality: Vec<Finding>,
     schema: Vec<Finding>,
+    security: Vec<Finding>,
     stored_findings: usize,
     finding_capacity: usize,
     finding_overflow: bool,
@@ -827,6 +974,7 @@ impl Analyzer {
             catalog: Vec::new(),
             quality: Vec::new(),
             schema: Vec::new(),
+            security: Vec::new(),
             stored_findings: 0,
             finding_capacity: maximum.saturating_sub(reserved_findings),
             finding_overflow: false,
@@ -854,6 +1002,7 @@ impl Analyzer {
             FindingBucket::Catalog => self.catalog.contains(&finding),
             FindingBucket::Quality => self.quality.contains(&finding),
             FindingBucket::Schema => self.schema.contains(&finding),
+            FindingBucket::Security => self.security.contains(&finding),
         };
         if duplicate {
             return;
@@ -865,8 +1014,19 @@ impl Analyzer {
                 FindingBucket::Catalog => self.catalog.push(finding),
                 FindingBucket::Quality => self.quality.push(finding),
                 FindingBucket::Schema => self.schema.push(finding),
+                FindingBucket::Security => self.security.push(finding),
             }
             self.stored_findings += 1;
+        } else if matches!(bucket, FindingBucket::Security) {
+            let displaced = self
+                .quality
+                .pop()
+                .or_else(|| self.schema.pop())
+                .or_else(|| self.catalog.pop());
+            if displaced.is_some() {
+                self.security.push(finding);
+            }
+            self.finding_overflow = true;
         } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
             match bucket {
                 FindingBucket::Revision => self.revision.push(finding),
@@ -874,6 +1034,7 @@ impl Analyzer {
                 FindingBucket::Catalog => self.catalog.push(finding),
                 FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
                 FindingBucket::Schema => self.schema.push(finding),
+                FindingBucket::Security => unreachable!("security findings use priority storage"),
             }
             self.finding_overflow = true;
         } else {
@@ -891,7 +1052,8 @@ impl Analyzer {
             .or_else(|| self.schema.pop())
             .or_else(|| self.catalog.pop())
             .or_else(|| self.envelope.pop())
-            .or_else(|| self.revision.pop());
+            .or_else(|| self.revision.pop())
+            .or_else(|| self.security.pop());
         if removed.is_some() {
             self.stored_findings = self.stored_findings.saturating_sub(1);
         }
@@ -1296,7 +1458,8 @@ impl Analyzer {
             );
             return;
         };
-        if input_object.get("type").and_then(Value::as_str) != Some("object") {
+        let input_root_valid = input_object.get("type").and_then(Value::as_str) == Some("object");
+        if !input_root_valid {
             self.push(
                 FindingBucket::Schema,
                 Finding::schema_contract_invalid(
@@ -1308,7 +1471,24 @@ impl Analyzer {
                 ),
             );
         }
-        self.analyze_schema(input_schema, input_location);
+        let schema_budget = self.analyze_schema(input_schema, input_location.clone());
+        if input_root_valid && let Some(budget) = schema_budget {
+            let scan = scan_credential_literals(
+                SupportedRevision::CURRENT,
+                input_schema,
+                input_location,
+                &budget,
+            );
+            for finding in scan.findings {
+                self.push(FindingBucket::Security, finding);
+            }
+            if let Some((location, violation)) = scan.limit {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(SupportedRevision::CURRENT, location, violation),
+                );
+            }
+        }
         if self.validate_http_headers
             && let Err(finding) = validate_annotations(
                 input_schema,
@@ -1321,7 +1501,7 @@ impl Analyzer {
         if let Some(output_schema) = tool.get("outputSchema") {
             let output_location = location.field(LocationField::OutputSchema);
             if output_schema.is_object() {
-                self.analyze_schema(output_schema, output_location);
+                let _ = self.analyze_schema(output_schema, output_location);
             } else {
                 self.push(
                     FindingBucket::Schema,
@@ -1454,12 +1634,12 @@ impl Analyzer {
         }
     }
 
-    fn analyze_schema(&mut self, schema: &Value, base: Location) {
+    fn analyze_schema(&mut self, schema: &Value, base: Location) -> Option<Arc<SchemaWorkBudget>> {
         self.analyze_schema_with_policy(
             schema,
             base,
             LocalSchemaDialectPolicy::RevisionDefaultDraft202012,
-        );
+        )
     }
 
     fn analyze_schema_with_policy(
@@ -1467,12 +1647,12 @@ impl Analyzer {
         schema: &Value,
         base: Location,
         policy: LocalSchemaDialectPolicy,
-    ) {
+    ) -> Option<Arc<SchemaWorkBudget>> {
         let values = self.limits.values();
         let bytes = u64::try_from(serialized_len(schema)).unwrap_or(u64::MAX);
         if bytes > values.schema_bytes {
             self.schema_limit(base, LimitKind::SchemaBytes, bytes, values.schema_bytes);
-            return;
+            return None;
         }
 
         let Some(object) = schema.as_object() else {
@@ -1488,7 +1668,7 @@ impl Analyzer {
                         json_kind(Some(dialect)),
                     ),
                 );
-                return;
+                return None;
             }
             None if policy == LocalSchemaDialectPolicy::RequireExactDraft202012 => {
                 self.push(
@@ -1499,7 +1679,7 @@ impl Analyzer {
                         json_kind(None),
                     ),
                 );
-                return;
+                return None;
             }
             Some(_) | None => {}
         }
@@ -1516,7 +1696,7 @@ impl Analyzer {
             work = work.saturating_add(1);
             if nodes > values.schema_nodes {
                 self.schema_limit(location, LimitKind::SchemaNodes, nodes, values.schema_nodes);
-                return;
+                return None;
             }
             if work > values.schema_evaluation_steps {
                 self.schema_limit(
@@ -1525,11 +1705,11 @@ impl Analyzer {
                     work,
                     values.schema_evaluation_steps,
                 );
-                return;
+                return None;
             }
             if depth > values.schema_depth {
                 self.schema_limit(location, LimitKind::SchemaDepth, depth, values.schema_depth);
-                return;
+                return None;
             }
 
             match value {
@@ -1613,7 +1793,7 @@ impl Analyzer {
                     work,
                     values.schema_evaluation_steps,
                 );
-                return;
+                return None;
             }
             if resolve_local_reference(schema, reference).is_none() {
                 unresolved_reference = true;
@@ -1645,7 +1825,7 @@ impl Analyzer {
                 values.schema_evaluation_steps
             };
             self.schema_limit(location, kind, observed, maximum);
-            return;
+            return None;
         }
 
         if external_reference
@@ -1653,7 +1833,7 @@ impl Analyzer {
             || unsupported_dialect
             || unsupported_vocabulary
         {
-            return;
+            return None;
         }
 
         let budget = SchemaWorkBudget::with_observed(values.schema_evaluation_steps, work);
@@ -1665,7 +1845,7 @@ impl Analyzer {
                     SchemaValidationPhase::MetaValidation,
                     limit,
                 );
-                return;
+                return None;
             }
             Err(SchemaWorkIssue::Invalid {
                 location,
@@ -1687,7 +1867,7 @@ impl Analyzer {
                         values.validation_errors,
                     );
                 }
-                return;
+                return None;
             }
             Err(SchemaWorkIssue::UnsupportedPattern { location }) => {
                 self.push(
@@ -1698,39 +1878,43 @@ impl Analyzer {
                         RuleViolation::UnsupportedLinearPattern,
                     ),
                 );
-                return;
+                return None;
             }
         }
 
-        if let Err(issue) = BudgetedValidator::compile_with_budget(schema, budget) {
-            match issue {
-                SchemaWorkIssue::Limit(limit) => {
-                    self.schema_validation_incomplete(
-                        base,
-                        SchemaValidationPhase::CompileConstruction,
-                        limit,
-                    );
+        match BudgetedValidator::compile_with_budget(schema, Arc::clone(&budget)) {
+            Ok(_) => Some(budget),
+            Err(issue) => {
+                match issue {
+                    SchemaWorkIssue::Limit(limit) => {
+                        self.schema_validation_incomplete(
+                            base,
+                            SchemaValidationPhase::CompileConstruction,
+                            limit,
+                        );
+                    }
+                    SchemaWorkIssue::Invalid { location, .. } => {
+                        self.push(
+                            FindingBucket::Schema,
+                            Finding::schema_contract_invalid(
+                                SupportedRevision::CURRENT,
+                                append_schema_error_location(base, &location),
+                                RuleViolation::InvalidDraft202012 { error_count: 1 },
+                            ),
+                        );
+                    }
+                    SchemaWorkIssue::UnsupportedPattern { location } => {
+                        self.push(
+                            FindingBucket::Schema,
+                            Finding::schema_contract_invalid(
+                                SupportedRevision::CURRENT,
+                                append_schema_error_location(base, &location),
+                                RuleViolation::UnsupportedLinearPattern,
+                            ),
+                        );
+                    }
                 }
-                SchemaWorkIssue::Invalid { location, .. } => {
-                    self.push(
-                        FindingBucket::Schema,
-                        Finding::schema_contract_invalid(
-                            SupportedRevision::CURRENT,
-                            append_schema_error_location(base, &location),
-                            RuleViolation::InvalidDraft202012 { error_count: 1 },
-                        ),
-                    );
-                }
-                SchemaWorkIssue::UnsupportedPattern { location } => {
-                    self.push(
-                        FindingBucket::Schema,
-                        Finding::schema_contract_invalid(
-                            SupportedRevision::CURRENT,
-                            append_schema_error_location(base, &location),
-                            RuleViolation::UnsupportedLinearPattern,
-                        ),
-                    );
-                }
+                None
             }
         }
     }
@@ -1764,6 +1948,7 @@ impl Analyzer {
     fn into_checks(mut self) -> Vec<CheckResult> {
         self.finish_overflow();
         self.catalog.append(&mut self.quality);
+        self.schema.append(&mut self.security);
         let downstream_skip_reason = if self
             .envelope
             .iter()
@@ -2092,9 +2277,18 @@ pub(super) fn validate_local_schema_with_policy(
     base: Location,
     policy: LocalSchemaDialectPolicy,
 ) -> Vec<Finding> {
+    validate_local_schema_with_budget(schema, base, policy).0
+}
+
+fn validate_local_schema_with_budget(
+    schema: &Value,
+    base: Location,
+    policy: LocalSchemaDialectPolicy,
+) -> (Vec<Finding>, Option<Arc<SchemaWorkBudget>>) {
     let mut analyzer = Analyzer::new(0, false, false);
-    analyzer.analyze_schema_with_policy(schema, base.clone(), policy);
+    let mut budget = analyzer.analyze_schema_with_policy(schema, base.clone(), policy);
     if analyzer.finding_overflow {
+        budget = None;
         analyzer.schema.pop();
         let maximum = analyzer.limits.values().report_findings;
         analyzer.schema.push(Finding::limit_exceeded(
@@ -2108,7 +2302,7 @@ pub(super) fn validate_local_schema_with_policy(
             .expect("the local schema finding overflow exceeds the report maximum"),
         ));
     }
-    analyzer.schema
+    (analyzer.schema, budget)
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -2266,6 +2460,7 @@ struct LegacyAnalyzer {
     catalog: Vec<Finding>,
     quality: Vec<Finding>,
     schema: Vec<Finding>,
+    security: Vec<Finding>,
     capacity: usize,
     stored: usize,
     overflow: bool,
@@ -2295,6 +2490,7 @@ impl LegacyAnalyzer {
             catalog: Vec::new(),
             quality: Vec::new(),
             schema: Vec::new(),
+            security: Vec::new(),
             capacity: maximum.saturating_sub(reserved_findings),
             stored: 0,
             overflow: false,
@@ -2320,6 +2516,7 @@ impl LegacyAnalyzer {
             FindingBucket::Catalog => &mut self.catalog,
             FindingBucket::Quality => &mut self.quality,
             FindingBucket::Schema => &mut self.schema,
+            FindingBucket::Security => &mut self.security,
         };
         if destination.contains(&finding) {
             return;
@@ -2327,6 +2524,16 @@ impl LegacyAnalyzer {
         if self.stored < self.capacity {
             destination.push(finding);
             self.stored += 1;
+        } else if matches!(bucket, FindingBucket::Security) {
+            let displaced = self
+                .quality
+                .pop()
+                .or_else(|| self.schema.pop())
+                .or_else(|| self.catalog.pop());
+            if displaced.is_some() {
+                self.security.push(finding);
+            }
+            self.overflow = true;
         } else if !matches!(bucket, FindingBucket::Quality) && self.quality.pop().is_some() {
             let destination = match bucket {
                 FindingBucket::Revision => &mut self.revision,
@@ -2334,6 +2541,7 @@ impl LegacyAnalyzer {
                 FindingBucket::Catalog => &mut self.catalog,
                 FindingBucket::Quality => unreachable!("quality findings do not displace findings"),
                 FindingBucket::Schema => &mut self.schema,
+                FindingBucket::Security => unreachable!("security findings use priority storage"),
             };
             destination.push(finding);
             self.overflow = true;
@@ -2683,7 +2891,8 @@ impl LegacyAnalyzer {
             self.tools_catalog_valid = false;
             return;
         };
-        if input_object.get("type").and_then(Value::as_str) != Some("object") {
+        let input_root_valid = input_object.get("type").and_then(Value::as_str) == Some("object");
+        if !input_root_valid {
             self.push(
                 FindingBucket::Schema,
                 Finding::schema_contract_invalid(
@@ -2695,7 +2904,20 @@ impl LegacyAnalyzer {
                 ),
             );
         }
-        self.analyze_legacy_schema(input_schema, input_location);
+        let schema_budget = self.analyze_legacy_schema(input_schema, input_location.clone());
+        if input_root_valid && let Some(budget) = schema_budget {
+            let scan =
+                scan_credential_literals(self.revision_kind, input_schema, input_location, &budget);
+            for finding in scan.findings {
+                self.push(FindingBucket::Security, finding);
+            }
+            if let Some((location, violation)) = scan.limit {
+                self.push(
+                    FindingBucket::Schema,
+                    Finding::limit_exceeded(self.revision_kind, location, violation),
+                );
+            }
+        }
         if let Some(output_schema) = tool.get("outputSchema") {
             let output_location = base.field(LocationField::OutputSchema);
             let Some(output_object) = output_schema.as_object() else {
@@ -2719,11 +2941,15 @@ impl LegacyAnalyzer {
                     ),
                 );
             }
-            self.analyze_legacy_schema(output_schema, output_location);
+            let _ = self.analyze_legacy_schema(output_schema, output_location);
         }
     }
 
-    fn analyze_legacy_schema(&mut self, schema: &Value, location: Location) {
+    fn analyze_legacy_schema(
+        &mut self,
+        schema: &Value,
+        location: Location,
+    ) -> Option<Arc<SchemaWorkBudget>> {
         if self.revision_kind == SupportedRevision::V2025_06_18
             && schema
                 .as_object()
@@ -2737,14 +2963,21 @@ impl LegacyAnalyzer {
                 ),
             );
             self.analyze_legacy_schema_structure(schema, location);
-            return;
+            return None;
         }
-        for finding in validate_local_schema(schema, location) {
+        let (findings, budget) = validate_local_schema_with_budget(
+            schema,
+            location,
+            LocalSchemaDialectPolicy::RevisionDefaultDraft202012,
+        );
+        let valid = findings.is_empty();
+        for finding in findings {
             self.push(
                 FindingBucket::Schema,
                 finding.with_revision(self.revision_kind),
             );
         }
+        valid.then_some(budget).flatten()
     }
 
     fn analyze_legacy_schema_structure(&mut self, schema: &Value, base: Location) {
@@ -3054,7 +3287,8 @@ impl LegacyAnalyzer {
                 .or_else(|| self.schema.pop())
                 .or_else(|| self.catalog.pop())
                 .or_else(|| self.envelope.pop())
-                .or_else(|| self.revision.pop());
+                .or_else(|| self.revision.pop())
+                .or_else(|| self.security.pop());
             if removed.is_some() {
                 self.catalog.push(Finding::limit_exceeded(
                     self.revision_kind,
@@ -3069,6 +3303,7 @@ impl LegacyAnalyzer {
             }
         }
         self.catalog.append(&mut self.quality);
+        self.schema.append(&mut self.security);
         let envelope_failed = self
             .envelope
             .iter()
@@ -3202,6 +3437,10 @@ fn schema_child_location(location: Location, key: &str) -> Location {
         "type" => Some(LocationField::Type),
         "pattern" => Some(LocationField::Pattern),
         "properties" => Some(LocationField::Properties),
+        "default" => Some(LocationField::Default),
+        "const" => Some(LocationField::Const),
+        "examples" => Some(LocationField::Examples),
+        "enum" => Some(LocationField::Enum),
         "$defs" => Some(LocationField::Defs),
         "$ref" => Some(LocationField::Ref),
         "$dynamicRef" => Some(LocationField::DynamicRef),
@@ -3422,13 +3661,15 @@ mod tests {
     use super::{
         CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
         RequestKind, ToolDescriptionDiagnosis, classify_json_rpc_error, diagnose_tool_description,
-        encode_request, percent_decode, resolve_local_reference, schema_child_location,
+        encode_request, has_credential_identifier_segment, normalize_credential_identifier,
+        percent_decode, resolve_local_reference, scan_credential_literals, schema_child_location,
         validate_local_schema_with_policy,
     };
     use crate::contract::model::{
         FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField, Severity,
     };
     use crate::contract::protocol::SupportedRevision;
+    use crate::contract::schema_budget::SchemaWorkBudget;
 
     #[test]
     fn every_passive_request_has_modern_metadata_and_no_active_method() {
@@ -3460,6 +3701,78 @@ mod tests {
             assert!(!text.contains("resources/read"));
             assert!(!text.contains("initialize"));
         }
+    }
+
+    #[test]
+    fn credential_identifier_normalization_uses_only_the_fixed_exact_segments() {
+        for identifier in [
+            "password",
+            "userPassword",
+            "user_passwd",
+            "client.secret",
+            "auth-token",
+            "apikey",
+            "api_key",
+            "APIKey",
+            "accessToken",
+            "private key",
+            "serviceCredentialValue",
+        ] {
+            assert!(
+                has_credential_identifier_segment(identifier),
+                "{identifier} should contain one fixed credential segment"
+            );
+        }
+        for identifier in [
+            "tokenizer",
+            "secretary",
+            "passwordless",
+            "key",
+            "api",
+            "private",
+            "credentialsProvider",
+            "tøken",
+            "region",
+        ] {
+            assert!(
+                !has_credential_identifier_segment(identifier),
+                "{identifier} must not be inferred as a credential identifier"
+            );
+        }
+        assert_eq!(
+            normalize_credential_identifier("APIKey_Value"),
+            "api-key-value"
+        );
+        assert_eq!(
+            normalize_credential_identifier("private.Key/value"),
+            "private-key-value"
+        );
+    }
+
+    #[test]
+    fn credential_scan_charges_the_existing_schema_work_budget() {
+        let schema = json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "properties": {
+                "password": {"type": "string", "default": "never-retain-this-value"}
+            }
+        });
+        let budget = SchemaWorkBudget::new(0);
+        let scan = scan_credential_literals(
+            SupportedRevision::CURRENT,
+            &schema,
+            Location::root(LocationField::Tools)
+                .index(0)
+                .field(LocationField::InputSchema),
+            &budget,
+        );
+
+        assert!(scan.findings.is_empty());
+        let (location, violation) = scan.limit.expect("the zero budget must stop the scan");
+        assert_eq!(location.to_string(), "tools[0].inputSchema.properties[0]");
+        assert_eq!(violation.kind().as_str(), "schema_evaluation_steps");
+        assert_eq!(violation.maximum(), 0);
     }
 
     #[test]
