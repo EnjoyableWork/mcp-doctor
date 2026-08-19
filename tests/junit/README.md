@@ -1,7 +1,7 @@
 # JUnit projection compatibility evidence
 
 This directory records the independently exercised consumer boundary for the
-`mcp-doctor.report/v1` JUnit projection owned by `MCPD-012`.
+`mcp-doctor.report/v1` JUnit projection.
 It is not a JUnit standard claim, a guarantee for every CI product or plug-in version, or a
 replacement for the authoritative stable JSON report and process exit status.
 

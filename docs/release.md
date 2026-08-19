@@ -109,14 +109,15 @@ was removed locally and confirmed revoked server-side after publication.
    hand-edit it after release. Require the public raw file to match.
 8. Run `.github/workflows/release-channels.yml` for `0.1.0`. It is read-only
    and credential-free. Record its native matrix and the immutable release in
-   `PROJECT.md`, then open the dated [adoption checkpoint](adoption.md).
+   the governing Linear release issue, then open the dated
+   [adoption checkpoint](adoption.md).
 
 ## Releases after v0.1.0
 
 The manual crates.io and tap handoffs above were the bounded first-publication
-procedure, not the permanent release process. The completed `MCPD-008A` path
-below governs every later version. Do not repeat the manual token or formula
-copy procedure, and do not create another public version unless these controls
+procedure, not the permanent release process. The retained automated path below
+governs every later version. Do not repeat the manual token or formula copy
+procedure, and do not create another public version unless these controls
 remain verified.
 
 The retained subsequent-release contract is:
@@ -137,11 +138,11 @@ The retained subsequent-release contract is:
    represented native host, and runs the installed diagnostic smoke journey
    for the version's advertised command and revision matrix.
 
-`MCPD-008A` passed the required nonpublishing end-to-end rehearsal, including
-rejected authorization and byte-mismatch cases, before any version after
-`v0.1.0` was allowed. [PROJECT.md](../PROJECT.md) records the exact live
-evidence. The first later release confirms the retained path against public
-channels; it does not authorize weakening these gates.
+The retained release path passed the required nonpublishing end-to-end
+rehearsal, including rejected authorization and byte-mismatch cases, before any
+version after `v0.1.0` was allowed. The versioned records below preserve exact
+public release evidence. The first later release confirms the retained path
+against public channels; it does not authorize weakening these gates.
 
 ## v0.2.0 retained-path verification
 
@@ -480,10 +481,10 @@ field instead. A missing, malformed, mismatched, or `true` field fails closed.
 The REST response continues to own repository identity, visibility, archive,
 default-branch, and security-update state.
 
-`PROJECT.md` records the initial four successful run links, exact
-environment-policy readback, and trusted-publisher readback. Repeat and record
-this rehearsal after any workflow, environment, publisher, or authority change;
-a workflow file or local test alone is not completion evidence.
+Record the four successful run links, exact environment-policy readback, and
+trusted-publisher readback in the governing Linear release issue. Repeat and
+record this rehearsal after any workflow, environment, publisher, or authority
+change; a workflow file or local test alone is not completion evidence.
 
 ### Credential inventory gate
 

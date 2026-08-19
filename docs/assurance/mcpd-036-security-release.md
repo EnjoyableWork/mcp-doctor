@@ -28,11 +28,20 @@ compatibility or assurance claim.
 
 ## Preserved failures and reviewed corrections
 
-The first two pre-tag operator audits failed on stale release-control
-assumptions and remain recorded in `PROJECT.md`. `DEC-061` separated immutable
-historical Homebrew proof from rolling tap state, while `DEC-062` replaced one
-unavailable REST merge-setting field with its exact read-only GraphQL field;
-the verification credential never received contents-write authority.
+The first pre-tag operator audit on exact protected `main`
+`f73b4511fc955b99b3d5c889a6706b1e0a96a7a1` preserved this bounded failure:
+`date=2026-08-18 canonical_sha256=bdc0b1009b4bb40e0a4cbf58aaf07ae511a644548502fb386b69750150029767 source_sha=f73b4511fc955b99b3d5c889a6706b1e0a96a7a1 result=FAIL`.
+It exposed a stale requirement that rolling `homebrew-tap/main` equal the
+historical `v0.3.0` handoff commit. The correction separated immutable
+historical Homebrew proof from rolling tap state.
+
+The next operator audit on exact protected `main`
+`1d5a2ccebec45709a5f7fadad19de5f15bc837d9` preserved a distinct failure:
+`date=2026-08-18 canonical_sha256=aa247183c668479877cd8ffb99144997888f6e8b118c6f429bbef40174c5230b source_sha=1d5a2ccebec45709a5f7fadad19de5f15bc837d9 result=FAIL`.
+GitHub withheld the REST merge-setting field from the exact read-only
+credential, so the correction moved that assertion to the exact read-only
+GraphQL field. The verification credential never received contents-write
+authority, and neither failed source tree was rerun unchanged.
 
 A subsequent organization-secret inventory received `403`, but the original
 shell path lost that status and printed success. That result was rejected.

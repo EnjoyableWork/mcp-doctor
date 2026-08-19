@@ -63,7 +63,7 @@ fn every_direct_registry_dependency_has_an_exact_version() {
             "rcgen",
             "tempfile",
         ],
-        "the reviewed direct dependency inventory changed; update the dated PROJECT.md review"
+        "the reviewed direct dependency inventory changed; update the supply-chain controls and governing Linear issue"
     );
 }
 

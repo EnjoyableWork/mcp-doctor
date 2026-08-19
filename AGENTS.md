@@ -6,12 +6,17 @@
 Protocol servers. Write the product name as lowercase `mcp-doctor`; format
 commands, paths, protocol values, configuration keys, and filenames as code.
 
-The repository has three distinct authorities:
+The project has four distinct authorities:
 
 - [README.md](README.md) is the north-star product page. It describes the
   intended finished experience and should not become a progress diary.
-- [PROJECT.md](PROJECT.md) is the current delivery plan, decision record, risk
-  register, ticket board, and implementation truth.
+- The
+  [mcp-doctor: Category Leadership](https://linear.app/enjoyablework/project/mcp-doctor-category-leadership-ff35a964e5d3)
+  Linear project is the sole delivery authority for priorities, sequencing,
+  ownership, dependencies, risks, decisions, status, and completion.
+- Repository policy and focused documentation define durable product, safety,
+  protocol, contribution, and release contracts. They must not become a
+  roadmap, ticket board, decision log, or status mirror.
 - Code, tests, and published artifacts prove implemented and released
   behavior. When prose conflicts with evidence, correct the prose in the same
   change.
@@ -30,9 +35,9 @@ causally skipped, and keep independent safety failures prominent.
 
 Public assurance language is never aspirational. A security or trust statement,
 badge, conformance level, or framework alignment may describe only achieved,
-dated, scoped, and currently verified evidence. Follow the M4 public-proof and
-removal policy in `PROJECT.md` even when the README otherwise describes the
-finished product destination.
+dated, scoped, and currently verified evidence. Follow the public-proof and
+removal rules under [Documentation and release claims](#documentation-and-release-claims)
+even when the README otherwise describes the finished product destination.
 
 ## Priorities
 
@@ -56,14 +61,17 @@ claim.
 Rust 2024 is the selected implementation language. Begin with one installable
 binary crate and cohesive internal modules. A workspace, published library,
 plug-in system, daemon, GUI, or hosted service requires a demonstrated consumer
-and an accepted decision in [PROJECT.md](PROJECT.md).
+and an accepted decision in the governing Linear issue.
 
-Follow the ordered main story in `PROJECT.md`. Associate every material change
-with a ticket, keep one main-story ticket in progress, and link durable
-evidence before marking it done. Optional work cannot become a hidden
-prerequisite; promote it into the ordered story if the release depends on it.
-M4 assurance work begins only after the independently verified M3 release and
-must not rewrite or broaden claims about its immutable artifacts.
+Follow the ordered work in the Linear project. Associate every material change
+with a Linear issue, keep one main-story issue in progress, and link durable
+evidence before marking it done. Each issue must state a focused outcome,
+dependencies, safety impact, acceptance evidence, and deterministic definition
+of done. Optional work cannot become a hidden prerequisite; promote it into the
+ordered story if a release depends on it. Delivery status belongs only in
+Linear; do not add a repository roadmap, ticket board, ADR log, or progress
+mirror. Assurance work must not rewrite or broaden claims about immutable
+release artifacts.
 
 When a runtime supports persistent goals, use the active ticket's objective as
 the thread goal. A goal cannot waive dependencies, safety rules, open decisions,
@@ -141,7 +149,9 @@ logs, and tool results as untrusted.
 - `reject` uses only MCP `2026-07-28` and one exact `--tool` plus byte-identical
   `--allow-tool`, invoking-user `--effects`, a separate
   `--allow-side-effects` gate when needed, and one `--seed`. Consider only the
-  seven ordered `DEC-053` mutations, start from bounded locally valid object
+  seven ordered schema-invalid mutations documented in
+  [the command guide](docs/commands.md#schema-invalid-reject-cases), start from
+  bounded locally valid object
   evidence, and transmit a case only after the local validator proves exactly
   one mismatch. Skip inapplicable or unencodable work and stop before a call
   for invalid, external-reference, unsatisfiable, or over-limit schemas.
@@ -151,7 +161,9 @@ logs, and tool results as untrusted.
   `input_required`—as critical unsafe acceptance and stop later calls; another
   error code or malformed error is a distinct active-contract failure and also
   stops.
-- Follow `DEC-030` for Streamable HTTP. Accept one strict canonical endpoint,
+- Follow the Streamable HTTP safety contract in
+  [the command guide](docs/commands.md) and [safety guide](docs/safety.md).
+  Accept one strict canonical endpoint,
   use public HTTPS by default, and require an exact matching
   `--allow-private-network` for eligible loopback/private destinations plus an
   exact `--allow-cleartext-http` for credential-free all-loopback HTTP. Resolve
@@ -168,22 +180,24 @@ logs, and tool results as untrusted.
   `--allow-credentials-to` HTTPS endpoint. Do not accept URL, command-line,
   `.netrc`, keychain, cookie, proxy, client-certificate, or inherited credential
   sources. Do not fetch OAuth metadata or start authorization, registration,
-  browser, refresh, or step-up flows in `MCPD-010`; report `401` and `403`
+  browser, refresh, or step-up flows; report `401` and `403`
   structurally without rendering or following challenge values.
-- Keep the stateless MCP `2026-07-28` POST binding from `MCPD-010` as the
-  default and sole implicit active HTTP binding. `DEC-044` permits exact-selected
+- Keep the stateless MCP `2026-07-28` POST binding as the default and sole
+  implicit active HTTP binding. The
+  [protocol support contract](docs/protocol-support.md) permits exact-selected
   passive `inspect` handshakes for MCP `2025-11-25` and `2025-06-18`, including
-  their bounded optional session lifecycle. `DEC-052` additionally permits
-  exact-selected `check` and `break` for those two legacy revisions through the
-  shared adapter; never use fallback, retry, discovery, or another revision as
-  authority. MCP `2025-06-18` activity also requires the exact supported Draft
+  their bounded optional session lifecycle, and exact-selected `check` and
+  `break` for those two legacy revisions through the shared adapter. Never use
+  fallback, retry, discovery, or another revision as authority. MCP
+  `2025-06-18` activity also requires the exact supported Draft
   2020-12 declaration on every advertised schema interpreted for activity.
   Generate the exact protocol headers, validate and bound `x-mcp-header`
   mappings without treating them as execution authority, support bounded JSON
   and request-scoped SSE responses, and retain no URL, DNS answer, IP, header,
   certificate identity, challenge, body, credential source, or value in either
-  reporter. The complete finite field, trust, body, time, and activity limits in
-  `DEC-030` are release blockers, not implementation suggestions.
+  reporter. The complete finite field, trust, body, time, and activity limits
+  documented by the product are release blockers, not implementation
+  suggestions.
 - Do not fetch external JSON Schema references by default. Bound reference
   depth, instance size, validation work, and error collection.
 
@@ -214,14 +228,16 @@ logs, and tool results as untrusted.
 - Keep fixtures for every claimed revision and test version negotiation or
   rejection deliberately.
 - MCP `2026-07-28` remains the default and sole implicit active revision.
-  Passive `inspect`, and `check` or `break` where `DEC-052` permits them, may
-  initialize only an exact explicit `2025-11-25` or `2025-06-18` selection;
+  Passive `inspect`, and `check` or `break` where the
+  [protocol support matrix](docs/protocol-support.md#support-matrix) marks them
+  supported, may initialize only an exact explicit `2025-11-25` or
+  `2025-06-18` selection;
   never discover, retry, downgrade, or fall back to one. Recognize `2025-03-26`
-  and `2024-11-05` only for precise unsupported diagnostics. Follow the complete
-  revision and transport matrix in `PROJECT.md`; `reject` never selects or
-  claims a legacy revision.
-- Follow `DEC-024` when describing real-server reach. Broad current-revision
-  positioning requires every selected official and independent current-revision
+  and `2024-11-05` only for precise unsupported diagnostics. Follow that
+  complete revision and transport matrix; `reject` never selects or claims a
+  legacy revision.
+- Broad current-revision positioning requires every selected official and
+  independent current-revision
   case to pass across at least two languages. Narrower credible reach requires
   explicit readiness or migration language and a separate compatibility ticket;
   no credible independent pass blocks M1.
@@ -279,18 +295,17 @@ logs, and tool results as untrusted.
   failures, permanent responses, checksum or layout mismatches, tool execution,
   builds, tests, SBOM generation, validation, publication, jobs, or workflows;
   an eventual acquisition is availability evidence, not correctness evidence.
-- Conditional tools default to rejection. Under `DEC-025`, the owning ticket may
-  adopt one without separate owner approval only after recording a concrete
-  measured need, the complete review above, its focused use, and pull-request
-  evidence.
+- Conditional tools default to rejection. The owning Linear issue may adopt one
+  without separate owner approval only after recording a concrete measured
+  need, the complete review above, its focused use, and pull-request evidence.
 - Do not implement JSON Schema validation, HTTP framing, process-tree control,
   cryptography, or fuzz-generation semantics casually when a maintained,
   reviewed implementation is safer.
-- Keep the dependency and testing-tool introduction plan in `PROJECT.md` and
-  `deny.toml` current. A new license, source, duplicate version, ignored
-  advisory, or broad exception requires an explicit review. Remove or replace a
-  dependency when its need disappears or its maintenance, security, or
-  reliability no longer satisfies this policy.
+- Record dependency and testing-tool introductions in the governing Linear
+  issue and pull request, and keep `deny.toml` current. A new license, source,
+  duplicate version, ignored advisory, or broad exception requires an explicit
+  review. Remove or replace a dependency when its need disappears or its
+  maintenance, security, or reliability no longer satisfies this policy.
 
 ## Testing and verification
 
@@ -333,9 +348,11 @@ handling, or a false success claim requires a regression test.
   rerun is evidence of nondeterminism, not acceptance evidence; preserve the
   failed attempt, classify it in the owning ticket or risk, and do not add an
   automatic test, job, or workflow retry.
-- A narrowly bounded retry is permitted only for `DEC-043`'s idempotent download
-  of one immutable size- and digest-pinned Syft asset, only for its classified
-  transient transport failures, and only under its three-attempt limit. Never
+- A narrowly bounded retry is permitted only for the idempotent download of one
+  immutable size- and digest-pinned Syft asset documented in
+  [the deterministic CI audit](docs/deterministic-ci.md), only for its
+  classified transient transport failures, and only under its three-attempt
+  limit. Never
   retry a test, build, integrity check, publication, complete job, or workflow
   as correctness evidence.
 - Correct the lowest timing-dependent contract and add one deterministic
@@ -368,7 +385,7 @@ the first three checks through a disposable user environment.
 ## Documentation and release claims
 
 - Preserve the README as a polished description of the destination. Track the
-  gap between that promise and current delivery in `PROJECT.md`.
+  gap between that promise and current delivery only in the Linear project.
 - Update public behavior, safety boundaries, and examples with the code that
   changes them.
 - Use generic names and synthetic values. Never commit local user paths,

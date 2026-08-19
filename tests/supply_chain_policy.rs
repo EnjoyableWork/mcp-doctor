@@ -375,20 +375,6 @@ fn direct_dependency_versions_features_and_scopes_require_reviewed_inventory() {
     }
     expected.sort_by(|left, right| left["name"].as_str().cmp(&right["name"].as_str()));
     assert_eq!(observed, expected);
-
-    let project = repository_file("PROJECT.md");
-    for dependency in expected {
-        let name = dependency["name"]
-            .as_str()
-            .expect("name should be a string");
-        let version = dependency["version"]
-            .as_str()
-            .expect("version should be a string");
-        assert!(
-            project.contains(&format!("`{name}` `={version}`")),
-            "PROJECT.md should retain the dated {name} ={version} review"
-        );
-    }
 }
 
 #[test]
@@ -413,10 +399,6 @@ fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
         deny.contains("skip-tree = []"),
         "a transitive subtree must not bypass the duplicate-version review"
     );
-
-    let project = repository_file("PROJECT.md");
-    assert!(project.contains("DEC-065"));
-    assert!(project.contains("exact transitional `base64` `0.22.1` exception"));
 }
 
 #[test]
@@ -662,29 +644,7 @@ fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
 }
 
 #[test]
-fn project_and_release_runbook_separate_historical_and_rolling_homebrew_state() {
-    let project = repository_file("PROJECT.md");
-    for contract in [
-        "`DEC-061` corrects one stale assertion in `DEC-040`",
-        "contents/Formula/mcp-doctor.rb?ref=<recorded-full-commit>",
-        "It no longer reads or constrains rolling",
-        "different later tap head",
-        "changed bytes at the recorded commit still fail",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain {contract}"
-        );
-    }
-    assert!(!project.contains("Current tap `main` must remain the reviewed commit"));
-    let normalized_project = project.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        normalized_project
-            .contains("`DEC-062` corrects a second stale observation assumption without weakening")
-    );
-    assert!(normalized_project.contains("The token must not gain write authority"));
-    assert!(normalized_project.contains("`autoMergeAllowed=false`"));
-
+fn release_runbook_separates_historical_and_rolling_homebrew_state() {
     let release = repository_file("docs/release.md");
     let normalized_release = release.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(normalized_release.contains("separate historical-evidence"));
@@ -715,86 +675,6 @@ fn syft_acquisition_and_generation_fail_closed_offline() {
             .contains("Syft acquisition and SBOM generation rehearsals passed offline.")
     );
     assert!(!String::from_utf8_lossy(&output.stderr).contains("Syft rehearsal case failed:"));
-}
-
-#[test]
-fn project_records_mcpd_016_completion() {
-    let project = repository_file("PROJECT.md");
-    for contract in [
-        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
-        "### Accepted dependency, automation, artifact, and distribution supply-chain contract",
-        "`DEC-040` fixes the `MCPD-016` boundary.",
-        ".github/supply-chain-controls.json",
-        "Dependabot opens separate grouped weekly version and security proposals",
-        "The canonical inventory therefore closes the direct set at six",
-        "Only `CI` and `Release preflight` execute a pull request's code.",
-        "The former full-SHA `cargo-deny-action` still fetched a mutable release executable",
-        "There are no binary exceptions.",
-        "Authenticate only canonical immutable `v0.3.0`",
-        "At that pre-activation point, no",
-        "Dependabot proposal existed for this repository",
-        "pull/26#issuecomment-5268391783",
-        "pull/27#issuecomment-5268400437",
-        "pull/29",
-        "40234363e8a1764498b524bc86c39afff0584355",
-        "Several Node Actions execute generated JavaScript bundles",
-        "both grouped proposals above",
-        "proved read-only",
-        "and a rejected write before closing unmerged",
-        "### MCPD-016 completion evidence",
-        "`MCPD-016` completed on 2026-08-12",
-        "ea63855124cae11a0230aabc982c5c722b2154876133b7437e2c72a0a1b69ef5",
-        "d11e8378999c057a74a18a83767179d220897897",
-        "5cdc032336ca5e9cc2dba3c0052eff36be0fc83c",
-        "31611427951",
-        "31611427635",
-        "31612642595/job/94168634038",
-        "31612642612/job/94171302909",
-        "31612643730",
-        "4ba3f5121c3810c1e9dc7bd4bc0ee492afb4de93",
-        "31609790299/job/94157892254",
-        "verified 111 reviewable regular UTF-8 source files",
-        "without changing a published byte",
-        "closure PR 38](https://github.com/EnjoyableWork/mcp-doctor/pull/38)",
-        "evidence correction PR 39](https://github.com/EnjoyableWork/mcp-doctor/pull/39)",
-        "corrected a\n  transposed recorded identifier before the final claim",
-        "`MCPD-017` entered active delivery under the activation-only",
-        "| DEC-040 | Close dependency, Action, untrusted-workflow, source-artifact, and published-distribution maintenance under one reviewable supply-chain contract | Accepted |",
-        "### MCPD-016A Syft acquisition correction",
-        "31641032348",
-        "GHSA-hc8v-wwc9-vgxm",
-        "GHSA-qgq7-7hm3-q39j",
-        "57260929138ad516dd4999a5cc43b4a295d2461f",
-        "2293641e3bd628a01bb37639318d62c0ebe89b39",
-        "2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f",
-        "6c0466811541ea03add5213a60a1562f0851e4c0b0ecfdee1a694a9455285900",
-        "prebuilt tool retains a materially broader",
-        "kernel-level network isolation",
-        "`MCPD-016A` is Done",
-        "31648861587",
-        "31648864252",
-        "31648864241",
-        "31654117788",
-        "31654118100",
-        "31654118076",
-        "aa7aa82886b2e282c66c55263161ab6466eccd0632777500e4b5c45f736a6e25",
-        "| DEC-043 | Replace indirect mutable Syft acquisition with exact immutable assets and transient-only bounded retries | Accepted |",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve {contract}"
-        );
-    }
-    for stale in [
-        "`MCPD-016` is In progress",
-        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | In progress |",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Proposed |",
-    ] {
-        assert!(
-            !project.contains(stale),
-            "PROJECT.md must not retain {stale}"
-        );
-    }
 }
 
 #[test]

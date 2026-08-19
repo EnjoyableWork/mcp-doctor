@@ -243,65 +243,6 @@ fn canonical_projection_preserves_the_verified_boundary() {
 }
 
 #[test]
-fn project_records_mcpd_017_completion_without_public_assurance_claim() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
-        "### Accepted organization access, credential, continuity, and recovery contract",
-        "accepted choices `1B`, `2A`, and `3A` on 2026-08-12",
-        "| DEC-041 | Resolve `OPEN-10` with strong MFA, lowest-default access, owner-reviewed short-lived authority, explicit single-owner risk, and private recovery proof | Accepted |",
-        "| DEC-042 | Resolve `OPEN-11` when GitHub Free cannot restrict outside-collaborator invitations to owners | Accepted |",
-        "`OPEN-10` is accepted as `DEC-041`",
-        "`OPEN-11` is accepted as",
-        "The completed decisions above remain accepted.",
-        "The owner then explicitly authorized and completed the staged live activation.",
-        "members or outside\ncollaborators. The remaining outside-collaborator invitation",
-        "classic PATs are blocked from every\nEnjoyableWork API and Git-over-HTTPS resource",
-        "A clean private\nbrowser session then signed in through an existing passkey",
-        "The 2026-08-15 closure audit found that the owner-only App-installation setting",
-        "sharing `homebrew-tap` therefore did not cause the drift",
-        "repository administrators can no longer install GitHub Apps",
-        "verifier token must be passed only as an invocation-local `GH_TOKEN`",
-        "confirmed unusable by a rejected API request",
-        "`MCPD-017` is Done. Exact `main`",
-        "canonical_sha256=8f3b2c3db5f81a174d93bbcdaa8341e816b15c6ae059329fe5d61925c91a8111",
-        "This accepted policy and completion evidence are not an achieved\nOSPS result",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Done |",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Done |",
-        "| RISK-15 | Organization-owner loss or over-broad long-lived credentials become an undocumented recovery dependency",
-        "Mitigated for the completed `MCPD-017` scope",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve the completed MCPD-017 contract: {contract}"
-        );
-    }
-    for stale_or_overbroad in [
-        "| OPEN-10 |",
-        "| OPEN-11 |",
-        "`MCPD-017` is Ready but has not begun",
-        "activation-only [canonical projection]",
-        "Completion blockers remain.",
-        "The canonical lifecycle, App identity, and recovery date remain deliberately",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Ready |",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | In progress |",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Proposed |",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Ready |",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | In progress |",
-        "`MCPD-017` remains In progress",
-        "`MCPD-017` remains incomplete",
-        "scheduled for revocation after the exact-`main` run",
-        "exact-`main` evidence and verifier-token revocation remain open under `MCPD-017`",
-    ] {
-        assert!(
-            !project.contains(stale_or_overbroad),
-            "PROJECT.md must not retain {stale_or_overbroad}"
-        );
-    }
-}
-
-#[test]
 fn verifier_is_bounded_non_disclosing_and_fixture_gated() {
     let verifier = repository_file("scripts/verify-organization-controls.sh");
     let rehearsal = repository_file("scripts/rehearse-organization-controls.sh");

@@ -1,6 +1,6 @@
 {
   "schema_version": "mcp-doctor.github-community-license-controls/v1",
-  "reviewed_on": "2026-08-13",
+  "reviewed_on": "2026-08-19",
   "api_version": "2026-03-10",
   "organization": "EnjoyableWork",
   "project_repository": "EnjoyableWork/mcp-doctor",
@@ -51,7 +51,6 @@
       "CONTRIBUTING.md",
       "Cargo.toml",
       "LICENSE",
-      "PROJECT.md",
       "README.md",
       "SECURITY.md",
       "SUPPORT.md",

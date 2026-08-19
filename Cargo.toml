@@ -33,7 +33,6 @@ include = [
     "/CONTRIBUTING.md",
     "/Cargo.toml",
     "/Cargo.lock",
-    "/PROJECT.md",
     "/SECURITY.md",
     "/SUPPORT.md",
     "/LICENSE",
