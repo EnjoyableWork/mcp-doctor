@@ -211,6 +211,39 @@ pub fn parse_and_validate_markdown(bytes: &[u8]) -> String {
     document
 }
 
+pub fn parse_and_validate_badge(bytes: &[u8]) -> serde_json::Value {
+    assert!(bytes.ends_with(b"\n"), "the badge should end with one LF");
+    assert!(
+        !bytes.contains(&b'\r'),
+        "the badge should not contain CR bytes"
+    );
+    let badge: serde_json::Value =
+        serde_json::from_slice(bytes).expect("the badge should be one JSON value");
+    let object = badge
+        .as_object()
+        .expect("the badge should be a JSON object");
+    assert_eq!(object.len(), 4, "the badge should have exactly four fields");
+    assert_eq!(badge["schemaVersion"], 1);
+    assert_eq!(badge["label"], "mcp-doctor");
+    let message = badge["message"]
+        .as_str()
+        .expect("the badge message should be a string");
+    let color = badge["color"]
+        .as_str()
+        .expect("the badge color should be a string");
+    let expected_color = match message {
+        "pass" => "brightgreen",
+        "fail" => "red",
+        "incomplete" => "lightgrey",
+        message => panic!("unsupported badge message: {message}"),
+    };
+    assert_eq!(color, expected_color);
+    for key in ["schemaVersion", "label", "message", "color"] {
+        assert!(object.contains_key(key), "the badge omitted {key}");
+    }
+    badge
+}
+
 pub fn validate_report_value(report: serde_json::Value) -> serde_json::Value {
     let schema: serde_json::Value = serde_json::from_str(STABLE_REPORT_SCHEMA)
         .expect("the committed stable report schema should be JSON");

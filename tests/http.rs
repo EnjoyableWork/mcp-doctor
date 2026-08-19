@@ -21,8 +21,8 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use serde_json::{Value, json};
 use support::{
-    TestEnvironment, parse_and_validate_contract_snapshot, parse_and_validate_junit,
-    parse_and_validate_markdown, parse_and_validate_report,
+    TestEnvironment, parse_and_validate_badge, parse_and_validate_contract_snapshot,
+    parse_and_validate_junit, parse_and_validate_markdown, parse_and_validate_report,
 };
 
 const TOOL: &str = "synthetic.remote-reviewed";
@@ -4306,6 +4306,7 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     let json_path = environment.artifact_path("remote-report.json");
     let junit_path = environment.artifact_path("remote-report.xml");
     let markdown_path = environment.artifact_path("remote-report.md");
+    let badge_path = environment.artifact_path("remote-badge.json");
     let mut command = remote_command(&environment, "inspect", &endpoint);
     command
         .arg("--json-report")
@@ -4313,7 +4314,9 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
         .arg("--junit-report")
         .arg(&junit_path)
         .arg("--markdown-report")
-        .arg(&markdown_path);
+        .arg(&markdown_path)
+        .arg("--badge-report")
+        .arg(&badge_path);
     let output = run(&mut command);
     let outcome = server.finish();
 
@@ -4323,17 +4326,26 @@ fn passive_remote_inspection_fans_out_without_calling_or_replaying_an_advertised
     assert_eq!(outcome.unexpected_connections, 0);
     assert_report_artifacts(&json_path, &junit_path);
     assert_markdown_artifact(&json_path, &markdown_path);
+    let badge = parse_and_validate_badge(&fs::read(&badge_path).expect("badge should be readable"));
+    assert_eq!(badge["message"], "pass");
     let (stdout, _) = text(&output);
     assert!(stdout.contains("SKIP  runtime.tools"));
     let markdown = fs::read_to_string(&markdown_path).expect("Markdown should be readable");
+    let badge_bytes = fs::read(&badge_path).expect("badge should remain readable");
     for private in [
         endpoint.as_str(),
         TOOL,
         json_path.to_str().unwrap(),
         junit_path.to_str().unwrap(),
         markdown_path.to_str().unwrap(),
+        badge_path.to_str().unwrap(),
     ] {
         assert!(!markdown.contains(private));
+        assert!(
+            !badge_bytes
+                .windows(private.len())
+                .any(|window| window == private.as_bytes())
+        );
     }
     assert_redacted(&output, &endpoint, &[TOOL]);
 }

@@ -2,7 +2,7 @@ use std::fmt::{self, Write as _};
 use std::io;
 use std::process::ExitCode;
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::limits::{DiagnosticLimitProfile, DiagnosticLimits, LimitValues};
 use super::model::{
@@ -14,6 +14,7 @@ use super::redaction::REDACTION_MARKER;
 
 pub(crate) const REPORT_SCHEMA_VERSION: &str = "mcp-doctor.report/v1";
 pub(crate) const MARKDOWN_REPORT_VERSION: &str = "mcp-doctor.markdown/v1";
+pub(crate) const BADGE_REPORT_VERSION: &str = "mcp-doctor.badge/v1";
 const AGGREGATE_REPORT_BYTES: u64 = 8_388_608;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -22,6 +23,7 @@ pub(crate) enum ReportFormat {
     Json,
     Junit,
     Markdown,
+    Badge,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -29,6 +31,7 @@ pub(crate) enum ReportArtifactFormat {
     Json,
     Junit,
     Markdown,
+    Badge,
 }
 
 impl ReportArtifactFormat {
@@ -37,6 +40,7 @@ impl ReportArtifactFormat {
             Self::Json => ReportFormat::Json,
             Self::Junit => ReportFormat::Junit,
             Self::Markdown => ReportFormat::Markdown,
+            Self::Badge => ReportFormat::Badge,
         }
     }
 }
@@ -47,6 +51,7 @@ pub(crate) struct ReportRequest {
     json_artifact: bool,
     junit_artifact: bool,
     markdown_artifact: bool,
+    badge_artifact: bool,
 }
 
 impl ReportRequest {
@@ -55,17 +60,19 @@ impl ReportRequest {
         json_artifact: bool,
         junit_artifact: bool,
         markdown_artifact: bool,
+        badge_artifact: bool,
     ) -> Self {
         Self {
             stdout,
             json_artifact,
             junit_artifact,
             markdown_artifact,
+            badge_artifact,
         }
     }
 
     pub(crate) const fn stdout_only(stdout: ReportFormat) -> Self {
-        Self::new(stdout, false, false, false)
+        Self::new(stdout, false, false, false, false)
     }
 }
 
@@ -640,6 +647,7 @@ pub(super) fn render_report(
         ReportFormat::Json => JsonReporter::render(report),
         ReportFormat::Junit => JunitReporter::render(report),
         ReportFormat::Markdown => MarkdownReporter::render(report),
+        ReportFormat::Badge => BadgeReporter::render(report),
     }
 }
 
@@ -666,11 +674,12 @@ fn render_reports_with_limit(
             maximum: aggregate_maximum,
         });
     }
-    let mut artifacts = Vec::with_capacity(3);
+    let mut artifacts = Vec::with_capacity(4);
     for (requested, format) in [
         (request.json_artifact, ReportArtifactFormat::Json),
         (request.junit_artifact, ReportArtifactFormat::Junit),
         (request.markdown_artifact, ReportArtifactFormat::Markdown),
+        (request.badge_artifact, ReportArtifactFormat::Badge),
     ] {
         if !requested {
             continue;
@@ -1128,6 +1137,123 @@ fn write_human_rule(output: &mut BoundedOutput, violation: RuleViolation) {
             .expect("the bounded report writer records limit failures");
     }
     output.push('\n');
+}
+
+pub(super) struct BadgeReporter;
+
+impl BadgeReporter {
+    fn render(report: &DiagnosticReport) -> Result<String, ReportRenderError> {
+        let badge = BadgeReport::from_outcome(report.outcome());
+        let mut output = BoundedOutput::for_report(report);
+        serde_json::to_writer_pretty(&mut output, &badge)
+            .expect("the fixed badge report must serialize as JSON");
+        output.push('\n');
+        output.finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+struct BadgeReport {
+    #[serde(rename = "schemaVersion")]
+    schema_version: u8,
+    label: BadgeLabel,
+    message: BadgeMessage,
+    color: BadgeColor,
+}
+
+impl BadgeReport {
+    const fn from_outcome(outcome: OverallOutcome) -> Self {
+        let message = match outcome {
+            OverallOutcome::Passed => BadgeMessage::Pass,
+            OverallOutcome::Failed => BadgeMessage::Fail,
+            OverallOutcome::Incomplete => BadgeMessage::Incomplete,
+        };
+        Self {
+            schema_version: 1,
+            label: BadgeLabel::McpDoctor,
+            message,
+            color: message.color(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BadgeReport {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = BadgeReportWire::deserialize(deserializer)?;
+        if wire.color != wire.message.color() {
+            return Err(de::Error::custom(
+                "badge message and color do not match the fixed contract",
+            ));
+        }
+        Ok(Self {
+            schema_version: wire.schema_version,
+            label: wire.label,
+            message: wire.message,
+            color: wire.color,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BadgeReportWire {
+    #[serde(
+        rename = "schemaVersion",
+        deserialize_with = "deserialize_badge_schema_version"
+    )]
+    schema_version: u8,
+    label: BadgeLabel,
+    message: BadgeMessage,
+    color: BadgeColor,
+}
+
+fn deserialize_badge_schema_version<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let version = u8::deserialize(deserializer)?;
+    if version == 1 {
+        Ok(version)
+    } else {
+        Err(de::Error::custom("unsupported badge schema version"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+enum BadgeLabel {
+    #[serde(rename = "mcp-doctor")]
+    McpDoctor,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum BadgeMessage {
+    Pass,
+    Fail,
+    Incomplete,
+}
+
+impl BadgeMessage {
+    const fn color(self) -> BadgeColor {
+        match self {
+            Self::Pass => BadgeColor::BrightGreen,
+            Self::Fail => BadgeColor::Red,
+            Self::Incomplete => BadgeColor::LightGrey,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+enum BadgeColor {
+    #[serde(rename = "brightgreen")]
+    BrightGreen,
+    #[serde(rename = "red")]
+    Red,
+    #[serde(rename = "lightgrey")]
+    LightGrey,
 }
 
 pub(super) struct MarkdownReporter;
@@ -2708,10 +2834,10 @@ impl JsonEvidence {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundedOutput, DiagnosticReport, ExitStatus, HumanReporter, JsonReporter, JunitReporter,
-        MarkdownReporter, OverallOutcome, ReportArtifactFormat, ReportContractError, ReportFormat,
-        ReportRenderError, ReportRequest, render_reports, render_reports_with_limit,
-        write_xml_escaped,
+        BadgeReport, BadgeReporter, BoundedOutput, DiagnosticReport, ExitStatus, HumanReporter,
+        JsonReporter, JunitReporter, MarkdownReporter, OverallOutcome, ReportArtifactFormat,
+        ReportContractError, ReportFormat, ReportRenderError, ReportRequest, render_reports,
+        render_reports_with_limit, write_xml_escaped,
     };
     use crate::contract::limits::{
         DiagnosticLimitProfile, DiagnosticLimits, LimitKind, LimitValues, LimitViolation,
@@ -2854,6 +2980,7 @@ mod tests {
         let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
         let markdown =
             MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
+        let badge = BadgeReporter::render(&report).expect("typed report should serialize as badge");
         let json_value: serde_json::Value =
             serde_json::from_str(&json).expect("the JSON reporter should emit one value");
 
@@ -2872,6 +2999,10 @@ mod tests {
         assert_eq!(
             markdown,
             include_str!("../../tests/fixtures/contracts/failed-report.md")
+        );
+        assert_eq!(
+            badge,
+            include_str!("../../tests/fixtures/contracts/failed-badge.json")
         );
         assert_eq!(report.outcome(), OverallOutcome::Failed);
         assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
@@ -2941,9 +3072,68 @@ mod tests {
     }
 
     #[test]
+    fn badge_outcomes_are_byte_stable_fixed_and_strictly_deserializable() {
+        let passed = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::DEFAULTS,
+            vec![passing_revision_check()],
+        )
+        .expect("the passing badge fixture should satisfy the report contract");
+        let incomplete = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::DEFAULTS,
+            vec![CheckResult::skipped(
+                CheckId::RuntimeTools,
+                Requirement::Required,
+                SkipReason::NotAuthorized,
+            )],
+        )
+        .expect("the incomplete badge fixture should satisfy the report contract");
+        let failed = synthetic_failed_report();
+
+        for (report, fixture) in [
+            (
+                &passed,
+                include_str!("../../tests/fixtures/contracts/passed-badge.json"),
+            ),
+            (
+                &failed,
+                include_str!("../../tests/fixtures/contracts/failed-badge.json"),
+            ),
+            (
+                &incomplete,
+                include_str!("../../tests/fixtures/contracts/incomplete-badge.json"),
+            ),
+        ] {
+            let first = BadgeReporter::render(report).expect("the badge should fit");
+            let second = BadgeReporter::render(report).expect("the badge should repeat");
+            assert_eq!(first, second);
+            assert_eq!(first, fixture);
+            assert!(first.ends_with('\n'));
+            assert!(!first.contains('\r'));
+            serde_json::from_str::<BadgeReport>(&first)
+                .expect("the fixed badge should satisfy its strict typed contract");
+        }
+
+        for invalid in [
+            r#"{"schemaVersion":2,"label":"mcp-doctor","message":"pass","color":"brightgreen"}"#,
+            r#"{"schemaVersion":1,"label":"dynamic","message":"pass","color":"brightgreen"}"#,
+            r#"{"schemaVersion":1,"label":"mcp-doctor","message":"passed","color":"brightgreen"}"#,
+            r#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"green"}"#,
+            r#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"red"}"#,
+            r#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"brightgreen","score":100}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<BadgeReport>(invalid).is_err(),
+                "the strict badge contract accepted {invalid}"
+            );
+        }
+    }
+
+    #[test]
     fn one_report_fans_out_in_fixed_order_under_one_aggregate_bound() {
         let report = synthetic_failed_report();
-        let request = ReportRequest::new(ReportFormat::Human, true, true, true);
+        let request = ReportRequest::new(ReportFormat::Human, true, true, true, true);
         let rendered = render_reports(&report, request)
             .expect("the synthetic report projections should fit their bounds");
 
@@ -2951,7 +3141,7 @@ mod tests {
             rendered.stdout,
             include_str!("../../tests/fixtures/contracts/failed-report.txt")
         );
-        assert_eq!(rendered.artifacts.len(), 3);
+        assert_eq!(rendered.artifacts.len(), 4);
         assert_eq!(rendered.artifacts[0].format, ReportArtifactFormat::Json);
         assert_eq!(
             rendered.artifacts[0].output,
@@ -2966,6 +3156,11 @@ mod tests {
         assert_eq!(
             rendered.artifacts[2].output,
             include_str!("../../tests/fixtures/contracts/failed-report.md")
+        );
+        assert_eq!(rendered.artifacts[3].format, ReportArtifactFormat::Badge);
+        assert_eq!(
+            rendered.artifacts[3].output,
+            include_str!("../../tests/fixtures/contracts/failed-badge.json")
         );
 
         let aggregate_bytes = rendered
@@ -3016,6 +3211,7 @@ mod tests {
         assert_eq!(JsonReporter::render(&report), expected);
         assert_eq!(JunitReporter::render(&report), expected);
         assert_eq!(MarkdownReporter::render(&report), expected);
+        assert_eq!(BadgeReporter::render(&report), expected);
     }
 
     #[test]
@@ -3133,11 +3329,12 @@ mod tests {
         )
         .expect("redacted synthetic report should satisfy the contract");
         let rendered = format!(
-            "{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}",
             HumanReporter::render(&report),
             JsonReporter::render(&report).expect("typed report should serialize"),
             JunitReporter::render(&report).expect("typed report should serialize as JUnit"),
-            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown")
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown"),
+            BadgeReporter::render(&report).expect("typed report should serialize as badge")
         );
 
         assert!(rendered.contains("[REDACTED]"));

@@ -4,9 +4,9 @@ use serde::Serialize;
 
 use crate::aggregate::AGGREGATE_SCHEMA_VERSION;
 use crate::contract::{
-    DIFF_SCHEMA_VERSION, ExitStatus, GENERATOR_VERSION, KnownRevision, MARKDOWN_REPORT_VERSION,
-    ProtocolRevision, REPORT_SCHEMA_VERSION, SCENARIO_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION,
-    WORKFLOW_SCHEMA_VERSION,
+    BADGE_REPORT_VERSION, DIFF_SCHEMA_VERSION, ExitStatus, GENERATOR_VERSION, KnownRevision,
+    MARKDOWN_REPORT_VERSION, ProtocolRevision, REPORT_SCHEMA_VERSION, SCENARIO_SCHEMA_VERSION,
+    SNAPSHOT_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION,
 };
 
 pub(crate) const CAPABILITIES_SCHEMA_VERSION: &str = "mcp-doctor.capabilities/v1";
@@ -24,6 +24,7 @@ const HUMAN_REPORTER: &str = "human";
 const JSON_REPORTER: &str = "json";
 const JUNIT_REPORTER: &str = "junit";
 const MARKDOWN_REPORTER: &str = "markdown";
+const BADGE_REPORTER: &str = "badge";
 
 const NO_SCHEMAS: &[&str] = &[];
 const NO_REPORTERS: &[&str] = &[];
@@ -33,12 +34,18 @@ const CONTRACT_DIFF_SCHEMAS: &[&str] = &[DIFF_SCHEMA_VERSION];
 const CONTRACT_SNAPSHOT_SCHEMAS: &[&str] = &[SNAPSHOT_SCHEMA_VERSION];
 const DIAGNOSTIC_REPORT_SCHEMAS: &[&str] = &[REPORT_SCHEMA_VERSION];
 const MARKDOWN_REPORT_SCHEMAS: &[&str] = &[MARKDOWN_REPORT_VERSION];
+const BADGE_REPORT_SCHEMAS: &[&str] = &[BADGE_REPORT_VERSION];
 const GENERATOR_SCHEMAS: &[&str] = &[GENERATOR_VERSION];
 const SCENARIO_SCHEMAS: &[&str] = &[SCENARIO_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION];
 
 const HUMAN_JSON_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER];
 const DIAGNOSTIC_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER, JUNIT_REPORTER];
-const DIAGNOSTIC_ARTIFACT_REPORTERS: &[&str] = &[JSON_REPORTER, JUNIT_REPORTER, MARKDOWN_REPORTER];
+const DIAGNOSTIC_ARTIFACT_REPORTERS: &[&str] = &[
+    JSON_REPORTER,
+    JUNIT_REPORTER,
+    MARKDOWN_REPORTER,
+    BADGE_REPORTER,
+];
 
 const CURRENT_REVISION: &str = ProtocolRevision::V2026_07_28.as_str();
 const V2025_11_25: &str = ProtocolRevision::V2025_11_25.as_str();
@@ -229,6 +236,10 @@ const REPORTERS: &[ReporterCapability<'static>] = &[
         name: MARKDOWN_REPORTER,
         machine_readable: false,
     },
+    ReporterCapability {
+        name: BADGE_REPORTER,
+        machine_readable: true,
+    },
 ];
 
 const EXIT_CODES: &[ExitCodeCapability<'static>] = &[
@@ -400,6 +411,7 @@ struct SchemaVersions<'a> {
     contract_snapshot: &'a [&'a str],
     diagnostic_report: &'a [&'a str],
     markdown_report: &'a [&'a str],
+    badge_report: &'a [&'a str],
     generator: &'a [&'a str],
     scenario: &'a [&'a str],
 }
@@ -513,6 +525,7 @@ fn manifest() -> CapabilitiesManifest<'static> {
             contract_snapshot: CONTRACT_SNAPSHOT_SCHEMAS,
             diagnostic_report: DIAGNOSTIC_REPORT_SCHEMAS,
             markdown_report: MARKDOWN_REPORT_SCHEMAS,
+            badge_report: BADGE_REPORT_SCHEMAS,
             generator: GENERATOR_SCHEMAS,
             scenario: SCENARIO_SCHEMAS,
         },

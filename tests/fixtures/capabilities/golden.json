@@ -34,7 +34,8 @@
       "artifact_reporters": [
         "json",
         "junit",
-        "markdown"
+        "markdown",
+        "badge"
       ],
       "input_schema_versions": [],
       "output_schema_versions": [
@@ -71,7 +72,8 @@
       "artifact_reporters": [
         "json",
         "junit",
-        "markdown"
+        "markdown",
+        "badge"
       ],
       "input_schema_versions": [
         "mcp-doctor.scenario/v1alpha1",
@@ -111,7 +113,8 @@
       "artifact_reporters": [
         "json",
         "junit",
-        "markdown"
+        "markdown",
+        "badge"
       ],
       "input_schema_versions": [],
       "output_schema_versions": [
@@ -132,7 +135,8 @@
       "artifact_reporters": [
         "json",
         "junit",
-        "markdown"
+        "markdown",
+        "badge"
       ],
       "input_schema_versions": [],
       "output_schema_versions": [
@@ -295,6 +299,9 @@
     "markdown_report": [
       "mcp-doctor.markdown/v1"
     ],
+    "badge_report": [
+      "mcp-doctor.badge/v1"
+    ],
     "generator": [
       "mcp-doctor.generator/v1"
     ],
@@ -319,6 +326,10 @@
     {
       "name": "markdown",
       "machine_readable": false
+    },
+    {
+      "name": "badge",
+      "machine_readable": true
     }
   ],
   "exit_semantics": {

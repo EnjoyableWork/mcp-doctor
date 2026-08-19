@@ -108,6 +108,10 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
         json!(["mcp-doctor.markdown/v1"])
     );
     assert_eq!(
+        manifest["schema_versions"]["badge_report"],
+        json!(["mcp-doctor.badge/v1"])
+    );
+    assert_eq!(
         manifest["schema_versions"]["scenario"],
         json!([
             "mcp-doctor.scenario/v1alpha1",
@@ -175,7 +179,7 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
     assert_eq!(inspect["reporters"], json!(["human", "json", "junit"]));
     assert_eq!(
         inspect["artifact_reporters"],
-        json!(["json", "junit", "markdown"])
+        json!(["json", "junit", "markdown", "badge"])
     );
     let markdown = manifest["reporters"]
         .as_array()
@@ -184,6 +188,13 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
         .find(|reporter| reporter["name"] == "markdown")
         .expect("Markdown should be declared");
     assert_eq!(markdown["machine_readable"], false);
+    let badge = manifest["reporters"]
+        .as_array()
+        .expect("reporters should be an array")
+        .iter()
+        .find(|reporter| reporter["name"] == "badge")
+        .expect("badge should be declared");
+    assert_eq!(badge["machine_readable"], true);
     assert!(first.stdout.len() <= 65_536);
 
     manifest["product"]["version"] = json!("0.0.0-test");
@@ -238,7 +249,7 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     )));
     assert!(stdout.contains("inspect · passive"));
     assert!(stdout.contains(
-        "inspect · passive · reporters human,json,junit · artifacts json,junit,markdown"
+        "inspect · passive · reporters human,json,junit · artifacts json,junit,markdown,badge"
     ));
     assert!(stdout.contains("check · stdio · 2026-07-28,2025-11-25,2025-06-18"));
     assert!(stdout.contains("reject · stdio · 2026-07-28"));
