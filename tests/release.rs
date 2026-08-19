@@ -906,14 +906,17 @@ fn command_guide_keeps_generation_boundary_explicit() {
 }
 
 #[test]
-fn command_guide_freezes_the_a1_partial_tool_description_contract() {
+fn command_guide_freezes_the_a1_tool_description_contract() {
     let commands = repository_file("docs/commands.md");
 
     for contract in [
         "### Tool-description quality",
         "`MCP-QUALITY-001`",
+        "`MCP-QUALITY-003`",
         "`tools[index].description`",
-        "`A1 Partial`\nrubric contract",
+        "`todo`,\n`tbd`, `tool`, `description`, or `placeholder`",
+        "One tool receives at most one description-quality finding",
+        "`MCP-QUALITY-001` remains authoritative",
         "`A1 normalization v1`",
         "`U+0009`–`U+000D`",
         "`U+0020`",
@@ -926,12 +929,16 @@ fn command_guide_freezes_the_a1_partial_tool_description_contract() {
         "`U+202F`",
         "`U+205F`",
         "`U+3000`",
+        "trims boundary\nASCII whitespace",
+        "removes ASCII punctuation, and lowercases ASCII letters",
+        "does not transliterate,\nlocale-fold, or infer semantic similarity",
+        "do not grade\nduplicate prose, readability, jargon, token efficiency, sentiment",
         "non-string description remains `MCP-CATALOG-001`",
         "without an\nextra request or any tool call",
     ] {
         assert!(
             commands.contains(contract),
-            "the command guide should retain the A1 Partial contract: {contract}"
+            "the command guide should retain the A1 description-quality contract: {contract}"
         );
     }
 }

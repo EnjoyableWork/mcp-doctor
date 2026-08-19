@@ -1,0 +1,7 @@
+      MCP-QUALITY-003  warning
+      Where: tools[0].description
+      What: An advertised tool description provides no selection guidance.
+      Why: Agents may mistake a placeholder or repeated name for usable selection guidance.
+      Expected: Each advertised tool should describe what it does and when to select it instead of using a placeholder or repeating its name.
+      Fix: Replace the placeholder or name-only description with what the tool does and when to select it.
+      Reference: mcp-doctor A1 normalization v1 tool-description quality contract

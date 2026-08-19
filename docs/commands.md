@@ -359,10 +359,15 @@ the evidence.
 Passive `inspect` reports `MCP-QUALITY-001` as a warning at
 `tools[index].description` when an otherwise inspectable tool omits its
 description or supplies a blank string. The correction is to provide a concise
-description of what the tool does and when to select it. The `A1 Partial`
-rubric contract detects missing and blank descriptions, but does not grade
-placeholders, name-only prose, duplicates, readability, jargon, or token
-efficiency.
+description of what the tool does and when to select it.
+
+`MCP-QUALITY-003` reports the same structural location when a non-blank
+description normalizes to the tool name or to one fixed placeholder: `todo`,
+`tbd`, `tool`, `description`, or `placeholder`. The finding retains none of the
+name, description, normalized text, or matched placeholder. Its correction is
+to replace the placeholder or repeated name with what the tool does and when
+to select it. One tool receives at most one description-quality finding, and
+`MCP-QUALITY-001` remains authoritative for an absent or blank description.
 
 `A1 normalization v1` defines blank deterministically as an empty string or a
 string containing only these Unicode scalar values:
@@ -378,6 +383,14 @@ string containing only these Unicode scalar values:
 - `U+202F`
 - `U+205F`
 - `U+3000`
+
+For the `MCP-QUALITY-003` comparison, `A1 normalization v1` trims boundary
+ASCII whitespace, collapses each internal ASCII-whitespace run to one space,
+removes ASCII punctuation, and lowercases ASCII letters. All non-ASCII scalar
+values remain scalar-for-scalar significant: mcp-doctor does not transliterate,
+locale-fold, or infer semantic similarity. These passive rules do not grade
+duplicate prose, readability, jargon, token efficiency, sentiment, or general
+language quality.
 
 The rule does not use locale, runtime whitespace tables, or an LLM. A
 non-string description remains `MCP-CATALOG-001`, without a duplicate quality

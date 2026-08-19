@@ -177,6 +177,7 @@ pub(super) enum FindingCode {
     PaginationCursorRepeated,
     CatalogMethodRejected,
     ToolDescriptionMissingOrBlank,
+    ToolDescriptionPlaceholderOrNameOnly,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
     AmbiguousSchemaDialect,
@@ -231,6 +232,7 @@ impl FindingCode {
             Self::PaginationCursorRepeated => "MCP-CATALOG-003",
             Self::CatalogMethodRejected => "MCP-CATALOG-004",
             Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
+            Self::ToolDescriptionPlaceholderOrNameOnly => "MCP-QUALITY-003",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
             Self::ExternalSchemaReferenceBlocked => "MCP-SCHEMA-003",
@@ -260,6 +262,7 @@ impl FindingCode {
             Self::ProtocolRevisionConfirmed => Severity::Info,
             Self::DeprecatedProtocolFeature
             | Self::ToolDescriptionMissingOrBlank
+            | Self::ToolDescriptionPlaceholderOrNameOnly
             | Self::AmbiguousSchemaDialect => Severity::Warning,
             Self::ProcessStartFailed
             | Self::StdioIoFailed
@@ -371,6 +374,9 @@ impl FindingCode {
                 "The server rejected a catalog method required by the selected revision."
             }
             Self::ToolDescriptionMissingOrBlank => "An advertised tool has no usable description.",
+            Self::ToolDescriptionPlaceholderOrNameOnly => {
+                "An advertised tool description provides no selection guidance."
+            }
             Self::SchemaContractInvalid => "A local JSON Schema contract is invalid.",
             Self::UnsupportedSchemaDialect => {
                 "A local schema uses an unsupported JSON Schema dialect."
@@ -503,6 +509,9 @@ impl FindingCode {
             }
             Self::ToolDescriptionMissingOrBlank => {
                 "Agents may not reliably know when to select this tool."
+            }
+            Self::ToolDescriptionPlaceholderOrNameOnly => {
+                "Agents may mistake a placeholder or repeated name for usable selection guidance."
             }
             Self::SchemaContractInvalid => {
                 "Clients cannot safely construct or validate values from this schema."
@@ -651,6 +660,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => {
                 "Each advertised tool should provide a concise, non-blank description of what it does and when to select it."
             }
+            Self::ToolDescriptionPlaceholderOrNameOnly => {
+                "Each advertised tool should describe what it does and when to select it instead of using a placeholder or repeating its name."
+            }
             Self::SchemaContractInvalid => {
                 "Advertised and scenario-provided schemas must be valid local JSON Schema Draft 2020-12 objects whose patterns use the supported linear-time subset."
             }
@@ -795,6 +807,9 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => {
                 "Provide a concise description of what the tool does and when to select it."
             }
+            Self::ToolDescriptionPlaceholderOrNameOnly => {
+                "Replace the placeholder or name-only description with what the tool does and when to select it."
+            }
             Self::SchemaContractInvalid => {
                 "Correct the schema at the reported structural location and validate it as Draft 2020-12; use the supported linear-time subset for patterns."
             }
@@ -894,7 +909,7 @@ impl FindingCode {
             | Self::DuplicateCatalogIdentifier
             | Self::PaginationCursorRepeated
             | Self::CatalogMethodRejected => "selected MCP revision catalog contracts",
-            Self::ToolDescriptionMissingOrBlank => {
+            Self::ToolDescriptionMissingOrBlank | Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "mcp-doctor A1 normalization v1 tool-description quality contract"
             }
             Self::SchemaContractInvalid
@@ -2092,6 +2107,18 @@ impl Finding {
         )
     }
 
+    pub(super) fn tool_description_placeholder_or_name_only(
+        revision: SupportedRevision,
+        location: Location,
+    ) -> Self {
+        Self::new(
+            FindingCode::ToolDescriptionPlaceholderOrNameOnly,
+            revision,
+            location,
+            FindingEvidence::None,
+        )
+    }
+
     pub(super) fn schema_contract_invalid(
         revision: SupportedRevision,
         location: Location,
@@ -2584,6 +2611,11 @@ mod tests {
             (
                 FindingCode::ToolDescriptionMissingOrBlank,
                 "MCP-QUALITY-001",
+                Severity::Warning,
+            ),
+            (
+                FindingCode::ToolDescriptionPlaceholderOrNameOnly,
+                "MCP-QUALITY-003",
                 Severity::Warning,
             ),
             (

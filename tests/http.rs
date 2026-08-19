@@ -975,6 +975,35 @@ fn tool_description_quality_response() -> FixtureResponse {
     }))
 }
 
+fn tool_description_placeholder_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-private-http-placeholder-never-report-64",
+                    "description": "SYNTHETIC_PRIVATE_HTTP_PLACEHOLDER_NEVER_REPORT_64",
+                    "inputSchema": {"type": "object"}
+                },
+                {
+                    "name": "synthetic.private.http.selector",
+                    "description": " T.B.D. ",
+                    "inputSchema": {"type": "object"}
+                },
+                {
+                    "name": "synthetic-private-http-usable-never-report-64",
+                    "description": "Use this bounded synthetic selector for a reviewed operation.",
+                    "inputSchema": {"type": "object"}
+                }
+            ]
+        }
+    }))
+}
+
 fn workflow_tools_response() -> FixtureResponse {
     FixtureResponse::json(json!({
         "jsonrpc": "2.0",
@@ -4323,6 +4352,70 @@ fn passive_http_description_quality_uses_only_the_advertised_catalog_request() {
     assert_eq!(findings[0]["location"], "tools[0].description");
     assert!(!stdout.contains("synthetic-private"), "{stdout}");
     assert!(!stdout.contains("private description"), "{stdout}");
+}
+
+#[test]
+fn passive_http_placeholder_quality_uses_only_the_advertised_catalog_request() {
+    const SENTINEL: &str = "synthetic-private-http-placeholder-never-report-64";
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                tool_description_placeholder_response(),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_eq!(outcome.request_failures, 0);
+    let findings = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "discovery.catalogs")
+        .expect("the discovery check should exist")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 2, "{report:#}");
+    for (index, finding) in findings.iter().enumerate() {
+        assert_eq!(finding["code"], "MCP-QUALITY-003");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["location"], format!("tools[{index}].description"));
+        assert_eq!(finding["evidence"]["kind"], "none");
+    }
+    for (canary_index, forbidden) in [
+        SENTINEL,
+        "SYNTHETIC_PRIVATE_HTTP_PLACEHOLDER_NEVER_REPORT_64",
+        "syntheticprivatehttpplaceholderneverreport64",
+        "T.B.D.",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(
+            !stdout.contains(forbidden),
+            "HTTP report retained redaction canary {canary_index}"
+        );
+    }
+    assert!(!stdout.contains("tools[2].description"), "{stdout}");
 }
 
 #[test]
