@@ -848,24 +848,8 @@ fn junit_compatibility_evidence_is_scoped_and_pinned() {
 }
 
 #[test]
-fn project_keeps_mcpd_009_active_authorization_boundary_explicit() {
-    let project = repository_file("PROJECT.md");
+fn repository_guidance_keeps_active_authorization_boundary_explicit() {
     let agents = repository_file("AGENTS.md");
-
-    for contract in [
-        "mcp-doctor.scenario/v1alpha1",
-        "RFC 6901",
-        "`read_only` or `side_effecting`",
-        "`--allow-tool <exact-name>`",
-        "`--allow-side-effects`",
-        "An `input_required` result is recorded as incomplete",
-        "| MCPD-009 | Add explicit, budgeted, deterministic `check` scenario replay and result-schema validation | M3 | Done |",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain MCPD-009 contract: {contract}"
-        );
-    }
 
     for contract in [
         "mcp-doctor.scenario/v1alpha1",
@@ -882,36 +866,11 @@ fn project_keeps_mcpd_009_active_authorization_boundary_explicit() {
 }
 
 #[test]
-fn project_keeps_mcpd_010_network_boundary_explicit() {
-    let project = repository_file("PROJECT.md");
+fn repository_guidance_keeps_network_boundary_explicit() {
     let agents = repository_file("AGENTS.md");
 
     for contract in [
-        "| DEC-030 | Resolve `OPEN-06` with one direct, pinned, credential-scoped Streamable HTTP endpoint | Accepted |",
-        "`--allow-private-network <exact-url>`",
-        "`--allow-cleartext-http <exact-url>`",
-        "`--allow-credentials-to <exact-url>`",
-        "outside all reviewed IANA special-purpose blocks",
-        "Name resolution runs once",
-        "Redirects and application retries remain exactly zero",
-        "ignores `HTTP_PROXY`, `HTTPS_PROXY`",
-        "requires TLS 1.2 or 1.3",
-        "does not fetch `resource_metadata`",
-        "`Mcp-Param-*`",
-        "| MCPD-010 | Add a bounded Streamable HTTP transport with explicit remote-target and credential policy | M3 | Done |",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain MCPD-010 network contract: {contract}"
-        );
-    }
-    assert!(
-        !project.contains("| OPEN-06 |"),
-        "accepted OPEN-06 should leave the open-decision table"
-    );
-
-    for contract in [
-        "Follow `DEC-030` for Streamable HTTP",
+        "Follow the Streamable HTTP safety contract",
         "16-address cap",
         "zero redirects and application retries",
         "full chain and service-identity",
@@ -927,26 +886,8 @@ fn project_keeps_mcpd_010_network_boundary_explicit() {
 }
 
 #[test]
-fn project_keeps_mcpd_011_generation_boundary_explicit() {
-    let project = repository_file("PROJECT.md");
+fn command_guide_keeps_generation_boundary_explicit() {
     let commands = repository_file("docs/commands.md");
-
-    for contract in [
-        "| DEC-031 | Generate only versioned, bounded, schema-valid cases for one redundantly authorized tool | Accepted |",
-        "`mcp-doctor.generator/v1`",
-        "`--tool <exact-name>` and `--allow-tool <exact-name>`",
-        "256 synthesis attempts, 64 retained",
-        "100,000 synthesis steps",
-        "`MCP-GENERATION-001`",
-        "Case `n` uses the base seed with wrapping addition",
-        "| MCPD-011 | Add the bounded adversarial `break` command for authorized tools | M3 | Done |",
-        "`proptest` or another property framework | `MCPD-011` — evaluated 2026-08-11 | Not adopted",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain MCPD-011 generation contract: {contract}"
-        );
-    }
 
     for contract in [
         "--tool search",
@@ -965,34 +906,9 @@ fn project_keeps_mcpd_011_generation_boundary_explicit() {
 }
 
 #[test]
-fn project_and_command_guide_record_the_completed_mcpd_029_rejection_boundary() {
-    let project = repository_file("PROJECT.md");
+fn command_guide_records_the_rejection_boundary() {
     let commands = repository_file("docs/commands.md");
     let agents = repository_file("AGENTS.md");
-
-    for contract in [
-        "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
-        "| MCPD-029 | Diagnose bounded schema-invalid tool-argument rejection for the current active revision | Optional active correctness | Done |",
-        "[issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
-        "protected [PR 82](https://github.com/EnjoyableWork/mcp-doctor/pull/82)",
-        "merge commit [`3472952`](https://github.com/EnjoyableWork/mcp-doctor/commit/3472952a521ad30fbf716c828739887835a78898)",
-        "closed [issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
-        "plus first-attempt exact-`main`",
-        "`missing_arguments`, `wrong_root_type`, `omitted_required_property`, `wrong_property_type`, `forbidden_null`, `invalid_enum`, and `unexpected_property`",
-        "integer code `-32602` and a string message",
-        "never match prose",
-        "including `isError: true` or `input_required`, is critical unsafe acceptance",
-        "represented installed smokes",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain the MCPD-029 boundary: {contract}"
-        );
-    }
-    assert!(
-        !project.lines().any(|line| line.starts_with("| OPEN-16 |")),
-        "accepted OPEN-16 should leave the open-decision table"
-    );
 
     for contract in [
         "## Schema-invalid `reject` cases",
@@ -1102,62 +1018,12 @@ fn readme_exposes_simple_verified_installation_channels() {
 }
 
 #[test]
-fn project_records_the_completed_protocol_correction_and_v030_release() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "### MCPD-023 accepted structured protocol-rejection correction",
-        "### MCPD-024 accepted `v0.3.0` release plan",
-        "| MCPD-023 | Classify the exact current-revision unsupported-version response at the protocol layer | Optional correctness | Done |",
-        "| MCPD-024 | Publish and independently verify completed optional capabilities as `v0.3.0` | Optional release | Done |",
-        "| DEC-048 | Resolve issue #64 by treating only the exact bounded `-32022` response as a protocol-version rejection | Accepted |",
-        "| DEC-049 | Publish completed optional capabilities as backward-compatible `v0.3.0` and advance the supported line | Accepted |",
-        "| RISK-24 | A structured protocol-version rejection is mislabeled as transport failure",
-        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release, byte-identical crates.io and `EnjoyableWork/tap/mcp-doctor` source channels, and all ten represented installed-channel jobs verified |",
-        "`MCPD-023` and `MCPD-024` completed on 2026-08-13",
-        "d9b96bbeb84baccb8e5c890e9c655a559a12a474",
-        "31755736570",
-        "31756253855",
-        "31756413098",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve completed v0.3.0 evidence: {contract}"
-        );
-    }
-}
-
-#[test]
-fn project_records_completed_compiled_capability_discovery_without_target_authority() {
-    let project = repository_file("PROJECT.md");
+fn compiled_capability_discovery_has_no_target_authority() {
     let automation = repository_file("docs/automation.md");
     let implementation = repository_file("src/capabilities.rs");
     let schema = repository_file("schemas/mcp-doctor.capabilities.v1.schema.json");
     let posix_smoke = repository_file("scripts/smoke-installed.sh");
     let powershell_smoke = repository_file("scripts/smoke-installed.ps1");
-
-    for contract in [
-        "### MCPD-025 accepted compiled capability-manifest plan",
-        "| MCPD-025 | Expose a stable compiled capability manifest without target activity | Optional integration discovery | Done |",
-        "| DEC-050 | Resolve issue #66 with one exact, stable, compiled-only capability response | Accepted |",
-        "| RISK-25 | A stale or over-broad capability manifest",
-        "mcp-doctor.capabilities/v1",
-        "mcp-doctor.exit/v1",
-        "64-KiB",
-        "tri-state consumer fixture",
-        "did not delay, redefine, or become a\nprerequisite for `MCPD-017` or `MCPD-018`",
-        "`MCPD-025` completed on 2026-08-13",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/58",
-        "c5847ee794c227376783b2828f44ce3de34c81b9",
-        "f4a96a4cf14f8642e1e66c116c934f58ab86374a",
-        "31761161743",
-        "31761161698",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve MCPD-025 contract: {contract}"
-        );
-    }
 
     for contract in [
         "mcp-doctor capabilities --format json",
@@ -1301,70 +1167,10 @@ fn automation_guide_exit_table_matches_the_stable_contract() {
 }
 
 #[test]
-fn project_resolves_open_07_with_stable_json_and_junit_without_security_scanner_scope() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "| DEC-032 | Resolve `OPEN-07` with stable vendor-neutral JSON and a JUnit-compatible CI projection | Accepted |",
-        "`mcp-doctor.report/v1`",
-        "Stable `v1` JSON is the authoritative, vendor-neutral automation contract.",
-        "ignore unknown optional fields and handle a previously unknown finding code",
-        "JUnit is a projection of that same immutable result",
-        "produced without rerunning a target",
-        "process exit status remains the CI",
-        "SARIF is deferred",
-        "not a general\nsecurity scanner",
-        "Keep SARIF and general security-scanner positioning out of scope.",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain DEC-032 reporting contract: {contract}"
-        );
-    }
-
-    assert!(
-        !project.contains("| OPEN-07 |"),
-        "accepted OPEN-07 should leave the open-decision table"
-    );
-}
-
-#[test]
-fn project_and_automation_guide_define_conservative_offline_report_aggregation() {
-    let project = repository_file("PROJECT.md");
+fn automation_guide_defines_conservative_offline_report_aggregation() {
     let automation = repository_file("docs/automation.md");
     let posix_smoke = repository_file("scripts/smoke-installed.sh");
     let powershell_smoke = repository_file("scripts/smoke-installed.ps1");
-
-    for contract in [
-        "### MCPD-022 accepted offline aggregate plan",
-        "identifies a real report-sufficiency gap",
-        "strengthens\nthe north star",
-        "mcp-doctor aggregate --output PATH [--format human|json] REPORT...",
-        "zero-based input ordinal",
-        "Aggregate outcome is `failed` with exit `1`",
-        "16 MiB total",
-        "total JSON nodes and validation work to 1,000,000",
-        "Perform no process launch, network access, DNS, credential resolution",
-        "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity",
-        "| DEC-047 | Resolve issue #73 with normalized conservative offline aggregation of stable reports",
-        "| RISK-23 | An offline aggregate turns incomplete or failed evidence into a pass",
-        "| D-13 | Conservative bounded offline diagnostic-report aggregates | Optional offline evidence | Done |",
-        "| MCPD-022 | Aggregate stable diagnostic reports conservatively without target activity | Optional offline evidence | Done |",
-        "`MCPD-022` completed on 2026-08-13",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/52",
-        "31736927318",
-        "31736927338",
-        "31737876282",
-        "31737876227",
-        "983919d0ffae417133f829b806e8f5a9e72082b7",
-        "completed closure of [issue #73]",
-        "Mitigated for the `MCPD-022` scope",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain the MCPD-022 contract: {contract}"
-        );
-    }
 
     for contract in [
         "`aggregate` combines",
@@ -1393,130 +1199,8 @@ fn project_and_automation_guide_define_conservative_offline_report_aggregation()
 }
 
 #[test]
-fn project_records_m3_completion_against_exact_v020_evidence() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "| Current milestone | M4 — enterprise assurance and adoption; `MCPD-017`, `MCPD-018`, and `MCPD-036` are Done |",
-        "| Public release | `mcp-doctor` `v0.3.3` — signed annotated tag, immutable eight-asset GitHub Release",
-        "| M3 | Every retained expansion is explicitly authorized and bounded; inherited safety and stable CI output remain intact; one expanded immutable release passes every retained journey | Done |",
-        "| D-08 | Bounded diagnostic expansion release | M3 | Done |",
-        "| MCPD-012 | Stabilize machine reports and CI integration, then publish and independently verify the retained M3 journeys | M3 | Done |",
-        "b0805a8f685e46814e358de368e2a270c21704af",
-        "31528649356",
-        "31528649333",
-        "31529740214",
-        "31530330361",
-        "a57736ea1a7abf73eeff9a8278af11110247bd20",
-        "31530466930",
-        "`MCPD-012`, D-08, and M3 are Done as\nof 2026-08-11.",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain exact M3 completion evidence: {contract}"
-        );
-    }
-}
-
-#[test]
-fn project_resolves_open_08_with_locked_assurance_versions_and_exact_proof() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "| DEC-034 | Resolve `OPEN-08` with one activation-locked assurance version set and exact proof routes | Accepted |",
-        "OpenSSF OSPS Baseline `v2026.02.19`",
-        "official BadgeApp baseline series displaying OSPS `v2026.02.19`",
-        "approved [SLSA `v1.2`]",
-        "The `MCPD-013` activation recheck on 2026-08-11 passed.",
-        "73db726e5bc898903995ad63e471ff6f820086e2",
-        "This clears the\npre-activation drift gate only; it is not an achieved assurance result.",
-        "M4 never silently floats, mixes framework versions",
-        "`docs/assurance/osps-v2026.02.19-level-1.md`",
-        "The result is an official-hosted self-assessment, not independent certification.",
-        "`docs/assurance/slsa-v1.2-build-l2.md`",
-        "exact repository, signer workflow, tag ref, and source commit",
-        "`predicateType` is `https://slsa.dev/provenance/v1`",
-        "publication of the assessment are explicit owner actions",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain DEC-034 assurance contract: {contract}"
-        );
-    }
-
-    assert!(
-        !project.contains("| OPEN-08 |"),
-        "accepted OPEN-08 should leave the open-decision table"
-    );
-}
-
-#[test]
-fn project_resolves_open_09_with_a_single_maintainer_branch_policy() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "| DEC-035 | Resolve `OPEN-09` with a usable single-maintainer default-branch policy | Accepted |",
-        "`required_approving_review_count` to `0`",
-        "`Required CI` and `Required release preflight`",
-        "Both aggregate jobs use `needs` with `always()`",
-        "GitHub omits repository merge settings and bypass actors from credential-free REST readback",
-        "authenticated owner check must verify the exact canonical merge projection and empty bypass list",
-        "A future `mcp-doctor` MCP security scanner remains product behavior rather than a repository check by default",
-        "Enable squash merge only",
-        "Keep auto-merge and merge queue disabled",
-        "Keep `bypass_actors` empty",
-        "temporarily add only the repository-administrator role with `pull_request` bypass mode",
-        "Never disable the ruleset, grant `always` bypass, push directly, delete `main`, or force-push.",
-        "Required commit signing stays off.",
-        "| DEC-036 | Refine the `DEC-035` verification boundary to match GitHub's live observable fields | Accepted |",
-        "Credential-free readback verifies `default_branch` plus the configured and effective public rules",
-        "exact canonical merge settings and empty hidden bypass list",
-        "no ruleset or legacy branch protection on `main`",
-        "resolving this policy did not activate them early",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain DEC-035 default-branch contract: {contract}"
-        );
-    }
-
-    assert!(
-        !project.contains("| OPEN-09 |"),
-        "accepted OPEN-09 should leave the open-decision table"
-    );
-}
-
-#[test]
-fn project_records_mcpd_013_completion_with_scoped_public_and_private_evidence() {
-    let project = repository_file("PROJECT.md");
+fn emergency_exercise_preserves_scoped_public_evidence() {
     let exercise = repository_file("docs/assurance/mcpd-013-emergency-exercise.md");
-
-    for contract in [
-        "| MCPD-013 | Protect the default branch and define a contributor-compatible merge policy | M4 | Done |",
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
-        "### MCPD-013 completion evidence",
-        "`MCPD-013` completed on 2026-08-11",
-        "2e3377a5101c513c02bb177cbc95acc3707f77bab4c3ab8ed3e8576a3f828794",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/16",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/17",
-        "31537654995/job/93933333425",
-        "31537655042/job/93935386965",
-        "29d83e094b1112b6c86fbcabeb93667e11e02a53",
-        "direct update, primary-branch",
-        "leased same-tree non-fast-forward force-update attempts were each",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/18",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/19",
-        "31539153287/job/93938063807",
-        "31539153316/job/93940246247",
-        "Mitigated for the 2026-08-11 `MCPD-013` scope",
-        "An administrator can still change repository policy",
-        "Security controls are\nowned by `MCPD-014`",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain MCPD-013 completion evidence: {contract}"
-        );
-    }
 
     for contract in [
         "Status: closed at `2026-08-11T21:55:10Z`",
@@ -1583,7 +1267,7 @@ fn security_policy_defines_private_reporting_support_and_coordination() {
 }
 
 #[test]
-fn security_control_projection_matches_dec_037_and_dec_038() {
+fn security_control_projection_matches_the_live_security_contract() {
     let canonical = repository_file(".github/security-controls.json");
     let canonical: serde_json::Value =
         serde_json::from_str(&canonical).expect("security controls should be valid JSON");
@@ -1728,71 +1412,7 @@ fn security_control_verifier_is_authenticated_bounded_and_non_disclosing() {
 }
 
 #[test]
-fn project_records_mcpd_014_completion_without_a_complete_baseline_claim() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | Done |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Done |",
-        "### Accepted vulnerability-disclosure and repository-security policy",
-        "`DEC-037` fixes the `MCPD-014` contract.",
-        "Support only the latest published minor line, currently `0.3.x`.",
-        "within 3 business days",
-        "within 7 calendar days",
-        "every 14 calendar days",
-        "within 90 days of acknowledgement",
-        "default query suite, standard runner, weekly schedule, and remote threat model",
-        "Enable secret scanning and push protection, require the repository-visible alert endpoint",
-        "the baseline therefore does not attest backfill completion",
-        "emits only UTC date, canonical SHA-256, and `PASS` or `FAIL`",
-        "Do not add CodeQL or secret scanning to the `DEC-035` required ruleset in this ticket.",
-        "pre-activation gap record, not a clean baseline or achieved assurance result",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/20",
-        "7097b683fc6619447b31db0b55db12467626e446",
-        "https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31545582099",
-        "Provider-routed partner alerts for public\nrepositories are not visible to repository administrators",
-        "does not prove all OSPS Level 1 controls",
-        "### MCPD-014 completion evidence",
-        "`MCPD-014` completed on 2026-08-11",
-        "d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/21",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/22",
-        "31546161736",
-        "31546164626",
-        "31546164631",
-        "7f777b32e88356cea8f0212ec9bfa61a7373907b",
-        "31547028561",
-        "31547028549",
-        "31547028600",
-        "date=2026-08-11 canonical_sha256=d379f2c86b9571da14cdb9c51cfc83075f098688a4660aecb67eb60fa385e66a result=PASS",
-        "No alert body,\ncount payload, secret value, credential source, or finding detail was retained",
-        "complete-M4 exclusions above remain part\nof the result rather than being treated as passes",
-        "| DEC-037 | Support the latest release line through private coordinated disclosure and every entitled repository-security control | Accepted |",
-        "| DEC-038 | Refine the `MCPD-014` clean baseline to GitHub Free's observable security surfaces | Accepted |",
-        "Mitigated for the scoped 2026-08-11 `MCPD-014` surfaces",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve the scoped MCPD-014 contract: {contract}"
-        );
-    }
-
-    for stale_status in [
-        "`MCPD-014` is In progress",
-        "| MCPD-014 | Establish vulnerability disclosure and live repository-security controls | M4 | In progress |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Proposed |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | Ready |",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
-    ] {
-        assert!(
-            !project.contains(stale_status),
-            "PROJECT.md must not retain stale MCPD-014 status: {stale_status}"
-        );
-    }
-}
-
-#[test]
-fn community_license_projection_matches_dec_039() {
+fn community_license_projection_matches_the_public_scope_contract() {
     let canonical = repository_file(".github/community-license-controls.json");
     let canonical: serde_json::Value = serde_json::from_str(&canonical)
         .expect("community and license controls should be valid JSON");
@@ -1801,7 +1421,7 @@ fn community_license_projection_matches_dec_039() {
         canonical["schema_version"],
         "mcp-doctor.github-community-license-controls/v1"
     );
-    assert_eq!(canonical["reviewed_on"], "2026-08-13");
+    assert_eq!(canonical["reviewed_on"], "2026-08-19");
     assert_eq!(canonical["api_version"], "2026-03-10");
     assert_eq!(canonical["organization"], "EnjoyableWork");
     assert_eq!(canonical["project_repository"], "EnjoyableWork/mcp-doctor");
@@ -1954,7 +1574,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
     }
     for contract in [
         "This source tree represents `0.3.3`",
-        "a version\nis publicly available only when its canonical GitHub Release and channel\nevidence exist",
+        "a\nversion is publicly available only when its canonical GitHub Release and\nchannel evidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
         "Suspected vulnerabilities and accidentally exposed secrets",
@@ -2038,117 +1658,7 @@ fn community_license_verifier_is_credential_free_bounded_and_exact() {
 }
 
 #[test]
-fn project_preserves_mcpd_015_completion_during_mcpd_016_closure() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "`MCPD-017`, `MCPD-018`, and `MCPD-036` are Done",
-        "### Accepted community, repository, channel, and license contract",
-        "`DEC-039` fixes the `MCPD-015` boundary.",
-        "https://github.com/EnjoyableWork/homebrew-tap/pull/3",
-        "8d5421abed22e46b43de35f0876bc65edcd6e0d6",
-        "GitHub Issues is the single public project discussion mechanism.",
-        "Use GitHub's private repository **Report content** action",
-        "same inbound and outbound OSI-approved MIT terms",
-        "The immutable SPDX documents use `CC0-1.0`",
-        "They are not used as MIT evidence",
-        "The 2026-08-12 pre-activation review found five public organization",
-        "the conduct policy pointed to a nonexistent public maintainer\ncontact",
-        "It does not claim the full baseline",
-        "### MCPD-015 completion evidence",
-        "`MCPD-015` completed on 2026-08-12",
-        "ae1898c2f6af70578d3c61810377ce57b6ee5f694b0e5db8e7bcd015de67daa9",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/23",
-        "ca26052da9de610da91fe206fb0be1862f4c37e9",
-        "31564150762/job/94013030028",
-        "31564150768/job/94014462121",
-        "31564148438",
-        "6f1bed224aa27c468b64c19b99288122e401a96a",
-        "passed 175 tests",
-        "31564865655",
-        "31564866151/job/94015001184",
-        "31564866091/job/94016103246",
-        "date=2026-08-12 canonical_sha256=ae1898c2f6af70578d3c61810377ce57b6ee5f694b0e5db8e7bcd015de67daa9 source_sha=6f1bed224aa27c468b64c19b99288122e401a96a result=PASS",
-        "It used\nno GitHub credential, proxy, ambient curl configuration, cookie, or `.netrc`",
-        "https://github.com/EnjoyableWork/mcp-doctor/pull/24",
-        "its public timeline\nis the durable record for the final exact-`main` verifier",
-        "This closure makes `MCPD-016` Ready but does not begin",
-        "detected real inventory drift",
-        "three live public repositories—`mcp-doctor`,\n`homebrew-tap`, and the separate `mcp-sync` project",
-        "08f301494c59e2a28746029b2a471d43d6ceb1331d5a380ae08176e1eb4a20d8",
-        "does not\nrewrite the historical five-repository completion pass",
-        "| DEC-039 | Use one primary policy repository and one explicitly delegated distribution repository with exact public license evidence | Accepted |",
-        "| RISK-20 | Users cannot find a real project route or receive incompatible license terms",
-        "Mitigated for the current three-repository `MCPD-015` scope revalidated on 2026-08-12",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve completed MCPD-015 contract: {contract}"
-        );
-    }
-    for stale_or_premature_claim in [
-        "`MCPD-015` is In progress",
-        "| MCPD-015 | Verify the public contribution, community, repository, and licensing contract | M4 | In progress |",
-        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | Proposed |",
-        "| MCPD-016 | Harden dependency maintenance and the CI, artifact, and distribution supply chains | M4 | In progress |",
-        "| MCPD-017 | Establish organization access, credential, ownership, and recovery policy | M4 | Proposed |",
-    ] {
-        assert!(
-            !project.contains(stale_or_premature_claim),
-            "PROJECT.md must not retain {stale_or_premature_claim}"
-        );
-    }
-}
-
-#[test]
-fn project_keeps_a_result_free_dynamic_product_evaluation_method() {
-    let project = repository_file("PROJECT.md");
-
-    for contract in [
-        "## Product category and comparative evaluation",
-        "safety-bounded MCP server-author diagnostic\npreflight",
-        "does not retain a current score, ranking,\nwinner, or market-dominance claim",
-        "| Causal diagnosis and remediation | 18 |",
-        "| Protocol and contract correctness | 15 |",
-        "| Runtime testing and reproducibility | 15 |",
-        "| Safety and containment | 17 |",
-        "| CI and machine interoperability | 10 |",
-        "| Adoption UX and integration reach | 10 |",
-        "| Security-vulnerability detection | 10 |",
-        "| Release and project assurance | 5 |",
-        "| **Total** | **100** |",
-        "`weight * rating / 5`",
-        "| `P` | Accepted plan or documented product intention only |",
-        "| `L` | Exact source implementation with local, reproducible test evidence |",
-        "| `H` | Exact source verified by project-hosted automation on a named host |",
-        "| `R` | Exact immutable release artifact reproduced on a claimed platform |",
-        "| `I` | Exact behavior independently reproduced, or sustained use independently evidenced |",
-        "cap the reported total at 49",
-        "90–100",
-        "These are capability bands, not market-adoption or market-dominance bands.",
-        "### Dynamic assessment procedure",
-        "### Seed comparison set",
-        "https://github.com/destilabs/mcp-doctor",
-        "https://github.com/realwigu/mcp-doctor",
-        "https://github.com/Jiansen/mcp-doctor",
-        "https://github.com/stephenywilson/MCP-Doctor",
-        "https://github.com/modelcontextprotocol/inspector",
-        "https://github.com/modelcontextprotocol/conformance",
-        "https://github.com/MCPJam/inspector",
-        "https://github.com/cisco-ai-defense/mcp-scanner",
-        "https://github.com/snyk/agent-scan",
-        "https://github.com/ModelContextProtocol-Security/mcpserver-audit",
-        "| DEC-033 | Retain a result-free weighted product and market evaluation method | Accepted |",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should retain the dynamic product-evaluation contract: {contract}"
-        );
-    }
-}
-
-#[test]
-fn main_protection_canonical_config_matches_dec_035() {
+fn main_protection_canonical_config_matches_the_branch_contract() {
     let canonical = repository_file(".github/rulesets/main.json");
     let canonical: serde_json::Value =
         serde_json::from_str(&canonical).expect("main protection config should be valid JSON");
@@ -2361,180 +1871,10 @@ fn protection_verifiers_keep_public_and_private_evidence_separate() {
 }
 
 #[test]
-fn project_records_completed_mcpd_027_through_mcpd_030() {
-    let project = repository_file("PROJECT.md");
+fn protocol_support_preserves_the_active_legacy_boundary() {
     let protocol_support = repository_file("docs/protocol-support.md");
     let compatibility = repository_file("tests/compatibility/README.md");
     let agents = repository_file("AGENTS.md");
-
-    for contract in [
-        "`MCPD-026` is completed optional work for resolved GitHub issue #74 under",
-        "[GitHub issue 74](https://github.com/EnjoyableWork/mcp-doctor/issues/74)",
-        "`MCPD-027` is completed optional work for resolved GitHub issue #60",
-        "[PR 63](https://github.com/EnjoyableWork/mcp-doctor/pull/63)",
-        "[`6e0f0ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/6e0f0acf096f797a12f3bf8826d8d11963007039)",
-        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389361)",
-        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389015)",
-        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31771389387)",
-        "[PR 78](https://github.com/EnjoyableWork/mcp-doctor/pull/78)",
-        "[`ac3d9ac`](https://github.com/EnjoyableWork/mcp-doctor/commit/ac3d9ac1c289b3329eadbe8fb1a35cca597386c4)",
-        "closed [issue #60](https://github.com/EnjoyableWork/mcp-doctor/issues/60)",
-        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407756)",
-        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407549)",
-        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778407803)",
-        "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31778427941)",
-        "closed [issue #61](https://github.com/EnjoyableWork/mcp-doctor/issues/61)",
-        "[issue #75](https://github.com/EnjoyableWork/mcp-doctor/issues/75)",
-        "`OPEN-14` is accepted as `DEC-051`.",
-        "`OPEN-15` is accepted as `DEC-052`",
-        "`OPEN-16` is accepted as `DEC-053`",
-        "| DEC-051 | Resolve `OPEN-14` by extending the sensitive `v1alpha1` snapshot only to exact passive legacy revisions and same-revision diff | Accepted |",
-        "| DEC-052 | Resolve `OPEN-15` with one exact-selected revision-parameterized active adapter | Accepted |",
-        "| DEC-053 | Resolve `OPEN-16` with an explicit current-revision `reject` diagnostic | Accepted |",
-        "The `MCPD-027` merged source implements the typed adapter",
-        "controlled compatibility runner passed all four retained",
-        "Native Windows PowerShell execution",
-        "Therefore `MCPD-027` is Done",
-        "[PR 80](https://github.com/EnjoyableWork/mcp-doctor/pull/80)",
-        "[`e380b26`](https://github.com/EnjoyableWork/mcp-doctor/commit/e380b26c382ea2b83fefe41c153f00baea023db2)",
-        "[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031576)",
-        "[CodeQL](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031251)",
-        "[release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808031581)",
-        "[compatibility](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/31808063280)",
-        "The completed `MCPD-028` source selects MCP `2025-06-18`",
-        "Therefore `MCPD-028` is Done",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve the completed active legacy boundary: {contract}"
-        );
-    }
-
-    let completed_legacy_artifact = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-026 |"))
-        .expect("PROJECT.md should contain MCPD-026");
-    assert!(completed_legacy_artifact.contains("| Done |"));
-    for contract in ["final evidence head", "closed [issue #74]", "exact-`main`"] {
-        assert!(
-            completed_legacy_artifact.contains(contract),
-            "MCPD-026 completion must retain {contract}"
-        );
-    }
-
-    let active_legacy = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-027 |"))
-        .expect("PROJECT.md should contain MCPD-027");
-    assert!(active_legacy.contains("| Done |"));
-    for contract in [
-        "final evidence head",
-        "merge commit",
-        "closed [issue #60]",
-        "exact-`main`",
-    ] {
-        assert!(
-            active_legacy.contains(contract),
-            "MCPD-027 completion must retain {contract}"
-        );
-    }
-
-    let active_2025_06 = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-028 |"))
-        .expect("PROJECT.md should contain MCPD-028");
-    assert!(active_2025_06.contains("| Done |"));
-    for contract in [
-        "exact implementation head",
-        "merge commit",
-        "closed [issue #61]",
-        "exact-`main`",
-        "real-server compatibility",
-    ] {
-        assert!(
-            active_2025_06.contains(contract),
-            "MCPD-028 completion must retain {contract}"
-        );
-    }
-    assert!(!project.contains("`MCPD-028` remains In progress"));
-
-    let later = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-029 |"))
-        .expect("PROJECT.md should contain MCPD-029");
-    assert!(later.contains("| Done |"));
-    for contract in [
-        "final evidence head",
-        "merge commit",
-        "closed [issue #75]",
-        "exact-`main`",
-    ] {
-        assert!(
-            later.contains(contract),
-            "MCPD-029 completion must retain {contract}"
-        );
-    }
-
-    let deterministic_ci = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-030 |"))
-        .expect("PROJECT.md should contain MCPD-030");
-    assert!(deterministic_ci.contains("| Done |"));
-    for contract in [
-        "final evidence head",
-        "merge commit",
-        "closed [issue #41]",
-        "exact-`main`",
-    ] {
-        assert!(
-            deterministic_ci.contains(contract),
-            "MCPD-030 completion must retain {contract}"
-        );
-    }
-
-    let release_correction = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-031 |"))
-        .expect("PROJECT.md should contain MCPD-031");
-    assert!(release_correction.contains("| Done |"));
-    for contract in [
-        "[PR 90]",
-        "[PR 91]",
-        "31971756990",
-        "31972748664",
-        "without retrying publication",
-    ] {
-        assert!(
-            release_correction.contains(contract),
-            "MCPD-031 completion must retain {contract}"
-        );
-    }
-
-    let identity_correction = project
-        .lines()
-        .find(|line| line.starts_with("| MCPD-034 |"))
-        .expect("PROJECT.md should contain MCPD-034");
-    assert!(identity_correction.contains("| Done |"));
-    for contract in [
-        "DEC-058",
-        "[PR 92]",
-        "[PR 93]",
-        "31981850276",
-        "d4db369a2789f7b6f89b2daad4adc1b6f4900f7e",
-        "31985219134",
-        "31985523936",
-        "31985595470",
-        "no-foreign-delete",
-        "GHSA-92m2-749h-2gv5",
-        "GHSA-8r6p-qf9j-vpvx",
-    ] {
-        assert!(
-            identity_correction.contains(contract),
-            "MCPD-034 must retain the two-advisory boundary: {contract}"
-        );
-    }
-    assert!(project.contains("| DEC-058 | Batch only the two related native-identity"));
-    assert!(project.contains("| RISK-32 | A report stage or destination path changes"));
 
     for contract in [
         "--protocol-version 2025-06-18",
@@ -2545,30 +1885,14 @@ fn project_records_completed_mcpd_027_through_mcpd_030() {
     ] {
         assert!(
             protocol_support.contains(contract),
-            "the protocol guide should retain the scoped MCPD-028 source contract: {contract}"
+            "the protocol guide should retain the scoped active legacy contract: {contract}"
         );
     }
     assert!(!protocol_support.contains("MCP `2025-06-18` remains passive-only"));
     assert!(compatibility.contains("### Active MCP 2025-06-18"));
     assert!(compatibility.contains("does not add a `2025-06-18` case"));
-    assert!(agents.contains("`DEC-052` additionally permits"));
+    assert!(agents.contains("exact-selected `check` and\n  `break`"));
     assert!(agents.contains("exact supported Draft\n  2020-12 declaration"));
-
-    for accepted_open in ["OPEN-14", "OPEN-15", "OPEN-16"] {
-        assert!(
-            !project
-                .lines()
-                .any(|line| line.starts_with(&format!("| {accepted_open} |"))),
-            "{accepted_open} should be removed after its decision accepts it"
-        );
-    }
-    for accepted_decision in ["| DEC-051 |", "| DEC-052 |", "| DEC-053 |", "| DEC-054 |"] {
-        assert!(project.contains(accepted_decision));
-    }
-    assert!(
-        !project.contains("https://github.com/EnjoyableWork/mcp-doctor/issues/56"),
-        "PROJECT.md must not retain a dead public issue link"
-    );
 }
 
 #[test]
@@ -2576,7 +1900,6 @@ fn repository_only_references_the_scaffolding_project_in_the_explicit_inventory(
     let forbidden = ["mcp", "sync"].join("-");
     let allowed_inventory_files = [
         ".github/community-license-controls.json",
-        "PROJECT.md",
         "docs/project-scope.md",
         "scripts/verify-community-license.sh",
         "tests/release.rs",
@@ -2584,7 +1907,6 @@ fn repository_only_references_the_scaffolding_project_in_the_explicit_inventory(
     .map(|relative| repository_root().join(relative));
     let roots = [
         "README.md",
-        "PROJECT.md",
         "AGENTS.md",
         "Cargo.toml",
         ".github",

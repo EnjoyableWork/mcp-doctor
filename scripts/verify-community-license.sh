@@ -65,7 +65,7 @@ community_sha256_file() {
 
 if ! jq -e '
   .schema_version == "mcp-doctor.github-community-license-controls/v1" and
-  .reviewed_on == "2026-08-13" and
+  .reviewed_on == "2026-08-19" and
   .api_version == "2026-03-10" and
   .organization == "EnjoyableWork" and
   .project_repository == "EnjoyableWork/mcp-doctor" and

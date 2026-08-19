@@ -77,5 +77,8 @@ is release metadata accompanying the same licensed release set.
 
 This scoped evidence does not authenticate the supply chain by itself, complete
 an OSPS assessment, certify the project, or change immutable release bytes.
-`MCPD-016` separately authenticates the bounded supply-chain scope; complete
-assurance remains gated by later tickets in [PROJECT.md](../PROJECT.md).
+The machine-readable
+[supply-chain controls](../.github/supply-chain-controls.json) and focused
+[assurance records](assurance/) separately authenticate their bounded scopes.
+No complete assurance claim follows without current dated evidence for every
+applicable control.

@@ -1,8 +1,7 @@
 # Compatibility evidence
 
-This directory records the separately controlled real-server evidence for
-`MCPD-007` and `MCPD-027`, and the deliberately narrower claim boundary for
-`MCPD-028`. It answers two narrow questions: can the built
+This directory records separately controlled real-server evidence and its
+deliberately narrow claim boundary. It answers two questions: can the built
 `mcp-doctor` passive STDIO journey diagnose selected, pinned MCP `2026-07-28`
 servers without calling a tool, and can its explicitly selected MCP
 `2025-11-25` active adapter safely run `check` and `break` against one pinned
@@ -41,11 +40,11 @@ revision and earliest-layer cases remain in
 [`tests/stdio.rs`](../stdio.rs); the real-server matrix does not silently fall
 back to an older initialization flow.
 
-Under `DEC-024`, four passing selected cases across four languages—including
-two independent implementations—support the scoped phrase “broad
-current-revision compatibility.” That means the passive STDIO checks work for
-this reviewed matrix. It does not mean every MCP server works, HTTP works,
-tools were executed, or an official conformance suite passed.
+Four passing selected cases across four languages—including two independent
+implementations—support the scoped phrase “broad current-revision
+compatibility.” That means the passive STDIO checks work for this reviewed
+matrix. It does not mean every MCP server works, HTTP works, tools were
+executed, or an official conformance suite passed.
 
 Explicit passive MCP `2025-11-25` and `2025-06-18` adapters, plus active MCP
 `2025-06-18`, remain covered by synthetic built-binary STDIO and Streamable

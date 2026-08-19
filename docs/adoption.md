@@ -67,5 +67,6 @@ arguments, results, environment names or values, credentials, or telemetry.
 A download, star, CLI or skill installation, vendor documentation claim,
 compatibility listing, project-owned synthetic forward-test, or host discovery
 result is not independent adoption or proof that an agent followed the skill.
-Forward-tests belong in the dated MCPD-035 integration matrix and identify their
+Forward-tests belong in the dated
+[host integration matrix](agents.md#dated-host-evidence) and identify their
 exact host and workflow; they do not change the zero-report adoption baseline.

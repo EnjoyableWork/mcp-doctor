@@ -1,11 +1,11 @@
 # Deterministic CI audit
 
-This record implements `MCPD-030` and `DEC-054` for GitHub issue #41. The
+This record originated with
+[GitHub issue #41](https://github.com/EnjoyableWork/mcp-doctor/issues/41). The
 audit was performed on 2026-08-14 from `main` commit `3472952` and extended on
-2026-08-16 for the `MCPD-031` release-only correction. It covers every tracked
-Rust test, shell or PowerShell script, and GitHub Actions workflow.
-`PROJECT.md` remains the ticket, decision, risk, and completion authority;
-`AGENTS.md` contains the concise operating policy.
+2026-08-16 for the release-only correction. It covers every tracked Rust test,
+shell or PowerShell script, and GitHub Actions workflow. `AGENTS.md` contains
+the concise operating policy; Linear owns current delivery state.
 
 ## Audit method
 
@@ -29,11 +29,12 @@ The classification vocabulary is:
   socket, channel, job, or workflow from hanging. It is not success evidence.
 - **Deterministic fixture:** observable state or an explicit
   event/acknowledgement transition that proves the intended interleaving.
-- **Accepted acquisition exception:** only `DEC-043`'s classified transient
-  acquisition of one exact immutable size- and digest-pinned Syft asset.
+- **Accepted acquisition exception:** only the classified transient acquisition
+  of one exact immutable size- and digest-pinned Syft asset.
 - **Defect:** timing, retry, or incidental-runner behavior that supplies
   readiness or correctness evidence. A blocking defect is corrected here; a
-  release-only defect is owned by the explicit `MCPD-031` prepublication gate.
+  release-only defect is owned by the explicit prepublication gate in
+  [the release runbook](release.md).
 
 ## Test and product-code inventory
 
@@ -61,10 +62,10 @@ outer watchdogs. A watchdog firing fails the case; it cannot make a case pass.
 | `scripts/verify-repeat-release-controls.sh` | Each live repository, environment, and secret inventory is a single read with no retry or polling. The organization-secret response is acquired and type-checked before iteration so an API or parse failure cannot disappear through process substitution. A disposable fake-GitHub regression rejects unavailable evidence and accepts a successfully read empty inventory while completing every other check. |
 | `scripts/install-cargo-deny.sh` | Curl connect and total deadlines are outer acquisition watchdogs. The exact immutable asset is attempted once and receives the same integrity, layout, version, and platform checks as every accepted repository-managed executable. |
 | `scripts/package-release.sh` | `SOURCE_DATE_EPOCH` must equal the release commit timestamp and controls reproducible archive metadata. It is deterministic input, not a readiness clock. |
-| `scripts/install-syft.sh` and `scripts/rehearse-syft-acquisition.sh` | The sole `DEC-043` acquisition exception permits at most three attempts for the enumerated transient curl/HTTP failures against one immutable asset, with a one-second delay, deletion of partial bytes, and identical size/digest/layout/version/platform verification. Curl's own retry is zero. The rehearsal replaces both curl and sleep with deterministic fakes and proves attempt counts; no correctness step is retried. |
+| `scripts/install-syft.sh` and `scripts/rehearse-syft-acquisition.sh` | The sole accepted acquisition exception permits at most three attempts for the enumerated transient curl/HTTP failures against one immutable asset, with a one-second delay, deletion of partial bytes, and identical size/digest/layout/version/platform verification. Curl's own retry is zero. The rehearsal replaces both curl and sleep with deterministic fakes and proves attempt counts; no correctness step is retried. |
 | `scripts/generate-release-sbom.sh` | The standalone `timeout` process is an outer watchdog around one exact repository-acquired Syft invocation. A timeout fails generation and is never retried. |
 | `scripts/verify-ci-tools.sh` and `scripts/verify-ci-tools.ps1` | The POSIX and Windows bootstrap uses only its selected shell's built-ins until it verifies the inventory parser, requires one exact runner contract, rejects unsafe command names, and checks every declared command before evidence work. It has no clock, sleep, retry, polling, concurrency, download, or fallback. |
-| `scripts/verify-release-repository-controls.sh` | `MCPD-031` replaces the legacy broad retry with one request under explicit connection and total deadlines. A failed request fails verification; it cannot become a second correctness or publication attempt. |
+| `scripts/verify-release-repository-controls.sh` | The release correction replaces the legacy broad retry with one request under explicit connection and total deadlines. A failed request fails verification; it cannot become a second correctness or publication attempt. |
 | Remaining tracked scripts | No operational clock, fixed sleep, timeout, polling loop, positive retry, or concurrent process occurs. Script-local `command -v` checks, exact hash-tool alternatives, and `.github/ci-tools.json` declare the non-standard execution surface. Strings used to generate a Ruby formula or run Node/PHP inside digest-pinned compatibility containers do not grant ambient host-tool authority. |
 
 ## Workflow inventory
@@ -80,7 +81,7 @@ publication resource and does not serialize the test suite.
 | --- | --- |
 | `.github/workflows/ci.yml`, `.github/workflows/release-preflight.yml`, and `.github/workflows/compatibility.yml` | Required and supplemental evidence has no automatic test, job, or workflow retry. Exact runner labels, the exact Rust toolchain, full-SHA Actions, repository-acquired tools, and the declared runner commands in `.github/ci-tools.json` define the tool surface. Every source-checkout job verifies its exact runner contract immediately after checkout through `scripts/verify-ci-tools.sh` or `scripts/verify-ci-tools.ps1`; aggregate jobs use shell built-ins only. Missing or undeclared commands fail before evidence work. |
 | `.github/workflows/release-authorization-negative.yml` | `continue-on-error` captures the expected rejected OIDC attempt so the following assertion can require that exact failure. It is a deterministic negative transition, not quarantine or retry. |
-| `.github/workflows/release.yml` | `MCPD-031` gives every source checkout an immediate exact-runner verification, replaces all broad curl retries with one request under explicit connection and total deadlines, and removes both fixed-sleep loops. GitHub publication succeeds only when one direct API read proves the release published and immutable and the same job re-downloads the exact immutable bytes. GitHub generates the release attestation asynchronously: the later protected OIDC job starts only after an operator observes one exact release attestation and approves that job, then performs one typed attestation read and one cryptographic release verification. `DEC-064` preserves the first `v0.3.3` timing failure and permits one separately reviewed recovery dispatch only for an exact immutable release whose sole attempt failed and whose registry version remains absent. Cargo already waits for its successful upload to appear in the registry index; the workflow then performs one bounded crates.io download and requires byte identity with the immutable GitHub source package. No sleep, polling loop, publication, integrity check, job, or unchanged workflow is retried. |
+| `.github/workflows/release.yml` | Every source checkout receives immediate exact-runner verification, all broad curl retries are replaced by one request under explicit connection and total deadlines, and both fixed-sleep loops are removed. GitHub publication succeeds only when one direct API read proves the release published and immutable and the same job re-downloads the exact immutable bytes. GitHub generates the release attestation asynchronously: the later protected OIDC job starts only after an operator observes one exact release attestation and approves that job, then performs one typed attestation read and one cryptographic release verification. The reviewed recovery path preserves the first `v0.3.3` timing failure and permits one separate recovery dispatch only for an exact immutable release whose sole attempt failed and whose registry version remains absent. Cargo already waits for its successful upload to appear in the registry index; the workflow then performs one bounded crates.io download and requires byte identity with the immutable GitHub source package. No sleep, polling loop, publication, integrity check, job, or unchanged workflow is retried. |
 | `.github/workflows/release-channels.yml` | Each read-only job first checks out the exact workflow commit, verifies its declared runner contract, and only then replaces that checkout with the selected immutable historical tag. This keeps `v0.1.0` through `v0.3.0` bytes unchanged while making current verification independent of tools incidentally present on the runner. Registry metadata, exact package, and formula retrieval each run once under explicit connection and total deadlines with byte verification where an immutable payload exists. |
 
 ## CI tool inventory
@@ -103,9 +104,8 @@ proves its presence instead of continuing to assume the runner image supplies
 it.
 
 Adding a command, runner, Action-provided tool, container runtime, standalone
-executable, sleep, positive retry, or timing primitive reopens `RISK-27` and
-requires this inventory, its owning decision, and the policy regression to be
-updated together.
+executable, sleep, positive retry, or timing primitive requires this inventory,
+the governing Linear issue, and the policy regression to be updated together.
 
 ## Preserved failure evidence and completion gate
 
@@ -118,16 +118,16 @@ updated together.
   `cleanup_terminates_a_resistant_process_tree_before_returning` failed once at
   about 12 seconds against an eight-second elapsed assertion, then passed from
   identical source in isolation. The green rerun is not acceptance evidence.
-  `MCPD-030` replaces that timing proof with the forced descendant-ready and
-  exclusive-lock-release transition described above.
+  The deterministic correction replaces that timing proof with the forced
+  descendant-ready and exclusive-lock-release transition described above.
 
-`MCPD-030` is complete only after the normal local gates and all applicable
-exact-head hosted checks pass on their first run, the protected change merges,
-issue #41 closes, and exact-`main` gates pass. No retry, workflow rerun, product
-timeout change, safety weakening, release mutation, live-setting change, or M4
-claim may satisfy that gate.
+The deterministic CI correction was accepted only after the normal local gates
+and all applicable exact-head hosted checks passed on their first run, the
+protected change merged, issue #41 closed, and exact-`main` gates passed. No
+retry, workflow rerun, product-timeout change, safety weakening, release
+mutation, live-setting change, or assurance claim may satisfy that gate.
 
-`MCPD-031` completion additionally requires the enforced zero-positive-retry
+Release verification additionally requires the enforced zero-positive-retry
 and zero-release-sleep inventories, checkout-to-verifier coverage, complete
 local gates, first-attempt exact-head hosted checks, and one successful
 `workflow_dispatch` rehearsal of one explicitly selected immutable stable

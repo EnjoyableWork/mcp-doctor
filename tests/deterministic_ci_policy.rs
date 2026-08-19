@@ -136,8 +136,8 @@ fn operational_sleeps_and_positive_retries_match_the_owned_inventory() {
         BTreeMap::from([("scripts/install-syft.sh".to_owned(), 1)])
     );
     assert!(retries.is_empty(), "positive curl retries are prohibited");
-    assert!(AUDIT.contains("`DEC-043` acquisition exception"));
-    assert!(AUDIT.contains("`MCPD-031` completion"));
+    assert!(AUDIT.contains("sole accepted acquisition exception"));
+    assert!(AUDIT.contains("Release verification additionally requires"));
 
     let release = read(&repository_root().join(".github/workflows/release.yml"));
     let channels = read(&repository_root().join(".github/workflows/release-channels.yml"));

@@ -289,13 +289,12 @@ fn verifier_is_exact_bounded_and_value_minimizing() {
 }
 
 #[test]
-fn readme_and_project_publish_only_the_scoped_achieved_result() {
+fn readme_publishes_only_the_scoped_achieved_result() {
     let canonical = repository_json(".github/assurance-controls.json");
     let project_id = canonical["osps"]["badgeapp"]["project_id"]
         .as_u64()
         .expect("BadgeApp project ID should be an integer");
     let readme = repository_file("README.md");
-    let project = repository_file("PROJECT.md");
     let badge = format!(
         "<a href=\"https://www.bestpractices.dev/en/projects/{project_id}/baseline-1\"><img alt=\"OpenSSF OSPS Baseline v2026.02.19 Level 1\" src=\"https://www.bestpractices.dev/projects/{project_id}/baseline\"></a>"
     );
@@ -305,19 +304,4 @@ fn readme_and_project_publish_only_the_scoped_achieved_result() {
     assert!(readme.contains("SLSA `v1.2` Build L2 evaluation"));
     assert!(!readme.contains("independently certified"));
     assert!(!readme.contains("SLSA certified"));
-
-    for contract in [
-        "`MCPD-018` is Done",
-        "| MCPD-018 | Self-assess, publish, and maintain the enterprise assurance baseline | M4 | Done |",
-        "| D-09 | Evidence-backed enterprise assurance baseline | M4 | Done |",
-        "| M4 | The `DEC-034`-locked OSPS `v2026.02.19` Level 1 controls pass",
-        "| Done |",
-        "RISK-16",
-        "Mitigated",
-    ] {
-        assert!(
-            project.contains(contract),
-            "PROJECT.md should preserve {contract}"
-        );
-    }
 }

@@ -809,7 +809,7 @@ impl FindingCode {
             | Self::LimitExceeded
             | Self::CleanupFailed => "mcp-doctor bounded local STDIO safety contract",
             Self::SessionCleanupFailed => {
-                "selected MCP revision Streamable HTTP session lifecycle and mcp-doctor DEC-044"
+                "selected MCP revision Streamable HTTP session-lifecycle contract"
             }
             Self::RemoteTargetInvalid
             | Self::NetworkAuthorizationMissing
@@ -820,10 +820,10 @@ impl FindingCode {
             | Self::HttpExchangeFailed
             | Self::HttpResponseInvalid
             | Self::RemoteAuthenticationRejected => {
-                "selected MCP revision Streamable HTTP and mcp-doctor DEC-030/DEC-044"
+                "selected MCP revision Streamable HTTP safety contract"
             }
             Self::HttpHeaderMappingInvalid => {
-                "MCP 2026-07-28 Streamable HTTP header mapping and mcp-doctor DEC-030"
+                "MCP 2026-07-28 Streamable HTTP header-mapping contract"
             }
             Self::ProtocolRevisionConfirmed
             | Self::UnsupportedProtocolRevision
@@ -838,15 +838,13 @@ impl FindingCode {
             | Self::ExternalSchemaReferenceBlocked => {
                 "selected MCP revision Tool contract and JSON Schema Draft 2020-12"
             }
-            Self::AmbiguousSchemaDialect => {
-                "MCP 2025-06-18 Tool schema contract and mcp-doctor DEC-044"
-            }
+            Self::AmbiguousSchemaDialect => "MCP 2025-06-18 Tool schema contract",
             Self::ScenarioInvalid | Self::SecretReferenceInvalid | Self::ScenarioSchemaInvalid => {
                 "selected mcp-doctor versioned scenario contract"
             }
-            Self::CaseGenerationFailed => "mcp-doctor MCPD-011 bounded generation contract",
+            Self::CaseGenerationFailed => "mcp-doctor bounded case-generation contract",
             Self::ToolAuthorizationMissing | Self::SideEffectsNotAuthorized => {
-                "mcp-doctor MCPD-009 and MCPD-011 active-authorization contract"
+                "mcp-doctor active-authorization contract"
             }
             Self::ToolNotFound
             | Self::ToolArgumentsMismatch
@@ -856,10 +854,10 @@ impl FindingCode {
             | Self::ToolResultInvalid
             | Self::ToolTaskRequired
             | Self::SchemaInvalidArgumentsAccepted => {
-                "selected MCP revision tools contract and mcp-doctor MCPD-009/MCPD-011/MCPD-027/MCPD-029 active contract"
+                "selected MCP revision tools and active-execution contract"
             }
             Self::WorkflowCaptureMissing | Self::WorkflowCleanupFailed => {
-                "mcp-doctor DEC-056 bounded workflow contract"
+                "mcp-doctor bounded workflow contract"
             }
         }
     }

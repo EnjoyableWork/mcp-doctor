@@ -171,8 +171,8 @@ install; the CLI and package channels never update a skill automatically.
 
 ## Dated host evidence
 
-MCPD-035 records exact-version clean-workspace observations here only after one
-first-attempt explicit invocation uses a synthetic PATH-preferred
+The dated host matrix records exact-version clean-workspace observations only
+after one first-attempt explicit invocation uses a synthetic PATH-preferred
 `mcp-doctor` recorder. A missing, failed, or variant observation withholds that
 host claim; it is not rerun into acceptance.
 
