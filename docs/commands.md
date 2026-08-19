@@ -50,10 +50,10 @@ catalog validity is not yet known. In `auto`, a recognized modern response is
 conclusive; a non-modern STDIO error or the exact Streamable HTTP `400` legacy
 signal may enter the one legacy path described in the revision contract.
 Errors from later capability-advertised catalog methods are `MCP-CATALOG-004`
-findings at the exact method response. Human, JSON, and JUnit reports expose
-only structural selection evidence, the fixed error kind, and a standard
-JSON-RPC code when one applies; they never retain error prose, data, bodies,
-or application-defined numeric codes.
+findings at the exact method response. Human, JSON, JUnit, and Markdown reports
+expose only structural selection evidence, the fixed error kind, and a
+standard JSON-RPC code when one applies; they never retain error prose, data,
+bodies, or application-defined numeric codes.
 
 ## Single-tool reviewed `check` scenarios
 
@@ -394,10 +394,11 @@ language quality.
 
 The rule does not use locale, runtime whitespace tables, or an LLM. A
 non-string description remains `MCP-CATALOG-001`, without a duplicate quality
-warning. Human, JSON, and JUnit reports retain only the code, warning severity,
-selected revision, indexed field location, and fixed corrective prose—not the
-tool name, description, or raw catalog item. The shared rule applies to passive
-STDIO and Streamable HTTP inspection for every supported revision without an
+warning. Human, JSON, JUnit, and Markdown reports retain only the code, warning
+severity, selected revision, indexed field location, and fixed corrective
+prose—not the tool name, description, or raw catalog item. The shared rule
+applies to passive STDIO and Streamable HTTP inspection for every supported
+revision without an
 extra request or any tool call.
 
 ### Required-input description quality

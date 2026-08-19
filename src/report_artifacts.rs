@@ -39,7 +39,7 @@ impl fmt::Display for ReportArtifactError {
             Self::ParentUnavailable => {
                 "each report destination parent must already exist as a directory"
             }
-            Self::DuplicateDestination => "JSON and JUnit require distinct report destinations",
+            Self::DuplicateDestination => "report artifacts require distinct report destinations",
             Self::AliasedDestination => {
                 "requested artifact destinations alias the same filesystem path"
             }
@@ -95,9 +95,18 @@ impl ReportArtifactDestinations {
     pub(crate) fn prepare(
         json: Option<PathBuf>,
         junit: Option<PathBuf>,
+        markdown: Option<PathBuf>,
         reserved_paths: &[&Path],
     ) -> Result<Self, ReportArtifactError> {
-        if json.is_some() && json == junit {
+        let requested_paths = [json.as_ref(), junit.as_ref(), markdown.as_ref()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        if requested_paths.iter().enumerate().any(|(index, path)| {
+            requested_paths[index + 1..]
+                .iter()
+                .any(|candidate| candidate == path)
+        }) {
             return Err(ReportArtifactError::DuplicateDestination);
         }
 
@@ -106,10 +115,11 @@ impl ReportArtifactDestinations {
             .map(|path| destination_identity(path))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut destinations = Vec::with_capacity(2);
+        let mut destinations = Vec::with_capacity(3);
         for (format, path) in [
             (ReportArtifactFormat::Json, json),
             (ReportArtifactFormat::Junit, junit),
+            (ReportArtifactFormat::Markdown, markdown),
         ] {
             let Some(path) = path else {
                 continue;
@@ -152,6 +162,12 @@ impl ReportArtifactDestinations {
         self.destinations
             .iter()
             .any(|destination| destination.format == ReportArtifactFormat::Junit)
+    }
+
+    pub(crate) fn requests_markdown(&self) -> bool {
+        self.destinations
+            .iter()
+            .any(|destination| destination.format == ReportArtifactFormat::Markdown)
     }
 
     pub(crate) fn persist(
@@ -531,6 +547,11 @@ mod tests {
                 format: ReportArtifactFormat::Junit,
                 output: "<?xml version=\"1.0\"?><testsuites/>\n".to_owned(),
             },
+            RenderedReportArtifact {
+                format: ReportArtifactFormat::Markdown,
+                output: "<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor diagnostic report\n"
+                    .to_owned(),
+            },
         ]
     }
 
@@ -553,11 +574,17 @@ mod tests {
         let root = TempDir::new().expect("a disposable root should be created");
         let json = root.path().join("report.json");
         let junit = root.path().join("report.xml");
-        let destinations =
-            ReportArtifactDestinations::prepare(Some(json.clone()), Some(junit.clone()), &[])
-                .expect("distinct new destinations should prepare");
+        let markdown = root.path().join("report.md");
+        let destinations = ReportArtifactDestinations::prepare(
+            Some(json.clone()),
+            Some(junit.clone()),
+            Some(markdown.clone()),
+            &[],
+        )
+        .expect("distinct new destinations should prepare");
         assert!(destinations.requests_json());
         assert!(destinations.requests_junit());
+        assert!(destinations.requests_markdown());
 
         destinations
             .persist(artifacts())
@@ -571,6 +598,10 @@ mod tests {
             fs::read_to_string(junit).expect("JUnit should be readable"),
             "<?xml version=\"1.0\"?><testsuites/>\n"
         );
+        assert_eq!(
+            fs::read_to_string(markdown).expect("Markdown should be readable"),
+            "<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor diagnostic report\n"
+        );
         assert_no_stages(root.path());
     }
 
@@ -580,7 +611,7 @@ mod tests {
         let existing = root.path().join("existing.json");
         fs::write(&existing, "unchanged").expect("the existing fixture should be written");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(existing.clone()), None, &[])
+            ReportArtifactDestinations::prepare(Some(existing.clone()), None, None, &[])
                 .expect_err("an existing destination should fail"),
             ReportArtifactError::ExistingOutput
         );
@@ -588,15 +619,31 @@ mod tests {
         let directory = root.path().join("directory");
         fs::create_dir(&directory).expect("the directory fixture should be created");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(directory), None, &[])
+            ReportArtifactDestinations::prepare(Some(directory), None, None, &[])
                 .expect_err("a non-regular destination should fail"),
             ReportArtifactError::NonRegularOutput
         );
 
         let duplicate = root.path().join("duplicate");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(duplicate.clone()), Some(duplicate), &[],)
-                .expect_err("duplicate destinations should fail"),
+            ReportArtifactDestinations::prepare(
+                Some(duplicate.clone()),
+                Some(duplicate),
+                None,
+                &[],
+            )
+            .expect_err("duplicate destinations should fail"),
+            ReportArtifactError::DuplicateDestination
+        );
+        let markdown_duplicate = root.path().join("markdown-duplicate");
+        assert_eq!(
+            ReportArtifactDestinations::prepare(
+                Some(markdown_duplicate.clone()),
+                None,
+                Some(markdown_duplicate),
+                &[],
+            )
+            .expect_err("a Markdown duplicate should fail"),
             ReportArtifactError::DuplicateDestination
         );
 
@@ -605,12 +652,12 @@ mod tests {
         let direct = root.path().join("aliased");
         let indirect = subdirectory.join("..").join("aliased");
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(direct.clone()), Some(indirect), &[])
+            ReportArtifactDestinations::prepare(Some(direct.clone()), Some(indirect), None, &[])
                 .expect_err("resolved aliases should fail"),
             ReportArtifactError::AliasedDestination
         );
         assert_eq!(
-            ReportArtifactDestinations::prepare(Some(direct.clone()), None, &[&direct])
+            ReportArtifactDestinations::prepare(Some(direct.clone()), None, None, &[&direct])
                 .expect_err("a reserved artifact path should fail"),
             ReportArtifactError::AliasedDestination
         );
@@ -626,8 +673,9 @@ mod tests {
     fn a_commit_race_and_render_contract_mismatch_roll_back_owned_files() {
         let root = TempDir::new().expect("a disposable root should be created");
         let raced = root.path().join("raced.json");
-        let destinations = ReportArtifactDestinations::prepare(Some(raced.clone()), None, &[])
-            .expect("the initial destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(raced.clone()), None, None, &[])
+                .expect("the initial destination should prepare");
         fs::write(&raced, "external").expect("the race fixture should be written");
         let failure = destinations
             .persist(vec![artifacts().remove(0)])
@@ -639,8 +687,9 @@ mod tests {
         );
 
         let mismatched = root.path().join("mismatched.json");
-        let destinations = ReportArtifactDestinations::prepare(Some(mismatched.clone()), None, &[])
-            .expect("the mismatch destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(mismatched.clone()), None, None, &[])
+                .expect("the mismatch destination should prepare");
         assert_eq!(
             destinations
                 .persist(Vec::new())
@@ -657,13 +706,15 @@ mod tests {
         let json = root.path().join("report.json");
         let junit = root.path().join("report.xml");
         let destinations =
-            ReportArtifactDestinations::prepare(Some(json.clone()), Some(junit.clone()), &[])
+            ReportArtifactDestinations::prepare(Some(json.clone()), Some(junit.clone()), None, &[])
                 .expect("both initial destinations should prepare");
         fs::write(&junit, "external").expect("the second destination should be raced");
+        let mut rendered = artifacts();
+        rendered.truncate(2);
 
         assert_eq!(
             destinations
-                .persist(artifacts())
+                .persist(rendered)
                 .expect_err("the raced set must not publish partially"),
             ReportArtifactError::Publish
         );
@@ -680,8 +731,9 @@ mod tests {
         let root = TempDir::new().expect("a disposable root should be created");
         let output = root.path().join("report.json");
         let retained = root.path().join("retained-stage");
-        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
-            .expect("the report destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+                .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
         fs::write(&stage, "external replacement")
@@ -715,8 +767,9 @@ mod tests {
         let retained = root.path().join("retained-stage");
         let target = root.path().join("external-target");
         fs::write(&target, "external target").expect("the external target should be written");
-        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
-            .expect("the report destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+                .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should be retained by identity");
         #[cfg(unix)]
@@ -753,8 +806,9 @@ mod tests {
         let root = TempDir::new().expect("a disposable root should be created");
         let output = root.path().join("report.json");
         let retained = root.path().join("retained-stage");
-        let destinations = ReportArtifactDestinations::prepare(Some(output.clone()), None, &[])
-            .expect("the report destination should prepare");
+        let destinations =
+            ReportArtifactDestinations::prepare(Some(output.clone()), None, None, &[])
+                .expect("the report destination should prepare");
         let stage = destinations.destinations[0].stage_path.clone();
         fs::rename(&stage, &retained).expect("the opened stage should move");
         fs::hard_link(&retained, &stage).expect("the stage name should regain the same identity");
@@ -778,7 +832,7 @@ mod tests {
     fn an_injected_publication_limit_rolls_back_without_sleeping_or_retrying() {
         let root = TempDir::new().expect("a disposable root should be created");
         let json = root.path().join("aggregate.json");
-        let destinations = ReportArtifactDestinations::prepare(Some(json.clone()), None, &[])
+        let destinations = ReportArtifactDestinations::prepare(Some(json.clone()), None, None, &[])
             .expect("the aggregate destination should prepare");
         let calls = Cell::new(0_u64);
         let error = destinations

@@ -6,7 +6,10 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use support::{TestEnvironment, parse_and_validate_junit, parse_and_validate_report};
+use support::{
+    TestEnvironment, parse_and_validate_junit, parse_and_validate_markdown,
+    parse_and_validate_report,
+};
 
 const TOOL: &str = "synthetic.reviewed";
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -73,6 +76,7 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
     let marker = environment.artifact_path("reject-call-count.txt");
     let json_artifact = environment.artifact_path("reject-report.json");
     let junit = environment.artifact_path("reject-report.xml");
+    let markdown_path = environment.artifact_path("reject-report.md");
     let output = stdio_reject_command(&environment, 4242)
         .arg("--format")
         .arg("json")
@@ -80,6 +84,8 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
         .arg(&json_artifact)
         .arg("--junit-report")
         .arg(&junit)
+        .arg("--markdown-report")
+        .arg(&markdown_path)
         .arg("--")
         .arg(fixture())
         .arg("reject-success")
@@ -138,6 +144,10 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
     assert_eq!(summary.skipped, 0);
     assert!(document.contains("reproduction.mutation_kind=missing_arguments"));
     assert!(document.contains("report_outcome=passed\nexit_code=0"));
+    let markdown = parse_and_validate_markdown(&fs::read(&markdown_path).unwrap());
+    assert!(markdown.contains("| Outcome | `passed` |"));
+    assert!(markdown.contains("`mutation=missing_arguments`"));
+    assert!(markdown.contains("`runtime.tools.case[0]`"));
     for forbidden in [
         TOOL,
         REDACTION_SENTINEL,
@@ -148,8 +158,13 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
         marker.to_str().unwrap(),
         json_artifact.to_str().unwrap(),
         junit.to_str().unwrap(),
+        markdown_path.to_str().unwrap(),
     ] {
         assert!(!document.contains(forbidden), "JUnit disclosed {forbidden}");
+        assert!(
+            !markdown.contains(forbidden),
+            "Markdown disclosed {forbidden}"
+        );
     }
     assert_redacted(
         &output,
@@ -157,6 +172,7 @@ fn exact_invalid_params_rejections_pass_with_fixed_value_free_reproduction() {
             marker.to_str().unwrap(),
             json_artifact.to_str().unwrap(),
             junit.to_str().unwrap(),
+            markdown_path.to_str().unwrap(),
         ],
     );
 }

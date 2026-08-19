@@ -176,6 +176,14 @@
             "$ref": "#/$defs/name"
           }
         },
+        "artifact_reporters": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
         "input_schema_versions": {
           "$ref": "#/$defs/contract_versions"
         },
@@ -372,6 +380,9 @@
           "$ref": "#/$defs/nonempty_contract_versions"
         },
         "diagnostic_report": {
+          "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "markdown_report": {
           "$ref": "#/$defs/nonempty_contract_versions"
         },
         "generator": {

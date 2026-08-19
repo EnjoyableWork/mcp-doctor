@@ -46,8 +46,8 @@ pub(crate) use protocol::{
     ProtocolSelectionMode, ProtocolSelectionPath, SupportedRevision as ProtocolRevision,
 };
 pub(crate) use report::{
-    ExitStatus, REPORT_SCHEMA_VERSION, RenderedReportArtifact, ReportArtifactFormat, ReportFormat,
-    ReportRequest,
+    ExitStatus, MARKDOWN_REPORT_VERSION, REPORT_SCHEMA_VERSION, RenderedReportArtifact,
+    ReportArtifactFormat, ReportFormat, ReportRequest,
 };
 pub(crate) use snapshot::{
     DIFF_SCHEMA_VERSION, DiffFormat, RenderedContractDiff, SNAPSHOT_SCHEMA_VERSION,
