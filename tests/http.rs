@@ -1004,6 +1004,31 @@ fn tool_description_placeholder_response() -> FixtureResponse {
     }))
 }
 
+fn credential_literal_response() -> FixtureResponse {
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [{
+                "name": "synthetic-private-http-security-never-report-63",
+                "description": "Performs one bounded synthetic remote operation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "privateKey": {
+                            "type": "string",
+                            "default": "synthetic-http-credential-never-report-63"
+                        }
+                    }
+                }
+            }]
+        }
+    }))
+}
+
 fn workflow_tools_response() -> FixtureResponse {
     FixtureResponse::json(json!({
         "jsonrpc": "2.0",
@@ -4416,6 +4441,60 @@ fn passive_http_placeholder_quality_uses_only_the_advertised_catalog_request() {
         );
     }
     assert!(!stdout.contains("tools[2].description"), "{stdout}");
+}
+
+#[test]
+fn passive_http_credential_literal_uses_only_the_advertised_catalog_request() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                credential_literal_response(),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 2);
+    assert_eq!(outcome.valid_requests, 2);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_eq!(outcome.request_failures, 0);
+    let findings = report["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "schema.contracts")
+        .expect("the schema check should exist")["findings"]
+        .as_array()
+        .expect("the schema check should contain findings");
+    assert_eq!(findings.len(), 1, "{report:#}");
+    assert_eq!(findings[0]["code"], "MCP-SECURITY-001");
+    assert_eq!(findings[0]["severity"], "error");
+    assert_eq!(
+        findings[0]["location"],
+        "tools[0].inputSchema.properties[0].default"
+    );
+    assert_eq!(findings[0]["evidence"]["kind"], "credential_literal");
+    assert_eq!(findings[0]["evidence"]["keyword_class"], "default");
+    assert_eq!(findings[0]["evidence"]["literal_count"], 1);
+    assert!(!stdout.contains("synthetic-private-http-security-never-report-63"));
+    assert!(!stdout.contains("synthetic-http-credential-never-report-63"));
+    assert!(!stdout.contains("privateKey"));
 }
 
 #[test]

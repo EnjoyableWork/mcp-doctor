@@ -1486,6 +1486,271 @@ fn tool_description_warnings_truncate_deterministically_at_the_report_limit() {
 }
 
 #[test]
+fn credential_literals_are_redacted_and_consistent_across_reporters_and_revisions() {
+    const REMEDIATION: &str = "Remove the literal from the schema and obtain the credential through authorized server runtime configuration.";
+    let expected = [
+        ("default", 1_u64),
+        ("const", 1),
+        ("examples", 1),
+        ("enum", 2),
+        ("default", 1),
+        ("const", 1),
+        ("examples", 1),
+        ("enum", 1),
+        ("default", 1),
+    ];
+    let human_output = run_mode("credential-literals");
+    let json_output = run_json_mode("credential-literals");
+    let environment = TestEnvironment::new();
+    let junit_output = junit_inspect_command(&environment, "credential-literals")
+        .output()
+        .expect("mcp-doctor should project credential findings as JUnit");
+    let (human, human_stderr) = text(&human_output);
+    let (json_text, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
+    let report = json_report(&json_output);
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+
+    assert_eq!(
+        human_output.status.code(),
+        Some(1),
+        "{human}\n{human_stderr}"
+    );
+    assert_eq!(
+        json_output.status.code(),
+        Some(1),
+        "{report:#}\n{json_stderr}"
+    );
+    assert_eq!(
+        junit_output.status.code(),
+        Some(1),
+        "{junit}\n{junit_stderr}"
+    );
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert!(junit_stderr.is_empty());
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["exit_code"], 1);
+    assert_eq!(junit_summary.failures, 1);
+    assert!(human.contains("FAIL  schema.contracts"), "{human}");
+
+    let findings = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should contain credential findings");
+    assert_eq!(findings.len(), expected.len(), "{report:#}");
+    assert_eq!(
+        report["independent_findings"]
+            .as_array()
+            .expect("independent findings should be an array")
+            .len(),
+        expected.len(),
+        "{report:#}"
+    );
+
+    for (index, (finding, (keyword, literal_count))) in findings.iter().zip(expected).enumerate() {
+        let location = format!("tools[{index}].inputSchema.properties[0].{keyword}");
+        assert_eq!(finding["code"], "MCP-SECURITY-001");
+        assert_eq!(finding["severity"], "error");
+        assert_eq!(finding["protocol_revision"], "2026-07-28");
+        assert_eq!(finding["location"], location);
+        assert_eq!(finding["remediation"], REMEDIATION);
+        assert_eq!(finding["evidence"]["kind"], "credential_literal");
+        assert_eq!(finding["evidence"]["keyword_class"], keyword);
+        assert_eq!(finding["evidence"]["literal_count"], literal_count);
+        assert!(human.contains("MCP-SECURITY-001"), "{human}");
+        assert!(human.contains(&location), "{human}");
+        assert!(human.contains(REMEDIATION), "{human}");
+        assert!(
+            human.contains(&format!(
+                "keyword {keyword} · {literal_count} non-empty string literal(s)"
+            )),
+            "{human}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].code=MCP-SECURITY-001")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].location={location}")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!(
+                "finding[{index}].evidence.keyword_class={keyword}"
+            )),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!(
+                "finding[{index}].evidence.literal_count={literal_count}"
+            )),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!("finding[{index}].independent_safety=true")),
+            "{junit}"
+        );
+    }
+
+    let forbidden = [
+        "synthetic-credential-literal-never-report-63",
+        "second-synthetic-value",
+        "passwordField",
+        "userPasswd",
+        "client_secret",
+        "authToken",
+        "api_key",
+        "accessToken",
+        "private-key",
+        "serviceCredential",
+        "tokenizer",
+        "secretary",
+    ];
+    for output in [human, json_text, junit.as_str()] {
+        for value in forbidden {
+            assert!(!output.contains(value), "report retained {value}: {output}");
+        }
+    }
+    assert_report_findings_are_actionable(&report, human);
+
+    let modern_projection = findings
+        .iter()
+        .map(|finding| {
+            serde_json::json!({
+                "code": finding["code"],
+                "severity": finding["severity"],
+                "location": finding["location"],
+                "evidence": finding["evidence"]
+            })
+        })
+        .collect::<Vec<_>>();
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-credential-literals",
+        )
+        .output()
+        .expect("mcp-doctor should reuse credential semantics for legacy revisions");
+        let (legacy_json, legacy_stderr) = text(&output);
+        let legacy = json_report(&output);
+        assert_eq!(output.status.code(), Some(1), "{legacy:#}\n{legacy_stderr}");
+        assert!(legacy_stderr.is_empty());
+        let legacy_findings = find_json_check(&legacy, "schema.contracts")["findings"]
+            .as_array()
+            .expect("the legacy schema check should contain credential findings");
+        let legacy_projection = legacy_findings
+            .iter()
+            .map(|finding| {
+                assert_eq!(finding["protocol_revision"], revision);
+                serde_json::json!({
+                    "code": finding["code"],
+                    "severity": finding["severity"],
+                    "location": finding["location"],
+                    "evidence": finding["evidence"]
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(legacy_projection, modern_projection, "{legacy:#}");
+        for value in forbidden {
+            assert!(!legacy_json.contains(value), "{revision} retained {value}");
+        }
+    }
+}
+
+#[test]
+fn credential_literal_finding_requires_a_valid_schema_and_remains_independent() {
+    let output = run_json_mode("credential-literals-combined");
+    let (stdout, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    let findings = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should contain both findings");
+    assert_eq!(findings.len(), 2, "{report:#}");
+    let schema_finding = findings
+        .iter()
+        .find(|finding| finding["code"] == "MCP-SCHEMA-001")
+        .expect("the invalid schema should retain its prerequisite finding");
+    let security_finding = findings
+        .iter()
+        .find(|finding| finding["code"] == "MCP-SECURITY-001")
+        .expect("the valid sibling schema should retain its security finding");
+    assert!(
+        schema_finding["location"]
+            .as_str()
+            .is_some_and(|location| location.starts_with("tools[0].inputSchema.required")),
+        "{report:#}"
+    );
+    assert_eq!(
+        security_finding["location"],
+        "tools[1].inputSchema.properties[0].const"
+    );
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-SCHEMA-001"
+    );
+    assert_eq!(
+        report["independent_findings"],
+        serde_json::json!([{
+            "check_id": "schema.contracts",
+            "code": "MCP-SECURITY-001",
+            "location": "tools[1].inputSchema.properties[0].const"
+        }])
+    );
+    assert!(!stdout.contains("tools[0].inputSchema.properties[0].default"));
+    assert!(!stdout.contains("synthetic-combined-credential-never-report-63"));
+    assert!(!stdout.contains("access_token"));
+}
+
+#[test]
+fn credential_literal_findings_truncate_deterministically_at_the_report_limit() {
+    let first = run_json_mode("credential-literal-finding-limit");
+    let second = run_json_mode("credential-literal-finding-limit");
+    let (stdout, stderr) = text(&first);
+    let report = json_report(&first);
+
+    assert_eq!(first.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(
+        first.stdout, second.stdout,
+        "security truncation must be stable"
+    );
+    let security = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should contain bounded findings");
+    assert_eq!(security.len(), 255, "{report:#}");
+    assert!(
+        security
+            .iter()
+            .all(|finding| finding["code"] == "MCP-SECURITY-001"),
+        "{report:#}"
+    );
+    assert_eq!(
+        security.first().expect("a first security finding")["location"],
+        "tools[0].inputSchema.properties[0].default"
+    );
+    assert_eq!(
+        security.last().expect("a last security finding")["location"],
+        "tools[254].inputSchema.properties[0].default"
+    );
+    let catalog = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the catalog check should contain the report bound");
+    assert_eq!(catalog.len(), 1, "{report:#}");
+    assert_eq!(catalog[0]["code"], "MCP-LIMIT-001");
+    assert_eq!(catalog[0]["evidence"]["limit"], "report_findings");
+    assert_eq!(catalog[0]["evidence"]["maximum"], 256);
+    assert!(!stdout.contains("synthetic-security-limit-value-never-report-63"));
+    assert!(!stdout.contains("password_"));
+}
+
+#[test]
 fn stable_json_is_a_complete_passive_built_binary_report() {
     let output = run_json_mode("catalog-valid");
     let (_, stderr) = text(&output);

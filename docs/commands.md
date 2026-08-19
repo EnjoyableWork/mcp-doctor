@@ -400,6 +400,41 @@ tool name, description, or raw catalog item. The shared rule applies to passive
 STDIO and Streamable HTTP inspection for every supported revision without an
 extra request or any tool call.
 
+### Credential-literal input safety
+
+After an advertised tool input schema passes its existing local schema gates,
+passive `inspect` reports `MCP-SECURITY-001` as an error when a direct property
+has both:
+
+- an identifier containing one exact normalized credential segment:
+  `password`, `passwd`, `secret`, `token`, `api-key`, `apikey`,
+  `access-token`, `private-key`, or `credential`; and
+- a non-empty string literal in `default`, `const`, `examples`, or `enum`.
+
+Identifier normalization is finite and ASCII-only. Punctuation and non-ASCII
+scalars delimit segments, ASCII letters are lowercased, and camel-case or
+acronym-to-word transitions delimit segments. Each single-segment term matches
+one complete normalized segment; `api-key`, `access-token`, and `private-key`
+match exact adjacent segments. The rule does not use entropy, prose, locale,
+semantic inference, an LLM, or a broader secret scanner. It does not diagnose
+nested properties or a credential-like property that advertises no literal.
+
+Each finding is located at
+`tools[index].inputSchema.properties[index].keyword` and retains only the
+error code, severity, selected revision, ordinal location, keyword class, and
+non-empty string-literal count. Property names, matched segments, literals,
+schema fragments, and tool metadata are not retained or rendered. An invalid,
+unsupported, externally referenced, incomplete, or over-limit input schema
+receives its prerequisite schema finding instead of a partial credential
+diagnosis for that schema.
+
+The credential finding remains independent of an earlier actionable diagnosis
+from another tool. The correction is to remove the literal from the advertised
+schema and obtain the credential through authorized server runtime
+configuration. The shared passive rule applies to every supported revision and
+transport without reading credentials, resolving environment values, fetching
+references, sending another request, or calling a tool.
+
 ```text
 PRIMARY DIAGNOSIS · schema
 

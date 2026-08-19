@@ -714,6 +714,31 @@
       },
       "additionalProperties": true
     },
+    "evidence_credential_literal": {
+      "type": "object",
+      "required": [
+        "kind",
+        "keyword_class",
+        "literal_count"
+      ],
+      "properties": {
+        "kind": {
+          "const": "credential_literal"
+        },
+        "keyword_class": {
+          "enum": [
+            "default",
+            "const",
+            "examples",
+            "enum"
+          ]
+        },
+        "literal_count": {
+          "$ref": "#/$defs/positive_count"
+        }
+      },
+      "additionalProperties": true
+    },
     "evidence_rule_violation": {
       "type": "object",
       "required": [
@@ -830,6 +855,9 @@
         },
         {
           "$ref": "#/$defs/evidence_schema_validation_limit"
+        },
+        {
+          "$ref": "#/$defs/evidence_credential_literal"
         },
         {
           "$ref": "#/$defs/evidence_rule_violation"

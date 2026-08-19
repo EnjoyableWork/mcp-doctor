@@ -1063,6 +1063,17 @@ fn write_human_evidence(output: &mut BoundedOutput, finding: &Finding) {
             )
             .expect("the bounded report writer records limit failures");
         }
+        FindingEvidence::CredentialLiteral {
+            keyword,
+            literal_count,
+        } => {
+            writeln!(
+                output,
+                "      keyword {} · {literal_count} non-empty string literal(s)",
+                keyword.as_str()
+            )
+            .expect("the bounded report writer records credential-literal evidence");
+        }
         FindingEvidence::RuleViolation(violation) => {
             write_human_rule(output, *violation);
         }
@@ -1519,6 +1530,32 @@ fn write_junit_evidence(output: &mut BoundedOutput, index: usize, finding: &Find
                 index,
                 "evidence.maximum",
                 violation.maximum(),
+            );
+        }
+        FindingEvidence::CredentialLiteral {
+            keyword,
+            literal_count,
+        } => {
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.kind",
+                "credential_literal",
+            );
+            write_indexed_xml_line(
+                output,
+                "finding",
+                index,
+                "evidence.keyword_class",
+                keyword.as_str(),
+            );
+            write_indexed_number_line(
+                output,
+                "finding",
+                index,
+                "evidence.literal_count",
+                *literal_count,
             );
         }
         FindingEvidence::RuleViolation(violation) => {
@@ -2026,6 +2063,10 @@ enum JsonEvidence {
         observed: u64,
         maximum: u64,
     },
+    CredentialLiteral {
+        keyword_class: &'static str,
+        literal_count: u64,
+    },
     RuleViolation {
         rule: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2074,6 +2115,13 @@ impl JsonEvidence {
                     maximum: violation.maximum(),
                 }
             }
+            FindingEvidence::CredentialLiteral {
+                keyword,
+                literal_count,
+            } => Self::CredentialLiteral {
+                keyword_class: keyword.as_str(),
+                literal_count: *literal_count,
+            },
             FindingEvidence::RuleViolation(violation) => Self::RuleViolation {
                 rule: violation.as_str(),
                 expected: violation.expected_shape().map(|shape| shape.as_str()),
