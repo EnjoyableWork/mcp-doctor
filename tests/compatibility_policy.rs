@@ -6,6 +6,7 @@ use serde_json::Value;
 const MATRIX: &str = include_str!("compatibility/matrix.json");
 const EVIDENCE: &str = include_str!("compatibility/README.md");
 const RUNNER: &str = include_str!("../scripts/compatibility.sh");
+const WORKFLOW: &str = include_str!("../.github/workflows/compatibility.yml");
 const DART_LOCK: &str = include_str!("compatibility/locks/mcp_dart-v2.4.0.pubspec.lock");
 const PHP_LOCK: &str = include_str!("compatibility/locks/mcp-sdk-php-v2.0.0.composer.lock");
 const GO_SCENARIO: &str = include_str!("compatibility/scenarios/official-go-greet.json");
@@ -214,6 +215,73 @@ fn active_legacy_compatibility_runner_retains_exact_authority_and_claim_scope() 
         assert!(
             EVIDENCE.contains(scope),
             "compatibility evidence must preserve {scope}"
+        );
+    }
+}
+
+#[test]
+fn public_compatibility_workflow_authenticates_one_exact_released_artifact() {
+    for contract in [
+        "version:\n        description: Exact released mcp-doctor version",
+        "default: 0.4.0",
+        "attestations: read",
+        "contents: read",
+        "gh release download \"$release_tag\"",
+        "gh release verify \"$release_tag\"",
+        "gh attestation verify \"$release_crate\"",
+        "--source-digest \"$release_commit\"",
+        "https://crates.io/api/v1/crates/mcp-doctor/$MCP_DOCTOR_VERSION/download",
+        "--retry 0",
+        "test \"$release_sha\" = \"$registry_sha\"",
+        "cargo install mcp-doctor",
+        "--version \"=$MCP_DOCTOR_VERSION\"",
+        "--locked",
+        "MCP_DOCTOR_COMPAT_BINARY=",
+        "MCP_DOCTOR_COMPAT_VERSION=",
+    ] {
+        assert!(
+            WORKFLOW.contains(contract),
+            "compatibility workflow must preserve {contract}"
+        );
+    }
+    for forbidden in [
+        "pull_request_target:",
+        "contents: write",
+        "id-token: write",
+        "secrets.",
+        "continue-on-error:",
+        "--allow-side-effects",
+    ] {
+        assert!(
+            !WORKFLOW.contains(forbidden),
+            "compatibility workflow unexpectedly contains {forbidden}"
+        );
+    }
+
+    for contract in [
+        "MCP_DOCTOR_COMPAT_BINARY",
+        "MCP_DOCTOR_COMPAT_VERSION",
+        "Released-artifact compatibility requires an exact stable version.",
+        "Released-artifact compatibility requires one absolute executable regular file.",
+        "Released-artifact compatibility binary and version do not agree.",
+        "-L \"${compat_external_binary}\"",
+        "! -x \"${compat_external_binary}\"",
+    ] {
+        assert!(
+            RUNNER.contains(contract),
+            "compatibility runner must preserve {contract}"
+        );
+    }
+    for contract in [
+        "verifies the immutable release and build\nprovenance",
+        "public crates.io byte to have the same SHA-256 digest",
+        "exact locked Cargo package",
+        "rejects a symlink",
+        "released-artifact workflow run is additional exact-identity evidence",
+    ] {
+        assert!(
+            EVIDENCE.contains(contract),
+            "compatibility evidence must preserve {contract}"
         );
     }
 }

@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MCP_DOCTOR_VERSION: 0.3.3
+  MCP_DOCTOR_VERSION: 0.4.0
 
 jobs:
   preflight:
@@ -77,6 +77,8 @@ jobs:
             --protocol-version 2026-07-28 \
             --json-report artifacts/mcp-doctor/report.json \
             --junit-report artifacts/mcp-doctor/report.junit.xml \
+            --markdown-report artifacts/mcp-doctor/report.md \
+            --badge-report artifacts/mcp-doctor/badge.json \
             -- \
             ./target/release/mcp-doctor-stdio-fixture "$fixture_mode" \
             >/dev/null
@@ -87,6 +89,8 @@ jobs:
           ./scripts/verify-mcp-doctor-preflight-reports.sh
           artifacts/mcp-doctor/report.json
           artifacts/mcp-doctor/report.junit.xml
+          artifacts/mcp-doctor/report.md
+          artifacts/mcp-doctor/badge.json
 
       - name: Upload the safe reports without masking the diagnostic exit
         if: ${{ always() }}
@@ -96,5 +100,7 @@ jobs:
           path: |
             artifacts/mcp-doctor/report.json
             artifacts/mcp-doctor/report.junit.xml
+            artifacts/mcp-doctor/report.md
+            artifacts/mcp-doctor/badge.json
           if-no-files-found: error
           retention-days: 7

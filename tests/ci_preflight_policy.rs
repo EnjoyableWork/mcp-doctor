@@ -21,7 +21,7 @@ fn starter_is_exact_passive_least_permission_and_narrowly_triggered() {
         "runs-on: ubuntu-24.04",
         "timeout-minutes: 20",
         "permissions:\n      contents: read",
-        "MCP_DOCTOR_VERSION: 0.3.3",
+        "MCP_DOCTOR_VERSION: 0.4.0",
         "cargo install mcp-doctor",
         "--version \"=$MCP_DOCTOR_VERSION\"",
         "--locked",
@@ -30,6 +30,8 @@ fn starter_is_exact_passive_least_permission_and_narrowly_triggered() {
         "--protocol-version 2026-07-28",
         "--json-report artifacts/mcp-doctor/report.json",
         "--junit-report artifacts/mcp-doctor/report.junit.xml",
+        "--markdown-report artifacts/mcp-doctor/report.md",
+        "--badge-report artifacts/mcp-doctor/badge.json",
         "./target/release/mcp-doctor-stdio-fixture \"$fixture_mode\"",
     ] {
         assert!(WORKFLOW.contains(contract), "workflow omitted {contract}");
@@ -112,6 +114,8 @@ fn report_upload_runs_after_success_or_failure_without_changing_the_exit() {
         "name: mcp-doctor-preflight-${{ inputs.fixture || 'passing' }}",
         "artifacts/mcp-doctor/report.json",
         "artifacts/mcp-doctor/report.junit.xml",
+        "artifacts/mcp-doctor/report.md",
+        "artifacts/mcp-doctor/badge.json",
         "if-no-files-found: error",
         "retention-days: 7",
     ] {
@@ -133,6 +137,7 @@ fn public_guidance_explains_copy_boundaries_artifacts_and_stable_exits() {
         "Exit `1`, `2`, `3`, or",
         "`4` fails the diagnostic step",
         "uploaded successfully afterward",
+        "all four reports",
         "grants no tool-call, side-effect, credential, private-network",
         "intentionally red",
     ] {
@@ -143,6 +148,11 @@ fn public_guidance_explains_copy_boundaries_artifacts_and_stable_exits() {
 #[test]
 fn report_verifier_owns_the_fixed_negative_scan_without_rendering_values() {
     for contract in [
+        "the four expected mcp-doctor reports were not published",
+        "mcp-doctor.report/v1",
+        "<testsuites ",
+        "<!-- mcp-doctor.markdown/v1 -->",
+        "mcp-doctor badge report has an unexpected contract",
         "synthetic-private-revision-never-report-7f2c",
         "synthetic-private-ci-stderr-never-report-7f2c",
         "'/Users/'",
@@ -173,14 +183,32 @@ fn verifier_accepts_safe_reports_and_rejects_a_sentinel_without_echoing_it() {
         let temporary = tempfile::tempdir().expect("temporary root should exist");
         let json = temporary.path().join("report.json");
         let junit = temporary.path().join("report.junit.xml");
-        fs::write(&json, br#"{"schema_version":"mcp-doctor.report/v1"}"#)
-            .expect("safe JSON should be writable");
-        fs::write(&junit, b"<testsuites/>").expect("safe JUnit should be writable");
+        let markdown = temporary.path().join("report.md");
+        let badge = temporary.path().join("badge.json");
+        fs::write(
+            &json,
+            br#"{"schema_version":"mcp-doctor.report/v1","schema_stability":"stable","outcome":"passed","exit_code":0}"#,
+        )
+        .expect("safe JSON should be writable");
+        fs::write(&junit, b"<testsuites name=\"mcp-doctor\"/>")
+            .expect("safe JUnit should be writable");
+        fs::write(
+            &markdown,
+            b"<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor report\n",
+        )
+        .expect("safe Markdown should be writable");
+        fs::write(
+            &badge,
+            br#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"brightgreen"}"#,
+        )
+        .expect("safe badge should be writable");
 
         let verifier = repository_root().join("scripts/verify-mcp-doctor-preflight-reports.sh");
         let accepted = Command::new(&verifier)
             .arg(&json)
             .arg(&junit)
+            .arg(&markdown)
+            .arg(&badge)
             .output()
             .expect("safe verification should run");
         assert!(accepted.status.success());
@@ -188,10 +216,18 @@ fn verifier_accepts_safe_reports_and_rejects_a_sentinel_without_echoing_it() {
         assert!(accepted.stderr.is_empty());
 
         let sentinel = "synthetic-private-ci-stderr-never-report-7f2c";
-        fs::write(&json, sentinel).expect("sentinel JSON should be writable");
+        fs::write(
+            &json,
+            format!(
+                "{{\"schema_version\":\"mcp-doctor.report/v1\",\"schema_stability\":\"stable\",\"outcome\":\"passed\",\"exit_code\":0,\"canary\":\"{sentinel}\"}}"
+            ),
+        )
+        .expect("sentinel JSON should be writable");
         let rejected = Command::new(&verifier)
             .arg(&json)
             .arg(&junit)
+            .arg(&markdown)
+            .arg(&badge)
             .output()
             .expect("negative verification should run");
         assert_eq!(rejected.status.code(), Some(1));

@@ -398,10 +398,34 @@ mkdir -p -- \
   "${compat_work_root}/go-mod-cache" \
   "${compat_work_root}/node-home"
 
-compat_rust_target="${compat_work_root}/rust-target"
-compat_doctor="${compat_rust_target}/debug/mcp-doctor"
-CARGO_INCREMENTAL=0 CARGO_TARGET_DIR="${compat_rust_target}" \
-  cargo build --locked --bin mcp-doctor
+compat_external_binary="${MCP_DOCTOR_COMPAT_BINARY:-}"
+if [[ -z "${compat_external_binary}" ]]; then
+  compat_rust_target="${compat_work_root}/rust-target"
+  compat_doctor="${compat_rust_target}/debug/mcp-doctor"
+  CARGO_INCREMENTAL=0 CARGO_TARGET_DIR="${compat_rust_target}" \
+    cargo build --locked --bin mcp-doctor
+else
+  compat_external_version="${MCP_DOCTOR_COMPAT_VERSION:-}"
+  if [[ ! "${compat_external_version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    printf 'Released-artifact compatibility requires an exact stable version.\n' >&2
+    exit 1
+  fi
+  if [[ "${compat_external_binary}" != /* ||
+    ! -f "${compat_external_binary}" ||
+    -L "${compat_external_binary}" ||
+    ! -x "${compat_external_binary}" ]]; then
+    printf 'Released-artifact compatibility requires one absolute executable regular file.\n' >&2
+    exit 1
+  fi
+  compat_actual_version="$("${compat_external_binary}" --version)"
+  if [[ "${compat_actual_version}" != "mcp-doctor ${compat_external_version}" ]]; then
+    printf 'Released-artifact compatibility binary and version do not agree.\n' >&2
+    exit 1
+  fi
+  compat_doctor="${compat_external_binary}"
+  printf 'Using released mcp-doctor %s for compatibility evidence.\n' \
+    "${compat_external_version}"
+fi
 
 compat_node_image="$(compat_runtime_value node image)"
 compat_go_image="$(compat_runtime_value go image)"

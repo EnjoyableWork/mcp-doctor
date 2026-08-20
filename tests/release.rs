@@ -637,6 +637,78 @@ fn assert_release_version_case(arguments: &[&str], expected_success: bool) {
 }
 
 #[test]
+fn release_runbook_bounds_the_session_scoped_verification_credential() {
+    let release = repository_file("docs/release.md");
+    let normalized_release = release.split_whitespace().collect::<Vec<_>>().join(" ");
+    let organization_controls: serde_json::Value =
+        serde_json::from_str(&repository_file(".github/organization-controls.json"))
+            .expect("organization controls should be valid JSON");
+    let profile = organization_controls
+        .pointer("/automation_credentials/verification_operator_credential")
+        .expect("verification operator profile should exist");
+
+    for repository in profile["repositories"]
+        .as_array()
+        .expect("verification repositories should be an array")
+    {
+        let repository = repository
+            .as_str()
+            .expect("verification repository should be a string");
+        assert!(
+            release.contains(&format!("`{repository}`")),
+            "release runbook should preserve verification repository {repository}"
+        );
+    }
+    for permission_group in ["organization_permissions", "repository_permissions"] {
+        for permission in profile[permission_group]
+            .as_object()
+            .expect("verification permissions should be an object")
+            .keys()
+        {
+            assert!(
+                release.contains(&format!("`{permission}`")),
+                "release runbook should preserve verification permission {permission}"
+            );
+        }
+    }
+
+    let maximum_lifetime = profile["maximum_lifetime_days"]
+        .as_u64()
+        .expect("verification lifetime should be an integer");
+    for contract in [
+        "with an expiration of one day",
+        &format!("`{maximum_lifetime}`-day maximum is an absolute policy ceiling"),
+        "URL-prefilled permissions do not select the repositories",
+        "explicitly choose `Only select repositories`",
+        "second review dialog",
+        "return to an empty token list",
+        "is not issuance evidence",
+        "only as `GH_TOKEN`",
+        "Do not use `gh auth login`",
+        "Before any rehearsal, run both live audits",
+        "verify-supply-chain-controls.sh --source-ref",
+        "verify-repeat-release-controls.sh",
+        "inspect the exact run's pending deployment",
+        "Approve only that deployment",
+        "Each protected job creates its own review boundary",
+        "send the selected environment identifiers as JSON integers, not strings",
+        "HTTP `422` is not approval evidence",
+        "disappear from the run's pending set",
+        "rerun both live audits once because the workflow runs changed external state",
+        "Revoke the fine-grained token immediately",
+        "exactly one bounded `GET /user` request",
+        "HTTP `401` response as revocation evidence",
+        "do not retry it as correctness evidence",
+        "Never retain the token value",
+    ] {
+        assert!(
+            normalized_release.contains(contract),
+            "release runbook should preserve session credential contract: {contract}"
+        );
+    }
+}
+
+#[test]
 fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let release = repository_file("docs/release.md");
     let first_notes = repository_file("docs/releases/v0.1.0.md");
@@ -705,6 +777,19 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "32000204694",
         "32000204757",
         "32000204919",
+        "074a62dbbfce5fa417f2b7080d509ebd86433b1f",
+        "32332461578",
+        "32332461575",
+        "32386249809",
+        "32386561455",
+        "32386712018",
+        "32386772185",
+        "32389641937",
+        "b87aff88710cce5a8d4d42b8429041bdda2dd51485c80910808312a0b0e035fe",
+        "44ee744b19b01d9a69c4d6f1c23248cb6e08b90c76556f202c417c75d48e6e97",
+        "32391019736",
+        "205e112a17498b3e817240283ef9e16bf7f81027",
+        "32391172160",
         "v0.3.3-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
