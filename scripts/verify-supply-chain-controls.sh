@@ -71,6 +71,7 @@ if ! jq -e '
   .workflow_inventory.checked_in == [
     ".github/workflows/ci.yml",
     ".github/workflows/compatibility.yml",
+    ".github/workflows/mcp-doctor-preflight.yml",
     ".github/workflows/release-authorization-negative.yml",
     ".github/workflows/release-channels.yml",
     ".github/workflows/release-preflight.yml",
@@ -82,6 +83,7 @@ if ! jq -e '
   ] and
   (.untrusted_workflows | map(.path)) == [
     ".github/workflows/ci.yml",
+    ".github/workflows/mcp-doctor-preflight.yml",
     ".github/workflows/release-preflight.yml"
   ] and
   all(.untrusted_workflows[];
