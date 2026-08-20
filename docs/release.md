@@ -355,6 +355,47 @@ were published together. The
 binds the exact commits, first-attempt protected and rehearsal runs, recovered
 bytes, channel identities, affected ranges, and public advisories.
 
+## v0.4.0 candidate-capability release
+
+[`v0.4.0`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.0)
+publishes the accepted passive quality diagnostics, report artifacts,
+multi-tool scenarios, current and legacy protocol adapters, bounded active
+rejection, and related safety contracts described by its
+[release notes](releases/v0.4.0.md). Protected source commit
+[`074a62d`](https://github.com/EnjoyableWork/mcp-doctor/commit/074a62dbbfce5fa417f2b7080d509ebd86433b1f)
+passed first-attempt exact-`main`
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461578)
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461575).
+The required nonpublishing
+[release/OIDC rehearsal](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32386249809),
+[wrong-workflow rejection](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32386561455),
+tap [no-write rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32386712018),
+and [published-channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32386772185)
+also passed before the tag.
+
+The signed annotated tag drove the protected first-attempt
+[release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32389641937),
+which published an immutable eight-asset GitHub Release, verified every
+checksum and provenance attestation, and published the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.4.0) through OIDC.
+The canonical `.crate` has SHA-256
+`b87aff88710cce5a8d4d42b8429041bdda2dd51485c80910808312a0b0e035fe`;
+the Agent Skill archive has SHA-256
+`44ee744b19b01d9a69c4d6f1c23248cb6e08b90c76556f202c417c75d48e6e97`.
+The release's `SHA256SUMS` records the remaining exact asset digests and is
+itself covered by release and build-provenance verification.
+
+The tap-owned first-attempt
+[publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/32391019736)
+copied the exact attested formula in commit
+[`205e112`](https://github.com/EnjoyableWork/homebrew-tap/commit/205e112a17498b3e817240283ef9e16bf7f81027).
+The credential-free
+[channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32391172160)
+then passed all ten jobs: immutable GitHub, crates.io, and Homebrew byte
+identity; two represented GNU/Linux archives; four native Cargo installs; and
+three native Homebrew source builds. No release, publication, integrity,
+installation, or smoke job was rerun as correctness evidence.
+
 ### GitHub-controlled sequence
 
 Every later release keeps three deliberately separate write boundaries:
@@ -514,6 +555,100 @@ audit rather than widening another session. Acceptance requires:
 
 The operator's authenticated GitHub session is administration authority, not a
 release credential: workflows must not read, copy, or depend on it.
+
+#### Session-scoped verification credential
+
+Provision the exceptional verification credential only for one attended
+release audit. Use GitHub's fine-grained personal access token settings; the
+operator or interface used to control those settings does not change the
+credential contract. Do not reuse, refresh, or widen an ambient GitHub CLI,
+OAuth, classic-token, or automation credential.
+
+Follow this sequence:
+
+1. Resolve and record the full current `main` commit for both
+   `EnjoyableWork/mcp-doctor` and `EnjoyableWork/homebrew-tap`. Keep the release
+   source worktree detached at the recorded source commit and clean throughout
+   the audit.
+2. Create one fine-grained personal access token owned by `EnjoyableWork`,
+   selected for exactly `EnjoyableWork/mcp-doctor` and
+   `EnjoyableWork/homebrew-tap`, with an expiration of one day. The canonical
+   profile's `30`-day maximum is an absolute policy ceiling, not the normal
+   release-session lifetime. Select only `read` for every permission below and
+   leave every unlisted permission at `no access`:
+
+   | Scope | Canonical permissions | GitHub form labels |
+   | --- | --- | --- |
+   | Organization | `organization_administration`, `organization_actions_variables`, `organization_dependabot_secrets`, `organization_hooks`, `organization_secrets`, `organization_self_hosted_runners`, `members` | Administration, Variables, Organization Dependabot secrets, Webhooks, Secrets, Self-hosted runners, Members |
+   | Repository | `actions`, `actions_variables`, `administration`, `contents`, `dependabot_secrets`, `environments`, `metadata`, `repository_hooks`, `secrets` | Actions, Variables, Administration, Contents, Dependabot secrets, Environments, Metadata, Webhooks, Secrets |
+
+   These identifiers and repository selections must remain identical to
+   `.github/organization-controls.json`. The credential is interactive
+   read-only audit authority and is prohibited from automation. GitHub's
+   documented fine-grained-token URL template may prefill the owner, one-day
+   lifetime, and permissions, but URL-prefilled permissions do not select the
+   repositories: explicitly choose `Only select repositories` and verify both
+   repository names. GitHub may add the read-only `Metadata` permission
+   automatically; it is part of the canonical profile, not extra authority.
+
+   Review the complete form before selecting `Generate token`. GitHub then
+   presents a second review dialog; recheck the owner, lifetime, repository
+   count, permission counts, and read-only access before selecting its final
+   `Generate token` action. Confirm that the new entry appears with the
+   expected name and one-day expiry. A return to an empty token list, or a
+   pending request without usable organization access, is not issuance
+   evidence and must not be handed to the audit process.
+3. Copy the token once into a hidden prompt owned by an isolated child process
+   and expose it there only as `GH_TOKEN`. Unset `GITHUB_TOKEN`, disable command
+   tracing and interactive prompts, and keep the value out of arguments,
+   shell history, files, credential helpers, logs, reports, chat, and workflow
+   inputs. Do not use `gh auth login` or change the persistent GitHub CLI
+   configuration. Destroy the child environment if setup or validation fails.
+4. Before any rehearsal, run both live audits from the clean source worktree,
+   passing the recorded full commits:
+
+   ```bash
+   ./scripts/verify-supply-chain-controls.sh --source-ref "$source_commit"
+   ./scripts/verify-repeat-release-controls.sh "$source_commit" "$tap_commit"
+   ```
+
+   Preserve the first result from each command. Do not rerun a failed
+   correctness check unchanged: correct the failing reviewed source or live
+   control, record that change, and then make one fresh attempt against the new
+   source or external state.
+5. Run the four nonpublishing workflows above in order and record the public
+   URL returned for each first attempt. Before approving a protected job,
+   inspect the exact run's pending deployment and require the documented
+   `release` environment, expected workflow and job identity, recorded source
+   commit, and an authorized reviewer. Approve only that deployment. Each
+   protected job creates its own review boundary: publishing immutable release
+   bytes and publishing through crates.io OIDC can therefore require separate
+   approvals in one workflow run, and the tap copy job requires its own tap
+   approval. Reinspect pending deployments after every upstream job rather
+   than assuming one approval authorizes later jobs.
+
+   Approval may use GitHub's web review or the documented pending-deployment
+   API. For the API, send the selected environment identifiers as JSON
+   integers, not strings, and require the response to identify the expected
+   run, ref, source commit, and `release` environment. A malformed request or
+   HTTP `422` is not approval evidence. After an accepted review, require that
+   exact deployment to disappear from the run's pending set before relying on
+   the job. After all four workflows succeed, rerun both live audits once
+   because the workflow runs changed external state. Any failure blocks
+   tagging or publication.
+6. Revoke the fine-grained token immediately after the post-rehearsal audits.
+   While its value remains only in the isolated child environment, make exactly
+   one bounded `GET /user` request to GitHub with that token and require an
+   HTTP `401` response as revocation evidence. A success or any other response
+   leaves revocation unresolved; do not retry it as correctness evidence.
+   Then unset `GH_TOKEN`, terminate the child environment, and clear any
+   transient clipboard or prompt buffer that held the value.
+
+Retain only the non-sensitive token profile, creation and revocation times,
+one-day expiration, audit results, workflow run URLs, and bounded HTTP `401`
+observation. Never retain the token value or a reusable token identifier. If
+the exact profile cannot be provisioned, stop and hand the creation step to an
+authorized organization owner; do not broaden another credential.
 
 ## Failure and correction
 

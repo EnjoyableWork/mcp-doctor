@@ -2,6 +2,12 @@ name: Compatibility evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Exact released mcp-doctor version without the v prefix
+        required: true
+        default: 0.4.0
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,11 @@ jobs:
     name: Pinned passive and active servers
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      attestations: read
+      contents: read
+    env:
+      MCP_DOCTOR_VERSION: ${{ inputs.version }}
 
     steps:
       - name: Check out source
@@ -32,5 +43,63 @@ jobs:
           cargo --version
           docker version
 
-      - name: Diagnose pinned official and independent servers
-        run: ./scripts/compatibility.sh
+      - name: Install and authenticate the exact released mcp-doctor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$MCP_DOCTOR_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "compatibility evidence requires a canonical stable version" >&2
+            exit 1
+          fi
+
+          release_tag="v$MCP_DOCTOR_VERSION"
+          release_root="$RUNNER_TEMP/mcp-doctor-compatibility-release"
+          mkdir -p "$release_root/assets" "$release_root/install"
+          gh release download "$release_tag" \
+            --repo EnjoyableWork/mcp-doctor \
+            --pattern "mcp-doctor-$MCP_DOCTOR_VERSION.crate" \
+            --dir "$release_root/assets"
+          gh release verify "$release_tag" \
+            --repo EnjoyableWork/mcp-doctor \
+            --format json >/dev/null
+
+          tag_object="$(
+            gh api "repos/EnjoyableWork/mcp-doctor/git/ref/tags/$release_tag" \
+              --jq '.object.sha'
+          )"
+          release_commit="$(
+            gh api "repos/EnjoyableWork/mcp-doctor/git/tags/$tag_object" \
+              --jq '.object.sha'
+          )"
+          release_crate="$release_root/assets/mcp-doctor-$MCP_DOCTOR_VERSION.crate"
+          gh attestation verify "$release_crate" \
+            --repo EnjoyableWork/mcp-doctor \
+            --signer-workflow EnjoyableWork/mcp-doctor/.github/workflows/release.yml \
+            --source-ref "refs/tags/$release_tag" \
+            --source-digest "$release_commit" \
+            --format json >/dev/null
+
+          registry_crate="$release_root/mcp-doctor-$MCP_DOCTOR_VERSION.registry.crate"
+          curl --fail --silent --show-error --location --retry 0 \
+            --connect-timeout 10 --max-time 120 \
+            --header 'User-Agent: mcp-doctor-compatibility/0.1 (+https://github.com/EnjoyableWork/mcp-doctor)' \
+            --output "$registry_crate" \
+            "https://crates.io/api/v1/crates/mcp-doctor/$MCP_DOCTOR_VERSION/download"
+          read -r release_sha _ < <(sha256sum "$release_crate")
+          read -r registry_sha _ < <(sha256sum "$registry_crate")
+          test "$release_sha" = "$registry_sha"
+
+          cargo install mcp-doctor \
+            --version "=$MCP_DOCTOR_VERSION" \
+            --locked \
+            --root "$release_root/install"
+          test "$("$release_root/install/bin/mcp-doctor" --version)" = \
+            "mcp-doctor $MCP_DOCTOR_VERSION"
+          sha256sum "$release_crate"
+
+      - name: Diagnose pinned official and independent servers with the released artifact
+        run: |
+          MCP_DOCTOR_COMPAT_BINARY="$RUNNER_TEMP/mcp-doctor-compatibility-release/install/bin/mcp-doctor" \
+          MCP_DOCTOR_COMPAT_VERSION="$MCP_DOCTOR_VERSION" \
+            ./scripts/compatibility.sh

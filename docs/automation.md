@@ -202,12 +202,13 @@ The repository publishes a copyable
 [least-permission preflight workflow](../.github/workflows/mcp-doctor-preflight.yml).
 It demonstrates all four parts of the CI contract in one job:
 
-1. install exact released `mcp-doctor 0.3.3` with Cargo's locked source
+1. install exact released `mcp-doctor 0.4.0` with Cargo's locked source
    contract;
 2. run noninteractive passive `inspect` against one explicit STDIO target and
    exact MCP `2026-07-28` revision;
-3. write versioned JSON and JUnit reports to fixed repository-local paths and
-   upload both under one deterministic artifact name for seven days; and
+3. write versioned JSON, JUnit, Markdown, and badge reports to fixed
+   repository-local paths and upload all four under one deterministic artifact
+   name for seven days; and
 4. leave the diagnostic process exit authoritative while the `always()` report
    verification and upload steps still run.
 
@@ -219,13 +220,12 @@ the exact `mcp-doctor` version, immutable action commits, explicit
 `contents: read` permission, fixed report destinations, report verification,
 and unconditional upload behavior under review when updating the copy.
 
-The exact `0.3.3` binary used by this released starter predates the Markdown and
-badge artifact contracts, so this workflow deliberately requests only JSON and
-JUnit. A copied workflow may add either artifact only after its pinned binary
-advertises the corresponding `markdown` or `badge` entry under the diagnostic
-command's `artifact_reporters` capability and its
-`mcp-doctor.markdown/v1` or `mcp-doctor.badge/v1` contract under
-`schema_versions.markdown_report` or `schema_versions.badge_report`.
+The exact `0.4.0` binary advertises `json`, `junit`, `markdown`, and `badge`
+under the diagnostic command's `artifact_reporters` capability. The safe
+boundary check requires the corresponding `mcp-doctor.report/v1`, JUnit,
+`mcp-doctor.markdown/v1`, and `mcp-doctor.badge/v1` shapes before upload and
+scans every report for the same fixed redaction sentinels and local-path
+classes.
 
 The example grants no tool-call, side-effect, credential, private-network,
 cleartext, target-discovery, production-target, or external-schema authority.
@@ -234,9 +234,9 @@ synthetic or repository-owned server that can run within the documented
 constrained STDIO environment; diagnose production separately and explicitly.
 
 For pull requests, exit `0` keeps the job successful. Exit `1`, `2`, `3`, or
-`4` fails the diagnostic step and therefore the job even when both reports are
-uploaded successfully afterward. `actions/upload-artifact` is only the CI
-carrier: `mcp-doctor` remains responsible for producing the two immutable,
+`4` fails the diagnostic step and therefore the job even when all four reports
+are uploaded successfully afterward. `actions/upload-artifact` is only the CI
+carrier: `mcp-doctor` remains responsible for producing the four immutable,
 redacted projections from one run and never receives provider credentials.
 
 This repository runs the passing fixture only when the workflow or its owned

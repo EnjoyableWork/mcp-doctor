@@ -1,8 +1,8 @@
 # Compatibility evidence
 
 This directory records separately controlled real-server evidence and its
-deliberately narrow claim boundary. It answers two questions: can the built
-`mcp-doctor` passive STDIO journey diagnose selected, pinned MCP `2026-07-28`
+deliberately narrow claim boundary. It answers two questions: can the selected
+`mcp-doctor` artifact's passive STDIO journey diagnose pinned MCP `2026-07-28`
 servers without calling a tool, and can its explicitly selected MCP
 `2025-11-25` active adapter safely run `check` and `break` against one pinned
 official and one pinned independent server?
@@ -79,8 +79,8 @@ This is narrow active STDIO reach across two implementations and two languages,
 not broad legacy compatibility. Synthetic fixtures remain the evidence for
 Streamable HTTP, malformed responses, task-required tools, elicitation and
 server-request handling, limits, redaction, and cleanup. No legacy HTTP,
-installed-channel, every-server, or official-conformance claim follows from
-these four successful runs.
+installed-channel universality, every-server, or official-conformance claim
+follows from these four successful runs.
 
 ### Active MCP 2025-06-18
 
@@ -100,20 +100,41 @@ claim follows from the new exact-selected source capability.
 
 ## Reproduce it
 
-From the repository root, with Cargo, Git, Docker, and `jq` available:
+From the repository root, with Cargo, Git, Docker, and `jq` available, this
+command builds and exercises the checked-out source with its locked graph:
 
 ```console
 ./scripts/compatibility.sh
 ```
 
-The same command is available through the manually dispatched
-`Compatibility evidence` GitHub Actions workflow. It stays outside ordinary
-pull-request and push checks because it downloads and builds third-party
-projects.
+The manually dispatched `Compatibility evidence` GitHub Actions workflow takes
+an exact stable version. Before running the same matrix, it downloads that
+version's canonical GitHub `.crate`, verifies the immutable release and build
+provenance, requires the public crates.io byte to have the same SHA-256 digest,
+installs the exact locked Cargo package, and passes the resulting absolute
+binary path and version into the runner. The runner rejects a symlink,
+non-regular path, version mismatch, or non-executable file. It stays outside
+ordinary pull-request and push checks because it downloads and builds
+third-party projects.
+
+A local release-artifact observation can use the same boundary after placing
+an authenticated exact-version binary in a disposable root:
+
+```console
+MCP_DOCTOR_COMPAT_BINARY=/absolute/disposable/bin/mcp-doctor \
+MCP_DOCTOR_COMPAT_VERSION=0.4.0 \
+  ./scripts/compatibility.sh
+```
+
+The dated tables above retain their original source observations. A later
+released-artifact workflow run is additional exact-identity evidence and must
+record its version and public run URL; it does not silently rewrite an earlier
+observation date.
 
 The runner:
 
-1. builds the local `mcp-doctor` with the locked Rust graph;
+1. builds local `mcp-doctor` with the locked Rust graph by default, or validates
+   the explicitly supplied exact-version release binary before any case;
 2. clones each upstream tag and rejects it unless `HEAD` equals the reviewed
    commit;
 3. verifies the upstream Go and pnpm lock hashes and installs the reviewed Dart
