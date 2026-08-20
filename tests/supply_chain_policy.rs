@@ -29,6 +29,26 @@ fn workflow_paths() -> Vec<PathBuf> {
     paths
 }
 
+fn verifier_path_set(script: &str, start: &str, end: &str) -> BTreeSet<String> {
+    let (_, remainder) = script
+        .split_once(start)
+        .unwrap_or_else(|| panic!("verifier should contain {start}"));
+    let (array, _) = remainder
+        .split_once(end)
+        .unwrap_or_else(|| panic!("verifier should terminate {start} with {end}"));
+
+    array
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .trim_end_matches(',')
+                .strip_prefix('"')
+                .and_then(|path| path.strip_suffix('"'))
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
 #[test]
 fn every_selected_action_is_closed_inventoried_and_commit_pinned() {
     let controls = controls();
@@ -248,6 +268,52 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
             "release preflight should preserve {explicit_empty_credential}"
         );
     }
+}
+
+#[test]
+fn live_verifier_tracks_the_canonical_workflow_inventory() {
+    let controls = controls();
+    let verifier = repository_file("scripts/verify-supply-chain-controls.sh");
+    let checked_in = controls["workflow_inventory"]["checked_in"]
+        .as_array()
+        .expect("checked-in workflows should be an array")
+        .iter()
+        .map(|path| {
+            path.as_str()
+                .expect("workflow path should be a string")
+                .to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    let untrusted = controls["untrusted_workflows"]
+        .as_array()
+        .expect("untrusted workflows should be an array")
+        .iter()
+        .map(|workflow| {
+            workflow["path"]
+                .as_str()
+                .expect("workflow path should be a string")
+                .to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        verifier_path_set(
+            &verifier,
+            ".workflow_inventory.checked_in == [",
+            "] and\n  (.workflow_inventory.provider_managed | map(.path)) == [",
+        ),
+        checked_in,
+        "the live verifier must accept exactly the checked-in workflow inventory"
+    );
+    assert_eq!(
+        verifier_path_set(
+            &verifier,
+            "(.untrusted_workflows | map(.path)) == [",
+            "] and\n  all(.untrusted_workflows[];",
+        ),
+        untrusted,
+        "the live verifier must accept exactly the untrusted workflow inventory"
+    );
 }
 
 #[test]
