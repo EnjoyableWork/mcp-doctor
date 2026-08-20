@@ -10,9 +10,9 @@ use std::process::Command;
 use serde::Deserialize;
 
 #[cfg(unix)]
-const RELEASE_VERSION: &str = "0.3.3";
+const RELEASE_VERSION: &str = "0.4.0";
 const CURRENT_SKILL_SHA256: &str =
-    "4ef5796bded1d2b7261e1b7d330c347aa9dfde9f7826cb8ab879290d9a40b1cf";
+    "aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991";
 const V032_SKILL_SHA256: &str = "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51";
 
 fn repository_root() -> PathBuf {
@@ -53,7 +53,7 @@ fn canonical_skill_is_one_portable_passive_instruction_file() {
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
         "mcp-doctor --version",
         "mcp-doctor capabilities --format json",
-        "Continue only with `mcp-doctor 0.3.3`",
+        "Continue only with `mcp-doctor 0.4.0`",
         "mcp-doctor inspect --format json -- <exact-command> <literal-arguments>",
         "mcp-doctor inspect --format json <exact-endpoint>",
         "schema_version: \"mcp-doctor.report/v1\"",
@@ -105,7 +105,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
 
     for contract in [
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
-        "mcp-doctor-agent-skill-v0.3.3.tar.gz",
+        "mcp-doctor-agent-skill-v0.4.0.tar.gz",
         "SHA256SUMS",
         CURRENT_SKILL_SHA256,
         "never changes an agent host",
@@ -144,8 +144,10 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
     ] {
         assert!(guide.contains(root), "guide should document {root}");
     }
-    assert!(readme.contains("## Use with coding agents"));
-    assert!(readme.contains("[Install and verify the skill](docs/agents.md)"));
+    assert!(!readme.contains("## Use with coding agents"));
+    assert!(readme.contains(
+        "| Use `mcp-doctor` with a coding agent | [Coding-agent guide](docs/agents.md) |"
+    ));
     assert!(!guide.contains("universal agent support"));
 
     for contract in [
@@ -293,7 +295,7 @@ fn exercise_posix_recorder() {
     assert!(version.status.success());
     assert_eq!(
         String::from_utf8(version.stdout).unwrap(),
-        "mcp-doctor 0.3.3\n"
+        "mcp-doctor 0.4.0\n"
     );
 
     let capabilities = run_recorder(&recorder, &log, &["capabilities", "--format", "json"]);

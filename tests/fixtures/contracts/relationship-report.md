@@ -3,7 +3,7 @@
 
 | Field | Value |
 | --- | --- |
-| Product | `mcp-doctor 0.3.3` |
+| Product | `mcp-doctor 0.4.0` |
 | Report contract | `mcp-doctor.report/v1` |
 | Markdown contract | `mcp-doctor.markdown/v1` |
 | Selected protocol revision | `2026-07-28` |

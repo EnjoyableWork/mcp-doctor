@@ -1,7 +1,8 @@
 # Release and installation integrity
 
-This source tree records the completed `mcp-doctor` `0.3.3` publication and
-the reviewed recovery controls added after its canonical signed tag `v0.3.3`.
+This source tree represents the `mcp-doctor` `0.4.0` release candidate and its
+intended canonical release tag `v0.4.0`. It retains the completed `0.3.3`
+publication and reviewed recovery controls as historical evidence.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the
 `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source

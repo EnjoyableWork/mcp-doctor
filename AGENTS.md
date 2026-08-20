@@ -418,6 +418,29 @@ the first three checks through a disposable user environment.
 
 ## Documentation and release claims
 
+### Comparative evaluation independence
+
+Treat a comparative evaluation as measurement, not delivery planning. A
+proposal may identify the user problem and affected criterion, but it must not
+predict a row state, point value, score delta, total, or rank. Freeze the
+rubric, evaluated identities, and evidence cutoff before evaluation, then give
+the evaluator a neutral evidence pack that omits prior and proposed scores,
+desired outcomes, and prioritization rationale.
+
+Record every row's state, evidence, rationale, and limitations before deriving
+any subtotal, total, or ranking. Lock those row decisions, calculate the result
+mechanically, and have a separate reviewer verify row completeness and
+arithmetic without changing classifications. Compare products only when every
+subject was evaluated under the same frozen rubric and cutoff.
+
+Record whether the evaluator saw a score or desired outcome before row lock. If
+that exposure occurs, reassign the evaluation or label the result
+non-independent. A non-independent result may remain as dated analysis, but it
+must not support a public comparative claim, leaderboard, badge, or delivery
+target. Historical achieved results may remain only with their original scope,
+date, evidence, and independence status; never give them to a future evaluator
+before row lock.
+
 - Preserve the README as a polished description of the destination. Do not turn
   it or focused documentation into a delivery-status mirror. Public GitHub
   issues and pull requests may describe scoped proposals and implementation;

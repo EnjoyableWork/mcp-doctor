@@ -20,9 +20,8 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#use-with-coding-agents">Coding agents</a> ·
+  <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#choose-a-diagnostic">Commands</a> ·
-  <a href="#mcp-revision-support">MCP support</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="#assurance">Assurance</a>
 </p>
@@ -56,48 +55,48 @@ and artifact verification.
 
 ## Quick start
 
-Passive `inspect` defaults to bounded `--protocol-version auto`. For a local
-STDIO target, `auto` may consume the discovery bound, fully reap the first
-process, and start the exact command one more time for legacy initialization.
-Use an explicit supported revision when one lifecycle and, for STDIO, one
-process launch is required.
+`inspect` is passive: it validates discovery, definitions, and schemas without
+calling a tool.
 
-Inspect a local STDIO server without calling any tools. Put the command you
-already use to start the server after `--`:
+### Diagnose a local STDIO server
+
+Put the command you already use to start the server after `--`:
 
 ```bash
 mcp-doctor inspect -- node ./dist/server.js --stdio
 ```
 
-For Streamable HTTP, pass the endpoint URL:
+### Diagnose a remote Streamable HTTP server
 
 ```bash
 mcp-doctor inspect https://mcp.example.com/mcp
 ```
 
-For CI presentation, the same run can write a deterministic Shields endpoint
-artifact without changing stdout or the diagnostic exit:
+### Select a protocol revision
+
+Omit `--protocol-version` for bounded automatic selection, or choose one of the
+supported passive values explicitly:
 
 ```bash
+# Auto-select a mutually supported revision (the default)
 mcp-doctor inspect \
-  --badge-report artifacts/mcp-doctor-badge.json \
+  --protocol-version auto \
+  -- node ./dist/server.js --stdio
+
+# Pin the current revision
+mcp-doctor inspect \
+  --protocol-version 2026-07-28 \
+  -- node ./dist/server.js --stdio
+
+# Pin a supported legacy revision
+mcp-doctor inspect \
+  --protocol-version 2025-11-25 \
   -- node ./dist/server.js --stdio
 ```
 
-The badge reports only `pass`, `fail`, or `incomplete` for that run; it is not a
-certification or conformance claim. See [Automation and CI](docs/automation.md)
-for the fixed four-field contract and multi-report fan-out.
-
-`inspect` selects a mutually supported compiled revision, validates the MCP
-conversation, checks advertised features and schemas, reports the earliest
-actionable failure, and cleans up. It never calls a tool.
-
-## Use with coding agents
-
-Install `mcp-doctor` first, then optionally install its portable Agent Skill so
-a coding agent starts with the same passive, exact-target workflow. The agent
-uses your terminal to run the CLI; `mcp-doctor` is not configured as an MCP
-server. [Install and verify the skill](docs/agents.md).
+The passive values are `auto`, `2026-07-28`, `2025-11-25`, and `2025-06-18`.
+See [MCP revision support](docs/protocol-support.md) for selection behavior,
+active-command support, and the complete matrix.
 
 ## Why mcp-doctor?
 
@@ -140,38 +139,15 @@ Start with the least-active command that answers your question:
 See the [diagnostic command guide](docs/commands.md) for reviewed scenarios,
 multi-tool workflows, generated cases, rejection checks, and contract diffs.
 
-## MCP revision support
-
-**Legend:** ✅ = supported; ❌ = not supported. Passive `inspect` defaults to
-bounded `auto`; an explicit revision remains a hard pin. Active commands keep
-MCP `2026-07-28` as their sole implicit revision and require an exact option
-for supported legacy activity. Each status includes an invisible
-`mcp-doctor-support=supported|unsupported` source token for agents reading the
-Markdown.
-
-| MCP revision | `inspect` | Snapshot | Same-revision `diff` | `check` | `break` | `reject` |
-| --- | --- | --- | --- | --- | --- | --- |
-| `2026-07-28` | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> |
-| `2025-11-25` | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-| `2025-06-18` | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ✅ <!-- mcp-doctor-support=supported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-| `2025-03-26` | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-| `2024-11-05` | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-| `2024-10-07` | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-| Unknown | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> | ❌ <!-- mcp-doctor-support=unsupported --> |
-
-Read the [full revision contract](docs/protocol-support.md) for bounded passive
-selection, exact pins, schema-dialect rules, dated usage context, and
-compatibility evidence. For automation,
-`mcp-doctor capabilities --format json` remains authoritative.
-
 ## Documentation
 
 | I want to… | Read |
 | --- | --- |
-| Diagnose through a coding agent | [Coding-agent guide](docs/agents.md) |
-| Run scenarios, generated cases, rejection checks, or diffs | [Diagnostic commands](docs/commands.md) |
-| Select an MCP revision or understand compatibility evidence | [MCP revision support](docs/protocol-support.md) |
-| Produce JSON, JUnit, Markdown, or badge reports; interpret exits; aggregate reports; or configure CI | [Automation and CI](docs/automation.md) |
+| Use `mcp-doctor` with a coding agent | [Coding-agent guide](docs/agents.md) |
+| Choose a diagnostic or run active scenarios safely | [Diagnostic commands](docs/commands.md) |
+| Select an MCP revision or verify the support matrix | [MCP revision support](docs/protocol-support.md) |
+| Configure CI, produce reports, or interpret exits | [Automation and CI](docs/automation.md) |
+| Generate a portable Shields-compatible badge artifact | [Badge artifact contract](docs/automation.md#badge-artifacts) |
 | Understand execution, network, cleanup, redaction, and hard limits | [Safety model](docs/safety.md) |
 | Verify or publish release artifacts | [Release guide](docs/release.md) |
 | Report a suspected vulnerability | [Security policy](SECURITY.md) |
