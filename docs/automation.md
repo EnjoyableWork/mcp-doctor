@@ -83,6 +83,8 @@ and one final newline. Apart from its required version comment, it contains no
 raw HTML, timestamps, local paths, target identifiers, untrusted values,
 terminal escapes, remote images, or external assets.
 
+### Badge artifacts
+
 The badge artifact is deterministic `mcp-doctor.badge/v1` JSON for the
 [Shields endpoint format](https://shields.io/badges/endpoint-badge). Its entire
 surface is fixed and derived only from the typed overall outcome:

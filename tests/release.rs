@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CANDIDATE_RELEASE_VERSION: &str = "0.3.3";
+const CANDIDATE_RELEASE_VERSION: &str = "0.4.0";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,7 +57,7 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.3.3\"",
+        "version = \"0.4.0\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.bestpractices.json\"",
@@ -581,7 +581,7 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v0.1.1", "0.1.1", "0.1.0", "0.1.1"],
         &["future", "v0.2.0", "0.2.0", "0.1.0", "0.1.9"],
         &[
-            "future", "v0.3.3", "0.3.3", "0.1.0", "0.2.0", "0.3.0", "0.3.1", "0.3.2",
+            "future", "v0.4.0", "0.4.0", "0.1.0", "0.2.0", "0.3.0", "0.3.1", "0.3.2", "0.3.3",
         ],
         &["future", "v1.0.0", "1.0.0", "0.1.0", "0.99.99"],
         &[
@@ -606,7 +606,7 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v0.0.9", "0.0.9", "0.1.0"],
         &["future", "v0.1.1", "0.1.2", "0.1.0"],
         &["future", "v0.1.1", "0.1.1", "0.2.0"],
-        &["future", "v0.3.3", "0.3.3", "0.3.4"],
+        &["future", "v0.4.0", "0.4.0", "0.4.1"],
         &["future", "0.1.1", "0.1.1", "0.1.0"],
         &["future", "v01.2.3", "01.2.3", "0.1.0"],
         &["future", "v1.2.3-rc.1", "1.2.3-rc.1", "0.1.0"],
@@ -644,7 +644,8 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let expanded_notes = repository_file("docs/releases/v0.3.0.md");
     let security_notes = repository_file("docs/releases/v0.3.1.md");
     let agent_notes = repository_file("docs/releases/v0.3.2.md");
-    let current_notes = repository_file("docs/releases/v0.3.3.md");
+    let bounded_work_notes = repository_file("docs/releases/v0.3.3.md");
+    let candidate_notes = repository_file("docs/releases/v0.4.0.md");
     let security_record = repository_file("docs/assurance/v0.3.1-security-release.md");
     let bounded_work_record = repository_file("docs/assurance/v0.3.3-security-release.md");
     let adoption = repository_file("docs/adoption.md");
@@ -665,7 +666,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree records the completed `mcp-doctor` `0.3.3` publication",
+        "This source tree represents the `mcp-doctor` `0.4.0` release candidate",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -776,8 +777,38 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "cargo install mcp-doctor --version '=0.3.3' --locked",
     ] {
         assert!(
-            current_notes.contains(contract),
+            bounded_work_notes.contains(contract),
             "v0.3.3 release notes should preserve {contract}"
+        );
+    }
+    for contract in [
+        "MCP-QUALITY-001",
+        "MCP-QUALITY-002",
+        "MCP-QUALITY-003",
+        "MCP-SECURITY-001",
+        "bounded `auto`",
+        "MCP-SCHEMA-005",
+        "mcp-doctor.markdown/v1",
+        "mcp-doctor.badge/v1",
+        "least-permission GitHub Actions passive\npreflight",
+        "cargo install mcp-doctor --version '=0.4.0' --locked",
+    ] {
+        assert!(
+            candidate_notes.contains(contract),
+            "v0.4.0 release notes should preserve {contract}"
+        );
+    }
+    let candidate_notes_lower = candidate_notes.to_ascii_lowercase();
+    for forbidden in [
+        "projected score",
+        "target rank",
+        "ranking",
+        "certified",
+        "leadership claim",
+    ] {
+        assert!(
+            !candidate_notes_lower.contains(forbidden),
+            "v0.4.0 release notes must not contain {forbidden}"
         );
     }
     for contract in [
@@ -1043,6 +1074,45 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
 }
 
 #[test]
+fn readme_quick_start_is_task_focused_and_routes_detailed_guidance() {
+    let readme = repository_file("README.md");
+    let quick_start = readme
+        .split_once("## Quick start")
+        .and_then(|(_, remainder)| remainder.split_once("## Why mcp-doctor?"))
+        .map(|(section, _)| section)
+        .expect("README should keep a bounded quick-start section");
+
+    for contract in [
+        "### Diagnose a local STDIO server",
+        "### Diagnose a remote Streamable HTTP server",
+        "### Select a protocol revision",
+        "`auto`, `2026-07-28`, `2025-11-25`, and `2025-06-18`",
+    ] {
+        assert!(
+            quick_start.contains(contract),
+            "README quick start should preserve {contract}"
+        );
+    }
+
+    let documentation = readme
+        .split_once("## Documentation")
+        .and_then(|(_, remainder)| remainder.split_once("## Assurance"))
+        .map(|(section, _)| section)
+        .expect("README should keep a focused documentation table");
+    for route in [
+        "[Coding-agent guide](docs/agents.md)",
+        "[Automation and CI](docs/automation.md)",
+        "[Badge artifact contract](docs/automation.md#badge-artifacts)",
+        "[MCP revision support](docs/protocol-support.md)",
+    ] {
+        assert!(
+            documentation.contains(route),
+            "README documentation table should route readers to {route}"
+        );
+    }
+}
+
+#[test]
 fn readme_exposes_simple_verified_installation_channels() {
     let readme = repository_file("README.md");
     let installation = readme
@@ -1157,15 +1227,18 @@ fn compiled_capability_discovery_has_no_target_authority() {
 }
 
 #[test]
-fn readme_revision_matrix_uses_two_semantic_support_states() {
+fn protocol_support_guide_revision_matrix_uses_two_semantic_support_states() {
     let readme = repository_file("README.md");
-    assert!(readme.contains("**Legend:** ✅ = supported; ❌ = not supported."));
-    assert!(readme.contains("`mcp-doctor capabilities --format json` remains authoritative."));
+    let support = repository_file("docs/protocol-support.md");
+    assert!(readme.contains("[MCP revision support](docs/protocol-support.md)"));
+    assert!(!readme.contains("| MCP revision |"));
+    assert!(support.contains("**Legend:** ✅ = supported; ❌ = not supported."));
+    assert!(support.contains("is the authoritative machine-readable\ncontract."));
 
-    let mut lines = readme.lines();
+    let mut lines = support.lines();
     let header = lines
-        .find(|line| line.starts_with("| MCP revision |"))
-        .expect("README should contain the MCP revision matrix");
+        .find(|line| line.starts_with("| MCP revision | Est. usage"))
+        .expect("protocol support guide should contain the MCP revision matrix");
     assert!(header.contains("`inspect`") && header.contains("`reject`"));
     let separator = lines
         .next()
@@ -1178,8 +1251,8 @@ fn readme_revision_matrix_uses_two_semantic_support_states() {
     assert_eq!(rows.len(), 7, "the revision matrix inventory drifted");
     for row in rows {
         let cells = row.split('|').map(str::trim).collect::<Vec<_>>();
-        assert_eq!(cells.len(), 9, "revision matrix column count drifted");
-        for status in &cells[2..8] {
+        assert_eq!(cells.len(), 10, "revision matrix column count drifted");
+        for status in &cells[3..9] {
             assert!(
                 matches!(
                     *status,
@@ -1632,7 +1705,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "This source tree represents `0.3.3`",
+        "This source tree represents `0.4.0`",
         "a\nversion is publicly available only when its canonical GitHub Release and\nchannel evidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
@@ -1644,7 +1717,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.3.3 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.4.0 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -2050,6 +2123,27 @@ fn public_repository_text_does_not_depend_on_private_coordination() {
     }
 }
 
+#[test]
+fn repository_guidance_requires_independent_comparative_evaluation() {
+    let agents = repository_file("AGENTS.md");
+
+    for required in [
+        "### Comparative evaluation independence",
+        "must not\npredict a row state, point value, score delta, total, or rank",
+        "neutral evidence pack that omits prior and proposed scores",
+        "before deriving\nany subtotal, total, or ranking",
+        "have a separate reviewer verify row completeness and\narithmetic",
+        "reassign the evaluation or label the result\nnon-independent",
+        "must not support a public comparative claim, leaderboard, badge, or delivery\ntarget",
+        "never give them to a future evaluator\nbefore row lock",
+    ] {
+        assert!(
+            agents.contains(required),
+            "AGENTS.md must preserve comparative-evaluation rule: {required}"
+        );
+    }
+}
+
 fn inspect_text_path(
     path: &Path,
     forbidden: &str,
@@ -2097,5 +2191,5 @@ fn inspect_text_path(
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CANDIDATE_RELEASE_VERSION, "0.3.3");
+    assert_eq!(CANDIDATE_RELEASE_VERSION, "0.4.0");
 }
