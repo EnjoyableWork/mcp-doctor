@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="mcp-doctor" tests="6" failures="0" errors="0" skipped="1" time="0">
+  <testsuite name="mcp-doctor" tests="6" failures="0" errors="0" skipped="1" time="0">
+    <testcase classname="mcp-doctor.diagnostic" name="transport.stdio" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=transport.stdio
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="protocol.envelope" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=protocol.envelope
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="protocol.revision" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=protocol.revision
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+finding[0].code=MCP-PROTOCOL-001
+finding[0].severity=info
+finding[0].protocol_revision=2026-07-28
+finding[0].location=server.supportedVersions
+finding[0].message=The requested protocol revision is supported.
+finding[0].impact=The advertised revision determines which protocol rules can be applied.
+finding[0].expectation=The server confirms the exact MCP revision selected for this diagnostic.
+finding[0].remediation=No correction is needed.
+finding[0].reference=selected MCP revision lifecycle contract
+finding[0].primary=false
+finding[0].independent_safety=false
+finding[0].evidence.kind=none
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="discovery.catalogs" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=discovery.catalogs
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="schema.contracts" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=schema.contracts
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="runtime.tools" time="0">
+      <skipped message="not_authorized">skip_reason=not_authorized
+skip_description=active behavior was not authorized
+      </skipped>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=passed
+exit_code=0
+limits.profile=default
+check_id=runtime.tools
+requirement=optional
+state=skipped
+outcome=skipped
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+  </testsuite>
+</testsuites>

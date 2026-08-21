@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="mcp-doctor" tests="6" failures="1" errors="0" skipped="3" time="0">
+  <testsuite name="mcp-doctor" tests="6" failures="1" errors="0" skipped="3" time="0">
+    <testcase classname="mcp-doctor.diagnostic" name="transport.stdio" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=transport.stdio
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="protocol.envelope" time="0">
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=protocol.envelope
+requirement=required
+state=performed
+outcome=passed
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="protocol.revision" time="0">
+      <failure message="The server does not support the required protocol revision." type="MCP-PROTOCOL-002">finding[0].code=MCP-PROTOCOL-002
+finding[0].severity=error
+finding[0].protocol_revision=2026-07-28
+finding[0].location=server.supportedVersions
+finding[0].message=The server does not support the required protocol revision.
+finding[0].impact=Applying rules for a different revision could produce a false diagnosis.
+finding[0].expectation=The server must support MCP protocol revision 2026-07-28 for this diagnosis.
+finding[0].remediation=Add MCP 2026-07-28 support, then rerun the same diagnosis without falling back.
+finding[0].reference=selected MCP revision lifecycle contract
+finding[0].primary=true
+finding[0].independent_safety=false
+finding[0].evidence.kind=revision_advertisement
+finding[0].evidence.required=2026-07-28
+finding[0].evidence.offered=2
+finding[0].evidence.recognized_legacy=1
+finding[0].evidence.unknown_date=0
+finding[0].evidence.opaque=1
+      </failure>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=protocol.revision
+requirement=required
+state=performed
+outcome=failed
+primary_diagnosis=true
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="discovery.catalogs" time="0">
+      <skipped message="unsupported_revision">skip_reason=unsupported_revision
+skip_description=the protocol revision is unsupported
+blocked_by.check_id=protocol.revision
+blocked_by.finding[0].code=MCP-PROTOCOL-002
+blocked_by.finding[0].location=server.supportedVersions
+      </skipped>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=discovery.catalogs
+requirement=required
+state=skipped
+outcome=skipped
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="schema.contracts" time="0">
+      <skipped message="unsupported_revision">skip_reason=unsupported_revision
+skip_description=the protocol revision is unsupported
+blocked_by.check_id=protocol.revision
+blocked_by.finding[0].code=MCP-PROTOCOL-002
+blocked_by.finding[0].location=server.supportedVersions
+      </skipped>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=schema.contracts
+requirement=required
+state=skipped
+outcome=skipped
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+    <testcase classname="mcp-doctor.diagnostic" name="runtime.tools" time="0">
+      <skipped message="not_authorized">skip_reason=not_authorized
+skip_description=active behavior was not authorized
+      </skipped>
+      <system-out>schema_version=mcp-doctor.report/v1
+schema_stability=stable
+protocol_revision=2026-07-28
+protocol_selection.mode=exact
+protocol_selection.path=exact_pin
+protocol_selection.selected_revision=2026-07-28
+protocol_selection.process_launches=1
+protocol_selection.lifecycle_requests=1
+protocol_selection.lifecycle_notifications=0
+protocol_selection.fallbacks=0
+report_outcome=failed
+exit_code=1
+limits.profile=default
+check_id=runtime.tools
+requirement=optional
+state=skipped
+outcome=skipped
+primary_diagnosis=false
+      </system-out>
+    </testcase>
+  </testsuite>
+</testsuites>
