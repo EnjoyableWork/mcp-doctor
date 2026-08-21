@@ -150,6 +150,7 @@ multi-tool workflows, generated cases, rejection checks, and contract diffs.
 | Generate a portable Shields-compatible badge artifact | [Badge artifact contract](docs/automation.md#badge-artifacts) |
 | Understand execution, network, cleanup, redaction, and hard limits | [Safety model](docs/safety.md) |
 | Verify or publish release artifacts | [Release guide](docs/release.md) |
+| Review the dated standalone category evaluation | [`v0.4.0` evaluation evidence](docs/evaluations/v0.4.0.md) |
 | Report a suspected vulnerability | [Security policy](SECURITY.md) |
 
 ## Assurance

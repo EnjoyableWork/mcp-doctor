@@ -1,0 +1,535 @@
+{
+  "subject": {
+    "name": "mcp-doctor",
+    "version": "0.4.0",
+    "tag": "v0.4.0",
+    "tag_object": "58b85d666418395a09ffcfa12d0ec941cb6ec88f",
+    "source_commit": "074a62dbbfce5fa417f2b7080d509ebd86433b1f",
+    "released_binary_sha256": "133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de",
+    "fixture_binary_sha256": "4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd",
+    "declared_crate_sha256": "b87aff88710cce6ac6848c5009abe8e8aaf0b03a0f74fa11d608ba331cc1352e9",
+    "observed_release_crate_sha256": "b87aff88710cce5a8d4d42b8429041bdda2dd51485c80910808312a0b0e035fe",
+    "identity_resolution": "The immutable release SHA256SUMS asset and a first-attempt direct stream of the public crate agreed on the observed release digest. The conflicting declared digest is retained as an evidence limitation and was not used as artifact identity."
+  },
+  "rubric": {
+    "name": "Category audit rubric v1",
+    "version": "1.0",
+    "public_contract": "category-audit-v1.md",
+    "source_revision_timestamp": "2026-08-20T01:23:14.826Z"
+  },
+  "cutoff": "2026-08-20T17:09:22Z",
+  "reviewer": "E1 independent evaluator",
+  "audit_timestamp": "2026-08-20T17:20:30Z",
+  "independence": {
+    "status": "intact",
+    "declaration_sent_before_evidence_access": true,
+    "prior_numerical_evaluation_exposure": false,
+    "desired_outcome_exposure": false,
+    "cross_subject_identity_exposure": false,
+    "notes": "No prohibited evaluation anchor or external subject identity was received before or during classification."
+  },
+  "rows": [
+    {
+      "criterion": "P1",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 command: mcp-doctor inspect --protocol-version 2026-07-28 --json-report report.json --junit-report report.junit.xml --markdown-report report.md --badge-report badge.json -- mcp-doctor-stdio-fixture catalog-valid; exit 0; JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50.",
+        "E1 mismatch command used the same shape with fixture protocol-unsupported; exit 1; JSON SHA-256 7d65b9194d31d6f0467ba174ae8e87834083a076f6132f863818a7496b9a86a4; primary protocol.revision finding MCP-PROTOCOL-002, with discovery and schema skipped as unsupported_revision and runtime.tools skipped as not_authorized.",
+        "E2/E3: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/protocol-support.md; exact-source CI https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461578.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; subject mcp-doctor 0.4.0, source 074a62dbbfce5fa417f2b7080d509ebd86433b1f; installed binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64, rustc and cargo 1.97.1."
+      ],
+      "observation": "The released artifact completed explicit 2026-07-28 initialization and catalogs, identified the selected revision, and rejected a separate controlled mismatch at the revision layer without discovery, downgrade, fallback, or retry.",
+      "rationale": "Both required released-artifact journeys are present and the mismatch has a structured causal report, satisfying the full condition.",
+      "limitations": [
+        "The E1 pair is STDIO; HTTP revision behavior is corroborating exact-release automated evidence."
+      ]
+    },
+    {
+      "criterion": "P2",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 catalog-valid completed explicit 2026-07-28 initialization and capability lists over STDIO with exit 0 and JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50; runtime.tools was skipped as not_authorized.",
+        "E2 HTTP journeys passed at the exact source in https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs under https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461578.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture source commit 074a62dbbfce5fa417f2b7080d509ebd86433b1f; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "The exact released binary completed the bounded journey over STDIO. Streamable HTTP coverage is static and automated evidence only.",
+      "rationale": "Only one standard transport has a released-artifact observation using the controlled behavior, which exactly meets the partial condition.",
+      "limitations": [
+        "No separate E1 Streamable HTTP observation used the same synthetic server behavior and revision."
+      ]
+    },
+    {
+      "criterion": "P3",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 catalog-valid exit 0 proved the happy lifecycle. A one-pass malformed fixture run used the same exact binary and explicit revision; exit 1; JSON SHA-256 4ab16dbea055c9bcb8ebcb40787f4d352b269a01c2829a2cbec09d1c4d30752c; primary transport.stdio finding MCP-TRANSPORT-003 at process.stdout.message[0], with dependent checks causally skipped and runtime.tools not_authorized.",
+        "E2 identifier, ordering, initialized notification, list validation, well-formed error, and close/session cases are in https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64; target stderr byte count 0."
+      ],
+      "observation": "Controlled success and malformed-message E1 journeys bracket the lifecycle, while exact-release tests cover identifiers, ordering, notification, list and error shapes, and termination.",
+      "rationale": "The released-artifact observations meet the minimum boundary and exact-release automated evidence covers every lifecycle clause.",
+      "limitations": [
+        "Malformed E1 used STDIO; HTTP malformed and session-close cases remain E2."
+      ]
+    },
+    {
+      "criterion": "P4",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 catalog-valid, explicit 2026-07-28, exit 0, enumerated structurally valid tools, prompts, resources, and resource templates; JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50; runtime.tools skipped as not_authorized.",
+        "E2 valid, invalid, absent or unadvertised, pagination, duplicate, and repeated-cursor cases are in https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs, and https://github.com/EnjoyableWork/mcp-doctor/tree/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/fixtures/catalogs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "The released artifact enumerated and structurally accepted all three required capability families; exact-release fixtures establish absent and unadvertised behavior.",
+      "rationale": "E1 covers the complete advertised inventory and the rubric permits E2 to establish the absence cases.",
+      "limitations": [
+        "The E1 catalog is STDIO; equivalent HTTP catalog behavior is E2."
+      ]
+    },
+    {
+      "criterion": "P5",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 schema-invalid used explicit 2026-07-28 and the exact released binary; exit 1; JSON SHA-256 87eed01660cb54dba12f74da56b31ef09d4af8d41fa87f5f7eda9fe4474c14ca; MCP-SCHEMA-001 identified invalid Draft 2020-12 structure and unresolved local reference, while MCP-SCHEMA-002 separately identified an unsupported dialect.",
+        "E2 input, output, local-reference, structural, dialect, work-bound, valid tool-error, and malformed protocol-error fixtures are in https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/active.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/reject.rs.",
+        "E3 dialect contract: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/protocol-support.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64; runtime.tools not_authorized."
+      ],
+      "observation": "The artifact rejected controlled invalid structure, wrong dialect, and unresolved local reference with distinct structural rules; exact-release tests cover output contracts and protocol-error separation.",
+      "rationale": "Dialect selection, local references, structural validation, input and output contracts, and error classes have the required E1 plus E2 evidence.",
+      "limitations": [
+        "Output-schema and active error-class clauses are E2 rather than separately repeated E1 runs."
+      ]
+    },
+    {
+      "criterion": "A1",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 tool-description-quality exit 0 produced three MCP-QUALITY-001 findings; JSON SHA-256 36c9eb80eea39b24b3d778c34fe1e38ac6392ad62e2c8056df792383671d9c91. E1 tool-description-placeholder exit 0 produced four MCP-QUALITY-003 findings; JSON SHA-256 3171cb4b75fec1520f009c2e8c64258f02f487bff887021c985db61f53dd0b28. Both kept runtime.tools not_authorized.",
+        "E2/E3 fixed rules and tests: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; exact mcp-doctor 0.4.0 binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "Deterministic released-artifact findings cover missing or blank descriptions and normalized name or fixed-placeholder descriptions under published A1 normalization v1.",
+      "rationale": "Two of the three fixed diagnostic classes are proven, which is the partial condition.",
+      "limitations": [
+        "The exact-release contract explicitly excludes identical normalized prose reused by distinct tools."
+      ]
+    },
+    {
+      "criterion": "A2",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 required-input-descriptions, explicit 2026-07-28, exit 0, JSON SHA-256 1b0085fb835851e1c4610c73293b561fc0abecf98de415104e443eb9c11a2b40; four MCP-QUALITY-002 warnings at indexed direct-property description locations; reports passed the structural redaction scan; runtime.tools not_authorized.",
+        "E2 prerequisite classification and reporter-redaction cases: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs.",
+        "E3 direct-property scope: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64; target stderr byte count 0."
+      ],
+      "observation": "The artifact distinguishes valid undocumented direct properties from schema prerequisites and reports ordinal structural locations without values.",
+      "rationale": "The rule operates only at the root object's direct properties, which exactly matches the partial condition.",
+      "limitations": [
+        "Nested object and array-item required properties are explicitly outside the released diagnostic."
+      ]
+    },
+    {
+      "criterion": "A3",
+      "state": "Zero",
+      "evidence_tiers": [
+        "E1",
+        "E3"
+      ],
+      "evidence": [
+        "E1 fixed catalog reports from exact mcp-doctor 0.4.0, including catalog-valid JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50, emitted no normalized catalog-size metric, per-entry measure, or largest-contributor list.",
+        "E3 inspection of https://github.com/EnjoyableWork/mcp-doctor/tree/074a62dbbfce5fa417f2b7080d509ebd86433b1f/schemas, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/src/capabilities.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md found resource ceilings but no qualifying context-efficiency output.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; source commit 074a62dbbfce5fa417f2b7080d509ebd86433b1f."
+      ],
+      "observation": "Reports expose safety ceilings such as report bytes and catalog items, not quantitative normalized catalog context evidence.",
+      "rationale": "None of the three required context dimensions is emitted by the released artifact.",
+      "limitations": [
+        "Resource-limit evidence is not treated as context-efficiency measurement."
+      ]
+    },
+    {
+      "criterion": "A4",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 protocol-unsupported exit 1 selected primary layer protocol.revision with MCP-PROTOCOL-002 at server.supportedVersions, fixed remediation, causal unsupported_revision skips, and independent runtime.tools not_authorized; JSON SHA-256 7d65b9194d31d6f0467ba174ae8e87834083a076f6132f863818a7496b9a86a4.",
+        "E1 malformed and schema-invalid journeys also selected the earliest failed check and linked dependent skips; JSON SHA-256 values 4ab16dbea055c9bcb8ebcb40787f4d352b269a01c2829a2cbec09d1c4d30752c and 87eed01660cb54dba12f74da56b31ef09d4af8d41fa87f5f7eda9fe4474c14ca.",
+        "E2 causal aggregation, independent safety findings, and reporter parity: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/src/contract/report.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "Controlled failures consistently contain a stable code, severity, structural location, correction, primary check, linked causal skips, and retained independent safety status.",
+      "rationale": "The complete causal and actionable contract is demonstrated in E1 and reinforced by exact-release parity fixtures.",
+      "limitations": [
+        "E1 sampled representative transport, revision, and schema failures; exhaustive variants remain E2."
+      ]
+    },
+    {
+      "criterion": "A5",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 repeated clean executions of catalog-valid, two description fixtures, and protocol-unsupported produced byte-identical human, JSON, JUnit, Markdown, and badge projections; stable exits were 0 or 1 as structurally expected; runtime.tools was explicitly skipped as not_authorized.",
+        "E1 JSON schema version was mcp-doctor.report/v1; passing JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50 and diagnosed JSON SHA-256 7d65b9194d31d6f0467ba174ae8e87834083a076f6132f863818a7496b9a86a4.",
+        "E2 schema and not_applicable skip-reason coverage: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/schemas/mcp-doctor.report.v1.schema.json, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/report_artifacts.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "Machine output is versioned and deterministic, represents performed and skipped checks plus not_applicable reasons, and agrees with redacted human outcomes and primary diagnoses.",
+      "rationale": "Every full-condition element has E1 or exact-release E2 evidence.",
+      "limitations": [
+        "The repeated E1 set is STDIO; cross-transport parity remains E2."
+      ]
+    },
+    {
+      "criterion": "S1",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 passive observations performed no tool activity and recorded runtime.tools skipped as not_authorized.",
+        "E1 pre-start authority observations against an intentionally absent synthetic target: missing side-effect authority exited 2 with MCP-AUTH-002, report SHA-256 74205b690f04f9936068f328927087c96c7c57db153e31c27d644c51dbafb1f0; wildcard authority exited 2 with MCP-AUTH-001, report SHA-256 b537ffd997201338a5eb9b127d59603401f0cffac6e1bf442672cc500a697750; target stderr byte count 0 in both.",
+        "E2 exact-tool, duplicate, extra, wildcard, side-effect, and pre-start rejection fixtures: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/active.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/break.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/reject.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "Passive inspection made no calls; active authority required an exact tool and a separate side-effect gate; wildcard and missing-gate attempts were rejected before target preparation.",
+      "rationale": "The negative E1 journeys and exact-release authorization fixtures satisfy every execution-authority clause.",
+      "limitations": [
+        "E1 directly sampled two active rejection forms; the remaining duplicate and extra forms are E2."
+      ]
+    },
+    {
+      "criterion": "S2",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 credential-literals, explicit 2026-07-28, exit 1, JSON SHA-256 a61947d535119f92a08308b4cd6ebe8667f33e463ec9f1bded10157c57065698; nine structural MCP-SECURITY-001 findings; human, JSON, JUnit, Markdown, and badge parsed and passed a fixed secret-class, path-class, endpoint-class, and raw-argument-class scan; target stderr byte count 0; runtime.tools not_authorized.",
+        "E1 pre-collected success and revision-failure outputs across all five reporters also passed the same fixed canary and path-class scan.",
+        "E2 credential-source, URL and argument rejection, error, target-stderr, and reporter fixtures: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/report_artifacts.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "A controlled failing canary journey remained value-free across every reporter, and exact-release tests constrain credentials to explicitly named invoking-process sources while rejecting URL and command-line values.",
+      "rationale": "The E1 reporter-and-error canary boundary plus E2 source and rejection coverage satisfy the full condition.",
+      "limitations": [
+        "Not every accepted credential-source form was repeated as a separate E1 run; those forms are covered by exact-release E2."
+      ]
+    },
+    {
+      "criterion": "S3",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 oversized-message exited 1 with MCP-LIMIT-001 for message_bytes, observed 1048577 and maximum 1048576; JSON SHA-256 8ba24d2838e97c112299c3f988869874e5ce4a18c1db5956699453b920f6ac33.",
+        "E1 timeout exited 1 with MCP-LIMIT-001 for discovery_time, observed 10001 milliseconds and maximum 10000; JSON SHA-256 a9bc414fc5fd839f9891ee7f4c8cb67bd155fb5713999e8bf30ae703b53a9dbe. E1 resistant-child exited 0, JSON SHA-256 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50, and the descendant readiness lock was immediately acquirable after return.",
+        "E2 startup, stdout, stderr, aggregate, count, timeout, resistant-child, cleanup-failure, retry, redirect, generated-case, and concurrency boundaries: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs.",
+        "E3 finite contracts: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/safety.md and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/src/contract/limits.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64; runtime.tools not_authorized."
+      ],
+      "observation": "Released-artifact runs proved a message cap, a finite discovery deadline, and resistant-tree cleanup; exact-release fixtures cover the remaining applicable capacities and cleanup-failure outcome.",
+      "rationale": "The E1 limit and forced-cleanup journeys plus comprehensive E2 boundary fixtures meet the full evidence requirement.",
+      "limitations": [
+        "Only representative byte, time, and cleanup boundaries were repeated at E1; other named capacities remain E2."
+      ]
+    },
+    {
+      "criterion": "S4",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 schema-invalid exit 1 rejected invalid structure, unsupported dialect, and unresolved local reference; JSON SHA-256 87eed01660cb54dba12f74da56b31ef09d4af8d41fa87f5f7eda9fe4474c14ca. E1 schema-external exit 1 emitted MCP-SCHEMA-003 at an ordinal local field location without retaining the reference; JSON SHA-256 b8a1f0b3e7334cdbbf31457ac6d786e67815ea2171b533d0a1b5177a9e3ef08d.",
+        "E1 loopback cleartext endpoint without private and cleartext grants exited 1 with MCP-TARGET-002 before a successful connection; human report SHA-256 c55f92f1d5ca9d38026229107e0ad0461e0bd38ceba79464ec7d0652843c70b1; endpoint and path-class scan clean; target stderr byte count 0.",
+        "E2 parser, schema-work, generation, proxy, redirect, TLS, peer, private, cleartext, and credential-endpoint cases: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/http.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/reject.rs.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd; macOS 26.5.2 build 25F84, arm64; runtime.tools not_authorized."
+      ],
+      "observation": "Hostile schema inputs failed locally and a gated network destination was rejected; exact-release tests prove bounded parsing and validation, no external retrieval, direct verified transport, and exact network gates.",
+      "rationale": "The required E1 hostile-input and network observations are present and the remaining containment clauses have passing exact-release E2.",
+      "limitations": [
+        "Peer pinning, proxy suppression, redirects, and TLS identity were not individually repeated as E1 runs."
+      ]
+    },
+    {
+      "criterion": "S5",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 credential-literals exit 1 produced nine redacted MCP-SECURITY-001 findings at ordinal keyword locations across all reporters; JSON SHA-256 a61947d535119f92a08308b4cd6ebe8667f33e463ec9f1bded10157c57065698; structural scan clean; runtime.tools not_authorized.",
+        "E2 fixed redaction and classification fixtures: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs.",
+        "E3 published scope: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/releases/v0.4.0.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64; target stderr byte count 0."
+      ],
+      "observation": "One fixed server-facing class, credential literals embedded in advertised schemas, is implemented with controlled structural redaction.",
+      "rationale": "Exactly one of the three fixed diagnostic classes is proven, meeting the partial condition.",
+      "limitations": [
+        "No separate server-facing diagnostic covers unsafe credential transmission or storage exposure, or operation authority wider than the selected operation."
+      ]
+    },
+    {
+      "criterion": "D1",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "evidence": [
+        "E1 exact installed mcp-doctor 0.4.0 on macOS 26.5.2 arm64 reported the version and produced the documented smoke result; binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de.",
+        "E1/E4 first-attempt published-channel verifier https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32391172160 passed canonical Cargo installs on macOS arm64, Linux arm64 and x64, and Windows x64, plus GitHub archives and Homebrew source channels.",
+        "E3/E4 installation contract and release identity: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/releases/v0.4.0.md and https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.0.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; source 074a62dbbfce5fa417f2b7080d509ebd86433b1f; local runtime macOS 26.5.2 build 25F84, arm64, rustc and cargo 1.97.1; public verifier spans the stated native hosts."
+      ],
+      "observation": "A canonical stable package maps to v0.4.0 and first-attempt installed-channel smoke jobs passed on Linux, macOS, and Windows.",
+      "rationale": "Canonical package identity and all three native smoke boundaries are publicly observed.",
+      "limitations": [
+        "Project-issued archives are Linux-only; macOS and Windows reach is through the canonical source package, which the rubric permits."
+      ]
+    },
+    {
+      "criterion": "D2",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 exact binary --help and check, break, and reject --help were noninteractive and exposed explicit target, revision, exact-tool, effect, side-effect, network, credential, report, and literal executable-argument contracts. Built-artifact journeys returned stable exits 0, 1, and 2 as observed.",
+        "E2 CLI validation: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/cli.rs.",
+        "E3 help and stable exits: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/automation.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "The CLI is complete and noninteractive, uses literal executable arguments after the delimiter, validates authority before execution, and publishes stable exit meanings.",
+      "rationale": "All full-condition CLI elements are observed in the released binary and immutable docs.",
+      "limitations": [
+        "One evaluator help invocation used an invalid evaluator-relative binary location and never reached the product; it was excluded. The corrected identified-binary invocation completed once."
+      ]
+    },
+    {
+      "criterion": "D3",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 each selected run emitted human stdout, mcp-doctor.report/v1 JSON, JUnit XML, and mcp-doctor.markdown/v1 from one result; a fifth badge projection was also emitted. Syntax, outcome agreement, redaction, and deterministic bytes were verified.",
+        "E1 passing artifact SHA-256 values: human a1e060c2d6b18505e6961e2de742376bdfc52b35fd421c0ac9d107c85ad483db, JSON 0d89eecbaeed93d83a22bd0f329a666bad771b2b5bcfc6d7d8940b9c10469d50, JUnit d24544cb435825784e1ee3851d5c4d530d9f424cce8dc89f47ec02b16a94cef8, Markdown 799901d221c8f5707c31dc301294293fb644169c10e5c6d59a40f276f098f5f9; exit 0; runtime.tools not_authorized.",
+        "E2/E3 reporter parity: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/report_artifacts.rs and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/automation.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor 0.4.0 SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; macOS 26.5.2 build 25F84, arm64."
+      ],
+      "observation": "All four required report classes were reproducibly emitted from the same immutable result and agreed on outcome.",
+      "rationale": "The same-run E1 observation directly satisfies the full condition.",
+      "limitations": [
+        "An initial evaluator syntax check guessed an incorrect badge field value and was excluded; corrected validation against the documented four-field badge contract passed without rerunning product behavior."
+      ]
+    },
+    {
+      "criterion": "D4",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E3"
+      ],
+      "evidence": [
+        "E3 exact-release installation: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/releases/v0.4.0.md documents cargo install mcp-doctor --version =0.4.0 --locked.",
+        "E3 exact-release CI guide and starter: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/automation.md and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/.github/workflows/mcp-doctor-preflight.yml document least permission, JSON and JUnit upload, and authoritative stable exits, but the checked-in starter installs 0.3.3.",
+        "E1 later public Linux x64 workflows https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32395507567 and https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32395526789 installed exact 0.4.0, ran catalog-valid with exit 0 and protocol-unsupported with exit 1, kept runtime.tools not_authorized, and published reports; their newer workflow source is not used as E3.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; exact subject source 074a62dbbfce5fa417f2b7080d509ebd86433b1f; public workflow runtime Linux x64; local review environment macOS 26.5.2 arm64."
+      ],
+      "observation": "The exact-release docs provide a locked 0.4.0 install, artifact publication, and stable branch failure semantics, while their integrated least-permission starter remains pinned to 0.3.3.",
+      "rationale": "Three of the four CI elements are directly reproducible for the evaluated release boundary; the integrated v0.4.0 invocation is newer-source evidence, so uncertainty resolves downward.",
+      "limitations": [
+        "Post-release workflow source and docs cannot supply E3 credit to v0.4.0, although their exact-artifact executions are admissible E1 observations."
+      ]
+    },
+    {
+      "criterion": "D5",
+      "state": "Zero",
+      "evidence_tiers": [
+        "E1",
+        "E3"
+      ],
+      "evidence": [
+        "E1 exact released-artifact reports expose fixed safety deadlines and capacities but no latency distribution, workload sample identity, measured concurrency result, or payload-scale profile.",
+        "E3 inspection of https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/commands.md, https://github.com/EnjoyableWork/mcp-doctor/tree/074a62dbbfce5fa417f2b7080d509ebd86433b1f/schemas, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/src/capabilities.rs found bounded operation contracts but no qualifying performance-evidence report.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; source commit 074a62dbbfce5fa417f2b7080d509ebd86433b1f."
+      ],
+      "observation": "No required measurement dimension is produced by the released artifact.",
+      "rationale": "Safety ceilings and deterministic limits are not performance or scale measurements under this criterion.",
+      "limitations": [
+        "No latency, controlled-concurrency, or size-profile result with workload identity and sample count exists."
+      ]
+    },
+    {
+      "criterion": "T1",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E3",
+        "E4"
+      ],
+      "evidence": [
+        "E1 exact installed binary reported mcp-doctor 0.4.0 and SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de.",
+        "E4 immutable release https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.0 is tied to signed tag object 58b85d666418395a09ffcfa12d0ec941cb6ec88f and source commit 074a62dbbfce5fa417f2b7080d509ebd86433b1f; first-attempt release workflow https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32389641937 published checksums and attestations.",
+        "E1/E4 first-attempt fetch of https://github.com/EnjoyableWork/mcp-doctor/releases/download/v0.4.0/SHA256SUMS listed crate SHA-256 b87aff88710cce5a8d4d42b8429041bdda2dd51485c80910808312a0b0e035fe; a direct stream of the public crate produced the same digest.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; macOS 26.5.2 build 25F84, arm64; no runtime checks were skipped for identity verification."
+      ],
+      "observation": "The public immutable release has a signed source identity, cryptographic checksums, attestations, and a verified installed binary.",
+      "rationale": "Observed artifact identity plus immutable signed and attested release metadata satisfies the full condition.",
+      "limitations": [
+        "The supplied declared crate digest b87aff88710cce6ac6848c5009abe8e8aaf0b03a0f74fa11d608ba331cc1352e9 conflicts with the public checksum and direct artifact digest; the public observed digest is used."
+      ]
+    },
+    {
+      "criterion": "T2",
+      "state": "Full",
+      "evidence_tiers": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "evidence": [
+        "E2 exact-source CI https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461578 and release preflight https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32332461575 completed on first attempt for source 074a62dbbfce5fa417f2b7080d509ebd86433b1f.",
+        "E2/E4 published-channel verifier https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32391172160 passed all represented Linux, macOS, and Windows jobs without unexplained failure.",
+        "E3 public vulnerability path: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/SECURITY.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; exact subject mcp-doctor 0.4.0; fixture and protocol suites are synthetic; local review environment macOS 26.5.2 arm64; no required public check listed in the neutral pack was skipped."
+      ],
+      "observation": "Public CI covers claimed revisions and native channel boundaries, and the release source contains a public private-reporting and advisory policy.",
+      "rationale": "Both public CI and security-path clauses are present, with no unexplained required-check failure.",
+      "limitations": [
+        "Compatibility evidence is deliberately scoped and does not imply universal MCP conformance."
+      ]
+    },
+    {
+      "criterion": "T3",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 public recipe installed exact 0.4.0 and built the public synthetic fixture from source 074a62dbbfce5fa417f2b7080d509ebd86433b1f with cargo build --release --locked --features internal-test-fixtures --bin mcp-doctor-stdio-fixture; fixture SHA-256 4ef64cffa91e2f1a0d69e3cdb516fa6db76e0ede10e219041dfe665b4ee23cfd.",
+        "E1 protocol success and mismatch, malformed failure, credential redaction, schema rejection, bounds, cleanup, and four reporter classes were reproduced with stable structural exits on macOS 26.5.2 arm64; runtime.tools remained not_authorized in passive cases.",
+        "E2/E3 exact fixtures and commands: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/fixtures/stdio_server.rs, https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/stdio.rs, and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/automation.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; mcp-doctor binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; rustc and cargo 1.97.1."
+      ],
+      "observation": "Public source, fixtures, and exact commands reproduce the major protocol, failure, redaction, and reporter claims against the installed released artifact without private infrastructure.",
+      "rationale": "All four major evidence families have public E1 reproduction and immutable exact-release fixtures.",
+      "limitations": [
+        "The evaluator's E1 reproduction was macOS arm64; public native workflow observations cover other represented hosts."
+      ]
+    },
+    {
+      "criterion": "T4",
+      "state": "Partial",
+      "evidence_tiers": [
+        "E1",
+        "E3",
+        "E4"
+      ],
+      "evidence": [
+        "E1 released badge artifacts parsed as deterministic four-field mcp-doctor.badge/v1 Shields endpoint JSON and mapped the one run outcome to pass, fail, or incomplete; passing badge SHA-256 5ebdbc28ce2d9a849f5911694ad725dc68147c3081ae095313a579490fa10a51 and failing badge SHA-256 4cd8df11dabad10dfaa8479f929407ae3fb5b5358de770c7745295af666d2007.",
+        "E3 published badge criteria and disclaimer: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/docs/automation.md.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; exact mcp-doctor 0.4.0 binary SHA-256 133ff579f4a734f22320a6174130231309fd8e8d6428a963731badeb140f23de; fixture catalog-valid or protocol-unsupported; macOS 26.5.2 arm64; runtime.tools not_authorized."
+      ],
+      "observation": "The public badge has transparent tri-state criteria for a single diagnostic outcome and is explicitly disclaimed as certification.",
+      "rationale": "Published criteria exist, but the compact badge omits several required transparency fields, so the partial condition applies.",
+      "limitations": [
+        "The badge omits tool version, target scope, date, checks and skips, limitations, evidence destination, and review or removal policy; detailed reports hold run evidence separately."
+      ]
+    },
+    {
+      "criterion": "T5",
+      "state": "Full",
+      "evidence_tiers": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "evidence": [
+        "E1 first-attempt installed-0.4.0 compatibility workflow https://github.com/EnjoyableWork/mcp-doctor/actions/runs/32395541645 verified release identity, installed exact mcp-doctor 0.4.0, and passed four current-revision passive cases: official TypeScript, official Go, independent Dart, and independent PHP; each selected 2026-07-28, exited 0, and skipped runtime.tools as not_authorized.",
+        "E3 exact independent identities and runtime images: https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/compatibility/matrix.json and https://github.com/EnjoyableWork/mcp-doctor/blob/074a62dbbfce5fa417f2b7080d509ebd86433b1f/tests/compatibility/README.md.",
+        "The independent current-revision servers are mcp_dart v2.4.0 at b104df00e17340026c32a8742835ccbe905303ed and MCP SDK for PHP v2.0.0 at b3a8882b81a891014ef6374522dd983284496ca1, spanning Dart and PHP with exact entries and locks.",
+        "Reviewer/audit: E1, 2026-08-20T17:20:30Z; workflow runtime digest-pinned Linux containers; exact released crate identity checked before execution; no case or workflow rerun."
+      ],
+      "observation": "The installed released artifact passed against two independent current-revision servers in two implementation languages, in addition to two official implementations.",
+      "rationale": "The E1 workflow and immutable server identities directly satisfy the full independent-reach threshold.",
+      "limitations": [
+        "The evidence is passive STDIO reach for the reviewed matrix, not HTTP or universal conformance."
+      ]
+    }
+  ],
+  "source_locked_state_sha256": "3b6ed8d4eb7584e72049a19354592f37b6c2f006a7e2c907358fbc4d674af476",
+  "evaluator_provenance": {
+    "execution_surface": "OpenAI Codex language-model evaluator",
+    "provider": "OpenAI",
+    "model_identifier": null,
+    "model_revision": null,
+    "independent_runs": 1,
+    "cross_provider_calibration": false,
+    "limitation": "The execution record did not retain a verifiable model identifier or serving revision. No repeated-run, inter-model, or cross-provider agreement was measured."
+  }
+}
