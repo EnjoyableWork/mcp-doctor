@@ -225,7 +225,9 @@ under the diagnostic command's `artifact_reporters` capability. The safe
 boundary check requires the corresponding `mcp-doctor.report/v1`, JUnit,
 `mcp-doctor.markdown/v1`, and `mcp-doctor.badge/v1` shapes before upload and
 scans every report for the same fixed redaction sentinels and local-path
-classes.
+classes. A separate capability check verifies those compiled contracts before
+the target process starts. A missing or different contract stops the job
+without running the target or claiming that the unsupported artifacts exist.
 
 The example grants no tool-call, side-effect, credential, private-network,
 cleartext, target-discovery, production-target, or external-schema authority.
@@ -239,9 +241,18 @@ are uploaded successfully afterward. `actions/upload-artifact` is only the CI
 carrier: `mcp-doctor` remains responsible for producing the four immutable,
 redacted projections from one run and never receives provider credentials.
 
+The provider-native job conclusion remains the merge-enforcement authority.
+The fixed `badge.json` is only the provider-neutral public badge input; this
+starter neither publishes nor hosts it. Publishing requires a separately
+reviewed consumer-owned HTTPS path that limits updates to trusted
+default-branch runs and defines scoped evidence, freshness, failure,
+revocation, and cleanup behavior. Private and air-gapped projects can retain
+only native status and the four review artifacts without selecting any public
+endpoint.
+
 This repository runs the passing fixture only when the workflow or its owned
 fixture contract changes. Maintainers can manually dispatch either `passing`
-or `diagnosed` to reproduce the acceptance evidence without contacting a real
-server. The diagnosed dispatch is intentionally red: its non-success result
-must remain the job conclusion while the named report artifact remains
-downloadable.
+`diagnosed`, or `incomplete` to reproduce the acceptance evidence without
+contacting a real server. The diagnosed and incomplete dispatches are
+intentionally red: each non-success result must remain the job conclusion while
+the named report artifact remains downloadable.
