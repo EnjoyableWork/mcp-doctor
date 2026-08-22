@@ -6,6 +6,7 @@ on:
       - ".github/workflows/mcp-doctor-preflight.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "scripts/verify-mcp-doctor-preflight-capabilities.sh"
       - "scripts/verify-mcp-doctor-preflight-reports.sh"
       - "tests/fixtures/stdio_server.rs"
   workflow_dispatch:
@@ -18,6 +19,7 @@ on:
         options:
           - passing
           - diagnosed
+          - incomplete
 
 permissions:
   contents: read
@@ -63,6 +65,19 @@ jobs:
       - name: Prepare deterministic report destinations
         run: mkdir -p artifacts/mcp-doctor
 
+      - name: Verify the released passive reporting capabilities
+        run: |
+          set -euo pipefail
+          capabilities_file="$RUNNER_TEMP/mcp-doctor-capabilities.json"
+          trap 'rm -f "$capabilities_file"' EXIT
+          "$RUNNER_TEMP/mcp-doctor-preflight/bin/mcp-doctor" capabilities \
+            --format json \
+            --schema-version mcp-doctor.capabilities/v1 \
+            >"$capabilities_file"
+          ./scripts/verify-mcp-doctor-preflight-capabilities.sh \
+            "$capabilities_file" \
+            "$MCP_DOCTOR_VERSION"
+
       - name: Diagnose the selected MCP server without calling tools
         env:
           PREFLIGHT_FIXTURE: ${{ inputs.fixture || 'passing' }}
@@ -71,6 +86,7 @@ jobs:
           case "$PREFLIGHT_FIXTURE" in
             passing) fixture_mode=catalog-valid ;;
             diagnosed) fixture_mode=protocol-unsupported ;;
+            incomplete) fixture_mode=schema-validator-work-limit ;;
             *) exit 2 ;;
           esac
           "$RUNNER_TEMP/mcp-doctor-preflight/bin/mcp-doctor" inspect \

@@ -2,9 +2,13 @@ use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
+use std::process::{Command, Output};
 
 const WORKFLOW: &str = include_str!("../.github/workflows/mcp-doctor-preflight.yml");
 const AUTOMATION: &str = include_str!("../docs/automation.md");
+const CAPABILITY_VERIFIER: &str =
+    include_str!("../scripts/verify-mcp-doctor-preflight-capabilities.sh");
 const REPORT_VERIFIER: &str = include_str!("../scripts/verify-mcp-doctor-preflight-reports.sh");
 
 fn repository_root() -> PathBuf {
@@ -26,6 +30,9 @@ fn starter_is_exact_passive_least_permission_and_narrowly_triggered() {
         "--version \"=$MCP_DOCTOR_VERSION\"",
         "--locked",
         "mcp-doctor $MCP_DOCTOR_VERSION",
+        "mcp-doctor\" capabilities",
+        "--schema-version mcp-doctor.capabilities/v1",
+        "verify-mcp-doctor-preflight-capabilities.sh",
         "mcp-doctor\" inspect",
         "--protocol-version 2026-07-28",
         "--json-report artifacts/mcp-doctor/report.json",
@@ -33,6 +40,7 @@ fn starter_is_exact_passive_least_permission_and_narrowly_triggered() {
         "--markdown-report artifacts/mcp-doctor/report.md",
         "--badge-report artifacts/mcp-doctor/badge.json",
         "./target/release/mcp-doctor-stdio-fixture \"$fixture_mode\"",
+        "- incomplete",
     ] {
         assert!(WORKFLOW.contains(contract), "workflow omitted {contract}");
     }
@@ -97,7 +105,10 @@ fn every_external_action_is_immutable_and_checkout_drops_credentials() {
 }
 
 #[test]
-fn report_upload_runs_after_success_or_failure_without_changing_the_exit() {
+fn capability_gate_precedes_target_and_reports_upload_for_every_diagnostic_exit() {
+    let capability = WORKFLOW
+        .find("- name: Verify the released passive reporting capabilities")
+        .expect("capability step should exist");
     let diagnostic = WORKFLOW
         .find("- name: Diagnose the selected MCP server without calling tools")
         .expect("diagnostic step should exist");
@@ -107,7 +118,7 @@ fn report_upload_runs_after_success_or_failure_without_changing_the_exit() {
     let upload = WORKFLOW
         .find("- name: Upload the safe reports without masking the diagnostic exit")
         .expect("upload step should exist");
-    assert!(diagnostic < verification && verification < upload);
+    assert!(capability < diagnostic && diagnostic < verification && verification < upload);
 
     assert_eq!(WORKFLOW.matches("if: ${{ always() }}").count(), 2);
     for contract in [
@@ -123,6 +134,7 @@ fn report_upload_runs_after_success_or_failure_without_changing_the_exit() {
     }
     assert!(WORKFLOW.contains("passing) fixture_mode=catalog-valid"));
     assert!(WORKFLOW.contains("diagnosed) fixture_mode=protocol-unsupported"));
+    assert!(WORKFLOW.contains("incomplete) fixture_mode=schema-validator-work-limit"));
 }
 
 #[test]
@@ -138,6 +150,11 @@ fn public_guidance_explains_copy_boundaries_artifacts_and_stable_exits() {
         "`4` fails the diagnostic step",
         "uploaded successfully afterward",
         "all four reports",
+        "capability check verifies those compiled contracts before\nthe target process starts",
+        "provider-native job conclusion remains the merge-enforcement authority",
+        "provider-neutral public badge input",
+        "starter neither publishes nor hosts it",
+        "Private and air-gapped projects can retain\nonly native status",
         "grants no tool-call, side-effect, credential, private-network",
         "intentionally red",
     ] {
@@ -152,7 +169,8 @@ fn report_verifier_owns_the_fixed_negative_scan_without_rendering_values() {
         "mcp-doctor.report/v1",
         "<testsuites ",
         "<!-- mcp-doctor.markdown/v1 -->",
-        "mcp-doctor badge report has an unexpected contract",
+        "mcp-doctor badge report disagrees with the fixed outcome mapping",
+        "keys == [\"color\", \"label\", \"message\", \"schemaVersion\"]",
         "synthetic-private-revision-never-report-7f2c",
         "synthetic-private-ci-stderr-never-report-7f2c",
         "'/Users/'",
@@ -175,66 +193,211 @@ fn report_verifier_owns_the_fixed_negative_scan_without_rendering_values() {
 }
 
 #[test]
-fn verifier_accepts_safe_reports_and_rejects_a_sentinel_without_echoing_it() {
+fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
+    for contract in [
+        "mcp-doctor.capabilities/v1",
+        ".activity == \"passive\"",
+        ".artifact_reporters == [\"json\", \"junit\", \"markdown\", \"badge\"]",
+        "mcp-doctor.markdown/v1",
+        "mcp-doctor.badge/v1",
+        "lacks the required passive report contracts",
+    ] {
+        assert!(
+            CAPABILITY_VERIFIER.contains(contract),
+            "capability verifier omitted {contract}"
+        );
+    }
+
     #[cfg(unix)]
     {
-        use std::process::Command;
-
         let temporary = tempfile::tempdir().expect("temporary root should exist");
-        let json = temporary.path().join("report.json");
-        let junit = temporary.path().join("report.junit.xml");
-        let markdown = temporary.path().join("report.md");
-        let badge = temporary.path().join("badge.json");
-        fs::write(
-            &json,
-            br#"{"schema_version":"mcp-doctor.report/v1","schema_stability":"stable","outcome":"passed","exit_code":0}"#,
-        )
-        .expect("safe JSON should be writable");
-        fs::write(&junit, b"<testsuites name=\"mcp-doctor\"/>")
-            .expect("safe JUnit should be writable");
-        fs::write(
-            &markdown,
-            b"<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor report\n",
-        )
-        .expect("safe Markdown should be writable");
-        fs::write(
-            &badge,
-            br#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"brightgreen"}"#,
-        )
-        .expect("safe badge should be writable");
+        let capabilities = temporary.path().join("capabilities.json");
+        let verifier =
+            repository_root().join("scripts/verify-mcp-doctor-preflight-capabilities.sh");
+        let exact = serde_json::json!({
+            "schema_version": "mcp-doctor.capabilities/v1",
+            "schema_stability": "stable",
+            "product": {"name": "mcp-doctor", "version": "0.4.0"},
+            "commands": [{
+                "name": "inspect",
+                "activity": "passive",
+                "artifact_reporters": ["json", "junit", "markdown", "badge"],
+                "output_schema_versions": [
+                    "mcp-doctor.report/v1",
+                    "mcp-doctor.contract-snapshot/v1alpha1"
+                ]
+            }],
+            "schema_versions": {
+                "diagnostic_report": ["mcp-doctor.report/v1"],
+                "markdown_report": ["mcp-doctor.markdown/v1"],
+                "badge_report": ["mcp-doctor.badge/v1"]
+            }
+        });
+        fs::write(&capabilities, serde_json::to_vec(&exact).unwrap())
+            .expect("capability evidence should be writable");
 
-        let verifier = repository_root().join("scripts/verify-mcp-doctor-preflight-reports.sh");
         let accepted = Command::new(&verifier)
-            .arg(&json)
-            .arg(&junit)
-            .arg(&markdown)
-            .arg(&badge)
+            .arg(&capabilities)
+            .arg("0.4.0")
             .output()
-            .expect("safe verification should run");
+            .expect("capability verification should run");
         assert!(accepted.status.success());
         assert!(accepted.stdout.is_empty());
         assert!(accepted.stderr.is_empty());
 
-        let sentinel = "synthetic-private-ci-stderr-never-report-7f2c";
+        let mut mismatch = exact;
+        mismatch["commands"][0]["artifact_reporters"] =
+            serde_json::json!(["json", "junit", "markdown"]);
+        fs::write(&capabilities, serde_json::to_vec(&mismatch).unwrap())
+            .expect("mismatched capability evidence should be writable");
+        let rejected = Command::new(&verifier)
+            .arg(&capabilities)
+            .arg("0.4.0")
+            .output()
+            .expect("mismatched capability verification should run");
+        assert_eq!(rejected.status.code(), Some(1));
+        assert!(rejected.stdout.is_empty());
+        let stderr = String::from_utf8(rejected.stderr).expect("stderr should be UTF-8");
+        assert!(stderr.contains("lacks the required passive report contracts"));
+        assert!(!stderr.contains("artifact_reporters"));
+    }
+}
+
+#[test]
+fn report_verifier_accepts_all_outcomes_and_rejects_mutated_artifacts() {
+    #[cfg(unix)]
+    {
+        let temporary = tempfile::tempdir().expect("temporary root should exist");
+        let verifier = repository_root().join("scripts/verify-mcp-doctor-preflight-reports.sh");
+
+        for (outcome, exit, meaning, message, color) in [
+            ("passed", 0, "success", "pass", "brightgreen"),
+            ("failed", 1, "unsuccessful_result", "fail", "red"),
+            (
+                "incomplete",
+                3,
+                "incomplete_evidence",
+                "incomplete",
+                "lightgrey",
+            ),
+        ] {
+            let reports = write_reports(temporary.path(), outcome, exit, meaning, message, color);
+            let accepted = run_report_verifier(&verifier, &reports);
+            assert!(accepted.status.success(), "{outcome}: {accepted:?}");
+            assert!(accepted.stdout.is_empty());
+            assert!(accepted.stderr.is_empty());
+        }
+
+        let reports = write_reports(
+            temporary.path(),
+            "passed",
+            0,
+            "success",
+            "pass",
+            "brightgreen",
+        );
+        fs::write(&reports[0], b"{").expect("malformed JSON should be writable");
+        assert_report_rejected(&verifier, &reports, None);
+
+        let reports = write_reports(temporary.path(), "passed", 0, "success", "fail", "red");
+        assert_report_rejected(&verifier, &reports, None);
+
+        let reports = write_reports(
+            temporary.path(),
+            "passed",
+            0,
+            "success",
+            "pass",
+            "brightgreen",
+        );
         fs::write(
-            &json,
+            &reports[3],
+            br#"{"schemaVersion":1,"label":"mcp-doctor","message":"pass","color":"brightgreen","score":100}"#,
+        )
+        .expect("extra-field badge should be writable");
+        assert_report_rejected(&verifier, &reports, None);
+
+        let sentinel = "synthetic-private-ci-stderr-never-report-7f2c";
+        let reports = write_reports(
+            temporary.path(),
+            "passed",
+            0,
+            "success",
+            "pass",
+            "brightgreen",
+        );
+        fs::write(
+            &reports[0],
             format!(
                 "{{\"schema_version\":\"mcp-doctor.report/v1\",\"schema_stability\":\"stable\",\"outcome\":\"passed\",\"exit_code\":0,\"canary\":\"{sentinel}\"}}"
             ),
         )
         .expect("sentinel JSON should be writable");
-        let rejected = Command::new(&verifier)
-            .arg(&json)
-            .arg(&junit)
-            .arg(&markdown)
-            .arg(&badge)
-            .output()
-            .expect("negative verification should run");
-        assert_eq!(rejected.status.code(), Some(1));
-        assert!(rejected.stdout.is_empty());
-        let stderr = String::from_utf8(rejected.stderr).expect("stderr should be UTF-8");
-        assert!(stderr.contains("safe publication boundary"));
-        assert!(!stderr.contains(sentinel));
+        assert_report_rejected(&verifier, &reports, Some(sentinel));
+    }
+}
+
+#[cfg(unix)]
+fn write_reports(
+    root: &Path,
+    outcome: &str,
+    exit: i32,
+    meaning: &str,
+    message: &str,
+    color: &str,
+) -> [PathBuf; 4] {
+    let json = root.join("report.json");
+    let junit = root.join("report.junit.xml");
+    let markdown = root.join("report.md");
+    let badge = root.join("badge.json");
+    fs::write(
+        &json,
+        format!(
+            "{{\"schema_version\":\"mcp-doctor.report/v1\",\"schema_stability\":\"stable\",\"outcome\":\"{outcome}\",\"exit_code\":{exit}}}"
+        ),
+    )
+    .expect("JSON report should be writable");
+    fs::write(
+        &junit,
+        format!(
+            "<?xml version=\"1.0\"?>\n<testsuites name=\"mcp-doctor\">\nreport_outcome={outcome}\nexit_code={exit}\n</testsuites>\n"
+        ),
+    )
+    .expect("JUnit report should be writable");
+    fs::write(
+        &markdown,
+        format!(
+            "<!-- mcp-doctor.markdown/v1 -->\n# mcp-doctor report\n\n| Outcome | `{outcome}` |\n| Exit | `{exit}` (`{meaning}`) |\n"
+        ),
+    )
+    .expect("Markdown report should be writable");
+    fs::write(
+        &badge,
+        format!(
+            "{{\"schemaVersion\":1,\"label\":\"mcp-doctor\",\"message\":\"{message}\",\"color\":\"{color}\"}}"
+        ),
+    )
+    .expect("badge report should be writable");
+    [json, junit, markdown, badge]
+}
+
+#[cfg(unix)]
+fn run_report_verifier(verifier: &Path, reports: &[PathBuf; 4]) -> Output {
+    Command::new(verifier)
+        .args(reports)
+        .output()
+        .expect("report verification should run")
+}
+
+#[cfg(unix)]
+fn assert_report_rejected(verifier: &Path, reports: &[PathBuf; 4], protected: Option<&str>) {
+    let rejected = run_report_verifier(verifier, reports);
+    assert_eq!(rejected.status.code(), Some(1));
+    assert!(rejected.stdout.is_empty());
+    let stderr = String::from_utf8(rejected.stderr).expect("stderr should be UTF-8");
+    assert!(!stderr.is_empty());
+    if let Some(protected) = protected {
+        assert!(!stderr.contains(protected));
     }
 }
 
@@ -242,6 +405,7 @@ fn verifier_accepts_safe_reports_and_rejects_a_sentinel_without_echoing_it() {
 fn workflow_references_existing_owned_files() {
     for path in [
         ".github/workflows/mcp-doctor-preflight.yml",
+        "scripts/verify-mcp-doctor-preflight-capabilities.sh",
         "scripts/verify-mcp-doctor-preflight-reports.sh",
         "tests/fixtures/stdio_server.rs",
     ] {
