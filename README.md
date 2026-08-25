@@ -1,4 +1,6 @@
-<h1 align="center">🩺 mcp-doctor</h1>
+<p align="center">
+  <img src="docs/assets/mcp-doctor-wordmark.svg" alt="MCP Doctor" width="420">
+</p>
 
 <p align="center">
   <strong>Diagnose, test, and break your MCP servers before your users do.</strong>
@@ -19,6 +21,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#agent-skill">Agent Skill</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
   <a href="#choose-a-diagnostic">Commands</a> ·
@@ -26,20 +29,13 @@
   <a href="#assurance">Assurance</a>
 </p>
 
-A diagnosis you can act on:
-
-> **Your weather server starts correctly**
->
-> `mcp-doctor` found 8 tools, 2 resources, and 1 prompt.
->
-> **First thing to fix**
->
-> The `weather_forecast` tool describes its required inputs incorrectly. Define
-> the required fields as a list, then run the diagnosis again.
->
-> **Safe by default**
->
-> No tools were called and no server data was changed.
+<p align="center">
+  <img
+    src="docs/assets/mcp-doctor-inspect-report.png"
+    alt="Terminal screenshot of mcp-doctor passively inspecting an MCP 2025-11-25 server and identifying two MCP-SCHEMA-002 input schema findings."
+    width="1044"
+  >
+</p>
 
 ## Install
 
@@ -53,21 +49,22 @@ Every immutable release includes SHA-256 checksums, SPDX SBOMs, and build
 provenance. See the [release guide](docs/release.md) for exact-version installs
 and artifact verification.
 
-### Install the optional Agent Skill
+## Agent Skill
 
-The Agent Skill teaches a compatible coding agent how to use the CLI safely; it
-does not include the CLI. Install `mcp-doctor` above, then choose one skill
-route:
+Install the CLI above first. The optional Agent Skill teaches compatible coding
+agents to use it safely; it does not include or install `mcp-doctor`.
 
-| Route | Best for | Start here |
-| --- | --- | --- |
-| Smithery | Discovery and an agent-specific install command | [Open `mcp-doctor` on Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor) |
-| GitHub | Reviewing the source or making a version-controlled manual install | [Open the canonical skill directory](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor) |
+| Host | Install |
+| --- | --- |
+| Smithery | [Open `mcp-doctor` on Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor), select your agent, and use its install command |
+| ChatGPT | Build and import the [ChatGPT upload bundle](docs/agents.md#build-the-chatgpt-upload-zip) |
+| Codex | Ask `$skill-installer` to install the [canonical skill directory](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor) from GitHub |
+| Claude Code | Copy the canonical skill directory to `~/.claude/skills/mcp-doctor` or `.claude/skills/mcp-doctor` |
+| Other Agent Skills hosts | Install the canonical skill directory with the host's standard skill workflow |
 
-Smithery is an installation convenience backed by the GitHub skill directory;
-GitHub remains the canonical source and release authority. Follow the
-[coding-agent guide](docs/agents.md) for exact-version, update, and removal
-instructions.
+GitHub remains the canonical source and release authority. See the
+[coding-agent guide](docs/agents.md) for release-pinned installation,
+verification, updates, and removal.
 
 ## Quick start
 

@@ -471,7 +471,7 @@ fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
 #[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
-    assert_eq!(controls["reviewed_on"], "2026-08-18");
+    assert_eq!(controls["reviewed_on"], "2026-08-24");
     assert_eq!(
         controls["distribution_authentication"]["cargo_package"],
         "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate"
@@ -758,7 +758,14 @@ fn supply_chain_rehearsal_rejects_artifacts_and_historical_formula_drift() {
     );
     assert_eq!(
         controls["source_artifact_policy"]["binary_exceptions"],
-        json!([])
+        json!([{
+            "path": "docs/assets/mcp-doctor-inspect-report.png",
+            "media_type": "image/png",
+            "purpose": "README product screenshot",
+            "bytes": 194517,
+            "sha256": "934c89db499a534677be66b3151f04f3307ae6dfe95e432539fa0b695dadfb6e",
+            "header_hex": "89504e470d0a1a0a0000000d49484452000008280000052b"
+        }])
     );
 
     let output = Command::new("bash")

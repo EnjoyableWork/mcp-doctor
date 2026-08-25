@@ -45,7 +45,7 @@ supply_hash() {
 if ! jq -e '
   .schema_version == "mcp-doctor.supply-chain-controls/v1" and
   .api_version == "2026-03-10" and
-  .reviewed_on == "2026-08-18" and
+  .reviewed_on == "2026-08-24" and
   .repository == "EnjoyableWork/mcp-doctor" and
   .default_branch == "main" and
   .dependency_updates.auto_merge == false and
@@ -141,7 +141,14 @@ if ! jq -e '
       "aarch64-unknown-linux-gnu",
       "x86_64-unknown-linux-gnu"
     ]) and
-  .source_artifact_policy.binary_exceptions == [] and
+  .source_artifact_policy.binary_exceptions == [{
+    "path": "docs/assets/mcp-doctor-inspect-report.png",
+    "media_type": "image/png",
+    "purpose": "README product screenshot",
+    "bytes": 194517,
+    "sha256": "934c89db499a534677be66b3151f04f3307ae6dfe95e432539fa0b695dadfb6e",
+    "header_hex": "89504e470d0a1a0a0000000d49484452000008280000052b"
+  }] and
   .source_artifact_policy.text_encoding == "UTF-8" and
   .source_artifact_policy.disallowed_ascii_controls == true and
   .distribution_authentication.version == "0.3.0" and
