@@ -1115,7 +1115,7 @@ fn command_guide_records_the_rejection_boundary() {
 }
 
 #[test]
-fn readme_leads_with_a_portable_plain_language_diagnosis() {
+fn readme_leads_with_an_accessible_bounded_diagnosis_screenshot() {
     let readme = repository_file("README.md");
     let introduction = readme
         .split("## Install")
@@ -1123,23 +1123,49 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
         .expect("README should have an introductory diagnosis");
 
     for contract in [
-        "A diagnosis you can act on:",
-        "> **Your weather server starts correctly**",
-        "> **First thing to fix**",
-        "> **Safe by default**",
-        "No tools were called and no server data was changed.",
+        "docs/assets/mcp-doctor-inspect-report.png",
+        "alt=\"Terminal screenshot of mcp-doctor passively inspecting",
+        "MCP 2025-11-25 server",
+        "two MCP-SCHEMA-002 input schema findings.",
+        "width=\"1044\"",
     ] {
         assert!(
             introduction.contains(contract),
             "README introduction should preserve {contract}"
         );
     }
-    for terminal_artifact in ["```console", "$ mcp-doctor", "exit 1"] {
+    for removed_example in [
+        "A diagnosis you can act on:",
+        "Your weather server starts correctly",
+        "weather_forecast",
+    ] {
         assert!(
-            !introduction.contains(terminal_artifact),
-            "README introduction should not depend on {terminal_artifact}"
+            !introduction.contains(removed_example),
+            "README introduction should not retain {removed_example}"
         );
     }
+
+    let screenshot = fs::read(repository_root().join("docs/assets/mcp-doctor-inspect-report.png"))
+        .expect("README diagnosis screenshot should be readable");
+    assert!(
+        screenshot.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+        "README diagnosis screenshot should be a PNG"
+    );
+    assert!(
+        screenshot.len() >= 24,
+        "README diagnosis screenshot should contain a complete PNG header"
+    );
+    let width = u32::from_be_bytes(screenshot[16..20].try_into().expect("PNG width should fit"));
+    let height = u32::from_be_bytes(
+        screenshot[20..24]
+            .try_into()
+            .expect("PNG height should fit"),
+    );
+    assert_eq!((width, height), (2088, 1323));
+    assert!(
+        screenshot.len() <= 256 * 1024,
+        "README diagnosis screenshot should remain reasonably small"
+    );
 
     assert!(
         readme.lines().count() <= 250,
@@ -1202,9 +1228,9 @@ fn readme_exposes_simple_verified_installation_channels() {
     let readme = repository_file("README.md");
     let installation = readme
         .split_once("## Install")
-        .and_then(|(_, remainder)| remainder.split_once("## Quick start"))
+        .and_then(|(_, remainder)| remainder.split_once("## Agent Skill"))
         .map(|(section, _)| section)
-        .expect("README should present installation before the quick start");
+        .expect("README should present CLI installation before the Agent Skill");
 
     for contract in [
         "| Homebrew | macOS, GNU/Linux | `brew install EnjoyableWork/tap/mcp-doctor` |",

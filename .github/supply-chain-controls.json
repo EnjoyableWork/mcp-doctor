@@ -1,7 +1,7 @@
 {
   "schema_version": "mcp-doctor.supply-chain-controls/v1",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-18",
+  "reviewed_on": "2026-08-24",
   "repository": "EnjoyableWork/mcp-doctor",
   "default_branch": "main",
   "dependency_updates": {
@@ -401,7 +401,16 @@
   ],
   "source_artifact_policy": {
     "verifier": "scripts/verify-source-artifacts.sh",
-    "binary_exceptions": [],
+    "binary_exceptions": [
+      {
+        "path": "docs/assets/mcp-doctor-inspect-report.png",
+        "media_type": "image/png",
+        "purpose": "README product screenshot",
+        "bytes": 194517,
+        "sha256": "934c89db499a534677be66b3151f04f3307ae6dfe95e432539fa0b695dadfb6e",
+        "header_hex": "89504e470d0a1a0a0000000d49484452000008280000052b"
+      }
+    ],
     "text_encoding": "UTF-8",
     "disallowed_ascii_controls": true,
     "executable_source_glob": "scripts/*.sh",

@@ -282,6 +282,30 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         assert!(guide.contains(root), "guide should document {root}");
     }
     assert!(!readme.contains("## Use with coding agents"));
+    assert!(!readme.contains("### Install the optional Agent Skill"));
+    assert!(readme.contains("<a href=\"#agent-skill\">Agent Skill</a>"));
+    let readme_skill = readme
+        .split_once("## Agent Skill")
+        .and_then(|(_, remainder)| remainder.split_once("## Quick start"))
+        .map(|(section, _)| section)
+        .expect("README should keep a bounded Agent Skill section");
+    assert!(
+        readme_skill.lines().count() <= 18,
+        "README Agent Skill section should route setup without becoming a manual"
+    );
+    for contract in [
+        "Install the CLI above first",
+        "[ChatGPT upload bundle](docs/agents.md#build-the-chatgpt-upload-zip)",
+        "`$skill-installer`",
+        "~/.claude/skills/mcp-doctor",
+        ".claude/skills/mcp-doctor",
+        "Other Agent Skills hosts",
+    ] {
+        assert!(
+            readme_skill.contains(contract),
+            "README Agent Skill section should preserve {contract}"
+        );
+    }
     assert!(readme.contains(
         "| Use `mcp-doctor` with a coding agent | [Coding-agent guide](docs/agents.md) |"
     ));
@@ -292,7 +316,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "[Open `mcp-doctor` on Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor)"
     ));
     assert!(readme.contains(
-        "[Open the canonical skill directory](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor)"
+        "[canonical skill directory](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor)"
     ));
     assert!(readme.contains("GitHub remains the canonical source and release authority"));
     assert!(!guide.contains("universal agent support"));
