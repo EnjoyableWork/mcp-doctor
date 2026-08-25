@@ -365,7 +365,7 @@ fn generator_and_verifiers_enforce_the_exact_source_built_release() {
     }
     for contract in [
         "[source root]",
-        "canonical Agent Skill must contain only SKILL.md",
+        "canonical Agent Skill has an unexpected file or directory",
         "allowed-tools:",
         "mcp-doctor check --",
         "mcp-doctor-agent-skill-v${agent_skill_version}.tar.gz",
@@ -1115,7 +1115,7 @@ fn command_guide_records_the_rejection_boundary() {
 }
 
 #[test]
-fn readme_leads_with_a_portable_plain_language_diagnosis() {
+fn readme_leads_with_an_accessible_bounded_diagnosis_screenshot() {
     let readme = repository_file("README.md");
     let introduction = readme
         .split("## Install")
@@ -1123,23 +1123,49 @@ fn readme_leads_with_a_portable_plain_language_diagnosis() {
         .expect("README should have an introductory diagnosis");
 
     for contract in [
-        "A diagnosis you can act on:",
-        "> **Your weather server starts correctly**",
-        "> **First thing to fix**",
-        "> **Safe by default**",
-        "No tools were called and no server data was changed.",
+        "docs/assets/mcp-doctor-inspect-report.png",
+        "alt=\"Terminal screenshot of mcp-doctor passively inspecting",
+        "MCP 2025-11-25 server",
+        "two MCP-SCHEMA-002 input schema findings.",
+        "width=\"1044\"",
     ] {
         assert!(
             introduction.contains(contract),
             "README introduction should preserve {contract}"
         );
     }
-    for terminal_artifact in ["```console", "$ mcp-doctor", "exit 1"] {
+    for removed_example in [
+        "A diagnosis you can act on:",
+        "Your weather server starts correctly",
+        "weather_forecast",
+    ] {
         assert!(
-            !introduction.contains(terminal_artifact),
-            "README introduction should not depend on {terminal_artifact}"
+            !introduction.contains(removed_example),
+            "README introduction should not retain {removed_example}"
         );
     }
+
+    let screenshot = fs::read(repository_root().join("docs/assets/mcp-doctor-inspect-report.png"))
+        .expect("README diagnosis screenshot should be readable");
+    assert!(
+        screenshot.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+        "README diagnosis screenshot should be a PNG"
+    );
+    assert!(
+        screenshot.len() >= 24,
+        "README diagnosis screenshot should contain a complete PNG header"
+    );
+    let width = u32::from_be_bytes(screenshot[16..20].try_into().expect("PNG width should fit"));
+    let height = u32::from_be_bytes(
+        screenshot[20..24]
+            .try_into()
+            .expect("PNG height should fit"),
+    );
+    assert_eq!((width, height), (2088, 1323));
+    assert!(
+        screenshot.len() <= 256 * 1024,
+        "README diagnosis screenshot should remain reasonably small"
+    );
 
     assert!(
         readme.lines().count() <= 250,
@@ -1202,9 +1228,9 @@ fn readme_exposes_simple_verified_installation_channels() {
     let readme = repository_file("README.md");
     let installation = readme
         .split_once("## Install")
-        .and_then(|(_, remainder)| remainder.split_once("## Quick start"))
+        .and_then(|(_, remainder)| remainder.split_once("## Agent Skill"))
         .map(|(section, _)| section)
-        .expect("README should present installation before the quick start");
+        .expect("README should present CLI installation before the Agent Skill");
 
     for contract in [
         "| Homebrew | macOS, GNU/Linux | `brew install EnjoyableWork/tap/mcp-doctor` |",
@@ -1638,7 +1664,7 @@ fn community_license_projection_matches_the_public_scope_contract() {
         canonical["schema_version"],
         "mcp-doctor.github-community-license-controls/v1"
     );
-    assert_eq!(canonical["reviewed_on"], "2026-08-19");
+    assert_eq!(canonical["reviewed_on"], "2026-08-24");
     assert_eq!(canonical["api_version"], "2026-03-10");
     assert_eq!(canonical["organization"], "EnjoyableWork");
     assert_eq!(canonical["project_repository"], "EnjoyableWork/mcp-doctor");
@@ -1698,11 +1724,15 @@ fn community_license_projection_matches_the_public_scope_contract() {
     let official_channels = canonical["official_channels"]
         .as_array()
         .expect("official channels should be an array");
-    assert_eq!(official_channels.len(), 7);
+    assert_eq!(official_channels.len(), 8);
     assert!(official_channels.iter().all(|entry| {
         entry["uri"]
             .as_str()
             .is_some_and(|uri| uri.starts_with("https://") && !uri.contains('@'))
+    }));
+    assert!(official_channels.iter().any(|entry| {
+        entry["channel"] == "third_party_agent_skill_registry"
+            && entry["uri"] == "https://smithery.ai/skills/enjoyable/mcp-doctor"
     }));
 
     assert_eq!(canonical["source_license"]["spdx_expression"], "MIT");
@@ -1813,6 +1843,8 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         "The two immutable SPDX documents use `CC0-1.0`",
         "They are therefore not used as proof of the software's MIT license.",
         "does not authenticate the supply chain",
+        "https://smithery.ai/skills/enjoyable/mcp-doctor",
+        "the GitHub skill directory remains canonical",
     ] {
         assert!(
             scope.contains(contract),
@@ -1847,6 +1879,7 @@ fn community_license_verifier_is_credential_free_bounded_and_exact() {
         ".immutable == true",
         "git/ref/tags/${community_tag}",
         "static.crates.io",
+        "third_party_agent_skill_registry",
         "version.license == \"MIT\"",
         "tar -xOzf",
         ".dataLicense == \"CC0-1.0\"",

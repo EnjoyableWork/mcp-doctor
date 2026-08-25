@@ -1,6 +1,6 @@
 {
   "schema_version": "mcp-doctor.github-community-license-controls/v1",
-  "reviewed_on": "2026-08-19",
+  "reviewed_on": "2026-08-24",
   "api_version": "2026-03-10",
   "organization": "EnjoyableWork",
   "project_repository": "EnjoyableWork/mcp-doctor",
@@ -97,6 +97,10 @@
     {
       "channel": "homebrew_formula",
       "uri": "https://github.com/EnjoyableWork/homebrew-tap/blob/main/Formula/mcp-doctor.rb"
+    },
+    {
+      "channel": "third_party_agent_skill_registry",
+      "uri": "https://smithery.ai/skills/enjoyable/mcp-doctor"
     },
     {
       "channel": "third_party_documentation_mirror",

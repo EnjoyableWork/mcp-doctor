@@ -53,6 +53,24 @@ rehearsal_expect_rejection() {
   fi
 }
 
+mkdir -p -- "$rehearsal_repo/docs/assets"
+install -m 0644 \
+  "$rehearsal_script_directory/../docs/assets/mcp-doctor-inspect-report.png" \
+  "$rehearsal_repo/docs/assets/mcp-doctor-inspect-report.png"
+git -C "$rehearsal_repo" add docs/assets/mcp-doctor-inspect-report.png
+git -C "$rehearsal_repo" commit --quiet -m 'test: add reviewed documentation image'
+"$rehearsal_repo/scripts/verify-source-artifacts.sh" HEAD >/dev/null
+
+printf 'changed\n' >>"$rehearsal_repo/docs/assets/mcp-doctor-inspect-report.png"
+git -C "$rehearsal_repo" add docs/assets/mcp-doctor-inspect-report.png
+git -C "$rehearsal_repo" commit --quiet -m 'test: mutate reviewed documentation image'
+rehearsal_expect_rejection 'a changed reviewed documentation image'
+install -m 0644 \
+  "$rehearsal_script_directory/../docs/assets/mcp-doctor-inspect-report.png" \
+  "$rehearsal_repo/docs/assets/mcp-doctor-inspect-report.png"
+git -C "$rehearsal_repo" add docs/assets/mcp-doctor-inspect-report.png
+git -C "$rehearsal_repo" commit --quiet -m 'test: restore reviewed documentation image'
+
 printf '\177ELF\002\001\001\000synthetic\n' >"$rehearsal_repo/generated-tool"
 chmod 0755 "$rehearsal_repo/generated-tool"
 git -C "$rehearsal_repo" add generated-tool
