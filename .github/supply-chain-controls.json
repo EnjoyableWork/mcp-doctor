@@ -58,14 +58,14 @@
     {
       "name": "jsonschema",
       "scope": "runtime",
-      "version": "0.49.9",
+      "version": "0.50.0",
       "default_features": false,
       "features": []
     },
     {
       "name": "jsonschema-regex",
       "scope": "runtime",
-      "version": "0.49.9",
+      "version": "0.50.0",
       "default_features": false,
       "features": []
     },
@@ -86,7 +86,7 @@
     {
       "name": "referencing",
       "scope": "runtime",
-      "version": "0.49.9",
+      "version": "0.50.0",
       "default_features": false,
       "features": []
     },
