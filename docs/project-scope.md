@@ -1,6 +1,6 @@
 # Project repositories, community, and license scope
 
-Reviewed: 2026-08-12
+Reviewed: 2026-08-24
 
 This document identifies the public repositories and channels that make up
 `mcp-doctor`. The machine-readable contract is
@@ -53,10 +53,12 @@ concern is platform-wide.
 | Releases | [`v0.2.0` GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.2.0) | Canonical immutable release record |
 | Rust package | [`mcp-doctor` `0.2.0` on crates.io](https://crates.io/crates/mcp-doctor/0.2.0) | Verified package distribution |
 | Homebrew | [`EnjoyableWork/tap/mcp-doctor`](https://github.com/EnjoyableWork/homebrew-tap/blob/main/Formula/mcp-doctor.rb) | Verified formula distribution |
+| Agent Skill registry | [`mcp-doctor` on Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor) | Third-party discovery and installation convenience; the GitHub skill directory remains canonical |
 | Generated API documentation | [`docs.rs`](https://docs.rs/crate/mcp-doctor/latest) | Third-party documentation mirror, not a release authority |
 
-No HTTP, alternate registry, mirror, social account, chat room, or personal
-contact is an official `mcp-doctor` project channel.
+The channels named above are the complete official set. No other HTTP endpoint,
+registry, mirror, social account, chat room, or personal contact is an official
+`mcp-doctor` project channel.
 
 ## License evidence
 

@@ -53,6 +53,22 @@ Every immutable release includes SHA-256 checksums, SPDX SBOMs, and build
 provenance. See the [release guide](docs/release.md) for exact-version installs
 and artifact verification.
 
+### Install the optional Agent Skill
+
+The Agent Skill teaches a compatible coding agent how to use the CLI safely; it
+does not include the CLI. Install `mcp-doctor` above, then choose one skill
+route:
+
+| Route | Best for | Start here |
+| --- | --- | --- |
+| Smithery | Discovery and an agent-specific install command | [Open `mcp-doctor` on Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor) |
+| GitHub | Reviewing the source or making a version-controlled manual install | [Open the canonical skill directory](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor) |
+
+Smithery is an installation convenience backed by the GitHub skill directory;
+GitHub remains the canonical source and release authority. Follow the
+[coding-agent guide](docs/agents.md) for exact-version, update, and removal
+instructions.
+
 ## Quick start
 
 `inspect` is passive: it validates discovery, definitions, and schemas without
@@ -144,6 +160,7 @@ multi-tool workflows, generated cases, rejection checks, and contract diffs.
 | I want to… | Read |
 | --- | --- |
 | Use `mcp-doctor` with a coding agent | [Coding-agent guide](docs/agents.md) |
+| Evaluate the Agent Skill on a registry or host | [Agent Skill evaluation contract](docs/evaluations/agent-skill-v1.md) |
 | Choose a diagnostic or run active scenarios safely | [Diagnostic commands](docs/commands.md) |
 | Select an MCP revision or verify the support matrix | [MCP revision support](docs/protocol-support.md) |
 | Configure CI, produce reports, or interpret exits | [Automation and CI](docs/automation.md) |
