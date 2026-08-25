@@ -1,0 +1,9 @@
+interface:
+  display_name: "MCP Doctor"
+  short_description: "Diagnose MCP servers before users do—from local to production"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  default_prompt: "Use $mcp-doctor to passively diagnose this exact MCP server target: [command or endpoint]."
+
+policy:
+  allow_implicit_invocation: true

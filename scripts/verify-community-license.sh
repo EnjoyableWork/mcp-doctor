@@ -65,7 +65,7 @@ community_sha256_file() {
 
 if ! jq -e '
   .schema_version == "mcp-doctor.github-community-license-controls/v1" and
-  .reviewed_on == "2026-08-19" and
+  .reviewed_on == "2026-08-24" and
   .api_version == "2026-03-10" and
   .organization == "EnjoyableWork" and
   .project_repository == "EnjoyableWork/mcp-doctor" and
@@ -136,8 +136,8 @@ if ! jq -e '
     ".github/ISSUE_TEMPLATE/01-bug-report.yml",
     ".github/ISSUE_TEMPLATE/02-feature-request.yml"
   ] and
-  (.official_channels | length) == 7 and
-  ([.official_channels[].channel] | unique | length) == 7 and
+  (.official_channels | length) == 8 and
+  ([.official_channels[].channel] | unique | length) == 8 and
   all(.official_channels[].uri; test("^https://[^/@]+(?:/|$)")) and
   (.official_channels | sort_by(.channel)) == [
     {
@@ -163,6 +163,10 @@ if ! jq -e '
     {
       "channel": "source",
       "uri": "https://github.com/EnjoyableWork/mcp-doctor"
+    },
+    {
+      "channel": "third_party_agent_skill_registry",
+      "uri": "https://smithery.ai/skills/enjoyable/mcp-doctor"
     },
     {
       "channel": "third_party_documentation_mirror",
@@ -468,6 +472,7 @@ for community_expected_text in \
   'EnjoyableWork/mcp-doctor' \
   'EnjoyableWork/homebrew-tap' \
   'mcp-sync' \
+  'https://smithery.ai/skills/enjoyable/mcp-doctor' \
   'private repository' \
   'NOASSERTION' \
   'does not authenticate the supply chain'; do
@@ -706,6 +711,13 @@ community_public_get \
   "${community_docs_mirror}" \
   4194304
 grep -F 'mcp-doctor' "${community_docs_mirror}" >/dev/null
+
+community_agent_skill_registry="${community_work_directory}/agent-skill-registry.html"
+community_public_get \
+  "$(jq -er '.official_channels[] | select(.channel == "third_party_agent_skill_registry") | .uri' "${community_canonical_path}")" \
+  "${community_agent_skill_registry}" \
+  4194304
+grep -F 'mcp-doctor' "${community_agent_skill_registry}" >/dev/null
 
 printf 'date=%s canonical_sha256=%s source_sha=%s result=PASS\n' \
   "${community_verification_date}" \
