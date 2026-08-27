@@ -45,7 +45,7 @@ supply_hash() {
 if ! jq -e '
   .schema_version == "mcp-doctor.supply-chain-controls/v1" and
   .api_version == "2026-03-10" and
-  .reviewed_on == "2026-08-24" and
+  .reviewed_on == "2026-08-27" and
   .repository == "EnjoyableWork/mcp-doctor" and
   .default_branch == "main" and
   .dependency_updates.auto_merge == false and
@@ -71,7 +71,8 @@ if ! jq -e '
   .workflow_inventory.checked_in == [
     ".github/workflows/ci.yml",
     ".github/workflows/compatibility.yml",
-    ".github/workflows/mcp-doctor-preflight.yml",
+    ".github/workflows/mcp-doctor-comment.yml",
+    ".github/workflows/mcp-doctor.yml",
     ".github/workflows/release-authorization-negative.yml",
     ".github/workflows/release-channels.yml",
     ".github/workflows/release-preflight.yml",
@@ -83,7 +84,7 @@ if ! jq -e '
   ] and
   (.untrusted_workflows | map(.path)) == [
     ".github/workflows/ci.yml",
-    ".github/workflows/mcp-doctor-preflight.yml",
+    ".github/workflows/mcp-doctor.yml",
     ".github/workflows/release-preflight.yml"
   ] and
   all(.untrusted_workflows[];
@@ -93,6 +94,27 @@ if ! jq -e '
     .stored_secrets == false and
     .privileged_assets == false
   ) and
+  .privileged_workflows == [{
+    "path": ".github/workflows/mcp-doctor-comment.yml",
+    "event": "workflow_run/completed",
+    "source_workflow": ".github/workflows/mcp-doctor.yml",
+    "permissions": {
+      "actions": "read",
+      "contents": "read",
+      "pull-requests": "write"
+    },
+    "github_hosted_only": true,
+    "stored_secrets": false,
+    "oidc": false,
+    "environment": false,
+    "untrusted_checkout": false,
+    "untrusted_artifact": {
+      "name": "mcp-doctor-comment.json",
+      "archive": false,
+      "maximum_bytes": 4096
+    },
+    "mutable_surface": "one fixed-format marker-owned github-actions[bot] issue comment on an exact current same-repository pull request whose producer contract matches the trusted default branch"
+  }] and
   (.actions | length) == 7 and
   all(.actions[];
     (.selection == "direct" or .selection == "nested") and
