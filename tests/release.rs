@@ -1224,6 +1224,35 @@ fn readme_quick_start_is_task_focused_and_routes_detailed_guidance() {
 }
 
 #[test]
+fn readme_navigation_follows_the_onboarding_order() {
+    let readme = repository_file("README.md");
+    let navigation = [
+        "<a href=\"#install\">Install</a>",
+        "<a href=\"#quick-start\">Quick start</a>",
+        "<a href=\"#why-mcp-doctor\">Why mcp-doctor?</a>",
+        "<a href=\"docs/automation.md\">Automation and CI</a>",
+        "<a href=\"#agent-skill\">Agent Skill</a>",
+        "<a href=\"#choose-a-diagnostic\">Commands</a>",
+        "<a href=\"#documentation\">Docs</a>",
+        "<a href=\"#assurance\">Assurance</a>",
+    ];
+
+    let mut previous = None;
+    for link in navigation {
+        let position = readme
+            .find(link)
+            .unwrap_or_else(|| panic!("README navigation omitted {link}"));
+        if let Some(previous) = previous {
+            assert!(
+                previous < position,
+                "README navigation placed {link} out of order"
+            );
+        }
+        previous = Some(position);
+    }
+}
+
+#[test]
 fn readme_exposes_simple_verified_installation_channels() {
     let readme = repository_file("README.md");
     let installation = readme

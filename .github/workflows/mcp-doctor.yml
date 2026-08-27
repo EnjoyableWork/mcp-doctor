@@ -1,0 +1,244 @@
+name: Enjoyable Work
+
+# Consumer adaptation: copy this workflow with its companion publisher and two
+# verifier scripts, then change only the two blocks marked ADAPT below.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-doctor-preflight-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MCP_DOCTOR_VERSION: 0.4.0
+  MCP_DOCTOR_TARGET: x86_64-unknown-linux-gnu
+  MCP_DOCTOR_ARCHIVE_BYTES: 5548845
+  MCP_DOCTOR_ARCHIVE_SHA256: f8ddc1eb0d1cc9f8ed6ab186109ed4d881fea181c5e6896b029e535ae7ecfba6
+  MCP_DOCTOR_BINARY_BYTES: 17026648
+
+jobs:
+  preflight:
+    name: MCP Doctor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the selected server source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ADAPT 1/2: replace this step with the project's deterministic server
+      # setup and build. Keep dependency versions locked in the project.
+      - name: Build the repository-owned synthetic server
+        run: >-
+          cargo build --release --locked
+          --features internal-test-fixtures
+          --bin mcp-doctor-stdio-fixture
+
+      - name: Download the exact released mcp-doctor binary
+        run: |
+          set -euo pipefail
+          for command in curl sha256sum tar; do
+            command -v "$command" >/dev/null
+          done
+
+          archive_name="mcp-doctor-v$MCP_DOCTOR_VERSION-$MCP_DOCTOR_TARGET.tar.gz"
+          archive="$RUNNER_TEMP/$archive_name"
+          install_root="$RUNNER_TEMP/mcp-doctor-preflight"
+          binary="$install_root/bin/mcp-doctor"
+          test ! -e "$archive"
+          test ! -e "$install_root"
+          mkdir -p "$install_root/bin"
+          trap 'rm -f -- "$archive"' EXIT
+
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 120 \
+            --max-filesize "$MCP_DOCTOR_ARCHIVE_BYTES" \
+            --output "$archive" \
+            "https://github.com/EnjoyableWork/mcp-doctor/releases/download/v$MCP_DOCTOR_VERSION/$archive_name"
+
+          archive_bytes="$(wc -c <"$archive")"
+          [[ "$archive_bytes" =~ ^[0-9]+$ ]]
+          test "$archive_bytes" -eq "$MCP_DOCTOR_ARCHIVE_BYTES"
+          printf '%s  %s\n' "$MCP_DOCTOR_ARCHIVE_SHA256" "$archive" \
+            | sha256sum --check --strict - >/dev/null
+          test "$(tar -tzf "$archive")" = \
+            $'Cargo.lock\nLICENSE\nREADME.md\nmcp-doctor'
+
+          tar -xzf "$archive" \
+            --directory "$install_root/bin" \
+            --no-same-owner \
+            --no-same-permissions \
+            mcp-doctor
+          test -f "$binary"
+          test ! -L "$binary"
+          test -x "$binary"
+          binary_bytes="$(wc -c <"$binary")"
+          [[ "$binary_bytes" =~ ^[0-9]+$ ]]
+          test "$binary_bytes" -eq "$MCP_DOCTOR_BINARY_BYTES"
+          test "$("$binary" --version)" = \
+            "mcp-doctor $MCP_DOCTOR_VERSION"
+
+      - name: Prepare deterministic report destinations
+        run: mkdir -p artifacts/mcp-doctor
+
+      - name: Verify the released passive reporting capabilities
+        run: |
+          set -euo pipefail
+          capabilities_file="$RUNNER_TEMP/mcp-doctor-capabilities.json"
+          trap 'rm -f "$capabilities_file"' EXIT
+          "$RUNNER_TEMP/mcp-doctor-preflight/bin/mcp-doctor" capabilities \
+            --format json \
+            --schema-version mcp-doctor.capabilities/v1 \
+            >"$capabilities_file"
+          ./scripts/verify-mcp-doctor-preflight-capabilities.sh \
+            "$capabilities_file" \
+            "$MCP_DOCTOR_VERSION"
+
+      - name: Diagnose the MCP server without calling tools
+        run: |
+          set -euo pipefail
+          # ADAPT 2/2: replace only the literal command and arguments after --.
+          "$RUNNER_TEMP/mcp-doctor-preflight/bin/mcp-doctor" inspect \
+            --protocol-version 2026-07-28 \
+            --json-report artifacts/mcp-doctor/report.json \
+            --junit-report artifacts/mcp-doctor/report.junit.xml \
+            --markdown-report artifacts/mcp-doctor/report.md \
+            --badge-report artifacts/mcp-doctor/badge.json \
+            -- \
+            ./target/release/mcp-doctor-stdio-fixture catalog-valid \
+            >/dev/null
+
+      - name: Verify the safe report boundary
+        id: verify_reports
+        if: ${{ always() }}
+        run: >-
+          ./scripts/verify-mcp-doctor-preflight-reports.sh
+          artifacts/mcp-doctor/report.json
+          artifacts/mcp-doctor/report.junit.xml
+          artifacts/mcp-doctor/report.md
+          artifacts/mcp-doctor/badge.json
+
+      - name: Add the verified diagnosis to the job summary
+        if: ${{ always() && steps.verify_reports.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          {
+            cat artifacts/mcp-doctor/report.md
+            printf '\n---\n\n'
+            printf '%s\n' \
+              "Generated by [\`mcp-doctor\`](https://github.com/EnjoyableWork/mcp-doctor). [Add MCP Doctor to another project](https://github.com/EnjoyableWork/mcp-doctor/blob/main/docs/automation.md#github-actions-starter)."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare the bounded PR comment descriptor
+        if: ${{ always() && steps.verify_reports.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          descriptor="$(
+            jq -eSc '
+              . as $report |
+              if
+                ($report.summary | type) == "object" and
+                ([
+                  $report.summary.checks,
+                  $report.summary.required,
+                  $report.summary.optional,
+                  $report.summary.performed,
+                  $report.summary.skipped,
+                  $report.summary.passed,
+                  $report.summary.warned,
+                  $report.summary.incomplete,
+                  $report.summary.failed,
+                  $report.summary.required_skipped
+                ] | all(type == "number" and floor == . and . >= 0 and . <= 10000)) and
+                $report.summary.checks == ($report.summary.required + $report.summary.optional) and
+                $report.summary.checks == ($report.summary.performed + $report.summary.skipped) and
+                $report.summary.performed == (
+                  $report.summary.passed +
+                  $report.summary.warned +
+                  $report.summary.incomplete +
+                  $report.summary.failed
+                ) and
+                $report.summary.required_skipped <= $report.summary.required and
+                $report.summary.required_skipped <= $report.summary.skipped and
+                ($report.summary.skipped - $report.summary.required_skipped) <= $report.summary.optional and
+                (
+                  ($report.outcome == "failed" and $report.summary.failed > 0) or
+                  (
+                    $report.outcome == "incomplete" and
+                    $report.summary.failed == 0 and
+                    (
+                      $report.summary.incomplete > 0 or
+                      $report.summary.required == 0 or
+                      $report.summary.performed == 0 or
+                      $report.summary.required_skipped > 0
+                    )
+                  ) or
+                  (
+                    $report.outcome == "passed" and
+                    $report.summary.failed == 0 and
+                    $report.summary.incomplete == 0 and
+                    $report.summary.required > 0 and
+                    $report.summary.performed > 0 and
+                    $report.summary.required_skipped == 0
+                  )
+                )
+              then {
+                version: 1,
+                outcome: $report.outcome,
+                summary: ($report.summary | {
+                  checks,
+                  required,
+                  optional,
+                  performed,
+                  skipped,
+                  passed,
+                  warned,
+                  incomplete,
+                  failed,
+                  required_skipped
+                })
+              }
+              else error("unexpected comment descriptor source")
+              end
+            ' artifacts/mcp-doctor/report.json
+          )"
+          LC_ALL=C
+          ((${#descriptor} <= 2048))
+          printf '%s\n' "$descriptor" >artifacts/mcp-doctor/mcp-doctor-comment.json
+
+      - name: Upload the safe reports without masking the diagnostic exit
+        if: ${{ always() && steps.verify_reports.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mcp-doctor-reports
+          path: |
+            artifacts/mcp-doctor/report.json
+            artifacts/mcp-doctor/report.junit.xml
+            artifacts/mcp-doctor/report.md
+            artifacts/mcp-doctor/badge.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the bounded PR comment descriptor
+        if: ${{ always() && steps.verify_reports.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: artifacts/mcp-doctor/mcp-doctor-comment.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 1

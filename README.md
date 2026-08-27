@@ -21,11 +21,12 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
-  <a href="#agent-skill">Agent Skill</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#why-mcp-doctor">Why mcp-doctor?</a> ·
+  <a href="docs/automation.md">Automation and CI</a> ·
+  <a href="#agent-skill">Agent Skill</a> ·
   <a href="#choose-a-diagnostic">Commands</a> ·
-  <a href="#documentation">Documentation</a> ·
+  <a href="#documentation">Docs</a> ·
   <a href="#assurance">Assurance</a>
 </p>
 
@@ -160,6 +161,8 @@ multi-tool workflows, generated cases, rejection checks, and contract diffs.
 | Evaluate the Agent Skill on a registry or host | [Agent Skill evaluation contract](docs/evaluations/agent-skill-v1.md) |
 | Choose a diagnostic or run active scenarios safely | [Diagnostic commands](docs/commands.md) |
 | Select an MCP revision or verify the support matrix | [MCP revision support](docs/protocol-support.md) |
+| Add an MCP Doctor check and sticky GitHub PR comment | [GitHub Actions starter](docs/automation.md#github-actions-starter) |
+| Compare Passive, Standard, and Full CI coverage | [MCP Doctor CI modes](docs/automation.md#mcp-doctor-ci-modes) |
 | Configure CI, produce reports, or interpret exits | [Automation and CI](docs/automation.md) |
 | Generate a portable Shields-compatible badge artifact | [Badge artifact contract](docs/automation.md#badge-artifacts) |
 | Understand execution, network, cleanup, redaction, and hard limits | [Safety model](docs/safety.md) |

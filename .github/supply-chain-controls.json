@@ -1,7 +1,7 @@
 {
   "schema_version": "mcp-doctor.supply-chain-controls/v1",
   "api_version": "2026-03-10",
-  "reviewed_on": "2026-08-24",
+  "reviewed_on": "2026-08-27",
   "repository": "EnjoyableWork/mcp-doctor",
   "default_branch": "main",
   "dependency_updates": {
@@ -172,7 +172,8 @@
     "checked_in": [
     ".github/workflows/ci.yml",
     ".github/workflows/compatibility.yml",
-    ".github/workflows/mcp-doctor-preflight.yml",
+    ".github/workflows/mcp-doctor-comment.yml",
+    ".github/workflows/mcp-doctor.yml",
     ".github/workflows/release-authorization-negative.yml",
       ".github/workflows/release-channels.yml",
       ".github/workflows/release-preflight.yml",
@@ -203,7 +204,7 @@
       "privileged_assets": false
     },
     {
-      "path": ".github/workflows/mcp-doctor-preflight.yml",
+      "path": ".github/workflows/mcp-doctor.yml",
       "event": "pull_request",
       "permissions": {
         "contents": "read"
@@ -221,6 +222,29 @@
       "github_hosted_only": true,
       "stored_secrets": false,
       "privileged_assets": false
+    }
+  ],
+  "privileged_workflows": [
+    {
+      "path": ".github/workflows/mcp-doctor-comment.yml",
+      "event": "workflow_run/completed",
+      "source_workflow": ".github/workflows/mcp-doctor.yml",
+      "permissions": {
+        "actions": "read",
+        "contents": "read",
+        "pull-requests": "write"
+      },
+      "github_hosted_only": true,
+      "stored_secrets": false,
+      "oidc": false,
+      "environment": false,
+      "untrusted_checkout": false,
+      "untrusted_artifact": {
+        "name": "mcp-doctor-comment.json",
+        "archive": false,
+        "maximum_bytes": 4096
+      },
+      "mutable_surface": "one fixed-format marker-owned github-actions[bot] issue comment on an exact current same-repository pull request whose producer contract matches the trusted default branch"
     }
   ],
   "actions": [
@@ -254,7 +278,7 @@
           "sha256": "3e855ffa704114a51628ef8f0bf3aeb41728adf9d9070e263bf58aa5640b0eb5"
         }
       ],
-      "role": "Move bounded one-day artifacts between jobs in the same run"
+      "role": "Publish bounded same-run release payloads, seven-day diagnostic reports, and one one-day cross-run non-archive comment descriptor"
     },
     {
       "selection": "direct",
@@ -270,7 +294,7 @@
           "sha256": "3e855ffa704114a51628ef8f0bf3aeb41728adf9d9070e263bf58aa5640b0eb5"
         }
       ],
-      "role": "Recover named same-run artifacts with digest mismatch rejection"
+      "role": "Recover named same-run artifacts and one exact bounded cross-run non-archive descriptor with digest mismatch rejection"
     },
     {
       "selection": "direct",

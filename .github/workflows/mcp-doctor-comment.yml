@@ -1,0 +1,550 @@
+name: MCP Doctor comment
+
+on:
+  workflow_run:
+    workflows:
+      - Enjoyable Work
+    types:
+      - completed
+
+permissions: {}
+
+concurrency:
+  group: mcp-doctor-comment-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: MCP Doctor comment
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Validate the completed run and current pull request
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: "1"
+          GH_PAGER: cat
+          EXPECTED_WORKFLOW_NAME: Enjoyable Work
+          EXPECTED_WORKFLOW_PATH: .github/workflows/mcp-doctor.yml
+        run: |
+          set -euo pipefail
+          command -v gh >/dev/null
+          command -v jq >/dev/null
+          command -v timeout >/dev/null
+
+          repository="$(jq -er '.repository.full_name | select(type == "string")' "$GITHUB_EVENT_PATH")"
+          repository_id="$(jq -er '.repository.id | select(type == "number" and floor == .)' "$GITHUB_EVENT_PATH")"
+          run_id="$(jq -er '.workflow_run.id | select(type == "number" and floor == .)' "$GITHUB_EVENT_PATH")"
+          workflow_id="$(jq -er '.workflow_run.workflow_id | select(type == "number" and floor == .)' "$GITHUB_EVENT_PATH")"
+          run_attempt="$(jq -er '.workflow_run.run_attempt | select(type == "number" and floor == . and . > 0)' "$GITHUB_EVENT_PATH")"
+          head_sha="$(jq -er '.workflow_run.head_sha | select(type == "string")' "$GITHUB_EVENT_PATH")"
+          publisher_sha="$GITHUB_SHA"
+
+          [[ "$repository" == "$GITHUB_REPOSITORY" ]]
+          [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$repository_id" =~ ^[0-9]+$ ]]
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          [[ "$workflow_id" =~ ^[0-9]+$ ]]
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$publisher_sha" =~ ^[0-9a-f]{40}$ ]]
+
+          api_version=2022-11-28
+          live_repository="$RUNNER_TEMP/mcp-doctor-live-repository.json"
+          timeout 60 gh api "repos/$repository" \
+            -H "X-GitHub-Api-Version: $api_version" >"$live_repository"
+          default_branch="$(
+            jq -er \
+              --arg repository "$repository" \
+              --argjson repository_id "$repository_id" '
+                select(
+                  .id == $repository_id and
+                  .full_name == $repository and
+                  (.default_branch | type) == "string" and
+                  (.default_branch | test("^[A-Za-z0-9._/-]+$"))
+                ) |
+                .default_branch
+              ' "$live_repository"
+          )"
+          [[ "$GITHUB_REF" == "refs/heads/$default_branch" ]]
+
+          live_run="$RUNNER_TEMP/mcp-doctor-live-run.json"
+          timeout 60 gh api "repos/$repository/actions/runs/$run_id" \
+            -H "X-GitHub-Api-Version: $api_version" >"$live_run"
+          jq -e \
+            --arg repository "$repository" \
+            --arg name "$EXPECTED_WORKFLOW_NAME" \
+            --arg path "$EXPECTED_WORKFLOW_PATH" \
+            --arg head_sha "$head_sha" \
+            --argjson repository_id "$repository_id" \
+            --argjson run_id "$run_id" \
+            --argjson workflow_id "$workflow_id" \
+            --argjson run_attempt "$run_attempt" '
+              .id == $run_id and
+              .workflow_id == $workflow_id and
+              .run_attempt == $run_attempt and
+              .repository.id == $repository_id and
+              .repository.full_name == $repository and
+              .name == $name and
+              .path == $path and
+              .event == "pull_request" and
+              .status == "completed" and
+              (.conclusion | type) == "string" and
+              .head_sha == $head_sha
+            ' "$live_run" >/dev/null
+
+          if ! jq -e \
+            --arg repository "$repository" \
+            --argjson repository_id "$repository_id" '
+              .head_repository.id == $repository_id and
+              .head_repository.full_name == $repository and
+              (.pull_requests | type) == "array" and
+              (.pull_requests | length) == 1 and
+              .pull_requests[0].base.repo.id == $repository_id and
+              .pull_requests[0].head.repo.id == $repository_id
+            ' "$live_run" >/dev/null; then
+            printf 'publish=false\n' >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_number="$(jq -er '.pull_requests[0].number | select(type == "number" and floor == . and . > 0)' "$live_run")"
+          run_conclusion="$(jq -er '.conclusion' "$live_run")"
+          [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]
+          [[ "$run_conclusion" =~ ^(success|failure|cancelled|timed_out|action_required|neutral|skipped|stale|startup_failure)$ ]]
+
+          live_pr="$RUNNER_TEMP/mcp-doctor-live-pr.json"
+          timeout 60 gh api "repos/$repository/pulls/$pr_number" \
+            -H "X-GitHub-Api-Version: $api_version" >"$live_pr"
+          if ! jq -e \
+            --arg head_sha "$head_sha" \
+            --arg default_branch "$default_branch" \
+            --argjson repository_id "$repository_id" \
+            --argjson pr_number "$pr_number" '
+              .number == $pr_number and
+              .state == "open" and
+              .base.repo.id == $repository_id and
+              .base.ref == $default_branch and
+              .head.repo.id == $repository_id and
+              .head.sha == $head_sha
+            ' "$live_pr" >/dev/null; then
+            printf 'publish=false\n' >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_runs="$RUNNER_TEMP/mcp-doctor-latest-runs.json"
+          timeout 60 gh api \
+            "repos/$repository/actions/workflows/$workflow_id/runs?event=pull_request&head_sha=$head_sha&per_page=100" \
+            -H "X-GitHub-Api-Version: $api_version" >"$latest_runs"
+          if ! jq -e \
+            --arg head_sha "$head_sha" \
+            --argjson repository_id "$repository_id" \
+            --argjson workflow_id "$workflow_id" \
+            --argjson pr_number "$pr_number" \
+            --argjson run_id "$run_id" \
+            --argjson run_attempt "$run_attempt" '
+              [
+                .workflow_runs[] |
+                select(
+                  .workflow_id == $workflow_id and
+                  .head_sha == $head_sha and
+                  .head_repository.id == $repository_id and
+                  (.pull_requests | type) == "array" and
+                  (.pull_requests | length) == 1 and
+                  .pull_requests[0].number == $pr_number and
+                  .pull_requests[0].base.repo.id == $repository_id and
+                  .pull_requests[0].head.repo.id == $repository_id
+                )
+              ] as $matching |
+              ($matching | length) > 0 and
+              $matching[0].id == $run_id and
+              $matching[0].run_attempt == $run_attempt
+            ' "$latest_runs" >/dev/null; then
+            printf 'publish=false\n' >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          contract_matches=true
+          for contract_path in \
+            .github/workflows/mcp-doctor.yml \
+            scripts/verify-mcp-doctor-preflight-capabilities.sh \
+            scripts/verify-mcp-doctor-preflight-reports.sh; do
+            head_contract="$RUNNER_TEMP/mcp-doctor-head-$(basename "$contract_path").json"
+            publisher_contract="$RUNNER_TEMP/mcp-doctor-publisher-$(basename "$contract_path").json"
+            if ! timeout 60 gh api \
+              "repos/$repository/contents/$contract_path?ref=$head_sha" \
+              -H "X-GitHub-Api-Version: $api_version" >"$head_contract"; then
+              contract_matches=false
+              break
+            fi
+            if ! timeout 60 gh api \
+              "repos/$repository/contents/$contract_path?ref=$publisher_sha" \
+              -H "X-GitHub-Api-Version: $api_version" >"$publisher_contract"; then
+              contract_matches=false
+              break
+            fi
+            if ! jq -e \
+              --arg path "$contract_path" '
+                .type == "file" and
+                .path == $path and
+                (.sha | type) == "string" and
+                (.sha | test("^[0-9a-f]{40}$")) and
+                (.size | type) == "number" and
+                (.size | floor) == .size and
+                .size > 0 and
+                .size <= 65536
+              ' "$head_contract" >/dev/null ||
+              ! jq -e \
+                --arg path "$contract_path" '
+                  .type == "file" and
+                  .path == $path and
+                  (.sha | type) == "string" and
+                  (.sha | test("^[0-9a-f]{40}$")) and
+                  (.size | type) == "number" and
+                  (.size | floor) == .size and
+                  .size > 0 and
+                  .size <= 65536
+                ' "$publisher_contract" >/dev/null ||
+              [[ "$(jq -er '.sha' "$head_contract")" != \
+                "$(jq -er '.sha' "$publisher_contract")" ]]; then
+              contract_matches=false
+              break
+            fi
+          done
+
+          has_artifact=false
+          artifact_id=
+          if [[ "$contract_matches" == true ]]; then
+            artifacts="$RUNNER_TEMP/mcp-doctor-run-artifacts.json"
+            timeout 60 gh api "repos/$repository/actions/runs/$run_id/artifacts?per_page=100" \
+              -H "X-GitHub-Api-Version: $api_version" >"$artifacts"
+            if jq -e '
+                .total_count <= 100 and
+                ([.artifacts[] | select(.name == "mcp-doctor-comment.json")] | length) == 1 and
+                ([.artifacts[] | select(.name == "mcp-doctor-comment.json")][0] |
+                  .expired == false and
+                  (.id | type) == "number" and
+                  (.id | floor) == .id and
+                  .id > 0 and
+                  (.size_in_bytes | type) == "number" and
+                  (.size_in_bytes | floor) == .size_in_bytes and
+                  .size_in_bytes > 0 and
+                  .size_in_bytes <= 4096 and
+                  .workflow_run.id == $run_id and
+                  .workflow_run.repository_id == $repository_id and
+                  .workflow_run.head_repository_id == $repository_id and
+                  .workflow_run.head_sha == $head_sha)
+              ' \
+              --arg head_sha "$head_sha" \
+              --argjson repository_id "$repository_id" \
+              --argjson run_id "$run_id" \
+              "$artifacts" >/dev/null; then
+              has_artifact=true
+              artifact_id="$(
+                jq -er '.artifacts[] | select(.name == "mcp-doctor-comment.json") | .id' \
+                  "$artifacts"
+              )"
+              [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]
+            fi
+          fi
+
+          {
+            printf 'publish=true\n'
+            printf 'repository_id=%s\n' "$repository_id"
+            printf 'pr_number=%s\n' "$pr_number"
+            printf 'workflow_id=%s\n' "$workflow_id"
+            printf 'run_id=%s\n' "$run_id"
+            printf 'run_attempt=%s\n' "$run_attempt"
+            printf 'run_conclusion=%s\n' "$run_conclusion"
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'short_sha=%s\n' "${head_sha:0:7}"
+            printf 'default_branch=%s\n' "$default_branch"
+            printf 'contract_matches=%s\n' "$contract_matches"
+            printf 'has_artifact=%s\n' "$has_artifact"
+            printf 'artifact_id=%s\n' "$artifact_id"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Download the exact bounded comment descriptor
+        id: download_descriptor
+        if: ${{ steps.context.outputs.publish == 'true' && steps.context.outputs.has_artifact == 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.context.outputs.artifact_id }}
+          path: ${{ runner.temp }}/mcp-doctor-comment
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.context.outputs.run_id }}
+          skip-decompress: true
+
+      - name: Render the fixed Markdown comment
+        id: render
+        if: ${{ always() && steps.context.outputs.publish == 'true' }}
+        env:
+          CONTRACT_MATCHES: ${{ steps.context.outputs.contract_matches }}
+          DOWNLOAD_OUTCOME: ${{ steps.download_descriptor.outcome }}
+          HAS_ARTIFACT: ${{ steps.context.outputs.has_artifact }}
+          RUN_ATTEMPT: ${{ steps.context.outputs.run_attempt }}
+          RUN_CONCLUSION: ${{ steps.context.outputs.run_conclusion }}
+          RUN_ID: ${{ steps.context.outputs.run_id }}
+          SHORT_SHA: ${{ steps.context.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          descriptor_file="$RUNNER_TEMP/mcp-doctor-comment/mcp-doctor-comment.json"
+          verified=false
+          outcome=
+          passed=0
+          failed=0
+          warned=0
+          incomplete=0
+          skipped=0
+
+          if [[ "$HAS_ARTIFACT" == true && "$DOWNLOAD_OUTCOME" == success && \
+            -f "$descriptor_file" && ! -L "$descriptor_file" ]]; then
+            descriptor="$(<"$descriptor_file")"
+            LC_ALL=C
+            if ((${#descriptor} <= 4096)) && jq -e '
+              keys == ["outcome", "summary", "version"] and
+              .version == 1 and
+              (.outcome == "passed" or .outcome == "failed" or .outcome == "incomplete") and
+              (.summary | keys) == [
+                "checks",
+                "failed",
+                "incomplete",
+                "optional",
+                "passed",
+                "performed",
+                "required",
+                "required_skipped",
+                "skipped",
+                "warned"
+              ] and
+              ([
+                .summary.checks,
+                .summary.required,
+                .summary.optional,
+                .summary.performed,
+                .summary.skipped,
+                .summary.passed,
+                .summary.warned,
+                .summary.incomplete,
+                .summary.failed,
+                .summary.required_skipped
+              ] | all(type == "number" and floor == . and . >= 0 and . <= 10000)) and
+              .summary.checks == (.summary.required + .summary.optional) and
+              .summary.checks == (.summary.performed + .summary.skipped) and
+              .summary.performed == (
+                .summary.passed + .summary.warned + .summary.incomplete + .summary.failed
+              ) and
+              .summary.required_skipped <= .summary.required and
+              .summary.required_skipped <= .summary.skipped and
+              (.summary.skipped - .summary.required_skipped) <= .summary.optional and
+              (
+                (.outcome == "failed" and .summary.failed > 0) or
+                (
+                  .outcome == "incomplete" and
+                  .summary.failed == 0 and
+                  (
+                    .summary.incomplete > 0 or
+                    .summary.required == 0 or
+                    .summary.performed == 0 or
+                    .summary.required_skipped > 0
+                  )
+                ) or
+                (
+                  .outcome == "passed" and
+                  .summary.failed == 0 and
+                  .summary.incomplete == 0 and
+                  .summary.required > 0 and
+                  .summary.performed > 0 and
+                  .summary.required_skipped == 0
+                )
+              )
+            ' <<<"$descriptor" >/dev/null 2>&1; then
+              read -r outcome passed failed warned incomplete skipped < <(
+                jq -r '[
+                  .outcome,
+                  .summary.passed,
+                  .summary.failed,
+                  .summary.warned,
+                  .summary.incomplete,
+                  .summary.skipped
+                ] | @tsv' <<<"$descriptor"
+              )
+              case "$outcome:$RUN_CONCLUSION" in
+                passed:success|failed:failure|incomplete:failure) verified=true ;;
+              esac
+            fi
+          fi
+
+          if [[ "$CONTRACT_MATCHES" != true ]]; then
+            result="⚠️ **Summary withheld** · MCP Doctor integration files could not be verified against the trusted default branch."
+            scope="Review the linked check and integration contract before relying on this summary."
+          elif [[ "$verified" == true ]]; then
+            case "$outcome" in
+              passed)
+                result="✅ **Passed** · $passed passed · $failed failed · $warned warnings · $skipped skipped"
+                ;;
+              failed)
+                result="❌ **Failed** · $passed passed · $failed failed · $warned warnings · $skipped skipped"
+                ;;
+              incomplete)
+                result="⚪ **Incomplete** · $passed passed · $incomplete incomplete · $warned warnings · $skipped skipped"
+                ;;
+              *) exit 1 ;;
+            esac
+            scope="**Mode: Passive** · Inspects the server without calling tools."
+          else
+            result="⚠️ **No structurally validated summary** · Open the check for the latest result."
+            scope="No artifact-provided prose was published."
+          fi
+
+          run_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+          comment_file="$RUNNER_TEMP/mcp-doctor-comment.md"
+          {
+            printf '%s\n' '<!-- mcp-doctor:pr-comment:v1 -->'
+            printf '%s\n\n' '## 🩺 MCP Doctor'
+            printf '%s\n\n' "$result"
+            printf '%s\n\n' "$scope"
+            printf '[View full check](%s) · [Explore MCP Doctor modes](%s) · [Add MCP Doctor to another project](%s)\n\n' \
+              "$run_url" \
+              'https://github.com/EnjoyableWork/mcp-doctor/blob/main/docs/automation.md#mcp-doctor-ci-modes' \
+              'https://github.com/EnjoyableWork/mcp-doctor/blob/main/docs/automation.md#github-actions-starter'
+            printf '<sub>Commit `%s` · attempt %s · CI presentation, not certification</sub>\n' \
+              "$SHORT_SHA" "$RUN_ATTEMPT"
+          } >"$comment_file"
+          comment_body="$(<"$comment_file")"
+          LC_ALL=C
+          ((${#comment_body} <= 49152))
+          printf 'verified=%s\n' "$verified" >>"$GITHUB_OUTPUT"
+
+      - name: Create or update the MCP Doctor comment
+        if: ${{ always() && steps.context.outputs.publish == 'true' && steps.render.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: "1"
+          GH_PAGER: cat
+          EXPECTED_DEFAULT_BRANCH: ${{ steps.context.outputs.default_branch }}
+          EXPECTED_HEAD_SHA: ${{ steps.context.outputs.head_sha }}
+          EXPECTED_REPOSITORY_ID: ${{ steps.context.outputs.repository_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ steps.context.outputs.run_attempt }}
+          EXPECTED_RUN_ID: ${{ steps.context.outputs.run_id }}
+          EXPECTED_WORKFLOW_ID: ${{ steps.context.outputs.workflow_id }}
+          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]
+          [[ "$EXPECTED_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_WORKFLOW_ID" =~ ^[1-9][0-9]*$ ]]
+          marker='<!-- mcp-doctor:pr-comment:v1 -->'
+          api_version=2022-11-28
+          live_pr="$RUNNER_TEMP/mcp-doctor-comment-live-pr.json"
+          timeout 60 gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            -H "X-GitHub-Api-Version: $api_version" >"$live_pr"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg default_branch "$EXPECTED_DEFAULT_BRANCH" \
+            --arg head_sha "$EXPECTED_HEAD_SHA" \
+            --argjson pr_number "$PR_NUMBER" '
+              .number == $pr_number and
+              .state == "open" and
+              .base.repo.full_name == $repository and
+              .base.ref == $default_branch and
+              .head.repo.full_name == $repository and
+              .head.sha == $head_sha
+            ' "$live_pr" >/dev/null
+
+          latest_runs="$RUNNER_TEMP/mcp-doctor-comment-latest-runs.json"
+          timeout 60 gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/$EXPECTED_WORKFLOW_ID/runs?event=pull_request&head_sha=$EXPECTED_HEAD_SHA&per_page=100" \
+            -H "X-GitHub-Api-Version: $api_version" >"$latest_runs"
+          jq -e \
+            --arg head_sha "$EXPECTED_HEAD_SHA" \
+            --argjson repository_id "$EXPECTED_REPOSITORY_ID" \
+            --argjson workflow_id "$EXPECTED_WORKFLOW_ID" \
+            --argjson pr_number "$PR_NUMBER" \
+            --argjson run_id "$EXPECTED_RUN_ID" \
+            --argjson run_attempt "$EXPECTED_RUN_ATTEMPT" '
+              [
+                .workflow_runs[] |
+                select(
+                  .workflow_id == $workflow_id and
+                  .head_sha == $head_sha and
+                  .head_repository.id == $repository_id and
+                  (.pull_requests | type) == "array" and
+                  (.pull_requests | length) == 1 and
+                  .pull_requests[0].number == $pr_number and
+                  .pull_requests[0].base.repo.id == $repository_id and
+                  .pull_requests[0].head.repo.id == $repository_id
+                )
+              ] as $matching |
+              ($matching | length) > 0 and
+              $matching[0].id == $run_id and
+              $matching[0].run_attempt == $run_attempt
+            ' "$latest_runs" >/dev/null
+
+          comments="$RUNNER_TEMP/mcp-doctor-comments.json"
+          timeout 60 gh api \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100&page=1" \
+            -H "X-GitHub-Api-Version: $api_version" >"$comments"
+          jq -e 'type == "array" and length < 100' "$comments" >/dev/null
+
+          mapfile -t comment_ids < <(
+            jq -er --arg marker "$marker" '
+              .[] |
+              select(
+                (.body | type) == "string" and
+                (.body | startswith($marker + "\n")) and
+                .user.login == "github-actions[bot]" and
+                .user.type == "Bot" and
+                .user.id == 41898282
+              ) |
+              .id |
+              select(type == "number" and floor == . and . > 0)
+            ' "$comments"
+          )
+
+          payload="$RUNNER_TEMP/mcp-doctor-comment-payload.json"
+          jq -n --rawfile body "$RUNNER_TEMP/mcp-doctor-comment.md" \
+            '{body: $body}' >"$payload"
+          response="$RUNNER_TEMP/mcp-doctor-comment-response.json"
+          case "${#comment_ids[@]}" in
+            0)
+              timeout 60 gh api -X POST \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+                -H "X-GitHub-Api-Version: $api_version" \
+                --input "$payload" >"$response"
+              ;;
+            1)
+              [[ "${comment_ids[0]}" =~ ^[1-9][0-9]*$ ]]
+              timeout 60 gh api -X PATCH \
+                "repos/$GITHUB_REPOSITORY/issues/comments/${comment_ids[0]}" \
+                -H "X-GitHub-Api-Version: $api_version" \
+                --input "$payload" >"$response"
+              ;;
+            *)
+              echo "multiple owned MCP Doctor comments prevent a safe update" >&2
+              exit 1
+              ;;
+          esac
+          jq -e --arg marker "$marker" '
+            (.id | type) == "number" and
+            (.body | type) == "string" and
+            (.body | startswith($marker + "\n")) and
+            .user.login == "github-actions[bot]" and
+            .user.type == "Bot" and
+            .user.id == 41898282
+          ' "$response" >/dev/null
+
+      - name: Fail closed when the latest report was not verified
+        if: ${{ always() && steps.context.outputs.publish == 'true' && (steps.render.outcome != 'success' || steps.render.outputs.verified != 'true') }}
+        run: exit 1

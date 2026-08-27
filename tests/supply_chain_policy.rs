@@ -204,7 +204,7 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
         expected_paths,
         BTreeSet::from([
             ".github/workflows/ci.yml".to_owned(),
-            ".github/workflows/mcp-doctor-preflight.yml".to_owned(),
+            ".github/workflows/mcp-doctor.yml".to_owned(),
             ".github/workflows/release-preflight.yml".to_owned(),
         ])
     );
@@ -235,8 +235,17 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
             .replace('\\', "/");
         let workflow = fs::read_to_string(&path).expect("workflow should be readable");
         assert!(
-            !workflow.contains("pull_request_target:") && !workflow.contains("workflow_run:"),
-            "no repository workflow may elevate untrusted code"
+            !workflow.contains("pull_request_target:"),
+            "no repository workflow may use pull_request_target"
+        );
+        if relative == ".github/workflows/mcp-doctor-comment.yml" {
+            assert!(workflow.contains("workflow_run:"));
+            assert!(!workflow.contains("\n  pull_request:"));
+            continue;
+        }
+        assert!(
+            !workflow.contains("workflow_run:"),
+            "only the closed MCP Doctor comment publisher may use workflow_run"
         );
         let is_pull_request = workflow.contains("on:\n  pull_request:");
         assert_eq!(
@@ -266,6 +275,86 @@ fn pull_request_workflows_are_read_only_secretless_and_hosted() {
         assert!(
             preflight.contains(explicit_empty_credential),
             "release preflight should preserve {explicit_empty_credential}"
+        );
+    }
+}
+
+#[test]
+fn privileged_comment_publisher_has_one_bounded_mutable_surface() {
+    let controls = controls();
+    let privileged = controls["privileged_workflows"]
+        .as_array()
+        .expect("privileged workflows should be an array");
+    assert_eq!(privileged.len(), 1);
+    assert_eq!(
+        privileged[0],
+        json!({
+            "path": ".github/workflows/mcp-doctor-comment.yml",
+            "event": "workflow_run/completed",
+            "source_workflow": ".github/workflows/mcp-doctor.yml",
+            "permissions": {
+                "actions": "read",
+                "contents": "read",
+                "pull-requests": "write"
+            },
+            "github_hosted_only": true,
+            "stored_secrets": false,
+            "oidc": false,
+            "environment": false,
+            "untrusted_checkout": false,
+            "untrusted_artifact": {
+                "name": "mcp-doctor-comment.json",
+                "archive": false,
+                "maximum_bytes": 4096
+            },
+            "mutable_surface": "one fixed-format marker-owned github-actions[bot] issue comment on an exact current same-repository pull request whose producer contract matches the trusted default branch"
+        })
+    );
+
+    let publisher = repository_file(".github/workflows/mcp-doctor-comment.yml");
+    for contract in [
+        "workflow_run:\n    workflows:\n      - Enjoyable Work\n    types:\n      - completed",
+        "permissions: {}",
+        "actions: read\n      contents: read\n      pull-requests: write",
+        "github.event.workflow_run.event == 'pull_request'",
+        "EXPECTED_WORKFLOW_PATH: .github/workflows/mcp-doctor.yml",
+        ".head.sha == $head_sha",
+        "mcp-doctor-comment.json",
+        ".size_in_bytes <= 4096",
+        "skip-decompress: true",
+        "<!-- mcp-doctor:pr-comment:v1 -->",
+        ".user.login == \"github-actions[bot]\"",
+        ".user.id == 41898282",
+        "issues/$PR_NUMBER/comments",
+        "issues/comments/${comment_ids[0]}",
+    ] {
+        assert!(publisher.contains(contract), "publisher omitted {contract}");
+    }
+    let publisher_permissions = publisher
+        .split_once("    permissions:\n")
+        .and_then(|(_, remainder)| remainder.split_once("\n\n    steps:"))
+        .map(|(permissions, _)| permissions)
+        .expect("publisher should have one explicit job permission map");
+    assert_eq!(
+        publisher_permissions,
+        "      actions: read\n      contents: read\n      pull-requests: write",
+        "publisher permission map must remain exact"
+    );
+    for forbidden in [
+        "pull_request_target:",
+        "\n  pull_request:",
+        "uses: actions/checkout@",
+        "contents: write",
+        "actions: write",
+        "id-token: write",
+        "environment:",
+        "self-hosted",
+        "secrets.",
+        "report.md",
+    ] {
+        assert!(
+            !publisher.contains(forbidden),
+            "publisher contains {forbidden}"
         );
     }
 }
@@ -471,7 +560,7 @@ fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
 #[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
-    assert_eq!(controls["reviewed_on"], "2026-08-24");
+    assert_eq!(controls["reviewed_on"], "2026-08-27");
     assert_eq!(
         controls["distribution_authentication"]["cargo_package"],
         "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate"
