@@ -52,6 +52,9 @@ fn main() -> ExitCode {
         Some("catalog-repeated-cursor") => catalog_repeated_cursor(),
         Some("tool-description-quality") => tool_description_quality(),
         Some("tool-description-placeholder") => tool_description_placeholder(),
+        Some("tool-description-reused") => tool_description_reused(),
+        Some("tool-description-reused-later-failure") => tool_description_reused_later_failure(),
+        Some("tool-description-reused-finding-limit") => tool_description_reused_finding_limit(),
         Some("tool-description-non-string") => tool_description_non_string(),
         Some("tool-description-finding-limit") => tool_description_finding_limit(),
         Some("credential-literals") => credential_literals(),
@@ -90,6 +93,7 @@ fn main() -> ExitCode {
         Some("legacy-catalog-method-errors") => legacy_catalog_method_errors(),
         Some("legacy-tool-description-quality") => legacy_tool_description_quality(),
         Some("legacy-tool-description-placeholder") => legacy_tool_description_placeholder(),
+        Some("legacy-tool-description-reused") => legacy_tool_description_reused(),
         Some("legacy-credential-literals") => legacy_credential_literals(),
         Some("legacy-required-input-descriptions") => legacy_required_input_descriptions(),
         Some("legacy-report-single-run") => legacy_report_single_run(&remaining),
@@ -1429,6 +1433,202 @@ fn tool_description_placeholder() -> ExitCode {
             "ttlMs": 0,
             "cacheScope": "private",
             "tools": tool_description_placeholder_tools()
+        }),
+    )
+}
+
+const REUSED_DESCRIPTION_SENTINEL: &str = "synthetic-private-reused-description-never-report-7f3b";
+const REUSED_DESCRIPTION_CURSOR: &str =
+    "synthetic-private-reused-description-cursor-never-report-7f3b";
+
+fn tool_description_reused() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": reused_description_tools_page(0),
+            "nextCursor": REUSED_DESCRIPTION_CURSOR
+        }),
+    );
+    read_request(&mut input, 3, "tools/list", Some(REUSED_DESCRIPTION_CURSOR));
+    write_result(
+        3,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": reused_description_tools_page(1)
+        }),
+    );
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn legacy_tool_description_reused() -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    let revision = read_initialize(&mut input);
+    write_result(
+        1,
+        json!({
+            "protocolVersion": revision,
+            "capabilities": {"tools": {"listChanged": false}},
+            "serverInfo": {"name": "synthetic-legacy-reused", "version": "1.0.0"}
+        }),
+    );
+    read_initialized(&mut input);
+    read_legacy_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "tools": reused_description_tools_page(0),
+            "nextCursor": REUSED_DESCRIPTION_CURSOR
+        }),
+    );
+    read_legacy_request(&mut input, 3, "tools/list", Some(REUSED_DESCRIPTION_CURSOR));
+    write_result(3, json!({"tools": reused_description_tools_page(1)}));
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn reused_description_tools_page(page: usize) -> Vec<Value> {
+    let schema = || {
+        json!({
+            "$schema": DRAFT_2020_12,
+            "type": "object",
+            "additionalProperties": false
+        })
+    };
+    let reused = format!("Select the {REUSED_DESCRIPTION_SENTINEL} record by exact identifier.");
+    match page {
+        0 => vec![
+            json!({
+                "name": "synthetic-private-reused-canonical-never-report-7f3b",
+                "description": reused,
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-reused-distinct-never-report-7f3b",
+                "description": "Use another bounded synthetic selection path.",
+                "inputSchema": schema()
+            }),
+        ],
+        1 => vec![
+            json!({
+                "name": "synthetic-private-reused-later-a-never-report-7f3b",
+                "description": " SELECT\tTHE synthetic_private_reused_description_never_report_7f3b record, by EXACT identifier!!! ",
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-reused-later-b-never-report-7f3b",
+                "description": reused,
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-reused-later-c-never-report-7f3b",
+                "description": "select the synthetic-private-reused-description-never-report-7f3b record by exact identifier",
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-reused-nonascii-a-never-report-7f3b",
+                "description": "Select a résumé record.",
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-reused-nonascii-b-never-report-7f3b",
+                "description": "Select a resume record.",
+                "inputSchema": schema()
+            }),
+        ],
+        _ => panic!("the fixture defines exactly two reused-description pages"),
+    }
+}
+
+fn tool_description_reused_later_failure() -> ExitCode {
+    let schema = json!({
+        "$schema": DRAFT_2020_12,
+        "type": "object",
+        "additionalProperties": false
+    });
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_request(&mut input, 1, "server/discover", None);
+    write_discovery_response(json!({"tools": {}}));
+    read_request(&mut input, 2, "tools/list", None);
+    write_result(
+        2,
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-private-failed-prefix-a-never-report-7f3b",
+                    "description": "Synthetic failed-prefix selection guidance.",
+                    "inputSchema": schema
+                },
+                {
+                    "name": "synthetic-private-failed-prefix-b-never-report-7f3b",
+                    "description": "Synthetic failed-prefix selection guidance.",
+                    "inputSchema": schema
+                }
+            ],
+            "nextCursor": REUSED_DESCRIPTION_CURSOR
+        }),
+    );
+    read_request(&mut input, 3, "tools/list", Some(REUSED_DESCRIPTION_CURSOR));
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(b"{synthetic-invalid-later-page\n")
+        .expect("the malformed later response should be writable");
+    stdout
+        .flush()
+        .expect("the malformed later response should flush");
+    ExitCode::SUCCESS
+}
+
+fn tool_description_reused_finding_limit() -> ExitCode {
+    let common_schema = json!({
+        "$schema": DRAFT_2020_12,
+        "type": "object",
+        "additionalProperties": false
+    });
+    let security_schema = json!({
+        "$schema": DRAFT_2020_12,
+        "type": "object",
+        "properties": {
+            "password": {
+                "type": "string",
+                "default": "synthetic-private-reused-credential-never-report-7f3b"
+            }
+        },
+        "additionalProperties": false
+    });
+    let tools = (0..1_000)
+        .map(|index| {
+            json!({
+                "name": format!("synthetic-private-reused-limit-{index}"),
+                "description": "Select one bounded synthetic record by exact identifier.",
+                "inputSchema": if index == 0 {
+                    security_schema.clone()
+                } else {
+                    common_schema.clone()
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    serve_single_catalog_value(
+        "tools",
+        "tools/list",
+        json!({
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": tools
         }),
     )
 }

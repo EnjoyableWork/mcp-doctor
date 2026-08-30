@@ -1004,6 +1004,109 @@ fn tool_description_placeholder_response() -> FixtureResponse {
     }))
 }
 
+const HTTP_REUSED_DESCRIPTION_SENTINEL: &str =
+    "synthetic-private-http-reused-description-never-report-7f3b";
+const HTTP_REUSED_DESCRIPTION_CURSOR: &str =
+    "synthetic-private-http-reused-cursor-never-report-7f3b";
+
+fn reused_description_tools_page(page: usize) -> Vec<Value> {
+    let schema = || {
+        json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false
+        })
+    };
+    let reused =
+        format!("Select the {HTTP_REUSED_DESCRIPTION_SENTINEL} record by exact identifier.");
+    match page {
+        0 => vec![
+            json!({
+                "name": "synthetic-private-http-reused-canonical-never-report-7f3b",
+                "description": reused,
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-http-reused-distinct-never-report-7f3b",
+                "description": "Use another bounded remote selection path.",
+                "inputSchema": schema()
+            }),
+        ],
+        1 => vec![
+            json!({
+                "name": "synthetic-private-http-reused-later-a-never-report-7f3b",
+                "description": " SELECT THE synthetic_private_http_reused_description_never_report_7f3b record, by EXACT identifier!!! ",
+                "inputSchema": schema()
+            }),
+            json!({
+                "name": "synthetic-private-http-reused-later-b-never-report-7f3b",
+                "description": reused,
+                "inputSchema": schema()
+            }),
+        ],
+        _ => panic!("the fixture defines exactly two reused-description pages"),
+    }
+}
+
+fn current_reused_description_response(
+    id: i64,
+    page: usize,
+    next_cursor: Option<&str>,
+) -> FixtureResponse {
+    let mut result = json!({
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "tools": reused_description_tools_page(page)
+    });
+    if let Some(cursor) = next_cursor {
+        result["nextCursor"] = Value::String(cursor.to_owned());
+    }
+    FixtureResponse::json(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
+fn legacy_reused_description_response(
+    id: i64,
+    page: usize,
+    next_cursor: Option<&str>,
+) -> FixtureResponse {
+    let mut result = json!({"tools": reused_description_tools_page(page)});
+    if let Some(cursor) = next_cursor {
+        result["nextCursor"] = Value::String(cursor.to_owned());
+    }
+    FixtureResponse::json(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
+fn failed_prefix_reused_description_response() -> FixtureResponse {
+    let schema = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false
+    });
+    FixtureResponse::json(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "resultType": "complete",
+            "ttlMs": 0,
+            "cacheScope": "private",
+            "tools": [
+                {
+                    "name": "synthetic-private-http-failed-prefix-a-never-report-7f3b",
+                    "description": "Synthetic HTTP failed-prefix selection guidance.",
+                    "inputSchema": schema
+                },
+                {
+                    "name": "synthetic-private-http-failed-prefix-b-never-report-7f3b",
+                    "description": "Synthetic HTTP failed-prefix selection guidance.",
+                    "inputSchema": schema
+                }
+            ],
+            "nextCursor": HTTP_REUSED_DESCRIPTION_CURSOR
+        }
+    }))
+}
+
 fn credential_literal_response() -> FixtureResponse {
     FixtureResponse::json(json!({
         "jsonrpc": "2.0",
@@ -4520,6 +4623,191 @@ fn passive_http_placeholder_quality_uses_only_the_advertised_catalog_request() {
         );
     }
     assert!(!stdout.contains("tools[2].description"), "{stdout}");
+}
+
+#[test]
+fn passive_http_reused_descriptions_use_cross_page_global_indices_for_all_revisions() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                current_reused_description_response(2, 0, Some(HTTP_REUSED_DESCRIPTION_CURSOR)),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                current_reused_description_response(3, 1, None),
+            ),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert!(output.status.success(), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    let findings = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "discovery.catalogs")
+        .unwrap()["findings"]
+        .as_array()
+        .unwrap();
+    assert_eq!(findings.len(), 2, "{report:#}");
+    for (finding, index) in findings.iter().zip([2, 3]) {
+        assert_eq!(finding["code"], "MCP-QUALITY-004");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["location"], format!("tools[{index}].description"));
+        assert_eq!(
+            finding["evidence"],
+            json!({
+                "kind": "rule_violation",
+                "rule": "reused_normalized_tool_description",
+                "first_matching_tool_index": 0
+            })
+        );
+    }
+    assert!(!stdout.contains(HTTP_REUSED_DESCRIPTION_SENTINEL));
+    assert!(!stdout.contains("syntheticprivatehttpreuseddescriptionneverreport90"));
+    assert!(!stdout.contains("tools[0].description"));
+
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let server = FixtureServer::spawn(
+            WireMode::Http,
+            vec![
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialize(revision),
+                    legacy_initialize_response(
+                        revision,
+                        json!({"tools": {"listChanged": false}}),
+                        Some(LEGACY_SESSION),
+                    ),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::initialized(revision, Some(LEGACY_SESSION)),
+                    FixtureResponse::accepted(),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(revision, Some(LEGACY_SESSION), None),
+                    legacy_reused_description_response(2, 0, Some(HTTP_REUSED_DESCRIPTION_CURSOR)),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::list(
+                        revision,
+                        Some(LEGACY_SESSION),
+                        Some(HTTP_REUSED_DESCRIPTION_CURSOR),
+                    ),
+                    legacy_reused_description_response(3, 1, None),
+                ),
+                PlannedExchange::legacy_reply(
+                    LegacyExpectedRequest::delete(revision, LEGACY_SESSION),
+                    FixtureResponse::status(200, "OK"),
+                ),
+            ],
+            true,
+        );
+        let endpoint = server.endpoint();
+        let environment = TestEnvironment::new();
+        let mut command = legacy_remote_command(&environment, &endpoint, revision, Some("json"));
+        let output = run(&mut command);
+        let outcome = server.finish();
+        let (legacy_stdout, legacy_stderr) = text(&output);
+        let report = parse_and_validate_report(&output.stdout);
+
+        assert!(
+            output.status.success(),
+            "{revision}: {report:#}\n{legacy_stderr}"
+        );
+        assert!(legacy_stderr.is_empty());
+        assert_eq!(outcome.accepted_connections, 5);
+        assert_eq!(outcome.valid_requests, 5);
+        assert_eq!(outcome.unexpected_connections, 0);
+        let findings = report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["id"] == "discovery.catalogs")
+            .unwrap()["findings"]
+            .as_array()
+            .unwrap();
+        assert_eq!(findings.len(), 2, "{report:#}");
+        for (finding, index) in findings.iter().zip([2, 3]) {
+            assert_eq!(finding["code"], "MCP-QUALITY-004");
+            assert_eq!(finding["protocol_revision"], revision);
+            assert_eq!(finding["location"], format!("tools[{index}].description"));
+            assert_eq!(finding["evidence"]["first_matching_tool_index"], 0);
+        }
+        assert!(!legacy_stdout.contains(HTTP_REUSED_DESCRIPTION_SENTINEL));
+    }
+}
+
+#[test]
+fn later_http_page_failure_discards_reused_description_prefix_findings() {
+    let server = FixtureServer::spawn(
+        WireMode::Http,
+        vec![
+            PlannedExchange::reply(
+                ExpectedRequest::method("server/discover"),
+                discovery_response(json!({"tools": {}})),
+            ),
+            PlannedExchange::reply(
+                ExpectedRequest::method("tools/list"),
+                failed_prefix_reused_description_response(),
+            ),
+            PlannedExchange::disconnect(ExpectedRequest::method("tools/list")),
+        ],
+        true,
+    );
+    let endpoint = server.endpoint();
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command.arg("--format").arg("json");
+    let output = run(&mut command);
+    let outcome = server.finish();
+    let (stdout, stderr) = text(&output);
+    let report = parse_and_validate_report(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(outcome.accepted_connections, 3);
+    assert_eq!(outcome.valid_requests, 3);
+    assert_eq!(outcome.unexpected_connections, 0);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"], "network.resolution",
+        "{report:#}"
+    );
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-HTTP-001"
+    );
+    for check_id in ["discovery.catalogs", "schema.contracts"] {
+        let check = report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["id"] == check_id)
+            .unwrap();
+        assert_eq!(check["state"], "skipped", "{check:#}");
+        assert_eq!(check["blocked_by"]["check_id"], "network.resolution");
+    }
+    assert!(!stdout.contains("MCP-QUALITY-004"));
+    assert!(!stdout.contains("reused_normalized_tool_description"));
+    assert!(!stdout.contains("synthetic-private-http-failed-prefix"));
+    assert_redacted(&output, &endpoint, &[HTTP_REUSED_DESCRIPTION_CURSOR]);
 }
 
 #[test]

@@ -355,6 +355,64 @@ fn workflow_step_and_cleanup_checks_survive_offline_aggregation() {
 }
 
 #[test]
+fn reused_description_reports_keep_the_existing_aggregate_projection() {
+    let environment = TestEnvironment::new();
+    let mut report = passed_report();
+    report["checks"].as_array_mut().unwrap().push(json!({
+        "id": "discovery.catalogs",
+        "requirement": "required",
+        "state": "performed",
+        "outcome": "warning",
+        "findings": [{
+            "code": "MCP-QUALITY-004",
+            "severity": "warning",
+            "protocol_revision": "2026-07-28",
+            "location": "tools[7].description",
+            "message": "An advertised tool description reuses another tool's selection guidance.",
+            "impact": "Agents cannot reliably distinguish which of the matching tools to select.",
+            "expectation": "Each uniquely named tool should provide distinct selection guidance under A1 normalization v1.",
+            "remediation": "Distinguish what this tool does, when it should and should not be selected, and how it differs from the tool at first_matching_tool_index.",
+            "reference": "mcp-doctor A1 normalization v1 tool-description quality contract",
+            "evidence": {
+                "kind": "rule_violation",
+                "rule": "reused_normalized_tool_description",
+                "first_matching_tool_index": 2
+            }
+        }]
+    }));
+    recompute_report(&mut report);
+    let input = write_report(&environment, "reused-description-report.json", &report);
+    let output_path = environment.artifact_path("reused-description-aggregate.json");
+    let output = aggregate_command(&environment, &output_path, "json", &[input])
+        .output()
+        .expect("the reused-description report should aggregate");
+
+    assert!(output.status.success(), "{:?}", text(&output));
+    let aggregate = parse_and_validate_aggregate(&output.stdout);
+    assert_eq!(aggregate["outcome"], "passed");
+    assert_eq!(aggregate["summary"]["passed"], 1);
+    let member = &aggregate["members"][0]["report"];
+    assert_eq!(member["summary"]["findings"]["warning"], 1);
+    let finding = member["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "discovery.catalogs")
+        .unwrap()["findings"][0]
+        .clone();
+    assert_eq!(finding["code"], "MCP-QUALITY-004");
+    assert_eq!(finding["location"], "tools[7].description");
+    assert_eq!(
+        finding["evidence"],
+        json!({
+            "kind": "rule_violation",
+            "rule": "reused_normalized_tool_description"
+        })
+    );
+    assert_eq!(fs::read(output_path).unwrap(), output.stdout);
+}
+
+#[test]
 fn all_pass_json_is_deterministic_schema_valid_and_byte_identical_to_the_artifact() {
     let environment = TestEnvironment::new();
     let mut stdio = passed_report();

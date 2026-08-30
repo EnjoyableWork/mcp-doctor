@@ -13,8 +13,9 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 use support::{
-    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_junit,
-    parse_and_validate_report, validate_report_value,
+    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_badge,
+    parse_and_validate_junit, parse_and_validate_markdown, parse_and_validate_report,
+    validate_report_value,
 };
 
 const REDACTION_SENTINEL: &str = "synthetic-secret-payload-7f2c";
@@ -1424,6 +1425,240 @@ fn placeholder_and_name_only_descriptions_are_value_free_across_reporters_and_re
             );
         }
     }
+}
+
+#[test]
+fn reused_normalized_descriptions_are_value_free_across_reporters_and_revisions() {
+    const SENTINEL: &str = "synthetic-private-reused-description-never-report-7f3b";
+    const NORMALIZED_SENTINEL: &str = "syntheticprivatereuseddescriptionneverreport7f3b";
+    const REMEDIATION: &str = "Distinguish what this tool does, when it should and should not be selected, and how it differs from the tool at first_matching_tool_index.";
+    let artifact_environment = TestEnvironment::new();
+    let json_path = artifact_environment.artifact_path("reused-report.json");
+    let junit_path = artifact_environment.artifact_path("reused-report.junit.xml");
+    let markdown_path = artifact_environment.artifact_path("reused-report.md");
+    let badge_path = artifact_environment.artifact_path("reused-badge.json");
+    let mut artifact_command = artifact_environment.command();
+    artifact_command
+        .arg("inspect")
+        .arg("--json-report")
+        .arg(&json_path)
+        .arg("--junit-report")
+        .arg(&junit_path)
+        .arg("--markdown-report")
+        .arg(&markdown_path)
+        .arg("--badge-report")
+        .arg(&badge_path)
+        .arg("--")
+        .arg(fixture())
+        .arg("tool-description-reused");
+    let human_output = artifact_command
+        .output()
+        .expect("mcp-doctor should write every reused-description report");
+    let json_output = run_json_mode("tool-description-reused");
+    let environment = TestEnvironment::new();
+    let junit_output = junit_inspect_command(&environment, "tool-description-reused")
+        .output()
+        .expect("mcp-doctor should project reused descriptions as JUnit");
+    let (human, human_stderr) = text(&human_output);
+    let (json_text, json_stderr) = text(&json_output);
+    let (_, junit_stderr) = text(&junit_output);
+    let report = json_report(&json_output);
+    let (junit, junit_summary) = parse_and_validate_junit(&junit_output.stdout);
+    let artifact_json = fs::read(&json_path).expect("the JSON artifact should exist");
+    let artifact_junit = fs::read(&junit_path).expect("the JUnit artifact should exist");
+    let markdown = parse_and_validate_markdown(
+        &fs::read(&markdown_path).expect("the Markdown artifact should exist"),
+    );
+    let badge =
+        parse_and_validate_badge(&fs::read(&badge_path).expect("the badge artifact should exist"));
+
+    for output in [&human_output, &json_output, &junit_output] {
+        assert!(output.status.success(), "{:?}", text(output));
+    }
+    for stderr in [human_stderr, json_stderr, junit_stderr] {
+        assert!(stderr.is_empty(), "{stderr}");
+    }
+    assert_eq!(artifact_json, json_output.stdout);
+    assert_eq!(artifact_junit, junit_output.stdout);
+    assert_eq!(report["outcome"], "passed");
+    assert_eq!(report["exit_code"], 0);
+    assert_eq!(report["summary"]["warned"], 1);
+    assert_eq!(junit_summary.failures, 0);
+    assert_eq!(badge["message"], "pass");
+
+    let findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should contain findings");
+    assert_eq!(findings.len(), 3, "{report:#}");
+    for (finding_index, tool_index) in [2, 3, 4].into_iter().enumerate() {
+        let location = format!("tools[{tool_index}].description");
+        let finding = &findings[finding_index];
+        assert_eq!(finding["code"], "MCP-QUALITY-004");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["protocol_revision"], "2026-07-28");
+        assert_eq!(finding["location"], location);
+        assert_eq!(finding["remediation"], REMEDIATION);
+        assert_eq!(
+            finding["evidence"],
+            serde_json::json!({
+                "kind": "rule_violation",
+                "rule": "reused_normalized_tool_description",
+                "first_matching_tool_index": 0
+            })
+        );
+        assert!(human.contains(&location), "{human}");
+        assert!(human.contains("first_matching_tool_index 0"), "{human}");
+        assert!(human.contains(REMEDIATION), "{human}");
+        assert!(
+            junit.contains(&format!("finding[{finding_index}].location={location}")),
+            "{junit}"
+        );
+        assert!(
+            junit.contains(&format!(
+                "finding[{finding_index}].evidence.first_matching_tool_index=0"
+            )),
+            "{junit}"
+        );
+        assert!(markdown.contains(&format!("#### Finding {}", finding_index + 1)));
+        assert!(markdown.contains(&format!("`{location}`")));
+        assert!(markdown.contains("`first_matching_tool_index=0`"));
+    }
+    assert!(!human.contains("tools[0].description"), "{human}");
+    assert!(!json_text.contains("tools[0].description"), "{json_text}");
+    assert!(!junit.contains("tools[0].description"), "{junit}");
+    assert!(!markdown.contains("tools[0].description"), "{markdown}");
+    for rendered in [human, json_text, junit.as_str(), markdown.as_str()] {
+        for forbidden in [
+            SENTINEL,
+            NORMALIZED_SENTINEL,
+            "SELECT\tTHE synthetic_private_reused_description_never_report_7f3b",
+            "résumé",
+            "resume",
+        ] {
+            assert!(!rendered.contains(forbidden), "{rendered}");
+        }
+    }
+    let badge_bytes = fs::read(&badge_path).expect("the badge artifact should remain readable");
+    let badge_text = std::str::from_utf8(&badge_bytes).expect("badge should be UTF-8");
+    assert!(!badge_text.contains("MCP-QUALITY-004"));
+    assert!(!badge_text.contains("first_matching_tool_index"));
+    assert_report_findings_are_actionable(&report, human);
+
+    for revision in ["2025-11-25", "2025-06-18"] {
+        let environment = TestEnvironment::new();
+        let output = legacy_inspect_command(
+            &environment,
+            revision,
+            Some("json"),
+            "legacy-tool-description-reused",
+        )
+        .output()
+        .expect("mcp-doctor should reuse duplicate-description semantics for legacy revisions");
+        let (legacy_json, legacy_stderr) = text(&output);
+        let legacy = json_report(&output);
+        assert!(output.status.success(), "{revision}: {legacy:#}");
+        assert!(legacy_stderr.is_empty());
+        let legacy_findings = find_json_check(&legacy, "discovery.catalogs")["findings"]
+            .as_array()
+            .expect("the legacy discovery check should contain findings");
+        assert_eq!(legacy_findings.len(), 3, "{legacy:#}");
+        for (finding, tool_index) in legacy_findings.iter().zip([2, 3, 4]) {
+            assert_eq!(finding["code"], "MCP-QUALITY-004");
+            assert_eq!(finding["severity"], "warning");
+            assert_eq!(finding["protocol_revision"], revision);
+            assert_eq!(
+                finding["location"],
+                format!("tools[{tool_index}].description")
+            );
+            assert_eq!(finding["evidence"]["first_matching_tool_index"], 0);
+        }
+        assert!(!legacy_json.contains(SENTINEL));
+        assert!(!legacy_json.contains(NORMALIZED_SENTINEL));
+    }
+}
+
+#[test]
+fn later_stdio_page_failure_discards_reused_description_prefix_findings() {
+    let output = run_json_mode("tool-description-reused-later-failure");
+    let (stdout, stderr) = text(&output);
+    let report = json_report(&output);
+
+    assert_eq!(output.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(report["primary_diagnosis"]["check_id"], "transport.stdio");
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-TRANSPORT-003"
+    );
+    for check_id in ["discovery.catalogs", "schema.contracts"] {
+        let check = find_json_check(&report, check_id);
+        assert_eq!(check["state"], "skipped", "{check:#}");
+        assert_eq!(check["blocked_by"]["check_id"], "transport.stdio");
+    }
+    assert!(!stdout.contains("MCP-QUALITY-004"), "{stdout}");
+    assert!(
+        !stdout.contains("reused_normalized_tool_description"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("synthetic-private-failed-prefix"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn reused_description_saturation_preserves_security_and_reports_the_global_limit() {
+    let first = run_json_mode("tool-description-reused-finding-limit");
+    let second = run_json_mode("tool-description-reused-finding-limit");
+    let (stdout, stderr) = text(&first);
+    let report = json_report(&first);
+
+    assert_eq!(first.status.code(), Some(1), "{report:#}\n{stderr}");
+    assert!(stderr.is_empty());
+    assert_eq!(
+        first.stdout, second.stdout,
+        "bounded evidence must be stable"
+    );
+    let catalog_findings = find_json_check(&report, "discovery.catalogs")["findings"]
+        .as_array()
+        .expect("the discovery check should retain bounded findings");
+    let quality = catalog_findings
+        .iter()
+        .filter(|finding| finding["code"] == "MCP-QUALITY-004")
+        .collect::<Vec<_>>();
+    let limits = catalog_findings
+        .iter()
+        .filter(|finding| finding["code"] == "MCP-LIMIT-001")
+        .collect::<Vec<_>>();
+    assert_eq!(quality.len(), 253, "{report:#}");
+    assert_eq!(quality.first().unwrap()["location"], "tools[1].description");
+    assert_eq!(
+        quality.last().unwrap()["location"],
+        "tools[253].description"
+    );
+    assert!(quality.iter().all(|finding| {
+        finding["severity"] == "warning" && finding["evidence"]["first_matching_tool_index"] == 0
+    }));
+    assert_eq!(limits.len(), 1, "{report:#}");
+    assert_eq!(limits[0]["evidence"]["limit"], "report_findings");
+    assert_eq!(limits[0]["evidence"]["maximum"], 256);
+
+    let security = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("the schema check should retain independent security evidence");
+    assert!(security.iter().any(|finding| {
+        finding["code"] == "MCP-SECURITY-001"
+            && finding["location"] == "tools[0].inputSchema.properties[0].default"
+    }));
+    assert!(
+        report["independent_findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["code"] == "MCP-SECURITY-001")
+    );
+    assert!(!stdout.contains("synthetic-private"), "{stdout}");
+    assert!(!stdout.contains("exact identifier"), "{stdout}");
 }
 
 #[test]

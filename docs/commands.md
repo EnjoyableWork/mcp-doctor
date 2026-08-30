@@ -366,8 +366,47 @@ description normalizes to the tool name or to one fixed placeholder: `todo`,
 `tbd`, `tool`, `description`, or `placeholder`. The finding retains none of the
 name, description, normalized text, or matched placeholder. Its correction is
 to replace the placeholder or repeated name with what the tool does and when
-to select it. One tool receives at most one description-quality finding, and
-`MCP-QUALITY-001` remains authoritative for an absent or blank description.
+to select it. `MCP-QUALITY-001` remains authoritative for an absent or blank
+description.
+
+`MCP-QUALITY-004` reports a later uniquely named tool whose otherwise usable
+description is exactly equal to an earlier eligible description after `A1
+normalization v1`. Eligibility requires a structurally valid string name that
+occurs exactly once in the accepted catalog prefix, a description classified
+as usable by the rules above, and a nonempty normalized value. Invalid,
+missing, or nonunique names and missing, blank, non-string, placeholder, or
+name-only descriptions keep their existing authoritative findings and do not
+also receive `MCP-QUALITY-004`. A punctuation-only description whose
+normalization is empty is excluded.
+
+Eligible tools are finalized in global `tools` catalog order across pages. The
+first eligible occurrence of one exact normalized value is canonical and is
+not warned. Every later eligible occurrence receives one warning at
+`tools[index].description`, in that same order, with the canonical global index
+in `first_matching_tool_index`. If a later accepted entry makes a name
+nonunique, every accepted entry with that name is excluded before canonical
+selection and warnings are finalized. An entry beyond the `catalog_items`
+bound cannot create a match, become canonical, or affect name uniqueness.
+
+The stable JSON evidence is:
+
+```json
+{
+  "kind": "rule_violation",
+  "rule": "reused_normalized_tool_description",
+  "first_matching_tool_index": 0
+}
+```
+
+The correction is to distinguish what the later tool does, when it should and
+should not be selected, and how it differs from the tool at
+`first_matching_tool_index`. One tool receives at most one description-quality
+finding: `MCP-QUALITY-001`, `MCP-QUALITY-003`, and
+existing catalog findings remain authoritative before reuse eligibility is
+considered.
+
+A non-string description remains `MCP-CATALOG-001` without an additional
+quality warning.
 
 `A1 normalization v1` defines blank deterministically as an empty string or a
 string containing only these Unicode scalar values:
@@ -384,22 +423,44 @@ string containing only these Unicode scalar values:
 - `U+205F`
 - `U+3000`
 
-For the `MCP-QUALITY-003` comparison, `A1 normalization v1` trims boundary
-ASCII whitespace, collapses each internal ASCII-whitespace run to one space,
-removes ASCII punctuation, and lowercases ASCII letters. All non-ASCII scalar
-values remain scalar-for-scalar significant: mcp-doctor does not transliterate,
-locale-fold, or infer semantic similarity. These passive rules do not grade
-duplicate prose, readability, jargon, token efficiency, sentiment, or general
-language quality.
+For the `MCP-QUALITY-003` and `MCP-QUALITY-004` comparisons, `A1 normalization
+v1` trims boundary ASCII whitespace, collapses each internal ASCII-whitespace
+run to one space, removes ASCII punctuation, and lowercases ASCII letters. All
+non-ASCII scalar values remain scalar-for-scalar significant: mcp-doctor does
+not transliterate, locale-fold, or infer semantic similarity. Reuse detection
+compares only exact normalized values; these passive rules do not grade
+near-duplicate or semantically similar prose, readability, jargon, token
+efficiency, sentiment, or general language quality.
 
-The rule does not use locale, runtime whitespace tables, or an LLM. A
-non-string description remains `MCP-CATALOG-001`, without a duplicate quality
-warning. Human, JSON, JUnit, and Markdown reports retain only the code, warning
-severity, selected revision, indexed field location, and fixed corrective
-prose—not the tool name, description, or raw catalog item. The shared rule
-applies to passive STDIO and Streamable HTTP inspection for every supported
-revision without an
-extra request or any tool call.
+Reuse analysis runs only after the transport conversation completes
+successfully and processes the complete accepted catalog prefix. If
+`catalog_items` is exceeded, any admitted warning already proven within that
+prefix remains, `MCP-LIMIT-001` identifies `catalog_items`, dependent checks
+remain skipped, the exit is nonzero, and the report does not claim complete
+catalog coverage. If `report_findings` is exceeded, analysis still processes
+the complete accepted prefix; the existing global priority policy retains a
+deterministic subset without allowing quality warnings to displace security or
+higher-priority findings, and `MCP-LIMIT-001` identifies `report_findings` with
+the established nonzero exit. Neither limit changes `MCP-QUALITY-004` from
+warning severity. A run containing only admitted quality warnings still exits
+successfully.
+
+If a later STDIO or Streamable HTTP page exchange fails, the transport finding
+remains primary, delivered response prefixes are discarded, catalog and schema
+checks remain causally skipped, and no `MCP-QUALITY-004` is emitted from the
+discarded prefix.
+
+The rules do not use locale, runtime whitespace tables, or an LLM. Human, JSON,
+JUnit, and Markdown findings retain only fixed product vocabulary, code,
+warning severity, selected revision, indexed field location, numeric catalog
+ordinal, and (for `MCP-QUALITY-004`) `first_matching_tool_index`. Badge and
+aggregate projections retain only their existing summary information. Tool
+names, raw or normalized descriptions, catalog and schema values, server
+stderr, credentials, environment data, and local paths are not retained or
+rendered. The shared implementation applies to passive STDIO and Streamable
+HTTP inspection for every supported revision without an extra request, tool
+call, dependency, retry, fallback, target launch, network activity, or
+execution authority.
 
 ### Required-input description quality
 
