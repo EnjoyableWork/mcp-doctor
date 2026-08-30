@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::limits::{LimitKind, LimitViolation};
+use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::protocol::{RevisionAdvertisementSummary, SupportedRevision};
 use super::redaction::RedactedValue;
 
@@ -179,6 +179,7 @@ pub(super) enum FindingCode {
     ToolDescriptionMissingOrBlank,
     RequiredInputDescriptionMissingOrBlank,
     ToolDescriptionPlaceholderOrNameOnly,
+    ToolDescriptionReusedNormalized,
     CredentialLiteralExposed,
     SchemaContractInvalid,
     UnsupportedSchemaDialect,
@@ -236,6 +237,7 @@ impl FindingCode {
             Self::ToolDescriptionMissingOrBlank => "MCP-QUALITY-001",
             Self::RequiredInputDescriptionMissingOrBlank => "MCP-QUALITY-002",
             Self::ToolDescriptionPlaceholderOrNameOnly => "MCP-QUALITY-003",
+            Self::ToolDescriptionReusedNormalized => "MCP-QUALITY-004",
             Self::CredentialLiteralExposed => "MCP-SECURITY-001",
             Self::SchemaContractInvalid => "MCP-SCHEMA-001",
             Self::UnsupportedSchemaDialect => "MCP-SCHEMA-002",
@@ -268,6 +270,7 @@ impl FindingCode {
             | Self::ToolDescriptionMissingOrBlank
             | Self::RequiredInputDescriptionMissingOrBlank
             | Self::ToolDescriptionPlaceholderOrNameOnly
+            | Self::ToolDescriptionReusedNormalized
             | Self::AmbiguousSchemaDialect => Severity::Warning,
             Self::ProcessStartFailed
             | Self::StdioIoFailed
@@ -385,6 +388,9 @@ impl FindingCode {
             }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "An advertised tool description provides no selection guidance."
+            }
+            Self::ToolDescriptionReusedNormalized => {
+                "An advertised tool description reuses another tool's selection guidance."
             }
             Self::CredentialLiteralExposed => {
                 "An advertised input schema embeds a credential-like string literal."
@@ -527,6 +533,9 @@ impl FindingCode {
             }
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Agents may mistake a placeholder or repeated name for usable selection guidance."
+            }
+            Self::ToolDescriptionReusedNormalized => {
+                "Agents cannot reliably distinguish which of the matching tools to select."
             }
             Self::CredentialLiteralExposed => {
                 "An agent may copy or submit the advertised literal as if it were safe input."
@@ -684,6 +693,9 @@ impl FindingCode {
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Each advertised tool should describe what it does and when to select it instead of using a placeholder or repeating its name."
             }
+            Self::ToolDescriptionReusedNormalized => {
+                "Each uniquely named tool should provide distinct selection guidance under A1 normalization v1."
+            }
             Self::CredentialLiteralExposed => {
                 "Credential-like input properties must not advertise non-empty string literals through default, const, examples, or enum."
             }
@@ -837,6 +849,9 @@ impl FindingCode {
             Self::ToolDescriptionPlaceholderOrNameOnly => {
                 "Replace the placeholder or name-only description with what the tool does and when to select it."
             }
+            Self::ToolDescriptionReusedNormalized => {
+                "Distinguish what this tool does, when it should and should not be selected, and how it differs from the tool at first_matching_tool_index."
+            }
             Self::CredentialLiteralExposed => {
                 "Remove the literal from the schema and obtain the credential through authorized server runtime configuration."
             }
@@ -939,7 +954,9 @@ impl FindingCode {
             | Self::DuplicateCatalogIdentifier
             | Self::PaginationCursorRepeated
             | Self::CatalogMethodRejected => "selected MCP revision catalog contracts",
-            Self::ToolDescriptionMissingOrBlank | Self::ToolDescriptionPlaceholderOrNameOnly => {
+            Self::ToolDescriptionMissingOrBlank
+            | Self::ToolDescriptionPlaceholderOrNameOnly
+            | Self::ToolDescriptionReusedNormalized => {
                 "mcp-doctor A1 normalization v1 tool-description quality contract"
             }
             Self::RequiredInputDescriptionMissingOrBlank => {
@@ -1476,6 +1493,9 @@ pub(super) enum RuleViolation {
     ServerErrorResponse,
     DuplicateIdentifier,
     RepeatedCursor,
+    ReusedNormalizedToolDescription {
+        first_matching_tool_index: u64,
+    },
     UnsupportedSchemaDialect {
         observed: JsonKind,
     },
@@ -1573,6 +1593,7 @@ impl RuleViolation {
             Self::ServerErrorResponse => "server_error_response",
             Self::DuplicateIdentifier => "duplicate_identifier",
             Self::RepeatedCursor => "repeated_cursor",
+            Self::ReusedNormalizedToolDescription { .. } => "reused_normalized_tool_description",
             Self::UnsupportedSchemaDialect { .. } => "unsupported_schema_dialect",
             Self::UnsupportedSchemaVocabulary => "unsupported_schema_vocabulary",
             Self::UnsupportedLinearPattern => "unsupported_linear_pattern",
@@ -1649,6 +1670,7 @@ impl RuleViolation {
             | Self::ServerErrorResponse
             | Self::DuplicateIdentifier
             | Self::RepeatedCursor
+            | Self::ReusedNormalizedToolDescription { .. }
             | Self::UnsupportedSchemaVocabulary
             | Self::UnsupportedLinearPattern
             | Self::ExternalSchemaReference
@@ -1734,6 +1756,15 @@ impl RuleViolation {
             | Self::SessionRequired { status }
             | Self::SessionLost { status }
             | Self::InitializedRejected { status } => Some(status),
+            _ => None,
+        }
+    }
+
+    pub(super) const fn first_matching_tool_index(self) -> Option<u64> {
+        match self {
+            Self::ReusedNormalizedToolDescription {
+                first_matching_tool_index,
+            } => Some(first_matching_tool_index),
             _ => None,
         }
     }
@@ -2209,6 +2240,25 @@ impl Finding {
             revision,
             location,
             FindingEvidence::None,
+        )
+    }
+
+    pub(super) fn tool_description_reused_normalized(
+        revision: SupportedRevision,
+        location: Location,
+        first_matching_tool_index: u64,
+    ) -> Self {
+        assert!(
+            first_matching_tool_index < DiagnosticLimits::DEFAULTS.values().catalog_items,
+            "the canonical tool index must be inside the catalog-item bound"
+        );
+        Self::new(
+            FindingCode::ToolDescriptionReusedNormalized,
+            revision,
+            location,
+            FindingEvidence::RuleViolation(RuleViolation::ReusedNormalizedToolDescription {
+                first_matching_tool_index,
+            }),
         )
     }
 
@@ -2732,6 +2782,11 @@ mod tests {
             (
                 FindingCode::ToolDescriptionPlaceholderOrNameOnly,
                 "MCP-QUALITY-003",
+                Severity::Warning,
+            ),
+            (
+                FindingCode::ToolDescriptionReusedNormalized,
+                "MCP-QUALITY-004",
                 Severity::Warning,
             ),
             (

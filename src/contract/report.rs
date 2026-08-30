@@ -1136,6 +1136,13 @@ fn write_human_rule(output: &mut BoundedOutput, violation: RuleViolation) {
         write!(output, " · HTTP status {status}")
             .expect("the bounded report writer records limit failures");
     }
+    if let Some(first_matching_tool_index) = violation.first_matching_tool_index() {
+        write!(
+            output,
+            " · first_matching_tool_index {first_matching_tool_index}"
+        )
+        .expect("the bounded report writer records tool-description relationship evidence");
+    }
     output.push('\n');
 }
 
@@ -1791,6 +1798,13 @@ fn write_markdown_evidence(output: &mut BoundedOutput, finding: &Finding) {
                 write!(output, ", `http_status={status}`")
                     .expect("the bounded report writer records limit failures");
             }
+            if let Some(first_matching_tool_index) = violation.first_matching_tool_index() {
+                write!(
+                    output,
+                    ", `first_matching_tool_index={first_matching_tool_index}`"
+                )
+                .expect("the bounded report writer records tool-description relationship evidence");
+            }
             output.push('\n');
         }
         FindingEvidence::JsonRpcError(error) => {
@@ -2291,6 +2305,15 @@ fn write_junit_evidence(output: &mut BoundedOutput, index: usize, finding: &Find
             if let Some(status) = violation.http_status() {
                 write_indexed_number_line(output, "finding", index, "evidence.http_status", status);
             }
+            if let Some(first_matching_tool_index) = violation.first_matching_tool_index() {
+                write_indexed_number_line(
+                    output,
+                    "finding",
+                    index,
+                    "evidence.first_matching_tool_index",
+                    first_matching_tool_index,
+                );
+            }
         }
         FindingEvidence::JsonRpcError(error) => {
             write_indexed_xml_line(output, "finding", index, "evidence.kind", "json_rpc_error");
@@ -2771,6 +2794,8 @@ enum JsonEvidence {
         error_count: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         http_status: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        first_matching_tool_index: Option<u64>,
     },
     JsonRpcError {
         error_kind: &'static str,
@@ -2822,6 +2847,7 @@ impl JsonEvidence {
                 observed: violation.observed().map(|kind| kind.as_str()),
                 error_count: violation.error_count(),
                 http_status: violation.http_status(),
+                first_matching_tool_index: violation.first_matching_tool_index(),
             },
             FindingEvidence::JsonRpcError(error) => Self::JsonRpcError {
                 error_kind: error.as_str(),
@@ -3381,6 +3407,61 @@ mod tests {
             assert!(rendered.contains("Correct the value"));
             assert!(rendered.contains("selected MCP revision catalog contracts"));
         }
+    }
+
+    #[test]
+    fn reused_description_relationship_is_typed_and_consistent_across_reporters() {
+        let finding = Finding::tool_description_reused_normalized(
+            SupportedRevision::CURRENT,
+            Location::root(LocationField::Tools)
+                .index(7)
+                .field(LocationField::Description),
+            2,
+        );
+        let report = DiagnosticReport::new(
+            SupportedRevision::CURRENT,
+            DiagnosticLimits::DEFAULTS,
+            vec![CheckResult::performed(
+                CheckId::DiscoveryCatalogs,
+                Requirement::Required,
+                vec![finding],
+            )],
+        )
+        .expect("synthetic quality report should satisfy the contract");
+
+        let human = HumanReporter::render(&report);
+        let json = JsonReporter::render(&report).expect("typed report should serialize");
+        let junit = JunitReporter::render(&report).expect("typed report should serialize as JUnit");
+        let markdown =
+            MarkdownReporter::render(&report).expect("typed report should serialize as Markdown");
+        let badge = BadgeReporter::render(&report).expect("typed report should serialize as badge");
+        let value: serde_json::Value =
+            serde_json::from_str(&json).expect("the JSON reporter should emit one value");
+        let finding = &value["checks"][0]["findings"][0];
+
+        assert_eq!(report.outcome(), OverallOutcome::Passed);
+        assert_eq!(report.exit_status(), ExitStatus::Success);
+        assert_eq!(finding["code"], "MCP-QUALITY-004");
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["location"], "tools[7].description");
+        assert_eq!(
+            finding["evidence"],
+            serde_json::json!({
+                "kind": "rule_violation",
+                "rule": "reused_normalized_tool_description",
+                "first_matching_tool_index": 2
+            })
+        );
+        for rendered in [&human, &junit, &markdown] {
+            assert!(rendered.contains("MCP-QUALITY-004"));
+            assert!(rendered.contains("tools[7].description"));
+            assert!(rendered.contains("reused_normalized_tool_description"));
+            assert!(rendered.contains("first_matching_tool_index"));
+            assert!(rendered.contains('2'));
+        }
+        assert!(!badge.contains("MCP-QUALITY-004"));
+        assert!(!badge.contains("first_matching_tool_index"));
+        assert_stable_report(&value);
     }
 
     #[test]

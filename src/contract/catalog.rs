@@ -794,6 +794,72 @@ impl Iterator for A1V1Normalized<'_> {
     }
 }
 
+struct ToolDescriptionReuseCandidate {
+    tool_index: usize,
+    name: String,
+    normalized_description: String,
+}
+
+#[derive(Default)]
+struct ToolDescriptionReuseCollector {
+    name_counts: BTreeMap<String, u64>,
+    candidates: Vec<ToolDescriptionReuseCandidate>,
+}
+
+impl ToolDescriptionReuseCollector {
+    fn observe(&mut self, tool_index: usize, tool: &Map<String, Value>, description_usable: bool) {
+        let Some(name) = tool.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        let count = self.name_counts.entry(name.to_owned()).or_default();
+        *count = count.saturating_add(1);
+
+        if !description_usable {
+            return;
+        }
+        let Some(description) = tool.get("description").and_then(Value::as_str) else {
+            return;
+        };
+        let normalized_description = A1V1Normalized::new(description).collect::<String>();
+        if normalized_description.is_empty() {
+            return;
+        }
+        self.candidates.push(ToolDescriptionReuseCandidate {
+            tool_index,
+            name: name.to_owned(),
+            normalized_description,
+        });
+    }
+
+    fn finalize(self, revision: SupportedRevision) -> Vec<Finding> {
+        let mut canonical_indices = BTreeMap::<String, u64>::new();
+        let mut findings = Vec::new();
+        for candidate in self.candidates {
+            if self.name_counts.get(&candidate.name) != Some(&1) {
+                continue;
+            }
+            let tool_index = u64::try_from(candidate.tool_index)
+                .expect("the bounded catalog index must be representable as u64");
+            if let Some(first_matching_tool_index) = canonical_indices
+                .get(&candidate.normalized_description)
+                .copied()
+            {
+                findings.push(Finding::tool_description_reused_normalized(
+                    revision,
+                    CatalogKind::Tools
+                        .location()
+                        .index(candidate.tool_index)
+                        .field(LocationField::Description),
+                    first_matching_tool_index,
+                ));
+            } else {
+                canonical_indices.insert(candidate.normalized_description, tool_index);
+            }
+        }
+        findings
+    }
+}
+
 const CREDENTIAL_IDENTIFIER_SEGMENTS: [&str; 6] = [
     "password",
     "passwd",
@@ -1059,6 +1125,7 @@ struct Analyzer {
     identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     secondary_identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     returned_cursors: BTreeMap<CatalogKind, BTreeSet<String>>,
+    tool_description_reuses: ToolDescriptionReuseCollector,
     auto_discovery: bool,
 }
 
@@ -1091,6 +1158,7 @@ impl Analyzer {
             identifiers: BTreeMap::new(),
             secondary_identifiers: BTreeMap::new(),
             returned_cursors: BTreeMap::new(),
+            tool_description_reuses: ToolDescriptionReuseCollector::default(),
             auto_discovery,
         }
     }
@@ -1533,7 +1601,10 @@ impl Analyzer {
 
     fn analyze_tool(&mut self, index: usize, tool: &Map<String, Value>) {
         let location = CatalogKind::Tools.location().index(index);
-        match diagnose_tool_description(SupportedRevision::CURRENT, location.clone(), tool) {
+        let description_diagnosis =
+            diagnose_tool_description(SupportedRevision::CURRENT, location.clone(), tool);
+        let description_usable = matches!(description_diagnosis, ToolDescriptionDiagnosis::Usable);
+        match description_diagnosis {
             ToolDescriptionDiagnosis::Usable => {}
             ToolDescriptionDiagnosis::MissingOrBlank(finding)
             | ToolDescriptionDiagnosis::PlaceholderOrNameOnly(finding) => {
@@ -1544,6 +1615,8 @@ impl Analyzer {
                 self.tools_catalog_valid = false;
             }
         }
+        self.tool_description_reuses
+            .observe(index, tool, description_usable);
         let Some(input_schema) = tool.get("inputSchema") else {
             self.push(
                 FindingBucket::Schema,
@@ -2077,6 +2150,11 @@ impl Analyzer {
     }
 
     fn into_checks(mut self) -> Vec<CheckResult> {
+        for finding in
+            std::mem::take(&mut self.tool_description_reuses).finalize(SupportedRevision::CURRENT)
+        {
+            self.push(FindingBucket::Quality, finding);
+        }
         self.finish_overflow();
         self.catalog.append(&mut self.quality);
         self.schema.append(&mut self.security);
@@ -2609,6 +2687,7 @@ struct LegacyAnalyzer {
     identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     secondary_identifiers: BTreeMap<CatalogKind, BTreeMap<String, usize>>,
     cursors: BTreeMap<CatalogKind, BTreeSet<String>>,
+    tool_description_reuses: ToolDescriptionReuseCollector,
 }
 
 impl LegacyAnalyzer {
@@ -2640,6 +2719,7 @@ impl LegacyAnalyzer {
             identifiers: BTreeMap::new(),
             secondary_identifiers: BTreeMap::new(),
             cursors: BTreeMap::new(),
+            tool_description_reuses: ToolDescriptionReuseCollector::default(),
         }
     }
 
@@ -2990,7 +3070,7 @@ impl LegacyAnalyzer {
             ),
         }
         match kind {
-            CatalogKind::Tools => self.analyze_tool(base, object),
+            CatalogKind::Tools => self.analyze_tool(index, base, object),
             CatalogKind::Prompts => self.analyze_prompt(base, object),
             CatalogKind::Resources => {
                 self.analyze_secondary_identifier(kind, base, object, "uri", LocationField::Uri)
@@ -3005,8 +3085,11 @@ impl LegacyAnalyzer {
         }
     }
 
-    fn analyze_tool(&mut self, base: Location, tool: &Map<String, Value>) {
-        match diagnose_tool_description(self.revision_kind, base.clone(), tool) {
+    fn analyze_tool(&mut self, index: usize, base: Location, tool: &Map<String, Value>) {
+        let description_diagnosis =
+            diagnose_tool_description(self.revision_kind, base.clone(), tool);
+        let description_usable = matches!(description_diagnosis, ToolDescriptionDiagnosis::Usable);
+        match description_diagnosis {
             ToolDescriptionDiagnosis::Usable => {}
             ToolDescriptionDiagnosis::MissingOrBlank(finding)
             | ToolDescriptionDiagnosis::PlaceholderOrNameOnly(finding) => {
@@ -3017,6 +3100,8 @@ impl LegacyAnalyzer {
                 self.tools_catalog_valid = false;
             }
         }
+        self.tool_description_reuses
+            .observe(index, tool, description_usable);
         let Some(input_schema) = tool.get("inputSchema") else {
             self.expected_shape(
                 FindingBucket::Schema,
@@ -3447,6 +3532,11 @@ impl LegacyAnalyzer {
     }
 
     fn finish(mut self) -> Vec<CheckResult> {
+        for finding in
+            std::mem::take(&mut self.tool_description_reuses).finalize(self.revision_kind)
+        {
+            self.push(FindingBucket::Quality, finding);
+        }
         if self.overflow && self.capacity > 0 {
             let removed = self
                 .quality
@@ -3828,17 +3918,22 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::{
-        CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
-        RequestKind, ToolDescriptionDiagnosis, classify_json_rpc_error, diagnose_tool_description,
-        encode_request, has_credential_identifier_segment, normalize_credential_identifier,
-        percent_decode, resolve_local_reference, scan_credential_literals,
-        scan_required_input_descriptions, schema_child_location, validate_local_schema_with_policy,
+        Analyzer, CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
+        RequestKind, RequestRecord, ToolDescriptionDiagnosis, ToolDescriptionReuseCollector,
+        classify_json_rpc_error, diagnose_tool_description, encode_request,
+        has_credential_identifier_segment, normalize_credential_identifier, percent_decode,
+        resolve_local_reference, scan_credential_literals, scan_required_input_descriptions,
+        schema_child_location, validate_local_schema_with_policy,
     };
+    use crate::contract::limits::DiagnosticLimits;
     use crate::contract::model::{
-        FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField, Severity,
+        CheckId, Finding, FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField,
+        RuleViolation, Severity, SkipReason,
     };
     use crate::contract::protocol::SupportedRevision;
+    use crate::contract::report::{DiagnosticReport, ExitStatus, OverallOutcome};
     use crate::contract::schema_budget::SchemaWorkBudget;
+    use crate::transport::ProbeResponse;
 
     #[test]
     fn every_passive_request_has_modern_metadata_and_no_active_method() {
@@ -4222,6 +4317,267 @@ mod tests {
                 ToolDescriptionDiagnosis::MissingOrBlank(_)
             ));
         }
+    }
+
+    fn reused_description_findings(tools: &[Value]) -> Vec<Finding> {
+        let mut collector = ToolDescriptionReuseCollector::default();
+        for (index, tool) in tools.iter().enumerate() {
+            let Some(tool) = tool.as_object() else {
+                continue;
+            };
+            let diagnosis = diagnose_tool_description(
+                SupportedRevision::CURRENT,
+                Location::root(LocationField::Tools).index(index),
+                tool,
+            );
+            collector.observe(
+                index,
+                tool,
+                matches!(diagnosis, ToolDescriptionDiagnosis::Usable),
+            );
+        }
+        collector.finalize(SupportedRevision::CURRENT)
+    }
+
+    fn assert_reused_description_finding(
+        finding: &Finding,
+        tool_index: usize,
+        first_matching_tool_index: u64,
+    ) {
+        assert_eq!(finding.code(), FindingCode::ToolDescriptionReusedNormalized);
+        assert_eq!(finding.severity(), Severity::Warning);
+        assert_eq!(finding.revision(), SupportedRevision::CURRENT);
+        assert_eq!(
+            finding.location().to_string(),
+            format!("tools[{tool_index}].description")
+        );
+        assert_eq!(
+            finding.evidence(),
+            &FindingEvidence::RuleViolation(RuleViolation::ReusedNormalizedToolDescription {
+                first_matching_tool_index,
+            })
+        );
+    }
+
+    #[test]
+    fn reused_tool_descriptions_use_exact_a1_normalization_and_global_order() {
+        let tools = [
+            json!({"name": "synthetic-a", "description": "Select a bounded record by key."}),
+            json!({"name": "synthetic-b", "description": "Distinct synthetic guidance."}),
+            json!({"name": "synthetic-c", "description": " SELECT\tA bounded record, by KEY!!! "}),
+            json!({"name": "synthetic-d", "description": "select a bounded record by key"}),
+            json!({"name": "synthetic-e", "description": "Select a bounded record by key..."}),
+            json!({"name": "synthetic-f", "description": "Résumé one bounded record."}),
+            json!({"name": "synthetic-g", "description": "Resume one bounded record."}),
+        ];
+
+        let findings = reused_description_findings(&tools);
+
+        assert_eq!(findings.len(), 3);
+        assert_reused_description_finding(&findings[0], 2, 0);
+        assert_reused_description_finding(&findings[1], 3, 0);
+        assert_reused_description_finding(&findings[2], 4, 0);
+    }
+
+    #[test]
+    fn reused_tool_descriptions_finalize_name_uniqueness_and_quality_precedence() {
+        let tools = [
+            json!({"name": "synthetic-duplicate", "description": "Shared bounded guidance."}),
+            json!({"name": "synthetic-canonical", "description": "Shared bounded guidance."}),
+            json!({"name": "synthetic-later", "description": "shared bounded guidance"}),
+            json!({"name": "synthetic-duplicate"}),
+            json!({"description": "Shared bounded guidance."}),
+            json!({"name": 7, "description": "Shared bounded guidance."}),
+            json!({"name": "synthetic-missing"}),
+            json!({"name": "synthetic-blank", "description": " \t\n"}),
+            json!({"name": "synthetic-invalid", "description": {"private": true}}),
+            json!({"name": "synthetic-placeholder", "description": "T.O.D.O."}),
+            json!({"name": "synthetic-name-only", "description": "SYNTHETIC_NAME_ONLY"}),
+            json!({"name": "synthetic-empty-normalized-a", "description": "---"}),
+            json!({"name": "synthetic-empty-normalized-b", "description": "!!!"}),
+        ];
+
+        let findings = reused_description_findings(&tools);
+
+        assert_eq!(findings.len(), 1);
+        assert_reused_description_finding(&findings[0], 2, 1);
+    }
+
+    #[test]
+    fn analyzer_finalization_removes_candidates_with_late_duplicate_names() {
+        let mut analyzer = Analyzer::new(0, false, false);
+        analyzer.discovery_valid = true;
+        analyzer.revision_checked = true;
+        analyzer.revision_supported = true;
+        analyzer.tools_advertised = true;
+        let record = RequestRecord {
+            id: 2,
+            kind: RequestKind::Catalog(CatalogKind::Tools),
+            page: 0,
+            cursor: None,
+        };
+        let response = ProbeResponse::new(
+            2,
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "resultType": "complete",
+                    "ttlMs": 0,
+                    "cacheScope": "private",
+                    "tools": [
+                        {
+                            "name": "synthetic-late-duplicate",
+                            "description": "Shared bounded guidance.",
+                            "inputSchema": {"type": "object"}
+                        },
+                        {
+                            "name": "synthetic-final-canonical",
+                            "description": "Shared bounded guidance.",
+                            "inputSchema": {"type": "object"}
+                        },
+                        {
+                            "name": "synthetic-final-later",
+                            "description": "shared bounded guidance",
+                            "inputSchema": {"type": "object"}
+                        },
+                        {
+                            "name": "synthetic-late-duplicate",
+                            "description": "Distinct bounded guidance.",
+                            "inputSchema": {"type": "object"}
+                        }
+                    ]
+                }
+            }))
+            .expect("the synthetic response should serialize"),
+        );
+
+        analyzer.analyze_catalog_page(&record, &response);
+        let checks = analyzer.into_checks();
+        let findings = checks
+            .iter()
+            .find(|check| check.id() == CheckId::DiscoveryCatalogs)
+            .and_then(|check| check.findings())
+            .expect("the catalog check should retain both findings");
+
+        assert_eq!(findings.len(), 2);
+        let duplicate_name = findings
+            .iter()
+            .find(|finding| finding.code() == FindingCode::DuplicateCatalogIdentifier)
+            .expect("the existing duplicate-name diagnosis should remain authoritative");
+        assert_eq!(duplicate_name.location().to_string(), "tools[3].name");
+        let reused = findings
+            .iter()
+            .find(|finding| finding.code() == FindingCode::ToolDescriptionReusedNormalized)
+            .expect("the remaining uniquely named reuse should be diagnosed");
+        assert_reused_description_finding(reused, 2, 1);
+        assert!(findings.iter().all(|finding| {
+            finding.code() != FindingCode::ToolDescriptionReusedNormalized
+                || finding.location().to_string() == "tools[2].description"
+        }));
+    }
+
+    #[test]
+    fn catalog_item_limit_truncates_reuse_analysis_without_changing_accepted_evidence() {
+        let mut values = DiagnosticLimits::DEFAULTS.values();
+        values.catalog_items = 2;
+        let limits = DiagnosticLimits::try_from_values(values)
+            .expect("the synthetic catalog limit should satisfy the limit contract");
+        let mut analyzer = Analyzer::new(0, false, false);
+        analyzer.limits = limits;
+        analyzer.discovery_valid = true;
+        analyzer.revision_checked = true;
+        analyzer.revision_supported = true;
+        analyzer.tools_advertised = true;
+        let record = RequestRecord {
+            id: 2,
+            kind: RequestKind::Catalog(CatalogKind::Tools),
+            page: 0,
+            cursor: None,
+        };
+        let response = ProbeResponse::new(
+            2,
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "resultType": "complete",
+                    "ttlMs": 0,
+                    "cacheScope": "private",
+                    "tools": [
+                        {
+                            "name": "synthetic-accepted-a",
+                            "description": "Shared bounded guidance.",
+                            "inputSchema": {"type": "object"}
+                        },
+                        {
+                            "name": "synthetic-accepted-b",
+                            "description": "shared bounded guidance",
+                            "inputSchema": {"type": "object"}
+                        },
+                        {
+                            "name": "synthetic-accepted-a",
+                            "description": "Shared bounded guidance.",
+                            "inputSchema": {"type": "object"}
+                        }
+                    ]
+                }
+            }))
+            .expect("the synthetic response should serialize"),
+        );
+
+        analyzer.analyze_catalog_page(&record, &response);
+        let checks = analyzer.into_checks();
+        let catalog = checks
+            .iter()
+            .find(|check| check.id() == CheckId::DiscoveryCatalogs)
+            .expect("the catalog check should exist");
+        let findings = catalog
+            .findings()
+            .expect("the catalog limit should produce findings");
+        assert_eq!(findings.len(), 2);
+        let limit = findings
+            .iter()
+            .find(|finding| finding.code() == FindingCode::LimitExceeded)
+            .expect("the catalog limit finding should be retained");
+        let reused = findings
+            .iter()
+            .find(|finding| finding.code() == FindingCode::ToolDescriptionReusedNormalized)
+            .expect("the accepted duplicate warning should be retained");
+        assert_eq!(limit.location().to_string(), "tools");
+        assert_eq!(
+            reused.location().to_string(),
+            "tools[1].description",
+            "the out-of-bound duplicate name must not invalidate the accepted canonical entry"
+        );
+        assert_eq!(
+            reused.evidence(),
+            &FindingEvidence::RuleViolation(RuleViolation::ReusedNormalizedToolDescription {
+                first_matching_tool_index: 0,
+            })
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.location().to_string() != "tools[2].description")
+        );
+        let schema = checks
+            .iter()
+            .find(|check| check.id() == CheckId::SchemaContracts)
+            .expect("the schema check should exist");
+        assert_eq!(schema.skip_reason(), Some(SkipReason::LimitReached));
+
+        let report = DiagnosticReport::new(SupportedRevision::CURRENT, limits, checks)
+            .expect("the bounded catalog result should satisfy the report contract");
+        assert_eq!(report.outcome(), OverallOutcome::Failed);
+        assert_eq!(report.exit_status(), ExitStatus::DiagnosticFailure);
+        assert_eq!(
+            report
+                .primary_diagnosis()
+                .expect("the catalog limit should be primary")
+                .check(),
+            CheckId::DiscoveryCatalogs
+        );
     }
 
     #[test]

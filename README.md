@@ -126,7 +126,7 @@ in the same human- and agent-readable result.
 | What it checks | What it finds |
 | --- | --- |
 | **Protocol** | Broken JSON-RPC, framing, revision handling, methods, and feature claims |
-| **Agent guidance** | Missing, blank, placeholder, or name-only tool descriptions, plus required inputs without usable descriptions |
+| **Agent guidance** | Missing, blank, placeholder, name-only, or reused normalized tool descriptions, plus required inputs without usable descriptions |
 | **Schemas** | Invalid or unsafe JSON Schema and unusable input rules |
 | **Results** | Output that violates `outputSchema` or a promised success shape |
 | **Runtime** | Timeouts, crashes, oversized output, early exits, and failed cleanup |
