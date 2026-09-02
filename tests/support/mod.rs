@@ -360,7 +360,7 @@ pub fn parse_and_validate_junit(bytes: &[u8]) -> (String, JunitSummary) {
         .expect("JUnit output should be UTF-8")
         .to_owned();
     let mut reader = Reader::from_str(&document);
-    let mut stack = Vec::<Vec<u8>>::new();
+    let mut stack = Vec::<String>::new();
     let mut root_summary = None;
     let mut suite_summary = None;
     let mut observed = JunitSummary {
@@ -376,10 +376,10 @@ pub fn parse_and_validate_junit(bytes: &[u8]) -> (String, JunitSummary) {
             .expect("an independent XML parser should accept the JUnit output")
         {
             Event::Start(element) => {
-                let name = element.name().as_ref().to_vec();
-                let parent = stack.last().map(Vec::as_slice);
-                match name.as_slice() {
-                    b"testsuites" => {
+                let name = element.name().as_ref().to_owned();
+                let parent = stack.last().map(String::as_str);
+                match name.as_str() {
+                    "testsuites" => {
                         assert!(parent.is_none(), "testsuites should be the root element");
                         assert!(
                             root_summary.is_none(),
@@ -387,34 +387,34 @@ pub fn parse_and_validate_junit(bytes: &[u8]) -> (String, JunitSummary) {
                         );
                         root_summary = Some(junit_summary(&element));
                     }
-                    b"testsuite" => {
-                        assert_eq!(parent, Some(b"testsuites".as_slice()));
+                    "testsuite" => {
+                        assert_eq!(parent, Some("testsuites"));
                         assert!(suite_summary.is_none(), "there should be one testsuite");
-                        require_attribute(&element, b"name");
-                        require_zero_attribute(&element, b"errors");
-                        require_zero_attribute(&element, b"time");
+                        require_attribute(&element, "name");
+                        require_zero_attribute(&element, "errors");
+                        require_zero_attribute(&element, "time");
                         suite_summary = Some(junit_summary(&element));
                     }
-                    b"testcase" => {
-                        assert_eq!(parent, Some(b"testsuite".as_slice()));
-                        require_attribute(&element, b"classname");
-                        require_attribute(&element, b"name");
-                        require_zero_attribute(&element, b"time");
+                    "testcase" => {
+                        assert_eq!(parent, Some("testsuite"));
+                        require_attribute(&element, "classname");
+                        require_attribute(&element, "name");
+                        require_zero_attribute(&element, "time");
                         observed.tests += 1;
                     }
-                    b"failure" => {
-                        assert_eq!(parent, Some(b"testcase".as_slice()));
-                        require_attribute(&element, b"message");
-                        require_attribute(&element, b"type");
+                    "failure" => {
+                        assert_eq!(parent, Some("testcase"));
+                        require_attribute(&element, "message");
+                        require_attribute(&element, "type");
                         observed.failures += 1;
                     }
-                    b"skipped" => {
-                        assert_eq!(parent, Some(b"testcase".as_slice()));
-                        require_attribute(&element, b"message");
+                    "skipped" => {
+                        assert_eq!(parent, Some("testcase"));
+                        require_attribute(&element, "message");
                         observed.skipped += 1;
                     }
-                    b"system-out" => {
-                        assert_eq!(parent, Some(b"testcase".as_slice()));
+                    "system-out" => {
+                        assert_eq!(parent, Some("testcase"));
                         system_outputs += 1;
                     }
                     name => panic!("unexpected element in common JUnit output: {name:?}"),
@@ -429,10 +429,7 @@ pub fn parse_and_validate_junit(bytes: &[u8]) -> (String, JunitSummary) {
                 assert_eq!(element.name().as_ref(), expected);
             }
             Event::GeneralRef(reference) => assert!(
-                matches!(
-                    reference.as_ref(),
-                    b"amp" | b"lt" | b"gt" | b"apos" | b"quot"
-                ),
+                matches!(reference.as_ref(), "amp" | "lt" | "gt" | "apos" | "quot"),
                 "JUnit output should use only predefined XML entities"
             ),
             Event::Decl(_) | Event::Text(_) => {}
@@ -449,39 +446,35 @@ pub fn parse_and_validate_junit(bytes: &[u8]) -> (String, JunitSummary) {
 }
 
 fn junit_summary(element: &BytesStart<'_>) -> JunitSummary {
-    require_attribute(element, b"name");
-    require_zero_attribute(element, b"errors");
-    require_zero_attribute(element, b"time");
+    require_attribute(element, "name");
+    require_zero_attribute(element, "errors");
+    require_zero_attribute(element, "time");
     JunitSummary {
-        tests: numeric_attribute(element, b"tests"),
-        failures: numeric_attribute(element, b"failures"),
-        skipped: numeric_attribute(element, b"skipped"),
+        tests: numeric_attribute(element, "tests"),
+        failures: numeric_attribute(element, "failures"),
+        skipped: numeric_attribute(element, "skipped"),
     }
 }
 
-fn require_attribute(element: &BytesStart<'_>, name: &[u8]) {
+fn require_attribute(element: &BytesStart<'_>, name: &str) {
     assert!(
         attribute_value(element, name).is_some(),
         "missing JUnit attribute"
     );
 }
 
-fn require_zero_attribute(element: &BytesStart<'_>, name: &[u8]) {
-    assert_eq!(
-        attribute_value(element, name).as_deref(),
-        Some(b"0".as_slice())
-    );
+fn require_zero_attribute(element: &BytesStart<'_>, name: &str) {
+    assert_eq!(attribute_value(element, name).as_deref(), Some("0"));
 }
 
-fn numeric_attribute(element: &BytesStart<'_>, name: &[u8]) -> usize {
+fn numeric_attribute(element: &BytesStart<'_>, name: &str) -> usize {
     let value = attribute_value(element, name).expect("missing numeric JUnit attribute");
-    std::str::from_utf8(&value)
-        .expect("numeric JUnit attributes should be ASCII")
+    value
         .parse()
         .expect("numeric JUnit attributes should contain nonnegative integers")
 }
 
-fn attribute_value(element: &BytesStart<'_>, name: &[u8]) -> Option<Vec<u8>> {
+fn attribute_value(element: &BytesStart<'_>, name: &str) -> Option<String> {
     element
         .attributes()
         .map(|attribute| attribute.expect("every JUnit attribute should parse"))

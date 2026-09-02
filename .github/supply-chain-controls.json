@@ -58,14 +58,14 @@
     {
       "name": "jsonschema",
       "scope": "runtime",
-      "version": "0.50.0",
+      "version": "0.52.0",
       "default_features": false,
       "features": []
     },
     {
       "name": "jsonschema-regex",
       "scope": "runtime",
-      "version": "0.50.0",
+      "version": "0.52.0",
       "default_features": false,
       "features": []
     },
@@ -79,14 +79,14 @@
     {
       "name": "process-wrap",
       "scope": "runtime",
-      "version": "9.1.0",
+      "version": "10.0.0",
       "default_features": false,
       "features": ["job-object", "kill-on-drop", "process-group", "tokio1"]
     },
     {
       "name": "referencing",
       "scope": "runtime",
-      "version": "0.50.0",
+      "version": "0.52.0",
       "default_features": false,
       "features": []
     },
@@ -135,7 +135,7 @@
     {
       "name": "quick-xml",
       "scope": "development",
-      "version": "0.41.0",
+      "version": "0.42.0",
       "default_features": false,
       "features": []
     },

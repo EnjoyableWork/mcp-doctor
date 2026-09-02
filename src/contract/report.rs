@@ -2906,7 +2906,7 @@ mod tests {
         expected_skips: usize,
     ) {
         let mut reader = Reader::from_str(document);
-        let mut stack = Vec::<Vec<u8>>::new();
+        let mut stack = Vec::<String>::new();
         let mut tests = 0;
         let mut failures = 0;
         let mut skips = 0;
@@ -2921,25 +2921,25 @@ mod tests {
                     for attribute in element.attributes() {
                         attribute.expect("every JUnit attribute should parse");
                     }
-                    let name = element.name().as_ref().to_vec();
-                    let parent = stack.last().map(Vec::as_slice);
-                    match name.as_slice() {
-                        b"testsuites" => assert!(parent.is_none()),
-                        b"testsuite" => assert_eq!(parent, Some(b"testsuites".as_slice())),
-                        b"testcase" => {
-                            assert_eq!(parent, Some(b"testsuite".as_slice()));
+                    let name = element.name().as_ref().to_owned();
+                    let parent = stack.last().map(String::as_str);
+                    match name.as_str() {
+                        "testsuites" => assert!(parent.is_none()),
+                        "testsuite" => assert_eq!(parent, Some("testsuites")),
+                        "testcase" => {
+                            assert_eq!(parent, Some("testsuite"));
                             tests += 1;
                         }
-                        b"failure" => {
-                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                        "failure" => {
+                            assert_eq!(parent, Some("testcase"));
                             failures += 1;
                         }
-                        b"skipped" => {
-                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                        "skipped" => {
+                            assert_eq!(parent, Some("testcase"));
                             skips += 1;
                         }
-                        b"system-out" => {
-                            assert_eq!(parent, Some(b"testcase".as_slice()));
+                        "system-out" => {
+                            assert_eq!(parent, Some("testcase"));
                             system_outputs += 1;
                         }
                         name => panic!("unexpected common JUnit element: {name:?}"),
