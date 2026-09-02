@@ -39,7 +39,7 @@ deny = []
 skip = [
   { crate = "base64@0.22.1", reason = "reqwest 0.13.4 and hyper-util 0.1.20 retain base64 0.22 for HTTP support, while development-only rcgen 0.14.9 retains it through pem 3.0.6; the reviewed direct header-sentinel encoder uses base64 0.23.1 with defaults disabled and alloc only; remove this exact transition when every selected upstream converges or a relevant advisory changes the balance" },
   { crate = "getrandom@0.2.17", reason = "ring 0.17.14 retains getrandom 0.2 for its reviewed TLS entropy path while the schema graph uses 0.3 and disposable tests use 0.4" },
-  { crate = "syn@2.0.119", reason = "process-wrap 9.1.0 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
+  { crate = "syn@2.0.119", reason = "process-wrap 10.0.0 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
   { crate = "windows-sys@0.52.0", reason = "ring 0.17.14 retains windows-sys 0.52 for its reviewed Windows entropy path while the current runtime and platform verifier use 0.61" },
 ]
 skip-tree = []
