@@ -12,10 +12,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use support::{
-    TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_report,
-    parse_and_validate_status_jsonl,
-};
+#[cfg(unix)]
+use support::assert_descendant_was_ready_and_terminated;
+use support::{TestEnvironment, parse_and_validate_report, parse_and_validate_status_jsonl};
 
 const TOOL: &str = "synthetic.reviewed";
 const GENERATED_TOOL: &str = "synthetic.generated";
