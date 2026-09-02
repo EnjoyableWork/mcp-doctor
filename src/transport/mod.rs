@@ -16,6 +16,7 @@ pub(crate) struct ProbeRequest {
     principal_name: Option<String>,
     mirrored_fields: Vec<MirroredField>,
     protocol_revision: Option<&'static str>,
+    status_activity: Option<RequestStatusActivity>,
 }
 
 impl ProbeRequest {
@@ -48,6 +49,7 @@ impl ProbeRequest {
             principal_name,
             mirrored_fields: Vec::new(),
             protocol_revision: None,
+            status_activity: None,
         }
     }
 
@@ -74,6 +76,7 @@ impl ProbeRequest {
             principal_name: None,
             mirrored_fields: Vec::new(),
             protocol_revision: None,
+            status_activity: None,
         }
     }
 
@@ -84,6 +87,11 @@ impl ProbeRequest {
 
     pub(crate) fn with_protocol_revision(mut self, revision: &'static str) -> Self {
         self.protocol_revision = Some(revision);
+        self
+    }
+
+    pub(crate) fn with_status_activity(mut self, activity: RequestStatusActivity) -> Self {
+        self.status_activity = Some(activity);
         self
     }
 
@@ -114,6 +122,10 @@ impl ProbeRequest {
     pub(crate) const fn protocol_revision(&self) -> Option<&'static str> {
         self.protocol_revision
     }
+
+    pub(crate) const fn status_activity(&self) -> Option<RequestStatusActivity> {
+        self.status_activity
+    }
 }
 
 impl fmt::Debug for ProbeRequest {
@@ -126,8 +138,17 @@ impl fmt::Debug for ProbeRequest {
             .field("byte_count", &self.bytes.len())
             .field("mirrored_field_count", &self.mirrored_fields.len())
             .field("protocol_revision", &self.protocol_revision)
+            .field("status_activity", &self.status_activity)
             .finish()
     }
+}
+
+/// Product-owned structural metadata that identifies when a request begins a
+/// status-visible phase without retaining any target-provided value.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum RequestStatusActivity {
+    Discovery,
+    ActiveCase { ordinal: u64, total: u64 },
 }
 
 /// A validated `x-mcp-header` mapping. Both strings may contain tool-derived

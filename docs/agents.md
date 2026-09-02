@@ -214,6 +214,42 @@ The Kiro Crew route does not cover schedules, proactive loops, webhooks,
 heartbeats, Apps, synthesized skills, persistent lessons, background tasks,
 unattended work, messaging surfaces, or cross-surface behavior.
 
+## Observe a direct CLI preflight
+
+When an agent integration invokes the CLI directly and needs liveness during a
+bounded diagnostic, it can first inspect the compiled contract and then select
+JSON Lines status explicitly:
+
+```bash
+mcp-doctor capabilities --format json
+mcp-doctor inspect --status jsonl --format json \
+  -- node ./dist/server.js --stdio \
+  >mcp-doctor-report.json 2>mcp-doctor-status.jsonl
+```
+
+The integration must keep stdout and stderr separate. Parse stderr one complete
+line at a time against `mcp-doctor.status/v1`; stdout remains the stable final
+report. Status records expose only fixed command, transport, profile, phase,
+ceiling, case ordinal/total, and terminal exit fields. They never include the
+selected target, path, tool, case ID, environment, credential, server message,
+progress payload, argument, result, or target stderr.
+
+Use the exact scoped ceilings under
+`.diagnostic_time_ceiling_profiles` to choose a bounded outer watchdog. The
+advertised `total` runs from STDIO startup or HTTP target preparation through
+transport cleanup, not all input, publication, wrapper, or runtime work, and
+`whole_process_exit_guarantee` is `false`. A `phase_started` record establishes
+liveness only. Do not diagnose from status, infer success from EOF, or treat a
+missing `completed` record as a result; wait for the process and interpret the
+stable report and exit code. A closed status sink does not cancel the target and
+causes output-failure exit `4` after cleanup.
+
+The optional Agent Skill remains passive and still requires the exact target
+from the user. Status selection grants no additional process, network,
+credential, tool, or side-effect authority. See the
+[command status contract](commands.md#live-diagnostic-status) and
+[automation guidance](automation.md#live-status-for-wrappers).
+
 ## Remove safely
 
 Remove only the exact unmodified file installed above. On macOS or GNU/Linux:

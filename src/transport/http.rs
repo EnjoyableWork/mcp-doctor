@@ -20,7 +20,13 @@ use reqwest::{Certificate, Client, StatusCode, Url};
 use serde_json::Value;
 use tokio::time::Instant;
 
-use super::{Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse};
+#[cfg(test)]
+use crate::status::NoStatus;
+use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
+
+use super::{
+    Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse, RequestStatusActivity,
+};
 use crate::bound_file::BoundFile;
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
@@ -1319,15 +1325,27 @@ impl HttpTransport {
         }
     }
 
-    pub(crate) async fn probe<C: Conversation>(self, conversation: &mut C) -> HttpRun {
-        let mut budget = HttpBudget::default();
-        self.probe_with_budget(conversation, &mut budget).await
+    #[cfg(test)]
+    async fn probe<C: Conversation>(self, conversation: &mut C) -> HttpRun {
+        let mut status = NoStatus;
+        self.probe_with_status(conversation, &mut status).await
     }
 
-    pub(crate) async fn probe_with_budget<C: Conversation>(
+    pub(crate) async fn probe_with_status<C: Conversation>(
+        self,
+        conversation: &mut C,
+        status: &mut dyn StatusObserver,
+    ) -> HttpRun {
+        let mut budget = HttpBudget::default();
+        self.probe_with_budget_and_status(conversation, &mut budget, status)
+            .await
+    }
+
+    pub(crate) async fn probe_with_budget_and_status<C: Conversation>(
         mut self,
         conversation: &mut C,
         response_budget: &mut HttpBudget,
+        status: &mut dyn StatusObserver,
     ) -> HttpRun {
         #[cfg(feature = "internal-test-fixtures")]
         if response_budget.force_total_exhausted {
@@ -1346,6 +1364,7 @@ impl HttpTransport {
             self.target.started + Duration::from_millis(self.target.limits.total_ms);
         let mut responses = Vec::new();
         let mut lifecycle_interactions = LifecycleInteractionCounts::default();
+        let mut discovery_started = false;
         let failure = loop {
             if Instant::now() > total_deadline {
                 break Some(HttpFailure::timeout(
@@ -1357,6 +1376,27 @@ impl HttpTransport {
             let Some(request) = request else {
                 break None;
             };
+            match request.status_activity() {
+                Some(RequestStatusActivity::Discovery) if !discovery_started => {
+                    status.phase_started(
+                        StatusPhase::Discovery,
+                        Some(StatusCeiling {
+                            kind: StatusCeilingKind::Discovery,
+                            milliseconds: self.target.limits.discovery_ms,
+                        }),
+                    );
+                    discovery_started = true;
+                }
+                Some(RequestStatusActivity::ActiveCase { ordinal, total }) => {
+                    status.case_started(
+                        ordinal,
+                        total,
+                        self.target.limits.request_ms,
+                        self.target.limits.response_ms,
+                    );
+                }
+                Some(RequestStatusActivity::Discovery) | None => {}
+            }
             lifecycle_interactions.observe(&request);
             let stage_kind = if responses.is_empty() {
                 HttpLimit::DiscoveryTime
@@ -1386,6 +1426,13 @@ impl HttpTransport {
                 Err(_) => break Some(HttpFailure::timeout(timeout_kind, timeout_maximum)),
             }
         };
+        status.phase_started(
+            StatusPhase::Cleanup,
+            Some(StatusCeiling {
+                kind: StatusCeilingKind::CleanupGrace,
+                milliseconds: self.target.limits.shutdown_grace_ms,
+            }),
+        );
         let session_cleanup_failed = self
             .teardown_session(total_deadline, response_budget)
             .await

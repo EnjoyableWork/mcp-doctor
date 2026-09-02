@@ -22,6 +22,16 @@ mcp-doctor inspect \
 | `default` | 10 s | 10 s | 30 s | 30 s | 2 s | 120 s |
 | `slow-start` | 30 s | 30 s | 60 s | 60 s | 2 s | 240 s |
 
+The scopes are exact: startup covers target preparation or process start;
+discovery covers one discovery phase; request and response each cover one
+corresponding write or HTTP exchange and wait; cleanup grace covers graceful
+cleanup before forced termination; and total runs from STDIO startup or HTTP
+target preparation through transport cleanup. None is a measured duration,
+ETA, SLO, or guaranteed whole-process exit time. Input preparation, report
+rendering and publication, and runtime shutdown remain outside the total. The
+compiled capability manifest exposes the same milliseconds and scope strings
+and sets `whole_process_exit_guarantee` to `false` for every profile.
+
 These are the only accepted selections; `slow-start` is the compiled hard
 maximum and there are no individual overrides, project configuration, or
 disable-limit mode. Every byte, message, page, schema, case, generation,
@@ -38,6 +48,32 @@ its effective numeric limits; JUnit records the same selection while
 preserving the diagnostic result and exit semantics. `mcp-doctor capabilities`
 advertises the two names and exactly which commands accept them. An invalid
 name is rejected before target preparation.
+
+## Status-channel safety
+
+Live status is off by default. An explicit `--status plain` or `--status jsonl`
+on `inspect`, `check`, `break`, or `reject` writes only to stderr and leaves the
+stdout report, artifacts, diagnostic ordering, and target activity unchanged.
+Each event is written and flushed once before the named work starts. Status
+does not poll the target, relay MCP progress, reset a deadline, or add a launch,
+message, tool call, retry, redirect, fallback, concurrent task, or side effect.
+
+The status model accepts only fixed product vocabulary and bounded numbers. It
+never retains or renders endpoints, executables, arguments, tool or case names,
+paths, environment names or values, headers, credential sources or values,
+server messages, MCP progress payloads, tool inputs or results, or target
+stderr. Both representations are newline-delimited and contain no terminal
+control sequences. JSONL stderr is independently schema-valid on every line;
+plain status can be followed by the same safe CLI error prose emitted when
+status is disabled.
+
+Status is capped at 512 bytes per event, 128 events, and 65,536 aggregate
+bytes. Each record uses one bounded write-all operation and one flush; no write
+or flush error is retried. If the sink closes or a bound is exceeded, later
+status is suppressed, target cleanup still runs, and the command cannot return
+success; exit `4` identifies the output failure. Missing `completed` status
+therefore proves neither success nor failure. Only the final stable report is
+diagnostic evidence.
 
 ## Safety boundaries
 
@@ -86,6 +122,8 @@ name is rejected before target preparation.
   never reinitializes or changes the selected revision; teardown failure stays
   visible.
 - Reports hide headers, credentials, tool inputs, raw results, and server logs.
+- Opt-in live status uses only fixed structural vocabulary and numeric ceilings;
+  it never forwards target progress or replaces the final report.
 - Sensitive snapshots require an exact-path acknowledgement and new file;
   value-free offline diffs have no target or network surface.
 - Aggregates accept only explicit bounded stable reports, discard unknown

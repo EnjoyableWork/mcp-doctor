@@ -126,6 +126,41 @@ jq -e --arg version "${smoke_version}" '
   .schema_versions.generator == ["mcp-doctor.generator/v1"] and
   .schema_versions.contract_snapshot == ["mcp-doctor.contract-snapshot/v1alpha1"] and
   .schema_versions.contract_diff == ["mcp-doctor.contract-diff/v1alpha1"] and
+  .schema_versions.status == ["mcp-doctor.status/v1"] and
+  .status == {
+    schema_version: "mcp-doctor.status/v1",
+    commands: ["break", "check", "inspect", "reject"],
+    representations: [
+      {name: "plain", machine_readable: false},
+      {name: "jsonl", machine_readable: true}
+    ],
+    stream: "stderr",
+    default: "off",
+    jsonl_stderr_exclusive: true,
+    limits: {event_bytes: 512, events: 128, output_bytes: 65536, write_retries: 0}
+  } and
+  .diagnostic_time_ceiling_profiles == [
+    {
+      profile: "default",
+      startup: {milliseconds: 10000, scope: "target_preparation_or_process_start"},
+      discovery: {milliseconds: 10000, scope: "one_discovery_phase"},
+      request: {milliseconds: 30000, scope: "one_request_write_or_http_exchange"},
+      response: {milliseconds: 30000, scope: "one_response_wait"},
+      cleanup_grace: {milliseconds: 2000, scope: "graceful_cleanup_before_forced_termination"},
+      total: {milliseconds: 120000, scope: "stdio_startup_or_http_preparation_through_cleanup"},
+      whole_process_exit_guarantee: false
+    },
+    {
+      profile: "slow-start",
+      startup: {milliseconds: 30000, scope: "target_preparation_or_process_start"},
+      discovery: {milliseconds: 30000, scope: "one_discovery_phase"},
+      request: {milliseconds: 60000, scope: "one_request_write_or_http_exchange"},
+      response: {milliseconds: 60000, scope: "one_response_wait"},
+      cleanup_grace: {milliseconds: 2000, scope: "graceful_cleanup_before_forced_termination"},
+      total: {milliseconds: 240000, scope: "stdio_startup_or_http_preparation_through_cleanup"},
+      whole_process_exit_guarantee: false
+    }
+  ] and
   .exit_semantics.version == "mcp-doctor.exit/v1" and
   ([.exit_semantics.codes[].code] == [0, 1, 2, 3, 4]) and
   .platform == {

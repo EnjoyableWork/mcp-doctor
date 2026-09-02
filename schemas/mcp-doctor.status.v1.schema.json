@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EnjoyableWork/mcp-doctor/blob/main/schemas/mcp-doctor.status.v1.schema.json",
+  "title": "mcp-doctor diagnostic status event",
+  "description": "One stable mcp-doctor.status/v1 event. JSONL encodes exactly one compact event per LF-terminated line. Consumers must ignore unknown optional properties within v1, and the absence of a completed event never proves success.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "command",
+    "transport",
+    "limit_profile",
+    "event"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "mcp-doctor.status/v1"
+    },
+    "command": {
+      "enum": [
+        "inspect",
+        "check",
+        "break",
+        "reject"
+      ]
+    },
+    "transport": {
+      "enum": [
+        "stdio",
+        "streamable_http"
+      ]
+    },
+    "limit_profile": {
+      "enum": [
+        "default",
+        "slow-start"
+      ]
+    },
+    "event": {
+      "enum": [
+        "invocation_accepted",
+        "phase_started",
+        "case_started",
+        "error",
+        "completed"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "input_preparation",
+        "target_preparation",
+        "target_startup",
+        "discovery",
+        "cleanup",
+        "report_publication"
+      ]
+    },
+    "ceiling_kind": {
+      "enum": [
+        "startup",
+        "discovery",
+        "cleanup_grace"
+      ]
+    },
+    "ceiling_ms": {
+      "$ref": "#/$defs/milliseconds"
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "request_ceiling_ms": {
+      "$ref": "#/$defs/milliseconds"
+    },
+    "response_ceiling_ms": {
+      "$ref": "#/$defs/milliseconds"
+    },
+    "error_kind": {
+      "enum": [
+        "invalid_invocation_or_input",
+        "internal_or_output_failure"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "exit_meaning": {
+      "enum": [
+        "success",
+        "unsuccessful_result",
+        "invalid_invocation_or_input",
+        "incomplete_evidence",
+        "internal_or_output_failure"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "phase_started"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "phase"
+        ],
+        "not": {
+          "anyOf": [
+            { "required": ["ordinal"] },
+            { "required": ["total"] },
+            { "required": ["request_ceiling_ms"] },
+            { "required": ["response_ceiling_ms"] },
+            { "required": ["error_kind"] },
+            { "required": ["exit_code"] },
+            { "required": ["exit_meaning"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "invocation_accepted"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["phase"] },
+            { "required": ["ceiling_kind"] },
+            { "required": ["ceiling_ms"] },
+            { "required": ["ordinal"] },
+            { "required": ["total"] },
+            { "required": ["request_ceiling_ms"] },
+            { "required": ["response_ceiling_ms"] },
+            { "required": ["error_kind"] },
+            { "required": ["exit_code"] },
+            { "required": ["exit_meaning"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "ceiling_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "ceiling_ms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "ceiling_ms"
+        ]
+      },
+      "then": {
+        "required": [
+          "ceiling_kind"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "case_started"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ordinal",
+          "total",
+          "request_ceiling_ms",
+          "response_ceiling_ms"
+        ],
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["phase"] },
+            { "required": ["ceiling_kind"] },
+            { "required": ["ceiling_ms"] },
+            { "required": ["error_kind"] },
+            { "required": ["exit_code"] },
+            { "required": ["exit_meaning"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error_kind"
+        ],
+        "not": {
+          "anyOf": [
+            { "required": ["phase"] },
+            { "required": ["ceiling_kind"] },
+            { "required": ["ceiling_ms"] },
+            { "required": ["ordinal"] },
+            { "required": ["total"] },
+            { "required": ["request_ceiling_ms"] },
+            { "required": ["response_ceiling_ms"] },
+            { "required": ["exit_code"] },
+            { "required": ["exit_meaning"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "exit_code",
+          "exit_meaning"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "exit_code": { "const": 0 },
+              "exit_meaning": { "const": "success" }
+            }
+          },
+          {
+            "properties": {
+              "exit_code": { "const": 1 },
+              "exit_meaning": { "const": "unsuccessful_result" }
+            }
+          },
+          {
+            "properties": {
+              "exit_code": { "const": 2 },
+              "exit_meaning": { "const": "invalid_invocation_or_input" }
+            }
+          },
+          {
+            "properties": {
+              "exit_code": { "const": 3 },
+              "exit_meaning": { "const": "incomplete_evidence" }
+            }
+          },
+          {
+            "properties": {
+              "exit_code": { "const": 4 },
+              "exit_meaning": { "const": "internal_or_output_failure" }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            { "required": ["phase"] },
+            { "required": ["ceiling_kind"] },
+            { "required": ["ceiling_ms"] },
+            { "required": ["ordinal"] },
+            { "required": ["total"] },
+            { "required": ["request_ceiling_ms"] },
+            { "required": ["response_ceiling_ms"] },
+            { "required": ["error_kind"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": { "const": "phase_started" },
+          "phase": { "enum": ["input_preparation", "report_publication"] }
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["ceiling_kind"] },
+            { "required": ["ceiling_ms"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": { "const": "phase_started" },
+          "phase": { "const": "target_preparation" }
+        },
+        "required": ["phase", "ceiling_kind"]
+      },
+      "then": {
+        "properties": {
+          "ceiling_kind": { "const": "startup" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": { "const": "phase_started" },
+          "phase": { "const": "target_startup" }
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "required": ["ceiling_kind", "ceiling_ms"],
+        "properties": {
+          "ceiling_kind": { "const": "startup" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": { "const": "phase_started" },
+          "phase": { "const": "discovery" }
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "required": ["ceiling_kind", "ceiling_ms"],
+        "properties": {
+          "ceiling_kind": { "const": "discovery" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": { "const": "phase_started" },
+          "phase": { "const": "cleanup" }
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "required": ["ceiling_kind", "ceiling_ms"],
+        "properties": {
+          "ceiling_kind": { "const": "cleanup_grace" }
+        }
+      }
+    }
+  ],
+  "maxProperties": 12,
+  "additionalProperties": true,
+  "$defs": {
+    "milliseconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 240000
+    }
+  }
+}

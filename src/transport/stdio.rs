@@ -17,7 +17,11 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Instant;
 
-use super::{Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse};
+use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
+
+use super::{
+    Conversation, LifecycleInteractionCounts, ProbeRequest, ProbeResponse, RequestStatusActivity,
+};
 
 const READ_BUFFER_BYTES: usize = 8 * 1024;
 
@@ -296,20 +300,26 @@ impl StdioTransport {
         }
     }
 
-    pub(crate) async fn probe<C>(self, target: &StdioTarget, conversation: &mut C) -> StdioRun
+    pub(crate) async fn probe_with_status<C>(
+        self,
+        target: &StdioTarget,
+        conversation: &mut C,
+        status: &mut dyn StatusObserver,
+    ) -> StdioRun
     where
         C: Conversation,
     {
         let mut budget = StdioBudget::new(self.limits);
-        self.probe_with_budget(target, conversation, &mut budget)
+        self.probe_with_budget_and_status(target, conversation, &mut budget, status)
             .await
     }
 
-    pub(crate) async fn probe_with_budget<C>(
+    pub(crate) async fn probe_with_budget_and_status<C>(
         self,
         target: &StdioTarget,
         conversation: &mut C,
         budget: &mut StdioBudget,
+        status: &mut dyn StatusObserver,
     ) -> StdioRun
     where
         C: Conversation,
@@ -349,6 +359,14 @@ impl StdioTransport {
             };
         }
 
+        status.phase_started(
+            StatusPhase::TargetStartup,
+            Some(StatusCeiling {
+                kind: StatusCeilingKind::Startup,
+                milliseconds: self.limits.startup_ms,
+            }),
+        );
+
         let spawn_result =
             ManagedProcess::spawn(target, self.limits, self.accept_server_requests, budget);
         let mut process = match spawn_result {
@@ -371,6 +389,7 @@ impl StdioTransport {
             }
 
             let mut responses = Vec::new();
+            let mut discovery_started = false;
             loop {
                 if Instant::now() > total_deadline.at {
                     return Err(StdioFailure::timeout(total_deadline));
@@ -382,6 +401,27 @@ impl StdioTransport {
                 let Some(request) = request else {
                     break;
                 };
+                match request.status_activity() {
+                    Some(RequestStatusActivity::Discovery) if !discovery_started => {
+                        status.phase_started(
+                            StatusPhase::Discovery,
+                            Some(StatusCeiling {
+                                kind: StatusCeilingKind::Discovery,
+                                milliseconds: self.limits.discovery_ms,
+                            }),
+                        );
+                        discovery_started = true;
+                    }
+                    Some(RequestStatusActivity::ActiveCase { ordinal, total }) => {
+                        status.case_started(
+                            ordinal,
+                            total,
+                            self.limits.request_ms,
+                            self.limits.response_ms,
+                        );
+                    }
+                    Some(RequestStatusActivity::Discovery) | None => {}
+                }
                 lifecycle_interactions.observe(&request);
                 let discovery = responses.is_empty();
                 if !request.expects_response() {
@@ -399,6 +439,13 @@ impl StdioTransport {
         }
         .await;
 
+        status.phase_started(
+            StatusPhase::Cleanup,
+            Some(StatusCeiling {
+                kind: StatusCeilingKind::CleanupGrace,
+                milliseconds: self.limits.shutdown_grace_ms,
+            }),
+        );
         let shutdown = process.shutdown(total_deadline).await;
         let (responses, mut failure) = match operation {
             Ok(responses) => (responses, None),

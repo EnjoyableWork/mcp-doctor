@@ -12,6 +12,7 @@ use crate::contract::{
     render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
     stdio_diagnostic,
 };
+use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 use crate::transport::http::{
     HttpBudget, HttpFailure, HttpLimits, HttpRun, HttpTarget, HttpTransport, RemoteOptions,
     ResponseFailure, SystemResolver,
@@ -60,7 +61,9 @@ pub(crate) async fn run_stdio(
     selection: PassiveProtocolSelection,
     capture_snapshot: bool,
     limit_profile: DiagnosticLimitProfile,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, InspectError> {
+    status.phase_started(StatusPhase::TargetPreparation, None);
     let (executable, arguments) = target
         .split_first()
         .expect("clap requires an inspect target");
@@ -81,9 +84,11 @@ pub(crate) async fn run_stdio(
     };
     match selection {
         PassiveProtocolSelection::Exact(revision) => {
-            run_stdio_exact(&target, limits, revision, capture_snapshot).await
+            run_stdio_exact(&target, limits, revision, capture_snapshot, status).await
         }
-        PassiveProtocolSelection::Auto => run_stdio_auto(&target, limits, capture_snapshot).await,
+        PassiveProtocolSelection::Auto => {
+            run_stdio_auto(&target, limits, capture_snapshot, status).await
+        }
     }
 }
 
@@ -92,10 +97,13 @@ async fn run_stdio_exact(
     limits: StdioLimits,
     revision: ProtocolRevision,
     capture_snapshot: bool,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, InspectError> {
     let transport = StdioTransport::new(limits);
     let mut conversation = PassiveCatalogConversation::for_revision(revision);
-    let result = transport.probe(target, &mut conversation).await;
+    let result = transport
+        .probe_with_status(target, &mut conversation, status)
+        .await;
 
     let selection = ProtocolSelectionEvidence::new(
         ProtocolSelectionMode::Exact,
@@ -119,11 +127,12 @@ async fn run_stdio_auto(
     target: &StdioTarget,
     limits: StdioLimits,
     capture_snapshot: bool,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, InspectError> {
     let mut budget = StdioBudget::new(limits);
     let mut modern = PassiveCatalogConversation::for_auto_modern();
     let modern_run = StdioTransport::new(limits)
-        .probe_with_budget(target, &mut modern, &mut budget)
+        .probe_with_budget_and_status(target, &mut modern, &mut budget, status)
         .await;
 
     let modern_launches = u64::from(modern_run.process_started());
@@ -160,7 +169,7 @@ async fn run_stdio_auto(
     }
     let mut legacy = PassiveCatalogConversation::for_auto_legacy();
     let legacy_run = StdioTransport::new(limits)
-        .probe_with_budget(target, &mut legacy, &mut budget)
+        .probe_with_budget_and_status(target, &mut legacy, &mut budget, status)
         .await;
     let selected = legacy
         .negotiated_revision()
@@ -232,8 +241,16 @@ pub(crate) async fn run_http(
     selection: PassiveProtocolSelection,
     capture_snapshot: bool,
     limit_profile: DiagnosticLimitProfile,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, SnapshotDestinationError> {
     let profile = diagnostic_http_limit_profile(limit_profile);
+    status.phase_started(
+        StatusPhase::TargetPreparation,
+        Some(StatusCeiling {
+            kind: StatusCeilingKind::Startup,
+            milliseconds: profile.startup_ms,
+        }),
+    );
     let limits = HttpLimits {
         startup_ms: profile.startup_ms,
         discovery_ms: profile.discovery_ms,
@@ -290,9 +307,9 @@ pub(crate) async fn run_http(
 
     match selection {
         PassiveProtocolSelection::Exact(revision) => {
-            run_http_exact(target, revision, capture_snapshot).await
+            run_http_exact(target, revision, capture_snapshot, status).await
         }
-        PassiveProtocolSelection::Auto => run_http_auto(target, capture_snapshot).await,
+        PassiveProtocolSelection::Auto => run_http_auto(target, capture_snapshot, status).await,
     }
 }
 
@@ -300,6 +317,7 @@ async fn run_http_exact(
     target: HttpTarget,
     revision: ProtocolRevision,
     capture_snapshot: bool,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, SnapshotDestinationError> {
     let transport = match HttpTransport::new_for_protocol(
         target,
@@ -327,7 +345,7 @@ async fn run_http_exact(
         }
     };
     let mut conversation = PassiveCatalogConversation::new_http_for_revision(revision);
-    let result = transport.probe(&mut conversation).await;
+    let result = transport.probe_with_status(&mut conversation, status).await;
     let selection = ProtocolSelectionEvidence::new(
         ProtocolSelectionMode::Exact,
         ProtocolSelectionPath::ExactPin,
@@ -349,6 +367,7 @@ async fn run_http_exact(
 async fn run_http_auto(
     target: HttpTarget,
     capture_snapshot: bool,
+    status: &mut dyn StatusObserver,
 ) -> Result<InspectOutput, SnapshotDestinationError> {
     let legacy_target = target.same_authority();
     let transport = match HttpTransport::new_for_auto_probe(target) {
@@ -374,7 +393,9 @@ async fn run_http_auto(
     };
     let mut budget = HttpBudget::default();
     let mut modern = PassiveCatalogConversation::new_http_for_auto_modern();
-    let modern_run = transport.probe_with_budget(&mut modern, &mut budget).await;
+    let modern_run = transport
+        .probe_with_budget_and_status(&mut modern, &mut budget, status)
+        .await;
     let legacy_signal = matches!(
         modern_run.failure(),
         Some(HttpFailure::Response(ResponseFailure::LegacyEra))
@@ -428,7 +449,9 @@ async fn run_http_auto(
         budget.exhaust_total_for_test();
     }
     let mut legacy = PassiveCatalogConversation::new_http_for_auto_legacy();
-    let legacy_run = transport.probe_with_budget(&mut legacy, &mut budget).await;
+    let legacy_run = transport
+        .probe_with_budget_and_status(&mut legacy, &mut budget, status)
+        .await;
     let selected = legacy
         .negotiated_revision()
         .and_then(KnownRevision::supported)

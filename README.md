@@ -190,6 +190,9 @@ Homebrew operations, dependencies, unlisted assets, or future releases.
   authorization and a declared effect boundary.
 - Processes, network activity, schema work, messages, reports, and cleanup are
   bounded. Local commands bypass the shell and managed children are reaped.
+- Optional `plain` or schema-backed JSONL status keeps long diagnostics
+  observable on stderr without changing the final stdout report or target
+  activity.
 - Remote connections use verified direct HTTPS by default. Private,
   cleartext-loopback, and credentialed targets require exact separate gates.
 - Human, JSON, JUnit, Markdown, and badge output share one redacted result

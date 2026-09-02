@@ -164,6 +164,15 @@ try {
                 $_.command -eq 'reject' -and $_.transport -eq 'streamable_http'
             }
     )
+    $statusRepresentationNames = @($capabilities.status.representations | ForEach-Object name)
+    $defaultTimeCeiling = @(
+        $capabilities.diagnostic_time_ceiling_profiles |
+            Where-Object profile -eq 'default'
+    )
+    $slowTimeCeiling = @(
+        $capabilities.diagnostic_time_ceiling_profiles |
+            Where-Object profile -eq 'slow-start'
+    )
     if (
         $capabilities.schema_version -ne 'mcp-doctor.capabilities/v1' -or
         $capabilities.schema_stability -ne 'stable' -or
@@ -183,6 +192,47 @@ try {
         (@($capabilities.schema_versions.generator) -join ',') -ne 'mcp-doctor.generator/v1' -or
         (@($capabilities.schema_versions.contract_snapshot) -join ',') -ne 'mcp-doctor.contract-snapshot/v1alpha1' -or
         (@($capabilities.schema_versions.contract_diff) -join ',') -ne 'mcp-doctor.contract-diff/v1alpha1' -or
+        (@($capabilities.schema_versions.status) -join ',') -ne 'mcp-doctor.status/v1' -or
+        $capabilities.status.schema_version -ne 'mcp-doctor.status/v1' -or
+        (@($capabilities.status.commands) -join ',') -ne 'break,check,inspect,reject' -or
+        ($statusRepresentationNames -join ',') -ne 'plain,jsonl' -or
+        $capabilities.status.representations[0].machine_readable -ne $false -or
+        $capabilities.status.representations[1].machine_readable -ne $true -or
+        $capabilities.status.stream -ne 'stderr' -or
+        $capabilities.status.default -ne 'off' -or
+        $capabilities.status.jsonl_stderr_exclusive -ne $true -or
+        $capabilities.status.limits.event_bytes -ne 512 -or
+        $capabilities.status.limits.events -ne 128 -or
+        $capabilities.status.limits.output_bytes -ne 65536 -or
+        $capabilities.status.limits.write_retries -ne 0 -or
+        $defaultTimeCeiling.Count -ne 1 -or
+        $defaultTimeCeiling[0].startup.milliseconds -ne 10000 -or
+        $defaultTimeCeiling[0].startup.scope -ne 'target_preparation_or_process_start' -or
+        $defaultTimeCeiling[0].discovery.milliseconds -ne 10000 -or
+        $defaultTimeCeiling[0].discovery.scope -ne 'one_discovery_phase' -or
+        $defaultTimeCeiling[0].request.milliseconds -ne 30000 -or
+        $defaultTimeCeiling[0].request.scope -ne 'one_request_write_or_http_exchange' -or
+        $defaultTimeCeiling[0].response.milliseconds -ne 30000 -or
+        $defaultTimeCeiling[0].response.scope -ne 'one_response_wait' -or
+        $defaultTimeCeiling[0].cleanup_grace.milliseconds -ne 2000 -or
+        $defaultTimeCeiling[0].cleanup_grace.scope -ne 'graceful_cleanup_before_forced_termination' -or
+        $defaultTimeCeiling[0].total.milliseconds -ne 120000 -or
+        $defaultTimeCeiling[0].total.scope -ne 'stdio_startup_or_http_preparation_through_cleanup' -or
+        $defaultTimeCeiling[0].whole_process_exit_guarantee -ne $false -or
+        $slowTimeCeiling.Count -ne 1 -or
+        $slowTimeCeiling[0].startup.milliseconds -ne 30000 -or
+        $slowTimeCeiling[0].startup.scope -ne 'target_preparation_or_process_start' -or
+        $slowTimeCeiling[0].discovery.milliseconds -ne 30000 -or
+        $slowTimeCeiling[0].discovery.scope -ne 'one_discovery_phase' -or
+        $slowTimeCeiling[0].request.milliseconds -ne 60000 -or
+        $slowTimeCeiling[0].request.scope -ne 'one_request_write_or_http_exchange' -or
+        $slowTimeCeiling[0].response.milliseconds -ne 60000 -or
+        $slowTimeCeiling[0].response.scope -ne 'one_response_wait' -or
+        $slowTimeCeiling[0].cleanup_grace.milliseconds -ne 2000 -or
+        $slowTimeCeiling[0].cleanup_grace.scope -ne 'graceful_cleanup_before_forced_termination' -or
+        $slowTimeCeiling[0].total.milliseconds -ne 240000 -or
+        $slowTimeCeiling[0].total.scope -ne 'stdio_startup_or_http_preparation_through_cleanup' -or
+        $slowTimeCeiling[0].whole_process_exit_guarantee -ne $false -or
         $capabilities.exit_semantics.version -ne 'mcp-doctor.exit/v1' -or
         ($exitCodes -join ',') -ne '0,1,2,3,4' -or
         $capabilities.platform.family -ne 'windows' -or

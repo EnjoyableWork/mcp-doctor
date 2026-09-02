@@ -49,6 +49,9 @@
     "schema_versions": {
       "$ref": "#/$defs/schema_versions"
     },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
     "reporters": {
       "type": "array",
       "minItems": 1,
@@ -71,6 +74,15 @@
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/limit_profile"
+      }
+    },
+    "diagnostic_time_ceiling_profiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/diagnostic_time_ceiling_profile"
       }
     },
     "limits": {
@@ -393,6 +405,9 @@
         },
         "scenario": {
           "$ref": "#/$defs/nonempty_contract_versions"
+        },
+        "status": {
+          "$ref": "#/$defs/nonempty_contract_versions"
         }
       },
       "additionalProperties": true
@@ -522,6 +537,163 @@
           "items": {
             "$ref": "#/$defs/name"
           }
+        }
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "commands",
+        "representations",
+        "stream",
+        "default",
+        "jsonl_stderr_exclusive",
+        "limits"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "mcp-doctor.status/v1"
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "break",
+              "check",
+              "inspect",
+              "reject"
+            ]
+          }
+        },
+        "representations": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/status_representation"
+          }
+        },
+        "stream": {
+          "const": "stderr"
+        },
+        "default": {
+          "const": "off"
+        },
+        "jsonl_stderr_exclusive": {
+          "const": true
+        },
+        "limits": {
+          "$ref": "#/$defs/status_limits"
+        }
+      },
+      "additionalProperties": true
+    },
+    "status_representation": {
+      "type": "object",
+      "required": [
+        "name",
+        "machine_readable"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "plain",
+            "jsonl"
+          ]
+        },
+        "machine_readable": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "status_limits": {
+      "type": "object",
+      "required": [
+        "event_bytes",
+        "events",
+        "output_bytes",
+        "write_retries"
+      ],
+      "properties": {
+        "event_bytes": {
+          "const": 512
+        },
+        "events": {
+          "const": 128
+        },
+        "output_bytes": {
+          "const": 65536
+        },
+        "write_retries": {
+          "const": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnostic_time_ceiling_profile": {
+      "type": "object",
+      "required": [
+        "profile",
+        "startup",
+        "discovery",
+        "request",
+        "response",
+        "cleanup_grace",
+        "total",
+        "whole_process_exit_guarantee"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "default",
+            "slow-start"
+          ]
+        },
+        "startup": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "discovery": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "request": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "response": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "cleanup_grace": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "total": {
+          "$ref": "#/$defs/time_ceiling"
+        },
+        "whole_process_exit_guarantee": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "time_ceiling": {
+      "type": "object",
+      "required": [
+        "milliseconds",
+        "scope"
+      ],
+      "properties": {
+        "milliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 240000
+        },
+        "scope": {
+          "$ref": "#/$defs/name"
         }
       },
       "additionalProperties": true
