@@ -8,6 +8,7 @@ mod diff;
 mod inspect;
 mod reject_command;
 mod report_artifacts;
+mod status;
 mod transport;
 
 use std::ffi::{OsStr, OsString};
@@ -72,6 +73,9 @@ struct InspectArgs {
 
     #[command(flatten)]
     limits: DiagnosticLimitArgs,
+
+    #[command(flatten)]
+    status: StatusArgs,
 
     /// Auto is bounded and passive; exact revisions run one selected lifecycle.
     #[arg(long, value_enum, default_value_t = InspectProtocolVersion::Auto)]
@@ -172,6 +176,9 @@ struct CheckArgs {
     #[command(flatten)]
     limits: DiagnosticLimitArgs,
 
+    #[command(flatten)]
+    status: StatusArgs,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -226,6 +233,9 @@ struct BreakArgs {
     #[command(flatten)]
     limits: DiagnosticLimitArgs,
 
+    #[command(flatten)]
+    status: StatusArgs,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -269,6 +279,9 @@ struct RejectArgs {
     #[command(flatten)]
     report: ReportArgs,
 
+    #[command(flatten)]
+    status: StatusArgs,
+
     /// One absolute Streamable HTTP endpoint.
     #[arg(value_name = "URL")]
     endpoint: Option<String>,
@@ -309,6 +322,13 @@ struct DiagnosticLimitArgs {
     /// Select one compiled finite diagnostic budget; this never grants target authority.
     #[arg(long, value_enum, default_value_t = DiagnosticLimitSelection::Default)]
     limit_profile: DiagnosticLimitSelection,
+}
+
+#[derive(Debug, Args, Default)]
+struct StatusArgs {
+    /// Emit flushed diagnostic status to stderr; omitted keeps status disabled.
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    status: Option<StatusSelection>,
 }
 
 #[derive(Debug, Args, Default)]
@@ -375,6 +395,21 @@ enum AggregateOutputFormat {
 enum CapabilitiesOutputFormat {
     Human,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum StatusSelection {
+    Plain,
+    Jsonl,
+}
+
+impl From<StatusSelection> for status::StatusFormat {
+    fn from(selection: StatusSelection) -> Self {
+        match selection {
+            StatusSelection::Plain => Self::Plain,
+            StatusSelection::Jsonl => Self::Jsonl,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, ValueEnum)]
@@ -514,19 +549,82 @@ impl From<CapabilitiesOutputFormat> for capabilities::CapabilitiesFormat {
     }
 }
 
+type CliStatusReporter = status::StatusReporter<std::io::Stderr>;
+
+fn target_status(
+    selection: Option<StatusSelection>,
+    command: status::StatusCommand,
+    transport: status::StatusTransport,
+    limit_profile: contract::DiagnosticLimitProfile,
+) -> CliStatusReporter {
+    status::StatusReporter::new(
+        std::io::stderr(),
+        selection.map(Into::into),
+        status::StatusContext::new(command, transport, limit_profile.as_str()),
+    )
+}
+
+fn selected_transport(endpoint_selected: bool) -> status::StatusTransport {
+    if endpoint_selected {
+        status::StatusTransport::StreamableHttp
+    } else {
+        status::StatusTransport::Stdio
+    }
+}
+
+fn finish_status_error(
+    status: &mut CliStatusReporter,
+    kind: status::StatusErrorKind,
+    error: &dyn std::fmt::Display,
+    exit_code: u8,
+) -> ExitCode {
+    status.error(kind, error);
+    finish_status(status, exit_code)
+}
+
+fn finish_status(status: &mut CliStatusReporter, exit_code: u8) -> ExitCode {
+    use std::io::Write as _;
+
+    let exit_code = if std::io::stdout().flush().is_err() {
+        status.error(
+            status::StatusErrorKind::InternalOrOutputFailure,
+            &"the stdout report could not be flushed",
+        );
+        4
+    } else {
+        exit_code
+    };
+    ExitCode::from(status.complete(exit_code))
+}
+
 fn emit_diagnostic(
     diagnostic: contract::Diagnostic,
     request: contract::ReportRequest,
     destinations: report_artifacts::ReportArtifactDestinations,
-) -> ExitCode {
+    status: &mut CliStatusReporter,
+) -> u8 {
+    use status::{StatusObserver as _, StatusPhase};
+
+    status.phase_started(StatusPhase::ReportPublication, None);
+    emit_diagnostic_after_publication_started(diagnostic, request, destinations, status)
+}
+
+fn emit_diagnostic_after_publication_started(
+    diagnostic: contract::Diagnostic,
+    request: contract::ReportRequest,
+    destinations: report_artifacts::ReportArtifactDestinations,
+    status: &mut CliStatusReporter,
+) -> u8 {
+    use status::StatusErrorKind;
+
     let rendered = diagnostic.render(request);
-    let exit = rendered.exit;
+    let exit = rendered.exit.code();
     let output = rendered.output;
     if let Some(error) = rendered.error {
         print!("{output}");
-        eprintln!("error: {error}");
+        status.error(StatusErrorKind::InternalOrOutputFailure, &error);
         if let Err(cleanup) = destinations.cancel() {
-            eprintln!("error: {cleanup}");
+            status.error(StatusErrorKind::InternalOrOutputFailure, &cleanup);
         }
         return exit;
     }
@@ -536,8 +634,8 @@ fn emit_diagnostic(
     match persistence {
         Ok(()) => exit,
         Err(error) => {
-            eprintln!("error: {error}");
-            ExitCode::from(4)
+            status.error(StatusErrorKind::InternalOrOutputFailure, &error);
+            4
         }
     }
 }
@@ -545,13 +643,14 @@ fn emit_diagnostic(
 fn emit_invocation_error(
     error: &dyn std::fmt::Display,
     destinations: report_artifacts::ReportArtifactDestinations,
-) -> ExitCode {
-    eprintln!("error: {error}");
+    status: &mut CliStatusReporter,
+) -> u8 {
+    status.error(status::StatusErrorKind::InvalidInvocationOrInput, error);
     if let Err(cleanup) = destinations.cancel() {
-        eprintln!("error: {cleanup}");
-        ExitCode::from(4)
+        status.error(status::StatusErrorKind::InternalOrOutputFailure, &cleanup);
+        4
     } else {
-        ExitCode::from(2)
+        2
     }
 }
 
@@ -560,19 +659,29 @@ fn emit_inspect(
     destination: Option<contract::SnapshotDestination>,
     request: contract::ReportRequest,
     report_destinations: report_artifacts::ReportArtifactDestinations,
-) -> ExitCode {
+    status: &mut CliStatusReporter,
+) -> u8 {
+    use status::{StatusObserver as _, StatusPhase};
+
+    status.phase_started(StatusPhase::ReportPublication, None);
     if let Some(snapshot) = output.snapshot {
         let Some(destination) = destination else {
             return emit_invocation_error(
                 &"a contract snapshot was produced without an authorized destination",
                 report_destinations,
+                status,
             );
         };
         if let Err(error) = destination.persist(&snapshot) {
-            return emit_invocation_error(&error, report_destinations);
+            return emit_invocation_error(&error, report_destinations, status);
         }
     }
-    emit_diagnostic(output.diagnostic, request, report_destinations)
+    emit_diagnostic_after_publication_started(
+        output.diagnostic,
+        request,
+        report_destinations,
+        status,
+    )
 }
 
 fn emit_contract_diff(diff: contract::RenderedContractDiff) -> ExitCode {
@@ -674,14 +783,25 @@ async fn main() -> ExitCode {
         Some(Command::Inspect(arguments)) => {
             let protocol_selection = arguments.protocol_version.into();
             let limit_profile = arguments.limits.limit_profile.into();
+            let mut status = target_status(
+                arguments.status.status,
+                status::StatusCommand::Inspect,
+                selected_transport(arguments.endpoint.is_some()),
+                limit_profile,
+            );
+            status.invocation_accepted();
             let destination = match contract::prepare_snapshot_destination(
                 arguments.snapshot,
                 arguments.allow_sensitive_snapshot,
             ) {
                 Ok(destination) => destination,
                 Err(error) => {
-                    eprintln!("error: {error}");
-                    return ExitCode::from(2);
+                    return finish_status_error(
+                        &mut status,
+                        status::StatusErrorKind::InvalidInvocationOrInput,
+                        &error,
+                        2,
+                    );
                 }
             };
             let reserved_paths = destination
@@ -693,26 +813,37 @@ async fn main() -> ExitCode {
                 match arguments.report.prepare(&reserved_paths) {
                     Ok(prepared) => prepared,
                     Err(error) => {
-                        eprintln!("error: {error}");
-                        return ExitCode::from(2);
+                        return finish_status_error(
+                            &mut status,
+                            status::StatusErrorKind::InvalidInvocationOrInput,
+                            &error,
+                            2,
+                        );
                     }
                 };
             drop(reserved_paths);
             let capture_snapshot = destination.is_some();
-            if let Some(endpoint) = arguments.endpoint {
+            let exit = if let Some(endpoint) = arguments.endpoint {
                 match inspect::run_http(
                     arguments.remote.into_options(endpoint),
                     protocol_selection,
                     capture_snapshot,
                     limit_profile,
+                    &mut status,
                 )
                 .await
                 {
                     Ok(mut output) => {
                         output.diagnostic = output.diagnostic.with_limit_profile(limit_profile);
-                        emit_inspect(output, destination, report_request, report_destinations)
+                        emit_inspect(
+                            output,
+                            destination,
+                            report_request,
+                            report_destinations,
+                            &mut status,
+                        )
                     }
-                    Err(error) => emit_invocation_error(&error, report_destinations),
+                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
             } else {
                 match inspect::run_stdio(
@@ -720,16 +851,24 @@ async fn main() -> ExitCode {
                     protocol_selection,
                     capture_snapshot,
                     limit_profile,
+                    &mut status,
                 )
                 .await
                 {
                     Ok(mut output) => {
                         output.diagnostic = output.diagnostic.with_limit_profile(limit_profile);
-                        emit_inspect(output, destination, report_request, report_destinations)
+                        emit_inspect(
+                            output,
+                            destination,
+                            report_request,
+                            report_destinations,
+                            &mut status,
+                        )
                     }
-                    Err(error) => emit_invocation_error(&error, report_destinations),
+                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
-            }
+            };
+            finish_status(&mut status, exit)
         }
         Some(Command::Diff(arguments)) => emit_contract_diff(diff::run(
             &arguments.before,
@@ -764,14 +903,25 @@ async fn main() -> ExitCode {
         Some(Command::Check(arguments)) => {
             let revision = arguments.protocol_version.into();
             let limit_profile = arguments.limits.limit_profile.into();
+            let mut status = target_status(
+                arguments.status.status,
+                status::StatusCommand::Check,
+                selected_transport(arguments.endpoint.is_some()),
+                limit_profile,
+            );
+            status.invocation_accepted();
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
-                    eprintln!("error: {error}");
-                    return ExitCode::from(2);
+                    return finish_status_error(
+                        &mut status,
+                        status::StatusErrorKind::InvalidInvocationOrInput,
+                        &error,
+                        2,
+                    );
                 }
             };
-            if let Some(endpoint) = arguments.endpoint {
+            let exit = if let Some(endpoint) = arguments.endpoint {
                 let diagnostic = check::run_http(
                     arguments.remote.into_options(endpoint),
                     &arguments.scenario,
@@ -779,10 +929,11 @@ async fn main() -> ExitCode {
                     arguments.allow_side_effects,
                     revision,
                     limit_profile,
+                    &mut status,
                 )
                 .await
                 .with_limit_profile(limit_profile);
-                emit_diagnostic(diagnostic, report_request, report_destinations)
+                emit_diagnostic(diagnostic, report_request, report_destinations, &mut status)
             } else {
                 match check::run_stdio(
                     arguments.target,
@@ -791,6 +942,7 @@ async fn main() -> ExitCode {
                     arguments.allow_side_effects,
                     revision,
                     limit_profile,
+                    &mut status,
                 )
                 .await
                 {
@@ -798,10 +950,12 @@ async fn main() -> ExitCode {
                         diagnostic.with_limit_profile(limit_profile),
                         report_request,
                         report_destinations,
+                        &mut status,
                     ),
-                    Err(error) => emit_invocation_error(&error, report_destinations),
+                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
-            }
+            };
+            finish_status(&mut status, exit)
         }
         Some(Command::Break(arguments)) => {
             let BreakArgs {
@@ -814,16 +968,28 @@ async fn main() -> ExitCode {
                 seed,
                 report,
                 limits,
+                status: status_args,
                 endpoint,
                 remote,
                 target,
             } = arguments;
             let limit_profile = limits.limit_profile.into();
+            let mut status = target_status(
+                status_args.status,
+                status::StatusCommand::Break,
+                selected_transport(endpoint.is_some()),
+                limit_profile,
+            );
+            status.invocation_accepted();
             let (report_request, report_destinations) = match report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
-                    eprintln!("error: {error}");
-                    return ExitCode::from(2);
+                    return finish_status_error(
+                        &mut status,
+                        status::StatusErrorKind::InvalidInvocationOrInput,
+                        &error,
+                        2,
+                    );
                 }
             };
             let options = break_command::BreakOptions {
@@ -836,24 +1002,28 @@ async fn main() -> ExitCode {
                 seed,
                 limit_profile,
             };
-            if let Some(endpoint) = endpoint {
+            let exit = if let Some(endpoint) = endpoint {
                 let diagnostic =
-                    break_command::run_http(remote.into_options(endpoint), options).await;
+                    break_command::run_http(remote.into_options(endpoint), options, &mut status)
+                        .await;
                 emit_diagnostic(
                     diagnostic.with_limit_profile(limit_profile),
                     report_request,
                     report_destinations,
+                    &mut status,
                 )
             } else {
-                match break_command::run_stdio(target, options).await {
+                match break_command::run_stdio(target, options, &mut status).await {
                     Ok(diagnostic) => emit_diagnostic(
                         diagnostic.with_limit_profile(limit_profile),
                         report_request,
                         report_destinations,
+                        &mut status,
                     ),
-                    Err(error) => emit_invocation_error(&error, report_destinations),
+                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
-            }
+            };
+            finish_status(&mut status, exit)
         }
         Some(Command::Reject(arguments)) => {
             let RejectArgs {
@@ -863,15 +1033,28 @@ async fn main() -> ExitCode {
                 allow_side_effects,
                 seed,
                 report,
+                status: status_args,
                 endpoint,
                 remote,
                 target,
             } = arguments;
+            let limit_profile = contract::DiagnosticLimitProfile::Default;
+            let mut status = target_status(
+                status_args.status,
+                status::StatusCommand::Reject,
+                selected_transport(endpoint.is_some()),
+                limit_profile,
+            );
+            status.invocation_accepted();
             let (report_request, report_destinations) = match report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
-                    eprintln!("error: {error}");
-                    return ExitCode::from(2);
+                    return finish_status_error(
+                        &mut status,
+                        status::StatusErrorKind::InvalidInvocationOrInput,
+                        &error,
+                        2,
+                    );
                 }
             };
             let options = reject_command::RejectOptions {
@@ -881,18 +1064,23 @@ async fn main() -> ExitCode {
                 allow_side_effects,
                 seed,
             };
-            if let Some(endpoint) = endpoint {
+            let exit = if let Some(endpoint) = endpoint {
                 let diagnostic =
-                    reject_command::run_http(remote.into_options(endpoint), options).await;
-                emit_diagnostic(diagnostic, report_request, report_destinations)
+                    reject_command::run_http(remote.into_options(endpoint), options, &mut status)
+                        .await;
+                emit_diagnostic(diagnostic, report_request, report_destinations, &mut status)
             } else {
-                match reject_command::run_stdio(target, options).await {
-                    Ok(diagnostic) => {
-                        emit_diagnostic(diagnostic, report_request, report_destinations)
-                    }
-                    Err(error) => emit_invocation_error(&error, report_destinations),
+                match reject_command::run_stdio(target, options, &mut status).await {
+                    Ok(diagnostic) => emit_diagnostic(
+                        diagnostic,
+                        report_request,
+                        report_destinations,
+                        &mut status,
+                    ),
+                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
-            }
+            };
+            finish_status(&mut status, exit)
         }
     }
 }

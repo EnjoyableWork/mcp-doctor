@@ -18,6 +18,67 @@ Choose the least-active diagnostic that answers your question:
 > and a test environment. Finding a tool does not give `mcp-doctor` permission
 > to call it.
 
+## Live diagnostic status
+
+`inspect`, `check`, `break`, and `reject` can emit bounded live status without
+changing their final report:
+
+```bash
+mcp-doctor inspect --status plain -- node ./dist/server.js --stdio
+mcp-doctor inspect --status jsonl --format json \
+  -- node ./dist/server.js --stdio
+```
+
+The flag is optional and requires an explicit `plain` or `jsonl` value. When it
+is omitted, status is off: stdout, artifacts, exit codes, and the successful
+empty-stderr behavior remain unchanged. Status always goes to stderr and the
+final human, JSON, or JUnit report stays on stdout. Do not merge the streams
+when a program will parse either one.
+
+`plain` emits deterministic, noninteractive log lines. Ordinary safe CLI error
+prose can follow its fixed status records. `jsonl` makes stderr exclusively a
+sequence of LF-terminated `mcp-doctor.status/v1` JSON objects after CLI parsing
+has accepted the flag. A command-line syntax error that prevents that
+selection from being parsed remains ordinary CLI error text.
+
+The fixed event vocabulary is:
+
+| Event | Meaning |
+| --- | --- |
+| `invocation_accepted` | CLI parsing selected one target-facing command and status contract |
+| `phase_started` | Input preparation, target preparation or startup, discovery, cleanup, or report publication is about to begin |
+| `case_started` | One active call is about to be transmitted, with its declared ordinal, total, and request/response ceilings |
+| `error` | A fixed invocation/input or internal/output error class occurred |
+| `completed` | The final exit code and stable exit meaning are known |
+
+Every record repeats only the fixed command, transport, and selected limit
+profile. `reject` reports its fixed `default` profile because it has no profile
+selector. Applicable phase records include a fixed ceiling kind and milliseconds.
+Locally rejected or inapplicable active cases are not transmitted and emit no
+`case_started`; declared ordinals can therefore contain gaps. Bounded `inspect
+auto` may repeat startup, discovery, and cleanup for its one permitted legacy
+transition. Consumers must process records in order and ignore unknown optional
+properties within status `v1`.
+
+`report_publication` is emitted before snapshot or report rendering and
+publication. `completed` follows target cleanup and every requested publication
+attempt. If the process ends without `completed`, the outcome is unknown; status
+is liveness context, never diagnostic evidence. A failed or closed status sink
+does not stop cleanup, cannot turn a failed or incomplete diagnosis into
+success, and makes the process exit `4` when it can no longer publish status.
+
+No status record contains a target, endpoint, path, tool or case name,
+environment name or value, header, credential, server message, progress
+notification, argument, result, or target stderr. Emission adds no target
+launch, request, retry, redirect, fallback, concurrency, side effect, or
+deadline. Individual records are at most 512 bytes; at most 128 records and
+65,536 aggregate bytes are attempted, using one bounded write-all operation
+and one flush per record, with no retry after a write or flush error. The
+checked-in [Draft 2020-12 status schema](../schemas/mcp-doctor.status.v1.schema.json)
+defines the JSONL record contract. Exact duration scopes are documented in the
+[safety model](safety.md#bounded-diagnostic-patience) and are discoverable with
+`mcp-doctor capabilities --format json`.
+
 ## Passive `inspect`
 
 Omitting `--protocol-version`, or selecting `auto`, performs bounded passive

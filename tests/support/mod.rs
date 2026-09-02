@@ -24,6 +24,7 @@ const STABLE_AGGREGATE_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.aggregate.v1.schema.json");
 const STABLE_CAPABILITIES_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.capabilities.v1.schema.json");
+const STABLE_STATUS_SCHEMA: &str = include_str!("../../schemas/mcp-doctor.status.v1.schema.json");
 const CONTRACT_SNAPSHOT_SCHEMA: &str =
     include_str!("../../schemas/mcp-doctor.contract-snapshot.v1alpha1.schema.json");
 const CONTRACT_DIFF_SCHEMA: &str =
@@ -293,6 +294,27 @@ pub fn parse_and_validate_aggregate(bytes: &[u8]) -> serde_json::Value {
 
 pub fn parse_and_validate_capabilities(bytes: &[u8]) -> serde_json::Value {
     parse_and_validate_schema(bytes, STABLE_CAPABILITIES_SCHEMA, "capabilities response")
+}
+
+pub fn parse_and_validate_status_jsonl(bytes: &[u8]) -> Vec<serde_json::Value> {
+    let validator = jsonschema::draft202012::options()
+        .build(
+            &serde_json::from_str(STABLE_STATUS_SCHEMA)
+                .expect("the checked-in status schema should be JSON"),
+        )
+        .expect("the checked-in status schema should compile");
+    let text = std::str::from_utf8(bytes).expect("status JSONL should be UTF-8");
+    assert!(text.ends_with('\n'), "status JSONL should end with LF");
+    text.lines()
+        .map(|line| {
+            let event: serde_json::Value =
+                serde_json::from_str(line).expect("each status line should be one JSON value");
+            if let Err(error) = validator.validate(&event) {
+                panic!("status event should satisfy the stable schema: {error}");
+            }
+            event
+        })
+        .collect()
 }
 
 pub fn parse_and_validate_contract_snapshot(bytes: &[u8]) -> serde_json::Value {

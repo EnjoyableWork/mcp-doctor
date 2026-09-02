@@ -82,6 +82,54 @@ fn release_identity_and_toolchain_are_exact() {
 }
 
 #[test]
+fn live_status_guidance_preserves_stream_evidence_and_duration_scope() {
+    for (path, contracts) in [
+        (
+            "docs/commands.md",
+            &[
+                "--status plain",
+                "--status jsonl",
+                "mcp-doctor.status/v1",
+                "Status always goes to stderr",
+                "is liveness context, never diagnostic evidence",
+            ][..],
+        ),
+        (
+            "docs/automation.md",
+            &[
+                ">mcp-doctor-report.json 2>mcp-doctor-status.jsonl",
+                ".diagnostic_time_ceiling_profiles",
+                "whole_process_exit_guarantee",
+                "Keep the streams separate",
+            ][..],
+        ),
+        (
+            "docs/safety.md",
+            &[
+                "## Status-channel safety",
+                "never retains or renders endpoints",
+                "Status is capped at 512 bytes per event, 128 events, and 65,536 aggregate",
+                "exit `4`",
+            ][..],
+        ),
+        (
+            "docs/agents.md",
+            &[
+                "## Observe a direct CLI preflight",
+                "Parse stderr one complete",
+                "Do not diagnose from status",
+                "whole_process_exit_guarantee",
+            ][..],
+        ),
+    ] {
+        let document = repository_file(path);
+        for contract in contracts {
+            assert!(document.contains(contract), "{path} omitted {contract}");
+        }
+    }
+}
+
+#[test]
 fn preflight_is_secretless_nonpublishing_and_covers_every_source_host() {
     let workflow = repository_file(".github/workflows/release-preflight.yml");
 

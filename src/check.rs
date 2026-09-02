@@ -10,6 +10,7 @@ use crate::contract::{
     render_authorization_failure_for_revision, render_resolved_scenario_failure_for_revision,
     render_scenario_failure_for_revision, resolve_target_environment, stdio_diagnostic,
 };
+use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
 };
@@ -22,7 +23,9 @@ pub(crate) async fn run_stdio(
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
     limit_profile: DiagnosticLimitProfile,
+    status: &mut dyn StatusObserver,
 ) -> Result<Diagnostic, TargetError> {
+    status.phase_started(StatusPhase::InputPreparation, None);
     let bytes = match read_scenario(scenario_path) {
         Ok(bytes) => bytes,
         Err(failure) => {
@@ -84,6 +87,7 @@ pub(crate) async fn run_stdio(
     }
     scenario.discard_target_environment_names();
 
+    status.phase_started(StatusPhase::TargetPreparation, None);
     let (executable, arguments) = target.split_first().expect("clap requires a check target");
     let target =
         StdioTarget::with_environment(executable.clone(), arguments.to_vec(), target_environment)?;
@@ -105,7 +109,9 @@ pub(crate) async fn run_stdio(
         revision.uses_initialize(),
     );
     let mut conversation = ActiveConversation::for_revision(scenario, revision);
-    let result = transport.probe(&target, &mut conversation).await;
+    let result = transport
+        .probe_with_status(&target, &mut conversation, status)
+        .await;
     let diagnostic = stdio_diagnostic(
         result.failure(),
         result.cleanup_failed() || internal_test_cleanup_failure(),
@@ -120,7 +126,9 @@ pub(crate) async fn run_http(
     allow_side_effects: bool,
     revision: ActiveProtocolRevision,
     limit_profile: DiagnosticLimitProfile,
+    status: &mut dyn StatusObserver,
 ) -> Diagnostic {
+    status.phase_started(StatusPhase::InputPreparation, None);
     let bytes = match read_scenario(scenario_path) {
         Ok(bytes) => bytes,
         Err(failure) => {
@@ -170,13 +178,20 @@ pub(crate) async fn run_http(
     scenario.discard_target_environment_names();
 
     let mut conversation = ActiveConversation::new_http_for_revision(scenario, revision);
-    let target =
-        match HttpTarget::prepare(options, http_limits(limit_profile), &SystemResolver).await {
-            Ok(target) => target,
-            Err(failure) => {
-                return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
-            }
-        };
+    let limits = http_limits(limit_profile);
+    status.phase_started(
+        StatusPhase::TargetPreparation,
+        Some(StatusCeiling {
+            kind: StatusCeilingKind::Startup,
+            milliseconds: limits.startup_ms,
+        }),
+    );
+    let target = match HttpTarget::prepare(options, limits, &SystemResolver).await {
+        Ok(target) => target,
+        Err(failure) => {
+            return conversation.into_http_diagnostic(http_diagnostic(Some(failure), None));
+        }
+    };
     let transport = match HttpTransport::new_for_active_protocol(
         target,
         revision.as_str(),
@@ -187,7 +202,7 @@ pub(crate) async fn run_http(
             return conversation.into_http_diagnostic(http_diagnostic(Some(failure), Some(true)));
         }
     };
-    let result = transport.probe(&mut conversation).await;
+    let result = transport.probe_with_status(&mut conversation, status).await;
     conversation.into_http_diagnostic(http_diagnostic_with_cleanup(
         result.failure(),
         Some(result.tls_applicable()),

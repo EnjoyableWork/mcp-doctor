@@ -2,9 +2,11 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::thread;
+use std::time::Duration;
 
 use serde_json::Value;
 use serde_json::json;
@@ -26,6 +28,8 @@ fn main() -> ExitCode {
 
     match mode.to_str() {
         Some("success") => success(&remaining),
+        Some("status-barrier") => status_barrier(&remaining),
+        Some("status-redaction") => status_redaction(),
         Some("literal-arguments") => literal_arguments(&remaining),
         Some("environment") => environment(),
         Some("malformed") => malformed(),
@@ -194,6 +198,60 @@ fn success(arguments: &[OsString]) -> ExitCode {
         fs::write(marker, b"unexpected request")
             .expect("the unexpected-request marker should be writable");
     }
+    ExitCode::SUCCESS
+}
+
+fn status_barrier(arguments: &[OsString]) -> ExitCode {
+    let Some(address) = arguments
+        .first()
+        .and_then(|argument| argument.to_str())
+        .and_then(|argument| argument.parse::<SocketAddr>().ok())
+    else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+
+    let mut barrier = TcpStream::connect_timeout(&address, Duration::from_secs(10))
+        .expect("the status barrier should connect");
+    barrier
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("the status barrier read should be bounded");
+    barrier
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .expect("the status barrier write should be bounded");
+    barrier
+        .write_all(&[1])
+        .expect("the status barrier readiness event should be writable");
+    barrier
+        .flush()
+        .expect("the status barrier readiness event should flush");
+    let mut acknowledgement = [0_u8; 1];
+    barrier
+        .read_exact(&mut acknowledgement)
+        .expect("the status barrier acknowledgement should arrive");
+    assert_eq!(acknowledgement, [2]);
+
+    write_success_response();
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn status_redaction() -> ExitCode {
+    eprintln!("synthetic-secret-target-stderr-never-status-7f2c");
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+    write_json_frame(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/progress",
+        "params": {
+            "progressToken": "synthetic-secret-progress-token-never-status-7f2c",
+            "progress": 1,
+            "message": "synthetic-secret-progress-message-never-status-7f2c"
+        }
+    }));
+    write_success_response();
+    assert_eof(&mut input);
     ExitCode::SUCCESS
 }
 

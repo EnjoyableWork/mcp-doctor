@@ -6,7 +6,11 @@ use crate::aggregate::AGGREGATE_SCHEMA_VERSION;
 use crate::contract::{
     BADGE_REPORT_VERSION, DIFF_SCHEMA_VERSION, ExitStatus, GENERATOR_VERSION, KnownRevision,
     MARKDOWN_REPORT_VERSION, ProtocolRevision, REPORT_SCHEMA_VERSION, SCENARIO_SCHEMA_VERSION,
-    SNAPSHOT_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION,
+    SNAPSHOT_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION, diagnostic_stdio_limit_profile,
+};
+use crate::status::{
+    MAXIMUM_EVENT_BYTES as MAXIMUM_STATUS_EVENT_BYTES, MAXIMUM_EVENTS as MAXIMUM_STATUS_EVENTS,
+    MAXIMUM_OUTPUT_BYTES as MAXIMUM_STATUS_OUTPUT_BYTES, STATUS_SCHEMA_VERSION,
 };
 
 pub(crate) const CAPABILITIES_SCHEMA_VERSION: &str = "mcp-doctor.capabilities/v1";
@@ -37,6 +41,8 @@ const MARKDOWN_REPORT_SCHEMAS: &[&str] = &[MARKDOWN_REPORT_VERSION];
 const BADGE_REPORT_SCHEMAS: &[&str] = &[BADGE_REPORT_VERSION];
 const GENERATOR_SCHEMAS: &[&str] = &[GENERATOR_VERSION];
 const SCENARIO_SCHEMAS: &[&str] = &[SCENARIO_SCHEMA_VERSION, WORKFLOW_SCHEMA_VERSION];
+const STATUS_SCHEMAS: &[&str] = &[STATUS_SCHEMA_VERSION];
+const STATUS_COMMANDS: &[&str] = &["break", "check", "inspect", "reject"];
 
 const HUMAN_JSON_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER];
 const DIAGNOSTIC_REPORTERS: &[&str] = &[HUMAN_REPORTER, JSON_REPORTER, JUNIT_REPORTER];
@@ -45,6 +51,16 @@ const DIAGNOSTIC_ARTIFACT_REPORTERS: &[&str] = &[
     JUNIT_REPORTER,
     MARKDOWN_REPORTER,
     BADGE_REPORTER,
+];
+const STATUS_REPRESENTATIONS: &[StatusRepresentation<'static>] = &[
+    StatusRepresentation {
+        name: "plain",
+        machine_readable: false,
+    },
+    StatusRepresentation {
+        name: "jsonl",
+        machine_readable: true,
+    },
 ];
 
 const CURRENT_REVISION: &str = ProtocolRevision::V2026_07_28.as_str();
@@ -341,10 +357,12 @@ struct CapabilitiesManifest<'a> {
     protocol_support: &'a [ProtocolSupport<'a>],
     protocol_selection: ProtocolSelectionCapability<'a>,
     schema_versions: SchemaVersions<'a>,
+    status: StatusCapability<'a>,
     reporters: &'a [ReporterCapability<'a>],
     exit_semantics: ExitSemantics<'a>,
     platform: PlatformCapabilities<'a>,
     limit_profiles: &'a [LimitProfileCapability<'a>],
+    diagnostic_time_ceiling_profiles: [DiagnosticTimeCeilingProfile<'a>; 2],
     limits: CapabilitiesLimits,
 }
 
@@ -414,6 +432,33 @@ struct SchemaVersions<'a> {
     badge_report: &'a [&'a str],
     generator: &'a [&'a str],
     scenario: &'a [&'a str],
+    status: &'a [&'a str],
+}
+
+#[derive(Debug, Serialize)]
+struct StatusCapability<'a> {
+    schema_version: &'a str,
+    commands: &'a [&'a str],
+    representations: &'a [StatusRepresentation<'a>],
+    stream: &'a str,
+    #[serde(rename = "default")]
+    default_mode: &'a str,
+    jsonl_stderr_exclusive: bool,
+    limits: StatusLimits,
+}
+
+#[derive(Debug, Serialize)]
+struct StatusRepresentation<'a> {
+    name: &'a str,
+    machine_readable: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct StatusLimits {
+    event_bytes: usize,
+    events: usize,
+    output_bytes: usize,
+    write_retries: u8,
 }
 
 #[derive(Debug, Serialize)]
@@ -448,6 +493,24 @@ struct LimitProfileCapability<'a> {
     hard: bool,
     selections: &'a [&'a str],
     selectable_for: &'a [&'a str],
+}
+
+#[derive(Debug, Serialize)]
+struct DiagnosticTimeCeilingProfile<'a> {
+    profile: &'a str,
+    startup: TimeCeiling<'a>,
+    discovery: TimeCeiling<'a>,
+    request: TimeCeiling<'a>,
+    response: TimeCeiling<'a>,
+    cleanup_grace: TimeCeiling<'a>,
+    total: TimeCeiling<'a>,
+    whole_process_exit_guarantee: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct TimeCeiling<'a> {
+    milliseconds: u64,
+    scope: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -528,6 +591,21 @@ fn manifest() -> CapabilitiesManifest<'static> {
             badge_report: BADGE_REPORT_SCHEMAS,
             generator: GENERATOR_SCHEMAS,
             scenario: SCENARIO_SCHEMAS,
+            status: STATUS_SCHEMAS,
+        },
+        status: StatusCapability {
+            schema_version: STATUS_SCHEMA_VERSION,
+            commands: STATUS_COMMANDS,
+            representations: STATUS_REPRESENTATIONS,
+            stream: "stderr",
+            default_mode: "off",
+            jsonl_stderr_exclusive: true,
+            limits: StatusLimits {
+                event_bytes: MAXIMUM_STATUS_EVENT_BYTES,
+                events: MAXIMUM_STATUS_EVENTS,
+                output_bytes: MAXIMUM_STATUS_OUTPUT_BYTES,
+                write_retries: 0,
+            },
         },
         reporters: REPORTERS,
         exit_semantics: ExitSemantics {
@@ -536,9 +614,53 @@ fn manifest() -> CapabilitiesManifest<'static> {
         },
         platform: platform_capabilities(),
         limit_profiles: LIMIT_PROFILES,
+        diagnostic_time_ceiling_profiles: diagnostic_time_ceiling_profiles(),
         limits: CapabilitiesLimits {
             output_bytes: MAXIMUM_OUTPUT_BYTES,
         },
+    }
+}
+
+fn diagnostic_time_ceiling_profiles() -> [DiagnosticTimeCeilingProfile<'static>; 2] {
+    use crate::contract::DiagnosticLimitProfile;
+
+    [
+        diagnostic_time_ceiling_profile(DiagnosticLimitProfile::Default),
+        diagnostic_time_ceiling_profile(DiagnosticLimitProfile::SlowStart),
+    ]
+}
+
+fn diagnostic_time_ceiling_profile(
+    selected: crate::contract::DiagnosticLimitProfile,
+) -> DiagnosticTimeCeilingProfile<'static> {
+    let limits = diagnostic_stdio_limit_profile(selected);
+    DiagnosticTimeCeilingProfile {
+        profile: selected.as_str(),
+        startup: TimeCeiling {
+            milliseconds: limits.startup_ms,
+            scope: "target_preparation_or_process_start",
+        },
+        discovery: TimeCeiling {
+            milliseconds: limits.discovery_ms,
+            scope: "one_discovery_phase",
+        },
+        request: TimeCeiling {
+            milliseconds: limits.request_ms,
+            scope: "one_request_write_or_http_exchange",
+        },
+        response: TimeCeiling {
+            milliseconds: limits.response_ms,
+            scope: "one_response_wait",
+        },
+        cleanup_grace: TimeCeiling {
+            milliseconds: limits.shutdown_grace_ms,
+            scope: "graceful_cleanup_before_forced_termination",
+        },
+        total: TimeCeiling {
+            milliseconds: limits.total_ms,
+            scope: "stdio_startup_or_http_preparation_through_cleanup",
+        },
+        whole_process_exit_guarantee: false,
     }
 }
 
@@ -625,6 +747,50 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
             profile.id,
             profile.selections.join(","),
             profile.selectable_for.join(",")
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
+    writeln!(
+        output,
+        "Status: {} · default {} · stream {} · commands {} · representations {}",
+        manifest.status.schema_version,
+        manifest.status.default_mode,
+        manifest.status.stream,
+        manifest.status.commands.join(","),
+        manifest
+            .status
+            .representations
+            .iter()
+            .map(|representation| representation.name)
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+    .map_err(|_| CapabilitiesError::Render)?;
+    if let Some(profile) = manifest.diagnostic_time_ceiling_profiles.first() {
+        writeln!(
+            output,
+            "Time ceiling scopes: startup={} · discovery={} · request={} · response={} · cleanup_grace={} · total={}",
+            profile.startup.scope,
+            profile.discovery.scope,
+            profile.request.scope,
+            profile.response.scope,
+            profile.cleanup_grace.scope,
+            profile.total.scope,
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
+    for profile in &manifest.diagnostic_time_ceiling_profiles {
+        writeln!(
+            output,
+            "Time ceilings: {} · startup_ms={} · discovery_ms={} · request_ms={} · response_ms={} · cleanup_grace_ms={} · total_ms={} · whole_process_exit_guarantee={}",
+            profile.profile,
+            profile.startup.milliseconds,
+            profile.discovery.milliseconds,
+            profile.request.milliseconds,
+            profile.response.milliseconds,
+            profile.cleanup_grace.milliseconds,
+            profile.total.milliseconds,
+            profile.whole_process_exit_guarantee,
         )
         .map_err(|_| CapabilitiesError::Render)?;
     }

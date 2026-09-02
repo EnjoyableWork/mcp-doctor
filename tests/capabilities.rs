@@ -55,6 +55,7 @@ fn help_exposes_only_compiled_capability_options() {
         "--snapshot",
         "--output",
         "--limit-profile",
+        "--status",
     ] {
         assert!(
             !stdout.contains(prohibited),
@@ -118,6 +119,63 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
             "mcp-doctor.scenario/v2alpha1"
         ])
     );
+    assert_eq!(
+        manifest["schema_versions"]["status"],
+        json!(["mcp-doctor.status/v1"])
+    );
+    assert_eq!(manifest["status"]["default"], "off");
+    assert_eq!(manifest["status"]["stream"], "stderr");
+    assert_eq!(
+        manifest["status"]["commands"],
+        json!(["break", "check", "inspect", "reject"])
+    );
+    assert_eq!(
+        manifest["status"]["representations"],
+        json!([
+            {"name": "plain", "machine_readable": false},
+            {"name": "jsonl", "machine_readable": true}
+        ])
+    );
+    assert_eq!(manifest["status"]["jsonl_stderr_exclusive"], true);
+    assert_eq!(manifest["status"]["limits"]["event_bytes"], 512);
+    assert_eq!(manifest["status"]["limits"]["events"], 128);
+    assert_eq!(manifest["status"]["limits"]["output_bytes"], 65_536);
+    assert_eq!(manifest["status"]["limits"]["write_retries"], 0);
+    let time_profiles = manifest["diagnostic_time_ceiling_profiles"]
+        .as_array()
+        .expect("diagnostic time ceiling profiles should be an array");
+    assert_eq!(time_profiles.len(), 2);
+    assert_eq!(time_profiles[0]["profile"], "default");
+    assert_eq!(time_profiles[0]["startup"]["milliseconds"], 10_000);
+    assert_eq!(time_profiles[0]["discovery"]["milliseconds"], 10_000);
+    assert_eq!(time_profiles[0]["request"]["milliseconds"], 30_000);
+    assert_eq!(time_profiles[0]["response"]["milliseconds"], 30_000);
+    assert_eq!(time_profiles[0]["cleanup_grace"]["milliseconds"], 2_000);
+    assert_eq!(time_profiles[0]["total"]["milliseconds"], 120_000);
+    assert_eq!(time_profiles[1]["profile"], "slow-start");
+    assert_eq!(time_profiles[1]["startup"]["milliseconds"], 30_000);
+    assert_eq!(time_profiles[1]["discovery"]["milliseconds"], 30_000);
+    assert_eq!(time_profiles[1]["request"]["milliseconds"], 60_000);
+    assert_eq!(time_profiles[1]["response"]["milliseconds"], 60_000);
+    assert_eq!(time_profiles[1]["cleanup_grace"]["milliseconds"], 2_000);
+    assert_eq!(time_profiles[1]["total"]["milliseconds"], 240_000);
+    let expected_scopes = [
+        ("startup", "target_preparation_or_process_start"),
+        ("discovery", "one_discovery_phase"),
+        ("request", "one_request_write_or_http_exchange"),
+        ("response", "one_response_wait"),
+        (
+            "cleanup_grace",
+            "graceful_cleanup_before_forced_termination",
+        ),
+        ("total", "stdio_startup_or_http_preparation_through_cleanup"),
+    ];
+    for profile in time_profiles {
+        assert_eq!(profile["whole_process_exit_guarantee"], false);
+        for (phase, expected_scope) in expected_scopes {
+            assert_eq!(profile[phase]["scope"], expected_scope, "{phase}");
+        }
+    }
     assert_eq!(manifest["protocol_selection"]["command"], "inspect");
     assert_eq!(manifest["protocol_selection"]["default_mode"], "auto");
     assert_eq!(
@@ -264,6 +322,18 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     ));
     assert!(stdout.contains(
         "Limit selections: mcp-doctor.limits/diagnostic/v1 · default,slow-start · commands break,check,inspect"
+    ));
+    assert!(stdout.contains(
+        "Status: mcp-doctor.status/v1 · default off · stream stderr · commands break,check,inspect,reject · representations plain,jsonl"
+    ));
+    assert!(stdout.contains(
+        "Time ceiling scopes: startup=target_preparation_or_process_start · discovery=one_discovery_phase · request=one_request_write_or_http_exchange · response=one_response_wait · cleanup_grace=graceful_cleanup_before_forced_termination · total=stdio_startup_or_http_preparation_through_cleanup"
+    ));
+    assert!(stdout.contains(
+        "Time ceilings: default · startup_ms=10000 · discovery_ms=10000 · request_ms=30000 · response_ms=30000 · cleanup_grace_ms=2000 · total_ms=120000 · whole_process_exit_guarantee=false"
+    ));
+    assert!(stdout.contains(
+        "Time ceilings: slow-start · startup_ms=30000 · discovery_ms=30000 · request_ms=60000 · response_ms=60000 · cleanup_grace_ms=2000 · total_ms=240000 · whole_process_exit_guarantee=false"
     ));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
 }

@@ -16,7 +16,7 @@ use super::protocol::{RevisionSelection, SupportedRevision, select_current_moder
 use super::schema_budget::{
     BudgetedValidator, SchemaWorkBudget, SchemaWorkIssue, validate_meta_schema,
 };
-use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
+use crate::transport::{Conversation, ProbeRequest, ProbeResponse, RequestStatusActivity};
 
 const PROTOCOL_REVISION: &str = "2026-07-28";
 pub(super) const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -329,7 +329,9 @@ impl PassiveCatalogConversation {
             page,
             cursor,
         });
-        ProbeRequest::new(id, bytes).with_protocol_revision(self.revision.as_str())
+        ProbeRequest::new(id, bytes)
+            .with_protocol_revision(self.revision.as_str())
+            .with_status_activity(RequestStatusActivity::Discovery)
     }
 
     fn advance_after(&mut self, response: &ProbeResponse) -> Option<(RequestKind, Option<String>)> {
@@ -431,7 +433,10 @@ impl Conversation for PassiveCatalogConversation {
                 };
                 self.queue = catalogs.into();
                 self.initialized_sent = true;
-                return Some(initialized_notification(self.revision));
+                return Some(
+                    initialized_notification(self.revision)
+                        .with_status_activity(RequestStatusActivity::Discovery),
+                );
             }
             return self
                 .queue

@@ -263,7 +263,7 @@ fn map_stdio_failure(failure: StdioFailure) -> StdioPrimaryFailure {
 pub(crate) struct RenderedDiagnostic {
     pub(crate) output: String,
     pub(crate) artifacts: Vec<RenderedReportArtifact>,
-    pub(crate) exit: std::process::ExitCode,
+    pub(crate) exit: ExitStatus,
     pub(crate) error: Option<String>,
 }
 
@@ -291,13 +291,13 @@ impl Diagnostic {
             Ok(reports) => RenderedDiagnostic {
                 output: reports.stdout,
                 artifacts: reports.artifacts,
-                exit: self.report.exit_status().into(),
+                exit: self.report.exit_status(),
                 error: None,
             },
             Err(error) => RenderedDiagnostic {
                 output: String::new(),
                 artifacts: Vec::new(),
-                exit: ExitStatus::InternalError.into(),
+                exit: ExitStatus::InternalError,
                 error: Some(error.to_string()),
             },
         }

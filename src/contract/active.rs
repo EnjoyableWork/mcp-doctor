@@ -34,7 +34,7 @@ use super::{
     Diagnostic, HttpDiagnostic, ReportTransport, StdioDiagnostic, http_checks_for_revision,
     stdio_findings_for_revision,
 };
-use crate::transport::{Conversation, ProbeRequest, ProbeResponse};
+use crate::transport::{Conversation, ProbeRequest, ProbeResponse, RequestStatusActivity};
 
 pub(crate) const SCENARIO_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v1alpha1";
 pub(crate) const WORKFLOW_SCHEMA_VERSION: &str = "mcp-doctor.scenario/v2alpha1";
@@ -1628,7 +1628,11 @@ impl ActiveConversation {
             match &self.stage {
                 Stage::Start => {
                     let id = self.begin_request(PendingRequest::Start);
-                    return Some(self.adapter.start_request(id));
+                    return Some(
+                        self.adapter
+                            .start_request(id)
+                            .with_status_activity(RequestStatusActivity::Discovery),
+                    );
                 }
                 Stage::Initialized { list_tools } => {
                     self.stage = if *list_tools {
@@ -1636,12 +1640,18 @@ impl ActiveConversation {
                     } else {
                         Stage::Done
                     };
-                    return self.adapter.initialized_notification();
+                    return self.adapter.initialized_notification().map(|request| {
+                        request.with_status_activity(RequestStatusActivity::Discovery)
+                    });
                 }
                 Stage::Tools(cursor) => {
                     let cursor = cursor.clone();
                     let id = self.begin_request(PendingRequest::Tools);
-                    return Some(self.adapter.tools_request(id, cursor.as_deref()));
+                    return Some(
+                        self.adapter
+                            .tools_request(id, cursor.as_deref())
+                            .with_status_activity(RequestStatusActivity::Discovery),
+                    );
                 }
                 Stage::Cases => {
                     if self.next_case >= self.scenario.cases.len() {
@@ -1810,12 +1820,18 @@ impl ActiveConversation {
                         (!self.scenario.cases[index].omit_arguments).then_some(arguments);
                     let tool = self.scenario.cases[index].tool.clone();
                     let id = self.begin_request(PendingRequest::Call(index));
-                    return Some(self.adapter.tool_call_request(
-                        id,
-                        tool,
-                        arguments,
-                        mirrored_fields,
-                    ));
+                    let ordinal = u64::try_from(index.saturating_add(1))
+                        .expect("the bounded case ordinal fits in u64");
+                    let total = u64::try_from(self.scenario.case_count())
+                        .expect("the bounded case count fits in u64");
+                    return Some(
+                        self.adapter
+                            .tool_call_request(id, tool, arguments, mirrored_fields)
+                            .with_status_activity(RequestStatusActivity::ActiveCase {
+                                ordinal,
+                                total,
+                            }),
+                    );
                 }
                 Stage::Done => return None,
             }

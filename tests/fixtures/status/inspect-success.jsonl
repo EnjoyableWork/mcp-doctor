@@ -1,0 +1,7 @@
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"invocation_accepted"}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"phase_started","phase":"target_preparation"}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"phase_started","phase":"target_startup","ceiling_kind":"startup","ceiling_ms":10000}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"phase_started","phase":"discovery","ceiling_kind":"discovery","ceiling_ms":10000}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"phase_started","phase":"cleanup","ceiling_kind":"cleanup_grace","ceiling_ms":2000}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"phase_started","phase":"report_publication"}
+{"schema_version":"mcp-doctor.status/v1","command":"inspect","transport":"stdio","limit_profile":"default","event":"completed","exit_code":0,"exit_meaning":"success"}

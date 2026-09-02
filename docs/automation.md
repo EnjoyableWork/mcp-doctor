@@ -17,10 +17,11 @@ the product version; exact command, transport, and MCP revision matrix;
 recognized-unsupported revisions; passive selection default, modes, compiled
 modern set, exact pins, transport paths and maxima; report, scenario,
 generator, snapshot, diff, aggregate, Markdown artifact, badge artifact, and
-capability contract versions; stdout and artifact reporter availability;
-`mcp-doctor.exit/v1`;
-named hard limit profiles; and compile-time process-tree and file-identity
-capabilities. Capability discovery reports only fixed compiled facts.
+capability contract versions; status commands, representations, stream,
+schema, and output limits; stdout and artifact reporter availability;
+`mcp-doctor.exit/v1`; named hard limit profiles and their exact scoped time
+ceilings; and compile-time process-tree and file-identity capabilities.
+Capability discovery reports only fixed compiled facts.
 
 It does not inspect user configuration or host inventory, read credentials,
 start a process, resolve DNS, connect to a target, retrieve a schema, or call a
@@ -38,6 +39,54 @@ changing a required field or existing meaning requires a new capability major.
 The checked-in
 [Draft 2020-12 schema](../schemas/mcp-doctor.capabilities.v1.schema.json) is the
 validation contract.
+
+## Live status for wrappers
+
+Use `--status jsonl` when a wrapper, editor, coding agent, or CI job needs to
+observe a target-facing command while it is running:
+
+```bash
+mcp-doctor inspect --status jsonl --format json \
+  -- node ./dist/server.js --stdio \
+  >mcp-doctor-report.json 2>mcp-doctor-status.jsonl
+```
+
+Keep the streams separate. Stdout remains the selected final report;
+stderr is exclusively LF-terminated `mcp-doctor.status/v1` records once the
+CLI has parsed `jsonl`. The status stream is off by default. `plain` is intended
+for noninteractive human logs and may coexist with ordinary safe CLI error
+prose. CLI syntax failures that occur before status selection is accepted are
+not part of the JSONL contract.
+
+Parse each JSONL line independently and act only on the fixed `event`, `phase`,
+ceiling, ordinal, and exit fields. The record schema permits unknown optional
+fields within `v1`; ignore them. Never infer success from process liveness, a
+phase event, EOF, or an absent terminal event. Only `completed` reports the
+known process exit after target cleanup and requested report publication, and
+the stable report remains the diagnostic evidence.
+
+Before starting a target, read `.status` and
+`.diagnostic_time_ceiling_profiles` from the compiled capability manifest.
+The latter exposes exact milliseconds and a `scope` for startup, discovery,
+one request, one response, cleanup grace, and the transport total for both
+`default` and `slow-start`. The total begins at STDIO startup or HTTP target
+preparation and continues through transport cleanup. Every entry deliberately
+sets `whole_process_exit_guarantee` to `false`: input preparation, report
+publication, and runtime shutdown are not covered by `total`. An outer
+watchdog should select the intended profile first, honor those phase scopes,
+or use the command's advertised default when it has no selector, and add its
+own bounded allowance for the wrapper and uncovered local work.
+Killing a run at the watchdog remains an incomplete wrapper observation, not a
+diagnostic conclusion.
+
+Status emission is itself finite: 512 bytes per record, 128 records, 65,536
+aggregate bytes, one bounded write-all operation and one flush per record, and
+no retry after a write or flush error. A failed status sink still allows target
+cleanup to finish and yields exit `4`; wrappers should continue draining stdout
+and wait for the process rather than treating a closed stderr pipe as
+cancellation. See the
+[status schema](../schemas/mcp-doctor.status.v1.schema.json) and
+[command event contract](commands.md#live-diagnostic-status).
 
 ## Reports and exit codes
 
