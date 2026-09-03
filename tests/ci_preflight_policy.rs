@@ -32,7 +32,7 @@ fn starter_is_exact_passive_least_permission_and_copy_focused() {
         "runs-on: ubuntu-24.04",
         "timeout-minutes: 20",
         "permissions:\n      contents: read",
-        "MCP_DOCTOR_VERSION: 0.4.1",
+        "MCP_DOCTOR_VERSION: 0.4.0",
         "MCP_DOCTOR_TARGET: x86_64-unknown-linux-gnu",
         "MCP_DOCTOR_ARCHIVE_BYTES: 5548845",
         "MCP_DOCTOR_ARCHIVE_SHA256: f8ddc1eb0d1cc9f8ed6ab186109ed4d881fea181c5e6896b029e535ae7ecfba6",

@@ -88,7 +88,7 @@ impl Interruption {
         pending::<()>().await;
     }
 
-    pub(crate) const async fn checkpoint(&mut self) -> bool {
+    pub(crate) async fn checkpoint(&mut self) -> bool {
         false
     }
 }
