@@ -1530,13 +1530,10 @@ fn blocked_hostname_resolution_cannot_outlive_runtime_shutdown() {
         .expect("the blocking resolver readiness event should arrive");
     assert_eq!(event, [1]);
 
-    let exit_observation = barrier.read(&mut event);
-    if !matches!(exit_observation, Ok(0)) {
+    if !observe_peer_close(&mut barrier) {
         let _ = child.kill();
         let _ = child.wait();
-        panic!(
-            "the process did not exit while resolver release was withheld: {exit_observation:?}"
-        );
+        panic!("the process did not exit while resolver release was withheld");
     }
     let output = child
         .wait_with_output()
