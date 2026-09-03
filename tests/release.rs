@@ -772,6 +772,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let security_record = repository_file("docs/assurance/v0.3.1-security-release.md");
     let bounded_work_record = repository_file("docs/assurance/v0.3.3-security-release.md");
     let interruption_record = repository_file("docs/assurance/v0.4.1-security-release.md");
+    let runtime_record = repository_file("docs/assurance/v0.4.2-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -852,6 +853,16 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "33708074873",
         "GHSA-rw9q-ggrp-frwc",
         "v0.4.1-security-release.md",
+        "633d2e891398b22a0abbd4e42318eaeaee31766e",
+        "33768100953",
+        "33768100852",
+        "c4893392fe8df84f72002bd583fd865d7a32a337",
+        "33769230383",
+        "6e1e9f4d15cf28f99ae30d5d1be886a2c2c69c03",
+        "33798999775",
+        "33799179922",
+        "GHSA-924w-xv6c-7vw3",
+        "v0.4.2-security-release.md",
         "v0.3.3-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
@@ -982,6 +993,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "adds no dependency",
         "GHSA-924w-xv6c-7vw3",
         "cargo install mcp-doctor --version '=0.4.2' --locked",
+        "completed first-attempt channel verification",
     ] {
         assert!(
             runtime_notes.contains(contract),
@@ -1047,6 +1059,38 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         assert!(
             interruption_record.contains(contract),
             "v0.4.1 security-release record should preserve {contract}"
+        );
+    }
+    for contract in [
+        "v0.4.2 bounded hostname-resolution teardown security-release record",
+        "04925211e8dff69b2d4c18cd8915e3601836ee9d",
+        "33765598386",
+        "33765598228",
+        "33765598500",
+        "efd7a87199805cef2b64fd546b8e5178641877c2",
+        "33766470610",
+        "33766469539",
+        "33766464244",
+        "33766469493",
+        "633d2e891398b22a0abbd4e42318eaeaee31766e",
+        "4909c012213732f73defb2e1b5e0578ad476b7f3",
+        "33768100953",
+        "33768100852",
+        "c4893392fe8df84f72002bd583fd865d7a32a337",
+        "33769230383",
+        "c9f58db1d9713e6f2ccdf8352f6461438d6a477664e6e0c3503987a42422c3bc",
+        "5123a0816ac6ec230f89fe0b219406c45c9584202c83c1faf8e76480181abd39",
+        "6e1e9f4d15cf28f99ae30d5d1be886a2c2c69c03",
+        "33798999775",
+        "33799179922",
+        "2026-09-03T20:06:14Z",
+        "GHSA-924w-xv6c-7vw3",
+        "`>= 0.2.0, <= 0.4.1`",
+        "`>= 0.4.2`",
+    ] {
+        assert!(
+            runtime_record.contains(contract),
+            "v0.4.2 security-release record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
