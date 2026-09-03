@@ -15,6 +15,7 @@ mod transport;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::error::ErrorKind as ClapErrorKind;
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
@@ -25,6 +26,7 @@ const AGENT_GUIDE_HELP: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     "/docs/agents.md"
 );
+pub(crate) const RUNTIME_SHUTDOWN_TIMEOUT_MS: u64 = 100;
 
 /// Diagnose protocol, schema, and runtime failures in MCP servers.
 #[derive(Debug, Parser)]
@@ -819,8 +821,25 @@ fn parse_cli() -> Result<Cli, ExitCode> {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            eprintln!("error: mcp-doctor could not initialize its bounded runtime");
+            return ExitCode::from(4);
+        }
+    };
+    let exit = runtime.block_on(run());
+    // Started system resolver work cannot be aborted, so runtime teardown must
+    // not extend an already-completed diagnostic without a finite bound.
+    runtime.shutdown_timeout(Duration::from_millis(RUNTIME_SHUTDOWN_TIMEOUT_MS));
+    exit
+}
+
+async fn run() -> ExitCode {
     let cli = match parse_cli() {
         Ok(cli) => cli,
         Err(exit) => return exit,

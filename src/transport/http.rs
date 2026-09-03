@@ -358,12 +358,43 @@ impl Resolver for SystemResolver {
         maximum: u64,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>, ()>> + Send + 'a>> {
         Box::pin(async move {
+            #[cfg(feature = "internal-test-fixtures")]
+            if let Some(gate) = blocking_resolver_fixture_gate(host) {
+                let address = gate?;
+                return tokio::task::spawn_blocking(move || {
+                    let mut stream = std::net::TcpStream::connect(address).map_err(|_| ())?;
+                    std::io::Write::write_all(&mut stream, &[1]).map_err(|_| ())?;
+                    let mut acknowledgement = [0_u8; 1];
+                    std::io::Read::read_exact(&mut stream, &mut acknowledgement).map_err(|_| ())?;
+                    Err(())
+                })
+                .await
+                .map_err(|_| ())?;
+            }
             tokio::net::lookup_host((host, port))
                 .await
                 .map(|addresses| collect_resolver_addresses(addresses, maximum))
                 .map_err(|_| ())
         })
     }
+}
+
+#[cfg(feature = "internal-test-fixtures")]
+fn blocking_resolver_fixture_gate(host: &str) -> Option<Result<SocketAddr, ()>> {
+    const HOST: &str = "blocking-resolver.invalid";
+    const GATE: &str = "MCP_DOCTOR_INTERNAL_TEST_BLOCKING_RESOLVER_GATE";
+
+    if host != HOST
+        || std::env::var_os("MCP_DOCTOR_TEST_MODE").as_deref() != Some(std::ffi::OsStr::new("1"))
+    {
+        return None;
+    }
+    Some(
+        std::env::var_os(GATE)
+            .and_then(|value| value.into_string().ok())
+            .and_then(|value| value.parse().ok())
+            .ok_or(()),
+    )
 }
 
 fn collect_resolver_addresses(

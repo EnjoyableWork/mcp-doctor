@@ -500,6 +500,7 @@
     }
   ],
   "limits": {
-    "output_bytes": 65536
+    "output_bytes": 65536,
+    "runtime_shutdown_timeout_ms": 100
   }
 }

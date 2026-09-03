@@ -533,6 +533,7 @@ struct TimeCeiling<'a> {
 #[derive(Debug, Serialize)]
 struct CapabilitiesLimits {
     output_bytes: usize,
+    runtime_shutdown_timeout_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -635,6 +636,7 @@ fn manifest() -> CapabilitiesManifest<'static> {
         diagnostic_time_ceiling_profiles: diagnostic_time_ceiling_profiles(),
         limits: CapabilitiesLimits {
             output_bytes: MAXIMUM_OUTPUT_BYTES,
+            runtime_shutdown_timeout_ms: crate::RUNTIME_SHUTDOWN_TIMEOUT_MS,
         },
     }
 }
@@ -854,6 +856,12 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
         )
         .map_err(|_| CapabilitiesError::Render)?;
     }
+    writeln!(
+        output,
+        "Runtime shutdown: timeout_ms={} · scope=after_command_completion",
+        manifest.limits.runtime_shutdown_timeout_ms,
+    )
+    .map_err(|_| CapabilitiesError::Render)?;
     writeln!(output, "Protocol support:").map_err(|_| CapabilitiesError::Render)?;
     for support in manifest.protocol_support {
         writeln!(
@@ -961,6 +969,10 @@ mod tests {
         assert_eq!(document["product"]["name"], "mcp-doctor");
         assert_eq!(document["product"]["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(document["limits"]["output_bytes"], MAXIMUM_OUTPUT_BYTES);
+        assert_eq!(
+            document["limits"]["runtime_shutdown_timeout_ms"],
+            crate::RUNTIME_SHUTDOWN_TIMEOUT_MS
+        );
         assert_eq!(document["protocol_selection"]["default_mode"], "auto");
         assert_eq!(
             document["protocol_selection"]["compiled_modern_revisions"],

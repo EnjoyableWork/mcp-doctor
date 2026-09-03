@@ -82,6 +82,7 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
     assert_eq!(manifest["product"]["name"], "mcp-doctor");
     assert_eq!(manifest["product"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(manifest["limits"]["output_bytes"], 65_536);
+    assert_eq!(manifest["limits"]["runtime_shutdown_timeout_ms"], 100);
     let diagnostic_limits = manifest["limit_profiles"]
         .as_array()
         .expect("limit profiles should be an array")
@@ -366,6 +367,7 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     assert!(stdout.contains(
         "Time ceilings: slow-start · startup_ms=30000 · discovery_ms=30000 · request_ms=60000 · response_ms=60000 · cleanup_grace_ms=2000 · total_ms=240000 · whole_process_exit_guarantee=false"
     ));
+    assert!(stdout.contains("Runtime shutdown: timeout_ms=100 · scope=after_command_completion"));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
 }
 

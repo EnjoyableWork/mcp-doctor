@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CANDIDATE_RELEASE_VERSION: &str = "0.4.1";
+const CANDIDATE_RELEASE_VERSION: &str = "0.4.2";
 const LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 const SOURCE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
@@ -57,7 +57,7 @@ fn release_identity_and_toolchain_are_exact() {
 
     for contract in [
         "name = \"mcp-doctor\"",
-        "version = \"0.4.1\"",
+        "version = \"0.4.2\"",
         "publish = [\"crates-io\"]",
         "repository = \"https://github.com/EnjoyableWork/mcp-doctor\"",
         "\"/.bestpractices.json\"",
@@ -629,8 +629,8 @@ fn release_version_guard_accepts_only_canonical_intentional_versions() {
         &["future", "v0.1.1", "0.1.1", "0.1.0", "0.1.1"],
         &["future", "v0.2.0", "0.2.0", "0.1.0", "0.1.9"],
         &[
-            "future", "v0.4.1", "0.4.1", "0.1.0", "0.2.0", "0.3.0", "0.3.1", "0.3.2", "0.3.3",
-            "0.4.0",
+            "future", "v0.4.2", "0.4.2", "0.1.0", "0.2.0", "0.3.0", "0.3.1", "0.3.2", "0.3.3",
+            "0.4.0", "0.4.1",
         ],
         &["future", "v1.0.0", "1.0.0", "0.1.0", "0.99.99"],
         &[
@@ -768,6 +768,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let bounded_work_notes = repository_file("docs/releases/v0.3.3.md");
     let candidate_notes = repository_file("docs/releases/v0.4.0.md");
     let patch_notes = repository_file("docs/releases/v0.4.1.md");
+    let runtime_notes = repository_file("docs/releases/v0.4.2.md");
     let security_record = repository_file("docs/assurance/v0.3.1-security-release.md");
     let bounded_work_record = repository_file("docs/assurance/v0.3.3-security-release.md");
     let interruption_record = repository_file("docs/assurance/v0.4.1-security-release.md");
@@ -789,7 +790,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents the published `mcp-doctor` `0.4.1` release",
+        "This source tree represents the published `mcp-doctor` `0.4.2` release",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -970,6 +971,21 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         assert!(
             patch_notes.contains(contract),
             "v0.4.1 release notes should preserve {contract}"
+        );
+    }
+    for contract in [
+        "hostname-based Streamable HTTP",
+        "runtime shutdown waits at most 100 ms",
+        "limits.runtime_shutdown_timeout_ms: 100",
+        "whole_process_exit_guarantee: false",
+        "MCP-LIMIT-001",
+        "adds no dependency",
+        "GHSA-924w-xv6c-7vw3",
+        "cargo install mcp-doctor --version '=0.4.2' --locked",
+    ] {
+        assert!(
+            runtime_notes.contains(contract),
+            "v0.4.2 release notes should preserve {contract}"
         );
     }
     for contract in [
@@ -1964,7 +1980,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     for contract in [
-        "This source tree represents `0.4.1`",
+        "This source tree represents `0.4.2`",
         "a\nversion is publicly available only when its canonical GitHub Release and\nchannel evidence exist",
         "issues/new?template=01-bug-report.yml",
         "issues/new?template=02-feature-request.yml",
@@ -1976,7 +1992,7 @@ fn community_routes_are_reachable_by_contract_and_keep_sensitive_intake_private(
         );
     }
     assert!(!support.contains("project is pre-release"));
-    assert!(bug_form.contains("placeholder: mcp-doctor 0.4.1 or commit SHA"));
+    assert!(bug_form.contains("placeholder: mcp-doctor 0.4.2 or commit SHA"));
     assert!(readme.contains("[project scope](docs/project-scope.md)"));
     for contract in [
         "## In-scope repositories",
@@ -2453,5 +2469,5 @@ fn inspect_text_path(
 
 #[test]
 fn release_version_constant_matches_the_current_version() {
-    assert_eq!(CANDIDATE_RELEASE_VERSION, "0.4.1");
+    assert_eq!(CANDIDATE_RELEASE_VERSION, "0.4.2");
 }
