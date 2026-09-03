@@ -17,6 +17,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Instant;
 
+use crate::interruption::{CLEANUP_MS, GRACE_MS, Interruption, REAP_MS};
 use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 
 use super::{
@@ -242,6 +243,7 @@ pub(crate) struct StdioRun {
     responses: Vec<ProbeResponse>,
     failure: Option<StdioFailure>,
     cleanup_failed: bool,
+    interrupted: bool,
     process_started: bool,
     lifecycle_interactions: LifecycleInteractionCounts,
 }
@@ -261,6 +263,10 @@ impl StdioRun {
 
     pub(crate) const fn cleanup_failed(&self) -> bool {
         self.cleanup_failed
+    }
+
+    pub(crate) const fn interrupted(&self) -> bool {
+        self.interrupted
     }
 
     pub(crate) const fn process_started(&self) -> bool {
@@ -304,13 +310,14 @@ impl StdioTransport {
         self,
         target: &StdioTarget,
         conversation: &mut C,
+        interruption: &mut Interruption,
         status: &mut dyn StatusObserver,
     ) -> StdioRun
     where
         C: Conversation,
     {
         let mut budget = StdioBudget::new(self.limits);
-        self.probe_with_budget_and_status(target, conversation, &mut budget, status)
+        self.probe_with_budget_and_status(target, conversation, &mut budget, interruption, status)
             .await
     }
 
@@ -319,6 +326,7 @@ impl StdioTransport {
         target: &StdioTarget,
         conversation: &mut C,
         budget: &mut StdioBudget,
+        interruption: &mut Interruption,
         status: &mut dyn StatusObserver,
     ) -> StdioRun
     where
@@ -338,6 +346,7 @@ impl StdioTransport {
                     self.limits.total_ms,
                 )),
                 cleanup_failed: false,
+                interrupted: false,
                 process_started: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
@@ -354,6 +363,18 @@ impl StdioTransport {
                 responses: Vec::new(),
                 failure: Some(StdioFailure::timeout(total_deadline)),
                 cleanup_failed: false,
+                interrupted: false,
+                process_started: false,
+                lifecycle_interactions: LifecycleInteractionCounts::default(),
+            };
+        }
+
+        if interruption.checkpoint().await {
+            return StdioRun {
+                responses: Vec::new(),
+                failure: None,
+                cleanup_failed: false,
+                interrupted: true,
                 process_started: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
@@ -376,6 +397,7 @@ impl StdioTransport {
                     responses: Vec::new(),
                     failure: Some(failure),
                     cleanup_failed: false,
+                    interrupted: false,
                     process_started: false,
                     lifecycle_interactions: LifecycleInteractionCounts::default(),
                 };
@@ -383,24 +405,33 @@ impl StdioTransport {
         };
 
         let mut lifecycle_interactions = LifecycleInteractionCounts::default();
-        let operation = async {
+        let operation: Result<Vec<ProbeResponse>, OperationStop> = async {
+            if interruption.checkpoint().await {
+                return Err(OperationStop::Interrupted);
+            }
             if Instant::now() > startup_deadline.at {
-                return Err(StdioFailure::timeout(startup_deadline));
+                return Err(StdioFailure::timeout(startup_deadline).into());
             }
 
             let mut responses = Vec::new();
             let mut discovery_started = false;
             loop {
                 if Instant::now() > total_deadline.at {
-                    return Err(StdioFailure::timeout(total_deadline));
+                    return Err(StdioFailure::timeout(total_deadline).into());
+                }
+                if interruption.checkpoint().await {
+                    return Err(OperationStop::Interrupted);
                 }
                 let request = conversation.next_request(responses.last());
                 if Instant::now() > total_deadline.at {
-                    return Err(StdioFailure::timeout(total_deadline));
+                    return Err(StdioFailure::timeout(total_deadline).into());
                 }
                 let Some(request) = request else {
                     break;
                 };
+                if interruption.checkpoint().await {
+                    return Err(OperationStop::Interrupted);
+                }
                 match request.status_activity() {
                     Some(RequestStatusActivity::Discovery) if !discovery_started => {
                         status.phase_started(
@@ -422,34 +453,85 @@ impl StdioTransport {
                     }
                     Some(RequestStatusActivity::Discovery) | None => {}
                 }
+                if interruption.checkpoint().await {
+                    return Err(OperationStop::Interrupted);
+                }
                 lifecycle_interactions.observe(&request);
                 let discovery = responses.is_empty();
                 if !request.expects_response() {
-                    process
-                        .send_notification(&request, total_deadline, discovery)
-                        .await?;
+                    tokio::select! {
+                        biased;
+                        _ = interruption.wait() => return Err(OperationStop::Interrupted),
+                        result = process.send_notification(&request, total_deadline, discovery) => {
+                            result.map_err(OperationStop::Failure)?;
+                        }
+                    }
                     continue;
                 }
-                let response = process
-                    .exchange(&request, total_deadline, discovery)
-                    .await?;
+                let response = tokio::select! {
+                    biased;
+                    _ = interruption.wait() => return Err(OperationStop::Interrupted),
+                    result = process.exchange(&request, total_deadline, discovery) => {
+                        result.map_err(OperationStop::Failure)?
+                    }
+                };
                 responses.push(response);
+            }
+            if interruption.checkpoint().await {
+                return Err(OperationStop::Interrupted);
             }
             Ok(responses)
         }
         .await;
 
-        status.phase_started(
-            StatusPhase::Cleanup,
-            Some(StatusCeiling {
-                kind: StatusCeilingKind::CleanupGrace,
-                milliseconds: self.limits.shutdown_grace_ms,
-            }),
-        );
-        let shutdown = process.shutdown(total_deadline).await;
+        let mut interrupted = matches!(operation, Err(OperationStop::Interrupted));
+        let shutdown = if interrupted {
+            status.phase_started(
+                StatusPhase::Cleanup,
+                Some(StatusCeiling {
+                    kind: StatusCeilingKind::CleanupGrace,
+                    milliseconds: CLEANUP_MS,
+                }),
+            );
+            process.shutdown_interrupted().await
+        } else {
+            status.phase_started(
+                StatusPhase::Cleanup,
+                Some(StatusCeiling {
+                    kind: StatusCeilingKind::CleanupGrace,
+                    milliseconds: self.limits.shutdown_grace_ms,
+                }),
+            );
+            enum CleanupOutcome {
+                Completed(ShutdownResult),
+                Interrupted,
+            }
+            let cleanup = tokio::select! {
+                biased;
+                _ = interruption.wait() => CleanupOutcome::Interrupted,
+                result = process.shutdown(total_deadline) => CleanupOutcome::Completed(result),
+            };
+            match cleanup {
+                CleanupOutcome::Completed(result) => result,
+                CleanupOutcome::Interrupted => {
+                    interrupted = true;
+                    status.phase_started(
+                        StatusPhase::Cleanup,
+                        Some(StatusCeiling {
+                            kind: StatusCeilingKind::CleanupGrace,
+                            milliseconds: CLEANUP_MS,
+                        }),
+                    );
+                    process.shutdown_interrupted().await
+                }
+            }
+        };
         let (responses, mut failure) = match operation {
-            Ok(responses) => (responses, None),
-            Err(failure) => (Vec::new(), Some(failure)),
+            Ok(responses) if !interrupted => (responses, None),
+            Err(OperationStop::Failure(failure)) if !interrupted => (Vec::new(), Some(failure)),
+            Ok(_) | Err(OperationStop::Failure(_) | OperationStop::Interrupted) => {
+                (Vec::new(), None)
+            }
         };
         if failure.is_none()
             || (failure.is_some_and(|failure| {
@@ -471,6 +553,7 @@ impl StdioTransport {
             responses,
             failure,
             cleanup_failed: shutdown.cleanup_failed,
+            interrupted,
             process_started: true,
             lifecycle_interactions,
         }
@@ -862,6 +945,74 @@ impl ManagedProcess {
         }
     }
 
+    async fn shutdown_interrupted(&mut self) -> ShutdownResult {
+        self.stdin.take();
+        let grace_deadline = StageDeadline::after(Instant::now(), GRACE_MS, StdioLimit::TotalTime);
+        let mut stdout_buffer = [0_u8; READ_BUFFER_BYTES];
+        let mut stderr_buffer = [0_u8; READ_BUFFER_BYTES];
+        let mut child_done = false;
+        let mut background_failure = None;
+        let mut cleanup_failed = false;
+
+        while !child_done && Instant::now() < grace_deadline.at {
+            let activity = next_activity(
+                &mut self.child,
+                child_done,
+                &mut self.stdout,
+                &mut self.stderr,
+                &mut stdout_buffer,
+                &mut stderr_buffer,
+                grace_deadline.at,
+            )
+            .await;
+            match self.handle_shutdown_activity(activity, &stdout_buffer, &mut background_failure) {
+                ShutdownActivity::Continue => {}
+                ShutdownActivity::ChildDone => child_done = true,
+                ShutdownActivity::Deadline => break,
+                ShutdownActivity::CleanupFailed => cleanup_failed = true,
+            }
+        }
+
+        match self.child.start_kill() {
+            Ok(()) => {}
+            Err(_) if child_done => {}
+            Err(_) => cleanup_failed = true,
+        }
+
+        let reap_deadline = StageDeadline::after(Instant::now(), REAP_MS, StdioLimit::TotalTime);
+        while !(child_done && self.stdout.is_none() && self.stderr.is_none()) {
+            if Instant::now() >= reap_deadline.at {
+                cleanup_failed = true;
+                break;
+            }
+            let activity = next_activity(
+                &mut self.child,
+                child_done,
+                &mut self.stdout,
+                &mut self.stderr,
+                &mut stdout_buffer,
+                &mut stderr_buffer,
+                reap_deadline.at,
+            )
+            .await;
+            match self.handle_shutdown_activity(activity, &stdout_buffer, &mut background_failure) {
+                ShutdownActivity::Continue => {}
+                ShutdownActivity::ChildDone => child_done = true,
+                ShutdownActivity::Deadline => {
+                    cleanup_failed = true;
+                    break;
+                }
+                ShutdownActivity::CleanupFailed => cleanup_failed = true,
+            }
+        }
+
+        self.cleaned = child_done;
+        ShutdownResult {
+            background_failure,
+            cleanup_failed: cleanup_failed || !child_done,
+        }
+    }
+
     fn handle_shutdown_activity(
         &mut self,
         activity: Activity,
@@ -943,6 +1094,17 @@ impl Drop for ManagedProcess {
 struct ShutdownResult {
     background_failure: Option<StdioFailure>,
     cleanup_failed: bool,
+}
+
+enum OperationStop {
+    Failure(StdioFailure),
+    Interrupted,
+}
+
+impl From<StdioFailure> for OperationStop {
+    fn from(failure: StdioFailure) -> Self {
+        Self::Failure(failure)
+    }
 }
 
 enum ShutdownActivity {

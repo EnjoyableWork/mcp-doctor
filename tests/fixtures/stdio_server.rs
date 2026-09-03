@@ -41,6 +41,7 @@ fn main() -> ExitCode {
         Some("timeout") => timeout(),
         Some("early-exit") => early_exit(),
         Some("resistant-child") => resistant_child(&remaining),
+        Some("interruption-resistant-child") => interruption_resistant_child(&remaining),
         Some("catalog-valid") => catalog_valid(),
         Some("report-single-run") => report_single_run(&remaining),
         Some("protocol-unsupported") => protocol_unsupported(),
@@ -150,6 +151,7 @@ fn main() -> ExitCode {
         Some("workflow-main-failure-cleanup") => workflow_main_failure_cleanup(),
         Some("workflow-schema-mismatch-cleanup") => workflow_schema_mismatch_cleanup(),
         Some("workflow-input-required-cleanup") => workflow_input_required_cleanup(),
+        Some("workflow-interruption-barrier") => workflow_interruption_barrier(&remaining),
         Some("workflow-missing-capture") => workflow_missing_capture(),
         Some("workflow-cleanup-failure") => workflow_cleanup_failure(),
         Some("workflow-call-timeout") => workflow_call_timeout(),
@@ -376,6 +378,31 @@ fn resistant_child(arguments: &[OsString]) -> ExitCode {
     let descendant = spawn_ready_descendant(marker, "resistant");
 
     write_success_response();
+    wait_with_child(descendant)
+}
+
+fn interruption_resistant_child(arguments: &[OsString]) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let Some(address) = arguments
+        .get(1)
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<SocketAddr>().ok())
+    else {
+        return ExitCode::from(2);
+    };
+    read_one_discover_request();
+
+    let descendant = spawn_ready_descendant(marker, "interruption-resistant");
+    let mut readiness =
+        TcpStream::connect(address).expect("the interruption readiness event should connect");
+    readiness
+        .write_all(&[1])
+        .expect("the interruption readiness event should be writable");
+    readiness
+        .flush()
+        .expect("the interruption readiness event should flush");
     wait_with_child(descendant)
 }
 
@@ -3058,6 +3085,54 @@ fn workflow_input_required_cleanup() -> ExitCode {
 
     workflow_cleanup(&mut input, 5, false);
     assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn workflow_interruption_barrier(arguments: &[OsString]) -> ExitCode {
+    let Some(observation) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let Some(address) = arguments
+        .get(1)
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<SocketAddr>().ok())
+    else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    workflow_begin(&mut input);
+    workflow_lookup(&mut input, 3);
+
+    let mutate = read_workflow_call(&mut input, 4, "synthetic.workflow.mutate");
+    assert_eq!(mutate["params"]["arguments"]["id"], REDACTION_SENTINEL);
+    let mut barrier = TcpStream::connect_timeout(&address, Duration::from_secs(10))
+        .expect("the workflow interruption barrier should connect");
+    barrier
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("the workflow interruption barrier should be bounded");
+    barrier
+        .write_all(&[1])
+        .expect("the workflow interruption readiness should be writable");
+    barrier
+        .flush()
+        .expect("the workflow interruption readiness should flush");
+    let mut acknowledgement = [0_u8; 1];
+    barrier
+        .read_exact(&mut acknowledgement)
+        .expect("the workflow interruption acknowledgement should arrive");
+    assert_eq!(acknowledgement, [2]);
+
+    write_workflow_result(4, json!({"version": 2}), false);
+    let mut later_request = String::new();
+    let observed = input
+        .read_line(&mut later_request)
+        .expect("the post-interruption input state should be observable");
+    let result = if observed == 0 {
+        b"no-later-call\n".as_slice()
+    } else {
+        b"later-call\n".as_slice()
+    };
+    fs::write(observation, result).expect("the interruption observation should be writable");
     ExitCode::SUCCESS
 }
 

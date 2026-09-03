@@ -99,6 +99,20 @@ pub(crate) enum StatusErrorKind {
     InternalOrOutputFailure,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CompletionReason {
+    Interrupted,
+}
+
+impl CompletionReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Interrupted => "interrupted",
+        }
+    }
+}
+
 impl StatusErrorKind {
     const fn as_str(self) -> &'static str {
         match self {
@@ -158,6 +172,8 @@ enum StatusEvent {
     Completed {
         exit_code: u8,
         exit_meaning: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        completion_reason: Option<CompletionReason>,
     },
 }
 
@@ -226,9 +242,25 @@ impl<W: Write> StatusReporter<W> {
     }
 
     pub(crate) fn complete(&mut self, exit_code: u8) -> u8 {
+        self.complete_with_reason(exit_code, None)
+    }
+
+    pub(crate) fn complete_interrupted(&mut self) -> u8 {
+        if self.format.is_none() {
+            self.write_plain_error(&"diagnostic interrupted before report publication");
+        }
+        self.complete_with_reason(3, Some(CompletionReason::Interrupted))
+    }
+
+    fn complete_with_reason(
+        &mut self,
+        exit_code: u8,
+        completion_reason: Option<CompletionReason>,
+    ) -> u8 {
         self.emit(StatusEvent::Completed {
             exit_code,
             exit_meaning: exit_meaning(exit_code),
+            completion_reason,
         });
         if self.failed { 4 } else { exit_code }
     }
@@ -375,11 +407,15 @@ fn render_plain(record: StatusRecord) -> String {
         StatusEvent::Completed {
             exit_code,
             exit_meaning,
+            completion_reason,
         } => {
             let _ = write!(
                 output,
                 " · exit_code={exit_code} · exit_meaning={exit_meaning}"
             );
+            if let Some(reason) = completion_reason {
+                let _ = write!(output, " · completion_reason={}", reason.as_str());
+            }
         }
     }
     output
@@ -523,6 +559,18 @@ mod tests {
         assert_eq!(
             reporter.into_inner(),
             b"error: synthetic safe invocation error\n"
+        );
+    }
+
+    #[test]
+    fn disabled_status_describes_clean_interruption_without_machine_records() {
+        let mut reporter = StatusReporter::new(Vec::new(), None, context());
+        reporter.invocation_accepted();
+
+        assert_eq!(reporter.complete_interrupted(), 3);
+        assert_eq!(
+            reporter.into_inner(),
+            b"error: diagnostic interrupted before report publication\n"
         );
     }
 

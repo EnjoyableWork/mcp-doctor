@@ -3,10 +3,24 @@
 mod support;
 
 use std::fs;
+#[cfg(unix)]
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::net::TcpListener;
 use std::path::Path;
+#[cfg(unix)]
+use std::process::Stdio;
 use std::process::{Command, Output};
+#[cfg(unix)]
+use std::sync::mpsc;
+#[cfg(unix)]
+use std::thread;
+#[cfg(unix)]
+use std::time::Duration;
 
 use serde_json::{Value, json};
+#[cfg(unix)]
+use support::parse_and_validate_status_jsonl;
 use support::{
     TestEnvironment, assert_descendant_was_ready_and_terminated, parse_and_validate_junit,
     parse_and_validate_report,
@@ -679,6 +693,89 @@ fn workflow_input_required_is_incomplete_but_still_runs_declared_cleanup() {
         "performed"
     );
     assert_redacted(&output, &tools);
+}
+
+#[cfg(unix)]
+#[test]
+fn interruption_stops_before_a_later_workflow_cleanup_call() {
+    let environment = TestEnvironment::new();
+    let scenario_path = write_scenario(
+        &environment,
+        "interrupted-workflow.json",
+        &workflow_cleanup_scenario(),
+    );
+    let observation = environment.artifact_path("interrupted-workflow-observation");
+    let listener =
+        TcpListener::bind("127.0.0.1:0").expect("the workflow interruption event should bind");
+    let address = listener
+        .local_addr()
+        .expect("the workflow interruption event should have an address");
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let _ = sender.send(listener.accept().map(|(stream, _)| stream));
+    });
+
+    let mut command = workflow_command(
+        &environment,
+        &scenario_path,
+        &[WORKFLOW_LOOKUP, WORKFLOW_MUTATE, WORKFLOW_CLEANUP],
+    );
+    command
+        .arg("--allow-side-effects")
+        .arg("--status")
+        .arg("jsonl")
+        .arg("--")
+        .arg(fixture())
+        .arg("workflow-interruption-barrier")
+        .arg(&observation)
+        .arg(address.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .expect("the interrupted workflow should start");
+    let mut barrier = match receiver.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(stream)) => stream,
+        result => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the workflow did not reach its interruption barrier: {result:?}");
+        }
+    };
+    acceptor
+        .join()
+        .expect("the workflow interruption acceptor should not panic");
+    barrier
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("the workflow readiness watchdog should be configured");
+    let mut readiness = [0_u8; 1];
+    barrier
+        .read_exact(&mut readiness)
+        .expect("the workflow interruption readiness should arrive");
+    assert_eq!(readiness, [1]);
+
+    let pid = libc::pid_t::try_from(child.id()).expect("the child PID should fit pid_t");
+    // SAFETY: `pid` is the exact live child returned by `Command::spawn`, and
+    // SIGTERM is catchable by the Unix-only implementation under test.
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);
+    barrier
+        .write_all(&[2])
+        .expect("the post-signal acknowledgement should be writable");
+    let output = child
+        .wait_with_output()
+        .expect("the interrupted workflow should return");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        fs::read(&observation).expect("the target should record post-signal input"),
+        b"no-later-call\n"
+    );
+    let records = parse_and_validate_status_jsonl(&output.stderr);
+    let completed = records.last().expect("status should complete");
+    assert_eq!(completed["event"], "completed");
+    assert_eq!(completed["exit_code"], 3);
+    assert_eq!(completed["completion_reason"], "interrupted");
 }
 
 #[test]

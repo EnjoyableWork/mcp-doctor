@@ -522,7 +522,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
         let exact = serde_json::json!({
             "schema_version": "mcp-doctor.capabilities/v1",
             "schema_stability": "stable",
-            "product": {"name": "mcp-doctor", "version": "0.4.0"},
+            "product": {"name": "mcp-doctor", "version": "0.4.1"},
             "commands": [{
                 "name": "inspect",
                 "activity": "passive",
@@ -543,7 +543,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
 
         let accepted = Command::new(&verifier)
             .arg(&capabilities)
-            .arg("0.4.0")
+            .arg("0.4.1")
             .output()
             .expect("capability verification should run");
         assert!(accepted.status.success());
@@ -557,7 +557,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
             .expect("mismatched capability evidence should be writable");
         let rejected = Command::new(&verifier)
             .arg(&capabilities)
-            .arg("0.4.0")
+            .arg("0.4.1")
             .output()
             .expect("mismatched capability verification should run");
         assert_eq!(rejected.status.code(), Some(1));

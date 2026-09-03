@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents the `mcp-doctor` `0.4.0` release candidate and its
-intended canonical release tag `v0.4.0`. It retains the completed `0.3.3`
+This source tree represents the `mcp-doctor` `0.4.1` release candidate and its
+intended canonical release tag `v0.4.1`. It retains the completed `0.4.0`
 publication and reviewed recovery controls as historical evidence.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the

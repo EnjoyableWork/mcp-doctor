@@ -255,12 +255,37 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
     assert_eq!(badge["machine_readable"], true);
     assert!(first.stdout.len() <= 65_536);
 
+    #[cfg(unix)]
+    {
+        let interruption = &manifest["interruption"];
+        assert_eq!(interruption["platform_family"], "unix");
+        assert_eq!(interruption["transport"], "stdio");
+        assert_eq!(
+            interruption["commands"],
+            json!(["break", "check", "inspect", "reject"])
+        );
+        assert_eq!(interruption["signals"], json!(["SIGINT", "SIGTERM"]));
+        assert_eq!(interruption["graceful_cleanup_ms"], 2_000);
+        assert_eq!(interruption["forced_reap_ms"], 2_000);
+        assert_eq!(interruption["cleanup_ceiling_ms"], 4_000);
+        assert_eq!(interruption["incomplete_exit_code"], 3);
+        assert_eq!(interruption["status_completion_reason"], "interrupted");
+        assert_eq!(interruption["publishes_report"], false);
+        assert_eq!(interruption["repeated_signal_forces_exit"], false);
+    }
+    #[cfg(not(unix))]
+    assert!(manifest.get("interruption").is_none());
+
     manifest["product"]["version"] = json!("0.0.0-test");
     manifest["platform"] = json!({
         "family": "compiled_test",
         "process_tree_control": "compiled_test",
         "file_identity": "compiled_test"
     });
+    manifest
+        .as_object_mut()
+        .expect("the manifest should be an object")
+        .remove("interruption");
     let golden: Value = serde_json::from_str(include_str!("fixtures/capabilities/golden.json"))
         .expect("the capability golden should be JSON");
     assert_eq!(manifest, golden);
@@ -326,6 +351,12 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     assert!(stdout.contains(
         "Status: mcp-doctor.status/v1 · default off · stream stderr · commands break,check,inspect,reject · representations plain,jsonl"
     ));
+    #[cfg(unix)]
+    assert!(stdout.contains(
+        "Interruption: unix · stdio · signals SIGINT,SIGTERM · commands break,check,inspect,reject · graceful_cleanup_ms=2000 · forced_reap_ms=2000 · cleanup_ceiling_ms=4000 · exit_code=3 · completion_reason=interrupted · publishes_report=false · repeated_signal_forces_exit=false"
+    ));
+    #[cfg(not(unix))]
+    assert!(!stdout.contains("Interruption:"));
     assert!(stdout.contains(
         "Time ceiling scopes: startup=target_preparation_or_process_start · discovery=one_discovery_phase · request=one_request_write_or_http_exchange · response=one_response_wait · cleanup_grace=graceful_cleanup_before_forced_termination · total=stdio_startup_or_http_preparation_through_cleanup"
     ));

@@ -560,7 +560,7 @@ fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
 #[test]
 fn external_tool_and_live_audit_paths_are_digest_bounded_and_non_mutating() {
     let controls = controls();
-    assert_eq!(controls["reviewed_on"], "2026-08-27");
+    assert_eq!(controls["reviewed_on"], "2026-09-02");
     assert_eq!(
         controls["distribution_authentication"]["cargo_package"],
         "https://static.crates.io/crates/mcp-doctor/mcp-doctor-0.3.0.crate"
