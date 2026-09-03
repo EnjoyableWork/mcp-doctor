@@ -1,6 +1,6 @@
 [package]
 name = "mcp-doctor"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 description = "Diagnose protocol, schema, and runtime failures in MCP servers"
 license = "MIT"

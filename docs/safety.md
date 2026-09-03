@@ -28,9 +28,14 @@ corresponding write or HTTP exchange and wait; cleanup grace covers graceful
 cleanup before forced termination; and total runs from STDIO startup or HTTP
 target preparation through transport cleanup. None is a measured duration,
 ETA, SLO, or guaranteed whole-process exit time. Input preparation, report
-rendering and publication, and runtime shutdown remain outside the total. The
-compiled capability manifest exposes the same milliseconds and scope strings
-and sets `whole_process_exit_guarantee` to `false` for every profile.
+rendering and publication, and runtime shutdown remain outside the total.
+After command completion, runtime shutdown waits at most 100 ms for blocking
+work that the operating-system API cannot cancel, including an in-progress
+system hostname lookup. The process then exits without waiting for that work.
+The compiled capability manifest exposes the diagnostic milliseconds and scope
+strings, the separate `limits.runtime_shutdown_timeout_ms`, and
+`whole_process_exit_guarantee: false` for every profile because the synchronous
+input and publication work remains outside a deadline.
 
 On Unix, a caught `SIGINT` or `SIGTERM` during a STDIO target-facing command
 uses the separate fixed interruption cleanup contract below. Its 4,000 ms

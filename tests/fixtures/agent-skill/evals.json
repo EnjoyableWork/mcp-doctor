@@ -127,7 +127,7 @@
     {
       "id": 11,
       "prompt": "Use the mcp-doctor skill to diagnose the exact STDIO target ./synthetic-mcp-server --stdio passively.",
-      "expected_output": "The agent stops immediately after observing the version mismatch and points to the exact v0.4.1 guide without installing or upgrading anything.",
+      "expected_output": "The agent stops immediately after observing the version mismatch and points to the exact v0.4.2 guide without installing or upgrading anything.",
       "files": [],
       "assertions": [
         "The command log contains only `mcp-doctor --version`.",

@@ -8,15 +8,15 @@ use std::process::Command;
 use serde::Deserialize;
 
 #[cfg(unix)]
-const RELEASE_VERSION: &str = "0.4.1";
+const RELEASE_VERSION: &str = "0.4.2";
 const CURRENT_SKILL_SHA256: &str =
-    "4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a";
+    "3f7b0cd490e272ce86c898b9e1a2a56c5086411f8d8b82bb251eca0023549b79";
 const CURRENT_OPENAI_SHA256: &str =
     "a56095c3f3eb2ed6bdbceb9b4d6c40289b5bb45733c4c950c32a0c02bbd680d6";
 const CURRENT_ICON_SHA256: &str =
     "8140b500f4bc70688a473bc9ec63cdb0b1a3e229596215340588053a3ee1d71b";
-const PUBLISHED_V040_SKILL_SHA256: &str =
-    "4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a";
+const PUBLISHED_V042_SKILL_SHA256: &str =
+    "3f7b0cd490e272ce86c898b9e1a2a56c5086411f8d8b82bb251eca0023549b79";
 const V032_SKILL_SHA256: &str = "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51";
 
 fn repository_root() -> PathBuf {
@@ -100,11 +100,11 @@ fn canonical_skill_bundle_is_portable_passive_and_presentation_only() {
         "https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor",
         "https://smithery.ai/skills/enjoyable/mcp-doctor",
         "Do not run a skill installer or registry command",
-        "cargo install mcp-doctor --version '=0.4.1' --locked",
+        "cargo install mcp-doctor --version '=0.4.2' --locked",
         "brew install --build-from-source EnjoyableWork/tap/mcp-doctor",
-        "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.1",
+        "https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.2",
         "Do not choose a route, run either command",
-        "Continue only with `mcp-doctor 0.4.1`",
+        "Continue only with `mcp-doctor 0.4.2`",
         "mcp-doctor inspect --format json -- <exact-command> <literal-arguments>",
         "mcp-doctor inspect --format json <exact-endpoint>",
         "schema_version: \"mcp-doctor.report/v1\"",
@@ -137,7 +137,7 @@ fn canonical_skill_bundle_is_portable_passive_and_presentation_only() {
     }
     assert_eq!(
         skill
-            .matches("cargo install mcp-doctor --version '=0.4.1' --locked")
+            .matches("cargo install mcp-doctor --version '=0.4.2' --locked")
             .count(),
         1
     );
@@ -230,7 +230,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
 
     for contract in [
         "coding agent -> terminal -> mcp-doctor CLI -> exact MCP server target",
-        "mcp-doctor-agent-skill-v0.4.1.tar.gz",
+        "mcp-doctor-agent-skill-v0.4.2.tar.gz",
         "SHA256SUMS",
         "https://smithery.ai/skills/enjoyable/mcp-doctor",
         "https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor",
@@ -239,7 +239,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         CURRENT_SKILL_SHA256,
         CURRENT_OPENAI_SHA256,
         CURRENT_ICON_SHA256,
-        PUBLISHED_V040_SKILL_SHA256,
+        PUBLISHED_V042_SKILL_SHA256,
         "never changes an agent host",
         "never replace it silently",
         "Explicit invocation is the supported route",
@@ -251,7 +251,7 @@ fn guide_is_release_bound_reversible_and_host_scoped() {
         "not deterministic model-correctness",
         "evaluations/agent-skill-v1.md",
         "behavioral instructions remain self-contained",
-        "mcp-doctor-chatgpt-skill-v0.4.1.zip",
+        "mcp-doctor-chatgpt-skill-v0.4.2.zip",
         "scripts/package-chatgpt-skill.sh",
         "standalone skill bundle, not\na plugin",
         "https://agentskills.io/specification",
@@ -658,7 +658,7 @@ fn exercise_posix_recorder() {
     assert!(version.status.success());
     assert_eq!(
         String::from_utf8(version.stdout).unwrap(),
-        "mcp-doctor 0.4.1\n"
+        "mcp-doctor 0.4.2\n"
     );
 
     let capabilities = run_recorder(&recorder, &log, &["capabilities", "--format", "json"]);

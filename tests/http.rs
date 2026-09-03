@@ -1465,6 +1465,111 @@ fn run(process: &mut Command) -> Output {
     process.output().expect("mcp-doctor should start")
 }
 
+#[cfg(feature = "internal-test-fixtures")]
+#[test]
+fn blocked_hostname_resolution_cannot_outlive_runtime_shutdown() {
+    let resolver_gate =
+        TcpListener::bind("127.0.0.1:0").expect("the blocking resolver gate should bind");
+    let resolver_gate_address = resolver_gate
+        .local_addr()
+        .expect("the blocking resolver gate should have an address");
+    let target_trap =
+        TcpListener::bind("127.0.0.1:0").expect("the target connection trap should bind");
+    target_trap
+        .set_nonblocking(true)
+        .expect("the target connection trap should become nonblocking");
+    let target_port = target_trap
+        .local_addr()
+        .expect("the target connection trap should have an address")
+        .port();
+    let endpoint = format!(
+        "https://blocking-resolver.invalid:{target_port}/synthetic-runtime-shutdown-never-report"
+    );
+    let environment = TestEnvironment::new();
+    let mut command = remote_command(&environment, "inspect", &endpoint);
+    command
+        .arg("--format")
+        .arg("json")
+        .env(
+            "MCP_DOCTOR_INTERNAL_TEST_BLOCKING_RESOLVER_GATE",
+            resolver_gate_address.to_string(),
+        )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .expect("the blocking resolver journey should start");
+
+    let accept_listener = resolver_gate
+        .try_clone()
+        .expect("the blocking resolver gate should clone");
+    let (accepted_sender, accepted_receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let accepted = accept_listener.accept().map(|(stream, _)| stream);
+        let _ = accepted_sender.send(accepted);
+    });
+    let mut barrier = match accepted_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(stream)) => stream,
+        result => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = TcpStream::connect(resolver_gate_address);
+            let _ = acceptor.join();
+            panic!("hostname resolution did not reach its blocking task: {result:?}");
+        }
+    };
+    acceptor
+        .join()
+        .expect("the blocking resolver acceptor should not panic");
+    barrier
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("the process-exit observer should have an outer watchdog");
+    let mut event = [0_u8; 1];
+    barrier
+        .read_exact(&mut event)
+        .expect("the blocking resolver readiness event should arrive");
+    assert_eq!(event, [1]);
+
+    if !observe_peer_close(&mut barrier) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("the process did not exit while resolver release was withheld");
+    }
+    let output = child
+        .wait_with_output()
+        .expect("the bounded resolver journey should return");
+    let (_, stderr) = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.is_empty());
+    let report = parse_and_validate_report(&output.stdout);
+    assert_eq!(
+        report["primary_diagnosis"]["check_id"],
+        "network.resolution"
+    );
+    assert_eq!(
+        report["primary_diagnosis"]["findings"][0]["code"],
+        "MCP-LIMIT-001"
+    );
+    let resolution = report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "network.resolution")
+        })
+        .expect("the bounded resolver timeout should remain explicit");
+    assert_eq!(
+        resolution["findings"][0]["evidence"]["limit"],
+        "startup_time"
+    );
+    assert!(matches!(
+        target_trap.accept(),
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock
+    ));
+    let resolver_gate_text = resolver_gate_address.to_string();
+    assert_redacted(&output, &endpoint, &[&resolver_gate_text]);
+}
+
 fn text(output: &Output) -> (&str, &str) {
     (
         std::str::from_utf8(&output.stdout).expect("STDOUT should be UTF-8"),

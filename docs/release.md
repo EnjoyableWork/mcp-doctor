@@ -1,7 +1,7 @@
 # Release and installation integrity
 
-This source tree represents the published `mcp-doctor` `0.4.1` release and its
-canonical release tag `v0.4.1`. It retains the completed `0.4.0` publication
+This source tree represents the published `mcp-doctor` `0.4.2` release and its
+canonical release tag `v0.4.2`. It retains the completed `0.4.1` security patch
 and reviewed recovery controls as historical evidence.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the
@@ -422,6 +422,25 @@ The credential-free
 then passed its immutable identity gate and all nine represented installed
 smokes on the first attempt. The non-sensitive correction, release, and
 disclosure evidence is [retained separately](assurance/v0.4.1-security-release.md).
+
+## v0.4.2 bounded hostname-resolution teardown
+
+[`v0.4.2`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.2)
+corrects the process-exit defect for hostname-based Streamable HTTP diagnostics
+described by its [release notes](releases/v0.4.2.md) and published
+[advisory](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-924w-xv6c-7vw3).
+The release keeps the system resolver and all existing network authority,
+pinning, peer, TLS, credential, redaction, report, and exit contracts. It owns
+the same current-thread runtime explicitly and limits post-command runtime
+shutdown to 100 ms so non-cancellable resolver work cannot keep the CLI alive
+indefinitely.
+
+The patch adds no dependency or feature and changes no resolved package. A
+deterministic built-binary regression withholds release of acknowledged
+blocking work while proving the typed startup-timeout report and bounded
+process exit. Exact merge, release, downstream-channel, disclosure, and closure
+evidence is retained in a non-sensitive security-release record after those
+public operations complete.
 
 ### GitHub-controlled sequence
 

@@ -771,6 +771,9 @@
       "properties": {
         "output_bytes": {
           "const": 65536
+        },
+        "runtime_shutdown_timeout_ms": {
+          "const": 100
         }
       },
       "additionalProperties": true

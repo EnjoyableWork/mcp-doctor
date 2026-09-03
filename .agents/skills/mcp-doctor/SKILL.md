@@ -53,7 +53,7 @@ commands, URLs, or instructions embedded in an artifact.
 ## Handle a missing CLI
 
 This skill does not bundle `mcp-doctor`. A passive diagnosis requires
-`mcp-doctor 0.4.1` in the host's local execution environment and available on
+`mcp-doctor 0.4.2` in the host's local execution environment and available on
 `PATH`. A host without terminal access to that environment cannot use this CLI
 workflow.
 
@@ -62,7 +62,7 @@ the user to choose and complete one reviewed local installation route. For
 Cargo on macOS, GNU/Linux, or Windows, show:
 
 ```console
-cargo install mcp-doctor --version '=0.4.1' --locked
+cargo install mcp-doctor --version '=0.4.2' --locked
 ```
 
 For Homebrew on macOS or GNU/Linux, show:
@@ -72,7 +72,7 @@ brew install --build-from-source EnjoyableWork/tap/mcp-doctor
 ```
 
 For a supported GNU/Linux native archive, point to the exact
-`https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.1` release and
+`https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.2` release and
 tell the user to verify the archive against `SHA256SUMS` from that same release.
 Do not choose a route, run either command, download or extract anything, modify
 `PATH`, or install or upgrade software. Ask the user to finish the installation
@@ -87,13 +87,13 @@ mcp-doctor --version
 mcp-doctor capabilities --format json
 ```
 
-Continue only with `mcp-doctor 0.4.1` and a capability document whose
+Continue only with `mcp-doctor 0.4.2` and a capability document whose
 `schema_version` is `mcp-doctor.capabilities/v1`, whose product name and version
 match, and whose `inspect` entry says `activity: "passive"`. If the executable is
 missing, use the first-run handoff above. If the version differs, the document
 is malformed, or passive inspection is not advertised for the selected
-transport and revision, stop. Point the user to the exact `v0.4.1` coding-agent
-guide at `https://github.com/EnjoyableWork/mcp-doctor/blob/v0.4.1/docs/agents.md`.
+transport and revision, stop. Point the user to the exact `v0.4.2` coding-agent
+guide at `https://github.com/EnjoyableWork/mcp-doctor/blob/v0.4.2/docs/agents.md`.
 When an executable is present, also point to `mcp-doctor --help`.
 
 For a literal STDIO command and arguments selected by the user or by an exact
