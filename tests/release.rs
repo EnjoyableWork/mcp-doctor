@@ -770,6 +770,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     let patch_notes = repository_file("docs/releases/v0.4.1.md");
     let security_record = repository_file("docs/assurance/v0.3.1-security-release.md");
     let bounded_work_record = repository_file("docs/assurance/v0.3.3-security-release.md");
+    let interruption_record = repository_file("docs/assurance/v0.4.1-security-release.md");
     let adoption = repository_file("docs/adoption.md");
 
     assert!(release.contains("exactly these seven assets"));
@@ -788,7 +789,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
     assert!(release.contains("cross-repository personal token"));
     assert!(release.contains("test alone is not completion evidence"));
     for contract in [
-        "This source tree represents the `mcp-doctor` `0.4.1` release candidate",
+        "This source tree represents the published `mcp-doctor` `0.4.1` release",
         "GitHub Releases determines whether a version has completed public\npublication.",
         "b0805a8f685e46814e358de368e2a270c21704af",
         "31528649356",
@@ -840,6 +841,16 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "32391019736",
         "205e112a17498b3e817240283ef9e16bf7f81027",
         "32391172160",
+        "6aab8cd2019e495370dd246ceb89efc056af47a6",
+        "33706588903",
+        "33706588930",
+        "0dc34abd92f87597e851f7378e94de97271aa906",
+        "33707483408",
+        "5b464c7005cf997039284eb0f1f91ee60abccb6f",
+        "33707924886",
+        "33708074873",
+        "GHSA-rw9q-ggrp-frwc",
+        "v0.4.1-security-release.md",
         "v0.3.3-security-release.md",
         "21c3ad8dba319339060c02523aed049282ada790cbecb691f4f270297b456341",
         "f7ee6903c839a268648bf8114e75817396a78f7b08f38a424541fe4b0c483a51",
@@ -953,6 +964,7 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         "completion_reason",
         "interrupted",
         "4,000 ms",
+        "GHSA-rw9q-ggrp-frwc",
         "cargo install mcp-doctor --version '=0.4.1' --locked",
     ] {
         assert!(
@@ -989,6 +1001,36 @@ fn release_docs_keep_scope_and_adoption_evidence_honest() {
         assert!(
             bounded_work_record.contains(contract),
             "v0.3.3 security-release record should preserve {contract}"
+        );
+    }
+    for contract in [
+        "v0.4.1 Unix interruption security-release record",
+        "3028d2d683bf13cab8e8ceb4e35060fb63430a83",
+        "33705162938",
+        "33705162922",
+        "33705162929",
+        "33705161875",
+        "5ea157c74da0ed13c71a0cd2f5451b1a50bed4a6",
+        "33705872376",
+        "33705872402",
+        "33705869770",
+        "33705872268",
+        "6aab8cd2019e495370dd246ceb89efc056af47a6",
+        "7b752e16bad9c4f36a2b3df03ed8cb29a439df20",
+        "33706588903",
+        "33706588930",
+        "0dc34abd92f87597e851f7378e94de97271aa906",
+        "33707483408",
+        "d6f59e72ca2ae68299a1b22a9be1f3f549c21484909e3e71f26f64c3f7c614d9",
+        "86a08514b756c62ac68fc5de1bfca0075ba8552afda8319d1f0f02cfea85170c",
+        "5b464c7005cf997039284eb0f1f91ee60abccb6f",
+        "33707924886",
+        "33708074873",
+        "GHSA-rw9q-ggrp-frwc",
+    ] {
+        assert!(
+            interruption_record.contains(contract),
+            "v0.4.1 security-release record should preserve {contract}"
         );
     }
     assert!(adoption.contains("Opened: 2026-08-10"));
