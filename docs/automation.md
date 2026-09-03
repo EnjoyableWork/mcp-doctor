@@ -269,7 +269,7 @@ one small bundle:
 Copy all four files to the same paths in the server repository. The diagnostic
 workflow demonstrates six parts of the CI contract in one job:
 
-1. download the exact immutable `mcp-doctor 0.4.0` GNU/Linux x64 archive,
+1. download the exact immutable `mcp-doctor 0.4.1` GNU/Linux x64 archive,
    enforce its reviewed byte sizes, SHA-256 digest, and four-entry layout, and
    smoke-test the extracted binary without installing Rust or compiling its
    dependency graph;
@@ -332,7 +332,7 @@ Commands, paths, artifacts, and configuration remain lowercase. The job
 summary and PR comment both use the fixed call to action **Add MCP Doctor to
 another project**.
 
-The exact `0.4.0` binary advertises `json`, `junit`, `markdown`, and `badge`
+The exact `0.4.1` binary advertises `json`, `junit`, `markdown`, and `badge`
 under the diagnostic command's `artifact_reporters` capability. The safe
 boundary check requires the corresponding `mcp-doctor.report/v1`, JUnit,
 `mcp-doctor.markdown/v1`, and `mcp-doctor.badge/v1` shapes before upload and

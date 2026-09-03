@@ -1,8 +1,8 @@
 # Release and installation integrity
 
-This source tree represents the `mcp-doctor` `0.4.1` release candidate and its
-intended canonical release tag `v0.4.1`. It retains the completed `0.4.0`
-publication and reviewed recovery controls as historical evidence.
+This source tree represents the published `mcp-doctor` `0.4.1` release and its
+canonical release tag `v0.4.1`. It retains the completed `0.4.0` publication
+and reviewed recovery controls as historical evidence.
 GitHub Releases determines whether a version has completed public
 publication. crates.io and the
 `EnjoyableWork/tap/mcp-doctor` Homebrew formula must install the exact source
@@ -395,6 +395,33 @@ then passed all ten jobs: immutable GitHub, crates.io, and Homebrew byte
 identity; two represented GNU/Linux archives; four native Cargo installs; and
 three native Homebrew source builds. No release, publication, integrity,
 installation, or smoke job was rerun as correctness evidence.
+
+## v0.4.1 Unix interruption security patch
+
+[`v0.4.1`](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.1)
+corrects the Unix STDIO interruption cleanup defect described by its
+[release notes](releases/v0.4.1.md) and published
+[advisory](https://github.com/EnjoyableWork/mcp-doctor/security/advisories/GHSA-rw9q-ggrp-frwc).
+Protected [PR #133](https://github.com/EnjoyableWork/mcp-doctor/pull/133)
+merged as exact release commit
+[`6aab8cd`](https://github.com/EnjoyableWork/mcp-doctor/commit/6aab8cd2019e495370dd246ceb89efc056af47a6).
+That exact `main` commit passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33706588903)
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33706588930).
+
+Signed annotated tag object
+`0dc34abd92f87597e851f7378e94de97271aa906` resolves to that commit. The
+protected [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33707483408)
+published an immutable eight-asset GitHub Release and the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.4.1) through OIDC.
+The tap-owned [publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/33707924886)
+copied the exact formula in commit
+[`5b464c7`](https://github.com/EnjoyableWork/homebrew-tap/commit/5b464c7005cf997039284eb0f1f91ee60abccb6f).
+The credential-free
+[channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33708074873)
+then passed its immutable identity gate and all nine represented installed
+smokes on the first attempt. The non-sensitive correction, release, and
+disclosure evidence is [retained separately](assurance/v0.4.1-security-release.md).
 
 ### GitHub-controlled sequence
 
