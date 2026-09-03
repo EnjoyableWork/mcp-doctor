@@ -32,6 +32,11 @@ rendering and publication, and runtime shutdown remain outside the total. The
 compiled capability manifest exposes the same milliseconds and scope strings
 and sets `whole_process_exit_guarantee` to `false` for every profile.
 
+On Unix, a caught `SIGINT` or `SIGTERM` during a STDIO target-facing command
+uses the separate fixed interruption cleanup contract below. Its 4,000 ms
+ceiling replaces the ordinary profile cleanup and total ceilings from the
+point the signal is observed; it does not change either selectable profile.
+
 These are the only accepted selections; `slow-start` is the compiled hard
 maximum and there are no individual overrides, project configuration, or
 disable-limit mode. Every byte, message, page, schema, case, generation,
@@ -48,6 +53,37 @@ its effective numeric limits; JUnit records the same selection while
 preserving the diagnostic result and exit semantics. `mcp-doctor capabilities`
 advertises the two names and exactly which commands accept them. An invalid
 name is rejected before target preparation.
+
+## Catchable Unix STDIO interruption
+
+After command-line parsing accepts an `inspect`, `check`, `break`, or `reject`
+STDIO invocation on Unix, `mcp-doctor` installs handlers for `SIGINT` and
+`SIGTERM` before preparing report artifacts, reading command input, or starting
+the target. Handler-registration failure starts no target and exits `4`.
+
+Once either signal is observed, `mcp-doctor` sends no later MCP request or
+notification. A write already in flight may have reached the target, but no
+subsequent active case or workflow cleanup suffix is transmitted. Passive
+`inspect auto` never starts its optional legacy lifecycle after interruption.
+The CLI closes target stdin, permits 2,000 ms for graceful whole-tree exit,
+then forcibly terminates the managed process group and permits another 2,000
+ms to reap it. The resulting interruption cleanup ceiling is exactly 4,000 ms.
+
+A clean interruption publishes no stdout diagnostic, snapshot, JSON, JUnit,
+Markdown, or badge report; it explicitly removes every identity-owned report
+stage and exits `3` (`incomplete_evidence`). JSONL status ends with a
+`completed` event containing `completion_reason: "interrupted"`. Cleanup,
+artifact rollback, stdout, or status failure overrides that outcome with exit
+`4`.
+
+Interruption wins until target cleanup completes and the final pre-publication
+check passes. Once `report_publication` begins, the completed diagnostic wins
+and catchable signals remain coalesced until the process exits. Repeated
+`SIGINT` or `SIGTERM` does not force an early exit during bounded cleanup.
+`SIGKILL` cannot be caught and therefore cannot run this cleanup contract.
+This contract does not change Streamable HTTP, offline-command, or Windows
+behavior. `mcp-doctor capabilities --format json` exposes the applicable
+commands, signals, phase ceilings, exit, report, and repeated-signal policy.
 
 ## Status-channel safety
 

@@ -97,8 +97,8 @@ than receive a backport.
 
 | Version | Security support |
 | --- | --- |
-| `0.3.x` | Supported |
-| `0.2.x` and earlier | Unsupported |
+| `0.4.x` | Supported |
+| `0.3.x` and earlier | Unsupported |
 | `main` | Development only; no release or backport guarantee |
 
 This table changes when a new supported release line is published. A tag,

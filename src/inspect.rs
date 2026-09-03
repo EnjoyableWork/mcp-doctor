@@ -12,6 +12,7 @@ use crate::contract::{
     render_http_diagnostic_for_revision_with_negotiated, render_stdio_diagnostic_for_revision,
     stdio_diagnostic,
 };
+use crate::interruption::{Interruptible, Interruption};
 use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 use crate::transport::http::{
     HttpBudget, HttpFailure, HttpLimits, HttpRun, HttpTarget, HttpTransport, RemoteOptions,
@@ -61,8 +62,9 @@ pub(crate) async fn run_stdio(
     selection: PassiveProtocolSelection,
     capture_snapshot: bool,
     limit_profile: DiagnosticLimitProfile,
+    interruption: &mut Interruption,
     status: &mut dyn StatusObserver,
-) -> Result<InspectOutput, InspectError> {
+) -> Result<Interruptible<InspectOutput>, InspectError> {
     status.phase_started(StatusPhase::TargetPreparation, None);
     let (executable, arguments) = target
         .split_first()
@@ -84,10 +86,18 @@ pub(crate) async fn run_stdio(
     };
     match selection {
         PassiveProtocolSelection::Exact(revision) => {
-            run_stdio_exact(&target, limits, revision, capture_snapshot, status).await
+            run_stdio_exact(
+                &target,
+                limits,
+                revision,
+                capture_snapshot,
+                interruption,
+                status,
+            )
+            .await
         }
         PassiveProtocolSelection::Auto => {
-            run_stdio_auto(&target, limits, capture_snapshot, status).await
+            run_stdio_auto(&target, limits, capture_snapshot, interruption, status).await
         }
     }
 }
@@ -97,13 +107,20 @@ async fn run_stdio_exact(
     limits: StdioLimits,
     revision: ProtocolRevision,
     capture_snapshot: bool,
+    interruption: &mut Interruption,
     status: &mut dyn StatusObserver,
-) -> Result<InspectOutput, InspectError> {
+) -> Result<Interruptible<InspectOutput>, InspectError> {
     let transport = StdioTransport::new(limits);
     let mut conversation = PassiveCatalogConversation::for_revision(revision);
     let result = transport
-        .probe_with_status(target, &mut conversation, status)
+        .probe_with_status(target, &mut conversation, interruption, status)
         .await;
+
+    if result.interrupted() {
+        return Ok(Interruptible::Interrupted {
+            cleanup_failed: result.cleanup_failed(),
+        });
+    }
 
     let selection = ProtocolSelectionEvidence::new(
         ProtocolSelectionMode::Exact,
@@ -121,19 +138,27 @@ async fn run_stdio_exact(
         capture_snapshot,
         selection,
     )
+    .map(Interruptible::completed)
 }
 
 async fn run_stdio_auto(
     target: &StdioTarget,
     limits: StdioLimits,
     capture_snapshot: bool,
+    interruption: &mut Interruption,
     status: &mut dyn StatusObserver,
-) -> Result<InspectOutput, InspectError> {
+) -> Result<Interruptible<InspectOutput>, InspectError> {
     let mut budget = StdioBudget::new(limits);
     let mut modern = PassiveCatalogConversation::for_auto_modern();
     let modern_run = StdioTransport::new(limits)
-        .probe_with_budget_and_status(target, &mut modern, &mut budget, status)
+        .probe_with_budget_and_status(target, &mut modern, &mut budget, interruption, status)
         .await;
+
+    if modern_run.interrupted() {
+        return Ok(Interruptible::Interrupted {
+            cleanup_failed: modern_run.cleanup_failed(),
+        });
+    }
 
     let modern_launches = u64::from(modern_run.process_started());
     let modern_requests = modern_run.lifecycle_request_count();
@@ -160,7 +185,8 @@ async fn run_stdio_auto(
             ProtocolRevision::CURRENT,
             capture_snapshot,
             selection,
-        );
+        )
+        .map(Interruptible::completed);
     }
 
     #[cfg(feature = "internal-test-fixtures")]
@@ -169,8 +195,13 @@ async fn run_stdio_auto(
     }
     let mut legacy = PassiveCatalogConversation::for_auto_legacy();
     let legacy_run = StdioTransport::new(limits)
-        .probe_with_budget_and_status(target, &mut legacy, &mut budget, status)
+        .probe_with_budget_and_status(target, &mut legacy, &mut budget, interruption, status)
         .await;
+    if legacy_run.interrupted() {
+        return Ok(Interruptible::Interrupted {
+            cleanup_failed: legacy_run.cleanup_failed(),
+        });
+    }
     let selected = legacy
         .negotiated_revision()
         .and_then(KnownRevision::supported)
@@ -191,6 +222,7 @@ async fn run_stdio_auto(
         capture_snapshot,
         selection,
     )
+    .map(Interruptible::completed)
 }
 
 const fn stdio_legacy_signal(failure: StdioFailure) -> bool {

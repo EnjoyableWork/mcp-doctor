@@ -66,6 +66,12 @@ attempt. If the process ends without `completed`, the outcome is unknown; status
 is liveness context, never diagnostic evidence. A failed or closed status sink
 does not stop cleanup, cannot turn a failed or incomplete diagnosis into
 success, and makes the process exit `4` when it can no longer publish status.
+On Unix STDIO, a clean caught `SIGINT` or `SIGTERM` instead publishes no report,
+exits `3`, and adds the optional fixed field
+`completion_reason: "interrupted"` to its `completed` record. An interruption
+cleanup phase advertises the separate 4,000 ms ceiling. Cleanup, artifact, or
+status failure overrides the interrupted outcome with exit `4`; see the
+[catchable interruption contract](safety.md#catchable-unix-stdio-interruption).
 
 No status record contains a target, endpoint, path, tool or case name,
 environment name or value, header, credential, server message, progress

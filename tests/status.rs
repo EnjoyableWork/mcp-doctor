@@ -112,6 +112,116 @@ fn assert_completed(records: &[Value], exit_code: u8, exit_meaning: &str) {
     );
 }
 
+#[cfg(unix)]
+fn run_interrupted_inspect(
+    signal: libc::c_int,
+    auto: bool,
+    artifact_cleanup_failure: bool,
+) -> (TestEnvironment, Output, Vec<PathBuf>) {
+    let environment = TestEnvironment::new();
+    let marker = environment.artifact_path("interrupted-descendant-ready");
+    let snapshot = environment.artifact_path("interrupted-snapshot.json");
+    let json_report = environment.artifact_path("interrupted-report.json");
+    let junit_report = environment.artifact_path("interrupted-report.xml");
+    let markdown_report = environment.artifact_path("interrupted-report.md");
+    let badge_report = environment.artifact_path("interrupted-badge.json");
+    let listener =
+        TcpListener::bind("127.0.0.1:0").expect("the interruption readiness event should bind");
+    let address = listener
+        .local_addr()
+        .expect("the interruption readiness event should have an address");
+    let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+    let acceptor = thread::spawn(move || {
+        let result = listener.accept().map(|(mut stream, _)| {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("the readiness watchdog should be configured");
+            let mut readiness = [0_u8; 1];
+            stream.read_exact(&mut readiness)?;
+            if readiness != [1] {
+                return Err(std::io::Error::other("invalid readiness event"));
+            }
+            Ok(())
+        });
+        let _ = ready_sender.send(result.and_then(|result| result));
+    });
+
+    let mut command = environment.command();
+    command
+        .arg("inspect")
+        .arg("--status")
+        .arg("jsonl")
+        .arg("--snapshot")
+        .arg(&snapshot)
+        .arg("--allow-sensitive-snapshot")
+        .arg(&snapshot)
+        .arg("--json-report")
+        .arg(&json_report)
+        .arg("--junit-report")
+        .arg(&junit_report)
+        .arg("--markdown-report")
+        .arg(&markdown_report)
+        .arg("--badge-report")
+        .arg(&badge_report);
+    if !auto {
+        command.arg("--protocol-version").arg("2026-07-28");
+    }
+    if artifact_cleanup_failure {
+        command.env("MCP_DOCTOR_INTERNAL_TEST_REPORT_CLEANUP_FAILURE", "1");
+    }
+    command
+        .arg("--")
+        .arg(fixture())
+        .arg("interruption-resistant-child")
+        .arg(&marker)
+        .arg(address.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .expect("the interrupted diagnostic should start");
+
+    match ready_receiver.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(())) => {}
+        result => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the fixture did not publish readiness: {result:?}");
+        }
+    }
+    acceptor
+        .join()
+        .expect("the interruption readiness observer should not panic");
+
+    let pid = libc::pid_t::try_from(child.id()).expect("the child PID should fit pid_t");
+    // SAFETY: `pid` is the exact live child returned by `Command::spawn`, and
+    // `signal` is one of the two catchable signals exercised by this test. The
+    // resistant descendant keeps the child alive through the cleanup grace,
+    // so both deliveries target that same live process.
+    let first_sent = unsafe { libc::kill(pid, signal) };
+    let repeated_sent = unsafe { libc::kill(pid, signal) };
+    if first_sent != 0 || repeated_sent != 0 {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("both catchable interruption signals should be delivered");
+    }
+    let output = child
+        .wait_with_output()
+        .expect("the interrupted diagnostic should return");
+    (
+        environment,
+        output,
+        vec![
+            marker,
+            snapshot,
+            json_report,
+            junit_report,
+            markdown_report,
+            badge_report,
+        ],
+    )
+}
+
 fn phase_index(records: &[Value], phase: &str) -> usize {
     records
         .iter()
@@ -1042,6 +1152,104 @@ fn local_http_fixture_observes_flushed_discovery_status_before_acknowledgement()
     assert_eq!(preparation["ceiling_ms"], 10_000);
     assert_cleanup_publication_completion_order(&records);
     assert_completed(&records, 0, "success");
+}
+
+#[cfg(unix)]
+#[test]
+fn catchable_unix_interruptions_reap_stdio_trees_and_publish_no_report() {
+    for (signal, auto) in [(libc::SIGTERM, false), (libc::SIGINT, true)] {
+        let (_environment, output, paths) = run_interrupted_inspect(signal, auto, false);
+        assert_eq!(output.status.code(), Some(3));
+        assert!(output.stdout.is_empty());
+
+        let records = status_records(&output);
+        assert_common_status(&records, "inspect", "stdio", "default");
+        assert_completed(&records, 3, "incomplete_evidence");
+        assert_eq!(records.last().unwrap()["completion_reason"], "interrupted");
+        assert!(records.iter().any(|record| {
+            record["event"] == "phase_started"
+                && record["phase"] == "cleanup"
+                && record["ceiling_kind"] == "cleanup_grace"
+                && record["ceiling_ms"] == 4_000
+        }));
+        assert!(!records.iter().any(|record| {
+            record["event"] == "phase_started" && record["phase"] == "report_publication"
+        }));
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| {
+                    record["event"] == "phase_started" && record["phase"] == "target_startup"
+                })
+                .count(),
+            1,
+            "interruption must stop passive auto-selection before another launch"
+        );
+
+        assert_descendant_was_ready_and_terminated(&paths[0]);
+        for path in &paths[1..] {
+            assert!(!path.exists(), "interruption published an output artifact");
+        }
+        let stage_count = fs::read_dir(
+            paths[0]
+                .parent()
+                .expect("the marker should have a disposable parent"),
+        )
+        .expect("the disposable root should remain readable")
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".mcp-doctor-report-")
+        })
+        .count();
+        assert_eq!(stage_count, 0, "interruption left a report stage behind");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn interrupted_artifact_cleanup_failure_overrides_incomplete_exit() {
+    let (_environment, output, paths) = run_interrupted_inspect(libc::SIGTERM, false, true);
+
+    assert_eq!(output.status.code(), Some(4));
+    assert!(output.stdout.is_empty());
+    assert_descendant_was_ready_and_terminated(&paths[0]);
+    for path in &paths[1..] {
+        assert!(
+            !path.exists(),
+            "failed rollback published an output artifact"
+        );
+    }
+    let records = status_records(&output);
+    assert!(records.iter().any(|record| {
+        record["event"] == "error" && record["error_kind"] == "internal_or_output_failure"
+    }));
+    assert_completed(&records, 4, "internal_or_output_failure");
+    assert!(records.last().unwrap().get("completion_reason").is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn signal_registration_failure_starts_no_target_and_returns_internal_failure() {
+    let environment = TestEnvironment::new();
+    let marker = environment.artifact_path("registration-failure-target-marker");
+    let output = exact_inspect_command(&environment, Some("jsonl"), fixture(), "resistant-child")
+        .arg(&marker)
+        .env("MCP_DOCTOR_INTERNAL_TEST_SIGNAL_REGISTRATION_FAILURE", "1")
+        .output()
+        .expect("the registration failure journey should return");
+
+    assert_eq!(output.status.code(), Some(4));
+    assert!(output.stdout.is_empty());
+    assert!(!marker.exists());
+    let records = status_records(&output);
+    assert_common_status(&records, "inspect", "stdio", "default");
+    assert!(records.iter().any(|record| {
+        record["event"] == "error" && record["error_kind"] == "internal_or_output_failure"
+    }));
+    assert_completed(&records, 4, "internal_or_output_failure");
 }
 
 #[cfg(unix)]

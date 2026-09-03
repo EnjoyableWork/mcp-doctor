@@ -1,6 +1,6 @@
 [package]
 name = "mcp-doctor"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 description = "Diagnose protocol, schema, and runtime failures in MCP servers"
 license = "MIT"
@@ -81,6 +81,7 @@ tokio = { version = "=1.53.1", features = [
     "net",
     "process",
     "rt",
+    "signal",
     "time",
 ] }
 

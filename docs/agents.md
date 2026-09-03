@@ -21,7 +21,7 @@ The CLI and Agent Skill are separate installations. Install the CLI through a
 | --- | --- | --- |
 | [Smithery](https://smithery.ai/skills/enjoyable/mcp-doctor) | You want discovery and the current install command for a selected agent host | Third-party installation convenience backed by the canonical GitHub directory |
 | [GitHub source](https://github.com/EnjoyableWork/mcp-doctor/tree/main/.agents/skills/mcp-doctor) | You want to inspect the current bundle or keep it under version control | Canonical source for the current skill |
-| [GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.0) | You want an immutable skill and CLI pair with published checksums | Canonical release authority |
+| [GitHub Release](https://github.com/EnjoyableWork/mcp-doctor/releases/tag/v0.4.1) | You want an immutable skill and CLI pair with published checksums | Canonical release authority |
 
 On Smithery, select the intended agent and use the command the listing displays
 for that host. The listing currently resolves to the canonical GitHub skill
@@ -31,27 +31,26 @@ the Smithery and manual copies into the same discovery root.
 
 ## Published release identity
 
-The immutable `mcp-doctor` `0.4.0` release published the original portable
-single-file skill:
+The `mcp-doctor` `0.4.1` release publishes the portable single-file skill:
 
 | Item | Exact identity |
 | --- | --- |
-| CLI | `mcp-doctor 0.4.0` |
-| GitHub Release | `v0.4.0` |
-| Companion archive | `mcp-doctor-agent-skill-v0.4.0.tar.gz` |
+| CLI | `mcp-doctor 0.4.1` |
+| GitHub Release | `v0.4.1` |
+| Companion archive | `mcp-doctor-agent-skill-v0.4.1.tar.gz` |
 | Archive manifest | `SHA256SUMS` from the same immutable release |
-| Published `SKILL.md` | SHA-256 `aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991` |
+| Published `SKILL.md` | SHA-256 `4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a` |
 
 Do not combine the skill from one release with a different CLI version. The
 skill checks the installed version and compiled capabilities before a new
 diagnosis, then stops on a mismatch.
 
-The source tree now carries a ChatGPT presentation bundle paired with the same
-`mcp-doctor 0.4.0` CLI contract. It does not alter the immutable release above:
+The same source and release also carry a ChatGPT presentation bundle paired
+with the `mcp-doctor 0.4.1` CLI contract:
 
 | Source item | Exact identity |
 | --- | --- |
-| Source `SKILL.md` | SHA-256 `05d0f9ab54b41d9f74605aa3c84c6d9837484539895033e3bcf058afcc596cb6` |
+| Source `SKILL.md` | SHA-256 `4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a` |
 | Source `agents/openai.yaml` | SHA-256 `a56095c3f3eb2ed6bdbceb9b4d6c40289b5bb45733c4c950c32a0c02bbd680d6` |
 | Source `assets/icon.svg` | SHA-256 `8140b500f4bc70688a473bc9ec63cdb0b1a3e229596215340588053a3ee1d71b` |
 
@@ -59,7 +58,7 @@ The behavioral instructions remain self-contained in `SKILL.md`. The other two
 files add OpenAI-specific presentation and invocation metadata; a host that
 supports only `SKILL.md` does not need them.
 
-On a first run without the CLI, the skill presents the exact `0.4.0` Cargo,
+On a first run without the CLI, the skill presents the exact `0.4.1` Cargo,
 Homebrew, and verified-release routes, then stops. Those commands are a
 human-facing prerequisite handoff; the skill never installs software itself.
 
@@ -91,12 +90,12 @@ Build a deterministic ZIP whose upload root contains `SKILL.md`, `agents/`, and
 
 ```bash
 SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
-  scripts/package-chatgpt-skill.sh 0.4.0 target/skill-dist
-scripts/verify-chatgpt-skill.sh 0.4.0 \
-  target/skill-dist/mcp-doctor-chatgpt-skill-v0.4.0.zip
+  scripts/package-chatgpt-skill.sh 0.4.1 target/skill-dist
+scripts/verify-chatgpt-skill.sh 0.4.1 \
+  target/skill-dist/mcp-doctor-chatgpt-skill-v0.4.1.zip
 ```
 
-Upload `mcp-doctor-chatgpt-skill-v0.4.0.zip` through the ChatGPT skill import
+Upload `mcp-doctor-chatgpt-skill-v0.4.1.zip` through the ChatGPT skill import
 flow available to the account. OpenAI documents standalone skills for the
 ChatGPT desktop app, Codex CLI, and the IDE extension. For public installation
 by other people across ChatGPT surfaces, OpenAI currently directs vendors to
@@ -115,7 +114,7 @@ Verify the archive before extracting it.
 On macOS or GNU/Linux:
 
 ```bash
-archive=mcp-doctor-agent-skill-v0.4.0.tar.gz
+archive=mcp-doctor-agent-skill-v0.4.1.tar.gz
 expected_archive=$(sed -n \
   's/^\([[:xdigit:]]\{64\}\)  mcp-doctor-agent-skill-v0\.4\.0\.tar\.gz$/\1/p' \
   SHA256SUMS)
@@ -126,13 +125,13 @@ mkdir mcp-doctor-skill-stage
 tar -xzf "$archive" -C mcp-doctor-skill-stage
 test "$(shasum -a 256 mcp-doctor-skill-stage/mcp-doctor/SKILL.md \
   | awk '{print $1}')" = \
-  aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991
+  4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$archive = 'mcp-doctor-agent-skill-v0.4.0.tar.gz'
+$archive = 'mcp-doctor-agent-skill-v0.4.1.tar.gz'
 $checksumLines = @(Get-Content -LiteralPath SHA256SUMS | Where-Object {
     $_.EndsWith("  $archive", [StringComparison]::Ordinal)
 })
@@ -148,7 +147,7 @@ tar -xzf $archive -C mcp-doctor-skill-stage
 if ($LASTEXITCODE -ne 0) { throw 'Could not extract the Agent Skill archive.' }
 $skillFile = 'mcp-doctor-skill-stage\mcp-doctor\SKILL.md'
 $actualSkill = (Get-FileHash -Algorithm SHA256 -LiteralPath $skillFile).Hash.ToLowerInvariant()
-if ($actualSkill -ne 'aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991') {
+if ($actualSkill -ne '4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a') {
     throw 'Canonical SKILL.md digest mismatch.'
 }
 ```
@@ -244,6 +243,13 @@ missing `completed` record as a result; wait for the process and interpret the
 stable report and exit code. A closed status sink does not cancel the target and
 causes output-failure exit `4` after cleanup.
 
+On Unix STDIO, a caught `SIGINT` or `SIGTERM` that cleans up completely ends
+with exit `3` and `completion_reason: "interrupted"`, without a stdout report or
+report artifact. Agents must not treat that status stream as diagnostic
+evidence or retry active work automatically. The compiled `interruption`
+capability supplies the separate 4,000 ms cleanup ceiling for wrapper
+watchdogs; repeated catchable signals do not request a forced early exit.
+
 The optional Agent Skill remains passive and still requires the exact target
 from the user. Status selection grants no additional process, network,
 credential, tool, or side-effect authority. See the
@@ -258,7 +264,7 @@ Remove only the exact unmodified file installed above. On macOS or GNU/Linux:
 MCP_DOCTOR_SKILLS_ROOT="$HOME/.agents/skills"
 test "$(shasum -a 256 "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor/SKILL.md" \
   | awk '{print $1}')" = \
-  aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991
+  4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a
 rm "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor/SKILL.md"
 rmdir "$MCP_DOCTOR_SKILLS_ROOT/mcp-doctor"
 ```
@@ -269,7 +275,7 @@ and now-empty directory:
 ```powershell
 $installedSkill = Join-Path $destination 'SKILL.md'
 $installedDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $installedSkill).Hash.ToLowerInvariant()
-if ($installedDigest -ne 'aacc85b225bcb93cd0f5cc926388ad1f5763a0b5cb771255148453c2257cd991') {
+if ($installedDigest -ne '4ba13b0b044bdd35d64ca0aaff54eb80708bcac370e41f9ad14b70dfc972c71a') {
     throw 'Installed skill was modified; refusing documented removal.'
 }
 Remove-Item -LiteralPath $installedSkill
@@ -306,11 +312,11 @@ after one first-attempt explicit invocation uses a synthetic PATH-preferred
 `mcp-doctor` recorder. A missing, failed, or variant observation withholds that
 host claim; it is not rerun into acceptance.
 
-Neither the published `0.4.0` release skill nor the newer ChatGPT source bundle
+Neither the published `0.4.1` release skill nor the newer ChatGPT source bundle
 has completed a new host observation. The last verified route is Codex CLI
 `0.147.0` paired with the exact `mcp-doctor` `0.3.2` CLI and companion skill.
 That remains historical evidence for `0.3.2`, not a support claim for `0.3.3`,
-`0.4.0`, a later Codex version, ChatGPT, or independent adoption.
+`0.4.1`, a later Codex version, ChatGPT, or independent adoption.
 
 | Host | Exact version | Discovery | Explicit invocation | Implicit observation |
 | --- | --- | --- | --- | --- |

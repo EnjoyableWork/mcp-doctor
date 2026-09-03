@@ -358,6 +358,8 @@ struct CapabilitiesManifest<'a> {
     protocol_selection: ProtocolSelectionCapability<'a>,
     schema_versions: SchemaVersions<'a>,
     status: StatusCapability<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    interruption: Option<InterruptionCapability<'a>>,
     reporters: &'a [ReporterCapability<'a>],
     exit_semantics: ExitSemantics<'a>,
     platform: PlatformCapabilities<'a>,
@@ -459,6 +461,21 @@ struct StatusLimits {
     events: usize,
     output_bytes: usize,
     write_retries: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct InterruptionCapability<'a> {
+    platform_family: &'a str,
+    transport: &'a str,
+    commands: &'a [&'a str],
+    signals: &'a [&'a str],
+    graceful_cleanup_ms: u64,
+    forced_reap_ms: u64,
+    cleanup_ceiling_ms: u64,
+    incomplete_exit_code: u8,
+    status_completion_reason: &'a str,
+    publishes_report: bool,
+    repeated_signal_forces_exit: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -607,6 +624,7 @@ fn manifest() -> CapabilitiesManifest<'static> {
                 write_retries: 0,
             },
         },
+        interruption: interruption_capability(),
         reporters: REPORTERS,
         exit_semantics: ExitSemantics {
             version: EXIT_SEMANTICS_VERSION,
@@ -619,6 +637,30 @@ fn manifest() -> CapabilitiesManifest<'static> {
             output_bytes: MAXIMUM_OUTPUT_BYTES,
         },
     }
+}
+
+#[cfg(unix)]
+fn interruption_capability() -> Option<InterruptionCapability<'static>> {
+    use crate::interruption::{CLEANUP_MS, GRACE_MS, REAP_MS};
+
+    Some(InterruptionCapability {
+        platform_family: "unix",
+        transport: "stdio",
+        commands: STATUS_COMMANDS,
+        signals: &["SIGINT", "SIGTERM"],
+        graceful_cleanup_ms: GRACE_MS,
+        forced_reap_ms: REAP_MS,
+        cleanup_ceiling_ms: CLEANUP_MS,
+        incomplete_exit_code: 3,
+        status_completion_reason: "interrupted",
+        publishes_report: false,
+        repeated_signal_forces_exit: false,
+    })
+}
+
+#[cfg(not(unix))]
+const fn interruption_capability() -> Option<InterruptionCapability<'static>> {
+    None
 }
 
 fn diagnostic_time_ceiling_profiles() -> [DiagnosticTimeCeilingProfile<'static>; 2] {
@@ -766,6 +808,24 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
             .join(",")
     )
     .map_err(|_| CapabilitiesError::Render)?;
+    if let Some(interruption) = &manifest.interruption {
+        writeln!(
+            output,
+            "Interruption: {} · {} · signals {} · commands {} · graceful_cleanup_ms={} · forced_reap_ms={} · cleanup_ceiling_ms={} · exit_code={} · completion_reason={} · publishes_report={} · repeated_signal_forces_exit={}",
+            interruption.platform_family,
+            interruption.transport,
+            interruption.signals.join(","),
+            interruption.commands.join(","),
+            interruption.graceful_cleanup_ms,
+            interruption.forced_reap_ms,
+            interruption.cleanup_ceiling_ms,
+            interruption.incomplete_exit_code,
+            interruption.status_completion_reason,
+            interruption.publishes_report,
+            interruption.repeated_signal_forces_exit,
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
     if let Some(profile) = manifest.diagnostic_time_ceiling_profiles.first() {
         writeln!(
             output,

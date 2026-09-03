@@ -6,6 +6,7 @@ mod check;
 mod contract;
 mod diff;
 mod inspect;
+mod interruption;
 mod reject_command;
 mod report_artifacts;
 mod status;
@@ -597,6 +598,52 @@ fn finish_status(status: &mut CliStatusReporter, exit_code: u8) -> ExitCode {
     ExitCode::from(status.complete(exit_code))
 }
 
+fn register_stdio_interruption(
+    status: &mut CliStatusReporter,
+) -> Result<interruption::Interruption, ExitCode> {
+    match interruption::Interruption::register() {
+        Ok(interruption) => Ok(interruption),
+        Err(error) => Err(finish_status_error(
+            status,
+            status::StatusErrorKind::InternalOrOutputFailure,
+            &error,
+            4,
+        )),
+    }
+}
+
+fn finish_interrupted(
+    destinations: report_artifacts::ReportArtifactDestinations,
+    cleanup_failed: bool,
+    status: &mut CliStatusReporter,
+) -> ExitCode {
+    use std::io::Write as _;
+
+    let mut internal_failure = cleanup_failed;
+    if cleanup_failed {
+        status.error(
+            status::StatusErrorKind::InternalOrOutputFailure,
+            &"the interrupted STDIO process tree could not be cleaned up completely",
+        );
+    }
+    if let Err(error) = destinations.cancel() {
+        status.error(status::StatusErrorKind::InternalOrOutputFailure, &error);
+        internal_failure = true;
+    }
+    if std::io::stdout().flush().is_err() {
+        status.error(
+            status::StatusErrorKind::InternalOrOutputFailure,
+            &"the stdout report could not be flushed",
+        );
+        internal_failure = true;
+    }
+    if internal_failure {
+        ExitCode::from(status.complete(4))
+    } else {
+        ExitCode::from(status.complete_interrupted())
+    }
+}
+
 fn emit_diagnostic(
     diagnostic: contract::Diagnostic,
     request: contract::ReportRequest,
@@ -790,6 +837,14 @@ async fn main() -> ExitCode {
                 limit_profile,
             );
             status.invocation_accepted();
+            let mut interruption = if arguments.endpoint.is_none() {
+                match register_stdio_interruption(&mut status) {
+                    Ok(interruption) => Some(interruption),
+                    Err(exit) => return exit,
+                }
+            } else {
+                None
+            };
             let destination = match contract::prepare_snapshot_destination(
                 arguments.snapshot,
                 arguments.allow_sensitive_snapshot,
@@ -846,16 +901,26 @@ async fn main() -> ExitCode {
                     Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
                 }
             } else {
+                let interruption = interruption
+                    .as_mut()
+                    .expect("a STDIO invocation registers interruption handling");
+                if interruption.checkpoint().await {
+                    return finish_interrupted(report_destinations, false, &mut status);
+                }
                 match inspect::run_stdio(
                     arguments.target,
                     protocol_selection,
                     capture_snapshot,
                     limit_profile,
+                    interruption,
                     &mut status,
                 )
                 .await
                 {
-                    Ok(mut output) => {
+                    Ok(interruption::Interruptible::Completed(mut output)) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
                         output.diagnostic = output.diagnostic.with_limit_profile(limit_profile);
                         emit_inspect(
                             output,
@@ -865,7 +930,19 @@ async fn main() -> ExitCode {
                             &mut status,
                         )
                     }
-                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
+                    Ok(interruption::Interruptible::Interrupted { cleanup_failed }) => {
+                        return finish_interrupted(
+                            report_destinations,
+                            cleanup_failed,
+                            &mut status,
+                        );
+                    }
+                    Err(error) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_invocation_error(&error, report_destinations, &mut status)
+                    }
                 }
             };
             finish_status(&mut status, exit)
@@ -910,6 +987,14 @@ async fn main() -> ExitCode {
                 limit_profile,
             );
             status.invocation_accepted();
+            let mut interruption = if arguments.endpoint.is_none() {
+                match register_stdio_interruption(&mut status) {
+                    Ok(interruption) => Some(interruption),
+                    Err(exit) => return exit,
+                }
+            } else {
+                None
+            };
             let (report_request, report_destinations) = match arguments.report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -935,24 +1020,50 @@ async fn main() -> ExitCode {
                 .with_limit_profile(limit_profile);
                 emit_diagnostic(diagnostic, report_request, report_destinations, &mut status)
             } else {
+                let interruption = interruption
+                    .as_mut()
+                    .expect("a STDIO invocation registers interruption handling");
+                if interruption.checkpoint().await {
+                    return finish_interrupted(report_destinations, false, &mut status);
+                }
                 match check::run_stdio(
                     arguments.target,
-                    &arguments.scenario,
-                    &arguments.allow_tool,
-                    arguments.allow_side_effects,
-                    revision,
-                    limit_profile,
+                    check::CheckOptions {
+                        scenario_path: &arguments.scenario,
+                        allowed_tools: &arguments.allow_tool,
+                        allow_side_effects: arguments.allow_side_effects,
+                        revision,
+                        limit_profile,
+                    },
+                    interruption,
                     &mut status,
                 )
                 .await
                 {
-                    Ok(diagnostic) => emit_diagnostic(
-                        diagnostic.with_limit_profile(limit_profile),
-                        report_request,
-                        report_destinations,
-                        &mut status,
-                    ),
-                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
+                    Ok(interruption::Interruptible::Completed(diagnostic)) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_diagnostic(
+                            diagnostic.with_limit_profile(limit_profile),
+                            report_request,
+                            report_destinations,
+                            &mut status,
+                        )
+                    }
+                    Ok(interruption::Interruptible::Interrupted { cleanup_failed }) => {
+                        return finish_interrupted(
+                            report_destinations,
+                            cleanup_failed,
+                            &mut status,
+                        );
+                    }
+                    Err(error) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_invocation_error(&error, report_destinations, &mut status)
+                    }
                 }
             };
             finish_status(&mut status, exit)
@@ -981,6 +1092,14 @@ async fn main() -> ExitCode {
                 limit_profile,
             );
             status.invocation_accepted();
+            let mut interruption = if endpoint.is_none() {
+                match register_stdio_interruption(&mut status) {
+                    Ok(interruption) => Some(interruption),
+                    Err(exit) => return exit,
+                }
+            } else {
+                None
+            };
             let (report_request, report_destinations) = match report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -1013,14 +1132,37 @@ async fn main() -> ExitCode {
                     &mut status,
                 )
             } else {
-                match break_command::run_stdio(target, options, &mut status).await {
-                    Ok(diagnostic) => emit_diagnostic(
-                        diagnostic.with_limit_profile(limit_profile),
-                        report_request,
-                        report_destinations,
-                        &mut status,
-                    ),
-                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
+                let interruption = interruption
+                    .as_mut()
+                    .expect("a STDIO invocation registers interruption handling");
+                if interruption.checkpoint().await {
+                    return finish_interrupted(report_destinations, false, &mut status);
+                }
+                match break_command::run_stdio(target, options, interruption, &mut status).await {
+                    Ok(interruption::Interruptible::Completed(diagnostic)) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_diagnostic(
+                            diagnostic.with_limit_profile(limit_profile),
+                            report_request,
+                            report_destinations,
+                            &mut status,
+                        )
+                    }
+                    Ok(interruption::Interruptible::Interrupted { cleanup_failed }) => {
+                        return finish_interrupted(
+                            report_destinations,
+                            cleanup_failed,
+                            &mut status,
+                        );
+                    }
+                    Err(error) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_invocation_error(&error, report_destinations, &mut status)
+                    }
                 }
             };
             finish_status(&mut status, exit)
@@ -1046,6 +1188,14 @@ async fn main() -> ExitCode {
                 limit_profile,
             );
             status.invocation_accepted();
+            let mut interruption = if endpoint.is_none() {
+                match register_stdio_interruption(&mut status) {
+                    Ok(interruption) => Some(interruption),
+                    Err(exit) => return exit,
+                }
+            } else {
+                None
+            };
             let (report_request, report_destinations) = match report.prepare(&[]) {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -1070,14 +1220,37 @@ async fn main() -> ExitCode {
                         .await;
                 emit_diagnostic(diagnostic, report_request, report_destinations, &mut status)
             } else {
-                match reject_command::run_stdio(target, options, &mut status).await {
-                    Ok(diagnostic) => emit_diagnostic(
-                        diagnostic,
-                        report_request,
-                        report_destinations,
-                        &mut status,
-                    ),
-                    Err(error) => emit_invocation_error(&error, report_destinations, &mut status),
+                let interruption = interruption
+                    .as_mut()
+                    .expect("a STDIO invocation registers interruption handling");
+                if interruption.checkpoint().await {
+                    return finish_interrupted(report_destinations, false, &mut status);
+                }
+                match reject_command::run_stdio(target, options, interruption, &mut status).await {
+                    Ok(interruption::Interruptible::Completed(diagnostic)) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_diagnostic(
+                            diagnostic,
+                            report_request,
+                            report_destinations,
+                            &mut status,
+                        )
+                    }
+                    Ok(interruption::Interruptible::Interrupted { cleanup_failed }) => {
+                        return finish_interrupted(
+                            report_destinations,
+                            cleanup_failed,
+                            &mut status,
+                        );
+                    }
+                    Err(error) => {
+                        if interruption.checkpoint().await {
+                            return finish_interrupted(report_destinations, false, &mut status);
+                        }
+                        emit_invocation_error(&error, report_destinations, &mut status)
+                    }
                 }
             };
             finish_status(&mut status, exit)

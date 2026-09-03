@@ -7,6 +7,7 @@ use crate::contract::{
     render_authorization_failure_for_revision,
     render_generation_configuration_failure_for_revision, stdio_diagnostic,
 };
+use crate::interruption::{Interruptible, Interruption};
 use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
@@ -24,28 +25,33 @@ pub(crate) struct RejectOptions<'a> {
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
     options: RejectOptions<'_>,
+    interruption: &mut Interruption,
     status: &mut dyn StatusObserver,
-) -> Result<Diagnostic, TargetError> {
+) -> Result<Interruptible<Diagnostic>, TargetError> {
     status.phase_started(StatusPhase::InputPreparation, None);
     let revision = ActiveProtocolRevision::CURRENT;
     let mut scenario =
         match ActiveScenario::rejection(options.tool, options.side_effecting, options.seed) {
             Ok(scenario) => scenario,
             Err(failure) => {
-                return Ok(render_generation_configuration_failure_for_revision(
-                    failure,
-                    REJECTION_CASE_COUNT,
-                    ReportTransport::Stdio,
-                    revision,
+                return Ok(Interruptible::completed(
+                    render_generation_configuration_failure_for_revision(
+                        failure,
+                        REJECTION_CASE_COUNT,
+                        ReportTransport::Stdio,
+                        revision,
+                    ),
                 ));
             }
         };
     if let Err(failure) = scenario.authorize(options.allowed_tool, options.allow_side_effects) {
-        return Ok(render_authorization_failure_for_revision(
-            &scenario,
-            failure,
-            ReportTransport::Stdio,
-            revision,
+        return Ok(Interruptible::completed(
+            render_authorization_failure_for_revision(
+                &scenario,
+                failure,
+                ReportTransport::Stdio,
+                revision,
+            ),
         ));
     }
     scenario.discard_target_environment_names();
@@ -72,13 +78,20 @@ pub(crate) async fn run_stdio(
     );
     let mut conversation = ActiveConversation::for_revision(scenario, revision);
     let result = transport
-        .probe_with_status(&target, &mut conversation, status)
+        .probe_with_status(&target, &mut conversation, interruption, status)
         .await;
+    if result.interrupted() {
+        return Ok(Interruptible::Interrupted {
+            cleanup_failed: result.cleanup_failed(),
+        });
+    }
     let diagnostic = stdio_diagnostic(
         result.failure(),
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
-    Ok(conversation.into_diagnostic(diagnostic))
+    Ok(Interruptible::completed(
+        conversation.into_diagnostic(diagnostic),
+    ))
 }
 
 pub(crate) async fn run_http(

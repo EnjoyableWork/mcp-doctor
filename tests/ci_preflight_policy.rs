@@ -32,7 +32,7 @@ fn starter_is_exact_passive_least_permission_and_copy_focused() {
         "runs-on: ubuntu-24.04",
         "timeout-minutes: 20",
         "permissions:\n      contents: read",
-        "MCP_DOCTOR_VERSION: 0.4.0",
+        "MCP_DOCTOR_VERSION: 0.4.1",
         "MCP_DOCTOR_TARGET: x86_64-unknown-linux-gnu",
         "MCP_DOCTOR_ARCHIVE_BYTES: 5548845",
         "MCP_DOCTOR_ARCHIVE_SHA256: f8ddc1eb0d1cc9f8ed6ab186109ed4d881fea181c5e6896b029e535ae7ecfba6",
@@ -522,7 +522,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
         let exact = serde_json::json!({
             "schema_version": "mcp-doctor.capabilities/v1",
             "schema_stability": "stable",
-            "product": {"name": "mcp-doctor", "version": "0.4.0"},
+            "product": {"name": "mcp-doctor", "version": "0.4.1"},
             "commands": [{
                 "name": "inspect",
                 "activity": "passive",
@@ -543,7 +543,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
 
         let accepted = Command::new(&verifier)
             .arg(&capabilities)
-            .arg("0.4.0")
+            .arg("0.4.1")
             .output()
             .expect("capability verification should run");
         assert!(accepted.status.success());
@@ -557,7 +557,7 @@ fn capability_verifier_accepts_only_the_exact_passive_four_report_contract() {
             .expect("mismatched capability evidence should be writable");
         let rejected = Command::new(&verifier)
             .arg(&capabilities)
-            .arg("0.4.0")
+            .arg("0.4.1")
             .output()
             .expect("mismatched capability verification should run");
         assert_eq!(rejected.status.code(), Some(1));

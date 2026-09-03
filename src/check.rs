@@ -10,58 +10,73 @@ use crate::contract::{
     render_authorization_failure_for_revision, render_resolved_scenario_failure_for_revision,
     render_scenario_failure_for_revision, resolve_target_environment, stdio_diagnostic,
 };
+use crate::interruption::{Interruptible, Interruption};
 use crate::status::{StatusCeiling, StatusCeilingKind, StatusObserver, StatusPhase};
 use crate::transport::http::{
     HttpLimits, HttpTarget, HttpTransport, RemoteOptions, SystemResolver,
 };
 use crate::transport::stdio::{StdioLimits, StdioTarget, StdioTransport, TargetError};
 
+pub(crate) struct CheckOptions<'a> {
+    pub(crate) scenario_path: &'a Path,
+    pub(crate) allowed_tools: &'a [String],
+    pub(crate) allow_side_effects: bool,
+    pub(crate) revision: ActiveProtocolRevision,
+    pub(crate) limit_profile: DiagnosticLimitProfile,
+}
+
 pub(crate) async fn run_stdio(
     target: Vec<OsString>,
-    scenario_path: &Path,
-    allowed_tools: &[String],
-    allow_side_effects: bool,
-    revision: ActiveProtocolRevision,
-    limit_profile: DiagnosticLimitProfile,
+    options: CheckOptions<'_>,
+    interruption: &mut Interruption,
     status: &mut dyn StatusObserver,
-) -> Result<Diagnostic, TargetError> {
+) -> Result<Interruptible<Diagnostic>, TargetError> {
     status.phase_started(StatusPhase::InputPreparation, None);
-    let bytes = match read_scenario(scenario_path) {
+    let bytes = match read_scenario(options.scenario_path) {
         Ok(bytes) => bytes,
         Err(failure) => {
-            return Ok(render_scenario_failure_for_revision(
-                failure,
-                ReportTransport::Stdio,
-                revision,
+            return Ok(Interruptible::completed(
+                render_scenario_failure_for_revision(
+                    failure,
+                    ReportTransport::Stdio,
+                    options.revision,
+                ),
             ));
         }
     };
     let mut scenario = match ActiveScenario::parse(&bytes) {
         Ok(scenario) => scenario,
         Err(failure) => {
-            return Ok(render_scenario_failure_for_revision(
-                failure,
-                ReportTransport::Stdio,
-                revision,
+            return Ok(Interruptible::completed(
+                render_scenario_failure_for_revision(
+                    failure,
+                    ReportTransport::Stdio,
+                    options.revision,
+                ),
             ));
         }
     };
-    if let Err(failure) =
-        scenario.authorize_tools(allowed_tools.iter().map(String::as_str), allow_side_effects)
-    {
-        return Ok(render_authorization_failure_for_revision(
-            &scenario,
-            failure,
-            ReportTransport::Stdio,
-            revision,
+    if let Err(failure) = scenario.authorize_tools(
+        options.allowed_tools.iter().map(String::as_str),
+        options.allow_side_effects,
+    ) {
+        return Ok(Interruptible::completed(
+            render_authorization_failure_for_revision(
+                &scenario,
+                failure,
+                ReportTransport::Stdio,
+                options.revision,
+            ),
         ));
     }
-    if let Err(failure) = scenario.validate_revision(revision) {
-        return Ok(render_resolved_scenario_failure_for_revision(
-            &scenario,
-            failure,
-            ReportTransport::Stdio,
-            revision,
+    if let Err(failure) = scenario.validate_revision(options.revision) {
+        return Ok(Interruptible::completed(
+            render_resolved_scenario_failure_for_revision(
+                &scenario,
+                failure,
+                ReportTransport::Stdio,
+                options.revision,
+            ),
         ));
     }
 
@@ -69,20 +84,24 @@ pub(crate) async fn run_stdio(
         match resolve_target_environment(&scenario, |name| std::env::var_os(name)) {
             Ok(environment) => environment,
             Err(failure) => {
-                return Ok(render_resolved_scenario_failure_for_revision(
-                    &scenario,
-                    failure,
-                    ReportTransport::Stdio,
-                    revision,
+                return Ok(Interruptible::completed(
+                    render_resolved_scenario_failure_for_revision(
+                        &scenario,
+                        failure,
+                        ReportTransport::Stdio,
+                        options.revision,
+                    ),
                 ));
             }
         };
     if let Err(failure) = scenario.resolve_argument_secrets(|name| std::env::var(name).ok()) {
-        return Ok(render_resolved_scenario_failure_for_revision(
-            &scenario,
-            failure,
-            ReportTransport::Stdio,
-            revision,
+        return Ok(Interruptible::completed(
+            render_resolved_scenario_failure_for_revision(
+                &scenario,
+                failure,
+                ReportTransport::Stdio,
+                options.revision,
+            ),
         ));
     }
     scenario.discard_target_environment_names();
@@ -91,7 +110,7 @@ pub(crate) async fn run_stdio(
     let (executable, arguments) = target.split_first().expect("clap requires a check target");
     let target =
         StdioTarget::with_environment(executable.clone(), arguments.to_vec(), target_environment)?;
-    let profile = diagnostic_stdio_limit_profile(limit_profile);
+    let profile = diagnostic_stdio_limit_profile(options.limit_profile);
     let transport = StdioTransport::new_for_active_protocol(
         StdioLimits {
             startup_ms: profile.startup_ms,
@@ -106,17 +125,24 @@ pub(crate) async fn run_stdio(
             aggregate_output_bytes: profile.aggregate_output_bytes,
             message_count: profile.message_count,
         },
-        revision.uses_initialize(),
+        options.revision.uses_initialize(),
     );
-    let mut conversation = ActiveConversation::for_revision(scenario, revision);
+    let mut conversation = ActiveConversation::for_revision(scenario, options.revision);
     let result = transport
-        .probe_with_status(&target, &mut conversation, status)
+        .probe_with_status(&target, &mut conversation, interruption, status)
         .await;
+    if result.interrupted() {
+        return Ok(Interruptible::Interrupted {
+            cleanup_failed: result.cleanup_failed(),
+        });
+    }
     let diagnostic = stdio_diagnostic(
         result.failure(),
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
-    Ok(conversation.into_diagnostic(diagnostic))
+    Ok(Interruptible::completed(
+        conversation.into_diagnostic(diagnostic),
+    ))
 }
 
 pub(crate) async fn run_http(

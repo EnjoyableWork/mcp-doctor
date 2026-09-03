@@ -52,6 +52,9 @@
     "status": {
       "$ref": "#/$defs/status"
     },
+    "interruption": {
+      "$ref": "#/$defs/interruption"
+    },
     "reporters": {
       "type": "array",
       "minItems": 1,
@@ -633,6 +636,68 @@
         },
         "write_retries": {
           "const": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "interruption": {
+      "type": "object",
+      "required": [
+        "platform_family",
+        "transport",
+        "commands",
+        "signals",
+        "graceful_cleanup_ms",
+        "forced_reap_ms",
+        "cleanup_ceiling_ms",
+        "incomplete_exit_code",
+        "status_completion_reason",
+        "publishes_report",
+        "repeated_signal_forces_exit"
+      ],
+      "properties": {
+        "platform_family": {
+          "const": "unix"
+        },
+        "transport": {
+          "const": "stdio"
+        },
+        "commands": {
+          "type": "array",
+          "const": [
+            "break",
+            "check",
+            "inspect",
+            "reject"
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "const": [
+            "SIGINT",
+            "SIGTERM"
+          ]
+        },
+        "graceful_cleanup_ms": {
+          "const": 2000
+        },
+        "forced_reap_ms": {
+          "const": 2000
+        },
+        "cleanup_ceiling_ms": {
+          "const": 4000
+        },
+        "incomplete_exit_code": {
+          "const": 3
+        },
+        "status_completion_reason": {
+          "const": "interrupted"
+        },
+        "publishes_report": {
+          "const": false
+        },
+        "repeated_signal_forces_exit": {
+          "const": false
         }
       },
       "additionalProperties": true

@@ -156,7 +156,7 @@ Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 | `0` | `success` | Passed or completed |
 | `1` | `unsuccessful_result` | Failed diagnostic, actionable diff, or failed aggregate |
 | `2` | `invalid_invocation_or_input` | Rejected options, capability request, or input |
-| `3` | `incomplete_evidence` | No pass/fail conclusion |
+| `3` | `incomplete_evidence` | No pass/fail conclusion, including a clean caught Unix STDIO interruption |
 | `4` | `internal_or_output_failure` | Internal, render, write, publish, or cleanup failure |
 
 The command-specific sections define the exact outcome behind each code.
@@ -185,6 +185,16 @@ A failed or incomplete diagnostic still publishes every requested file when
 reporting succeeds and retains exit `1` or `3`; a render, write, publication,
 rollback, or cleanup failure cannot report success, removes every
 identity-owned partial artifact, and exits `4`.
+
+A caught Unix STDIO `SIGINT` or `SIGTERM` is intentionally different from a
+completed incomplete diagnostic: no stdout report or requested artifact is
+published. Successful whole-tree cleanup and artifact rollback return exit `3`;
+any cleanup or output failure returns exit `4`. With `--status jsonl`, the
+terminal exit-3 record carries `completion_reason: "interrupted"`. Wrappers
+should use that field instead of inferring interruption from EOF or an
+operating-system signal status. The compiled `interruption` capability exposes
+the fixed 2,000 ms graceful phase, 2,000 ms forced-reap phase, and 4,000 ms
+combined ceiling.
 
 To render the file through a badge service, publish the fixed JSON with your
 ordinary artifact hosting and point Shields at that public file. For example,
@@ -259,7 +269,7 @@ one small bundle:
 Copy all four files to the same paths in the server repository. The diagnostic
 workflow demonstrates six parts of the CI contract in one job:
 
-1. download the exact immutable `mcp-doctor 0.4.0` GNU/Linux x64 archive,
+1. download the exact immutable `mcp-doctor 0.4.1` GNU/Linux x64 archive,
    enforce its reviewed byte sizes, SHA-256 digest, and four-entry layout, and
    smoke-test the extracted binary without installing Rust or compiling its
    dependency graph;
@@ -322,7 +332,7 @@ Commands, paths, artifacts, and configuration remain lowercase. The job
 summary and PR comment both use the fixed call to action **Add MCP Doctor to
 another project**.
 
-The exact `0.4.0` binary advertises `json`, `junit`, `markdown`, and `badge`
+The exact `0.4.1` binary advertises `json`, `junit`, `markdown`, and `badge`
 under the diagnostic command's `artifact_reporters` capability. The safe
 boundary check requires the corresponding `mcp-doctor.report/v1`, JUnit,
 `mcp-doctor.markdown/v1`, and `mcp-doctor.badge/v1` shapes before upload and
