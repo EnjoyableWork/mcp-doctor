@@ -122,7 +122,7 @@ an authenticated exact-version binary in a disposable root:
 
 ```console
 MCP_DOCTOR_COMPAT_BINARY=/absolute/disposable/bin/mcp-doctor \
-MCP_DOCTOR_COMPAT_VERSION=0.4.1 \
+MCP_DOCTOR_COMPAT_VERSION=0.4.2 \
   ./scripts/compatibility.sh
 ```
 

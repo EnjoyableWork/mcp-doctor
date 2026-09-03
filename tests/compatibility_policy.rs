@@ -223,7 +223,7 @@ fn active_legacy_compatibility_runner_retains_exact_authority_and_claim_scope() 
 fn public_compatibility_workflow_authenticates_one_exact_released_artifact() {
     for contract in [
         "version:\n        description: Exact released mcp-doctor version",
-        "default: 0.4.1",
+        "default: 0.4.2",
         "attestations: read",
         "contents: read",
         "gh release download \"$release_tag\"",

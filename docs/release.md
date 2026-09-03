@@ -438,9 +438,26 @@ indefinitely.
 The patch adds no dependency or feature and changes no resolved package. A
 deterministic built-binary regression withholds release of acknowledged
 blocking work while proving the typed startup-timeout report and bounded
-process exit. Exact merge, release, downstream-channel, disclosure, and closure
-evidence is retained in a non-sensitive security-release record after those
-public operations complete.
+process exit. Protected [PR #135](https://github.com/EnjoyableWork/mcp-doctor/pull/135)
+merged as exact release commit
+[`633d2e8`](https://github.com/EnjoyableWork/mcp-doctor/commit/633d2e891398b22a0abbd4e42318eaeaee31766e).
+That exact `main` commit passed first-attempt
+[CI](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33768100953)
+and [release preflight](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33768100852).
+
+Signed annotated tag object
+`c4893392fe8df84f72002bd583fd865d7a32a337` resolves to that commit. The
+protected [release workflow](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33769230383)
+published an immutable eight-asset GitHub Release and the byte-identical
+[crates.io package](https://crates.io/crates/mcp-doctor/0.4.2) through OIDC.
+The tap-owned [publication workflow](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/33798999775)
+copied the exact formula in commit
+[`6e1e9f4`](https://github.com/EnjoyableWork/homebrew-tap/commit/6e1e9f4d15cf28f99ae30d5d1be886a2c2c69c03).
+The credential-free
+[channel verifier](https://github.com/EnjoyableWork/mcp-doctor/actions/runs/33799179922)
+then passed its immutable identity gate and all nine represented installed
+smokes on the first attempt. The non-sensitive correction, release, and
+disclosure evidence is [retained separately](assurance/v0.4.2-security-release.md).
 
 ### GitHub-controlled sequence
 
