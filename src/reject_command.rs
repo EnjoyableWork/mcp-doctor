@@ -90,7 +90,12 @@ pub(crate) async fn run_stdio(
         result.cleanup_failed() || internal_test_cleanup_failure(),
     );
     Ok(Interruptible::completed(
-        conversation.into_diagnostic(diagnostic),
+        conversation
+            .into_diagnostic(diagnostic)
+            .with_process_cleanup(crate::contract::stdio_cleanup_evidence(
+                u64::from(result.process_started()),
+                u64::from(result.process_reaped()),
+            )),
     ))
 }
 

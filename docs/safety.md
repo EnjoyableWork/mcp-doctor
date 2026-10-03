@@ -59,6 +59,30 @@ preserving the diagnostic result and exit semantics. `mcp-doctor capabilities`
 advertises the two names and exactly which commands accept them. An invalid
 name is rejected before target preparation.
 
+## Native STDIO process ownership
+
+Local commands bypass the shell and execute the selected code natively. On
+Unix, `mcp-doctor` owns the direct child and its original process group.
+Cleanup closes target stdin, permits the documented grace bound, requests
+termination of that group, drains owned pipes, and reaps the direct child.
+All cleanup operations remain bounded, and an observed cleanup failure cannot
+be reported as success.
+
+This ownership provides no OS sandbox or descendant containment. Descendants
+that create another process group or session are outside the signal scope;
+their termination is unverified. A successful diagnostic does not establish
+that every descendant has exited. Run targets that need stronger isolation
+inside an externally managed containment boundary.
+
+Unix STDIO reports expose value-free `process_cleanup` evidence: the fixed
+mechanism and scope, successful process-launch and direct-child-reap counts,
+`descendant_containment: false`, and `detached_descendants: "unverified"`.
+Reap counts record an awaited direct-child exit independently of the cleanup
+outcome; they do not inventory descendants or prove group-wide exit. Passive
+`inspect auto` combines the counts from its at most two lifecycles. Capabilities
+expose the same compiled ownership policy without starting or inspecting a
+process. This Unix scope does not change Windows Job Object behavior.
+
 ## Catchable Unix STDIO interruption
 
 After command-line parsing accepts an `inspect`, `check`, `break`, or `reject`
@@ -70,9 +94,11 @@ Once either signal is observed, `mcp-doctor` sends no later MCP request or
 notification. A write already in flight may have reached the target, but no
 subsequent active case or workflow cleanup suffix is transmitted. Passive
 `inspect auto` never starts its optional legacy lifecycle after interruption.
-The CLI closes target stdin, permits 2,000 ms for graceful whole-tree exit,
-then forcibly terminates the managed process group and permits another 2,000
-ms to reap it. The resulting interruption cleanup ceiling is exactly 4,000 ms.
+The CLI closes target stdin, permits 2,000 ms for graceful exit, then requests
+forced termination of the original process group and permits another 2,000 ms
+to drain owned pipes and reap the direct child. These operations use the Unix
+ownership scope above; detached descendant termination remains unverified.
+The resulting interruption cleanup ceiling is exactly 4,000 ms.
 
 A clean interruption publishes no stdout diagnostic, snapshot, JSON, JUnit,
 Markdown, or badge report; it explicitly removes every identity-owned report
@@ -120,15 +146,24 @@ diagnostic evidence.
 
 - `inspect` checks advertised contracts without calling a tool.
 - Passive `inspect` defaults to a finite `auto` negotiation. STDIO permits at
-  most two non-overlapping launches of the exact command and reaps the first
-  tree before the second; Streamable HTTP prepares one endpoint and pinned
-  address authority. Both paths permit at most two lifecycle requests, one
-  initialized notification, one legacy transition, zero retransmissions, zero
+  most two launches of the exact command, completing scoped cleanup and reaping
+  the first direct child before the second launch; detached descendant
+  termination remains unverified. Streamable HTTP prepares one endpoint and
+  pinned address authority. Both paths permit at most two lifecycle requests,
+  one initialized notification, one legacy transition, zero retransmissions, zero
   application retries, concurrency one, and one shared total and aggregate
   budget. An explicit revision is a one-lifecycle hard pin.
 - Active runs name and independently authorize each exact tool and target,
   declare effects and bounded cases, and add a seed for generation. Side
   effects require `--allow-side-effects`.
+- Each generated argument candidate shares one `instance_bytes` allowance
+  across strings, escaped property names, delimiters, and nested members.
+  Construction reserves those bytes before allocating payloads; schema-owned
+  `const`, `enum`, defaults, and examples are measured before cloning. Rejection
+  mutations measure their final members before cloning and omit replaced
+  payloads. Candidate identity and size checks stream into fixed-size state
+  rather than retaining another serialization. Exceeding the allowance yields
+  `MCP-LIMIT-001` at `generation.cases` and skips the dependent tool calls.
 - Remote connections use direct public HTTPS, verified TLS, and pinned bounded
   resolution without redirects, retries, proxies, cookies, or caches.
 - Private targets, loopback cleartext, and environment credentials each require
@@ -142,7 +177,11 @@ diagnostic evidence.
   aggregate-output limits.
 - `schema_evaluation_steps` is one deterministic operation budget spanning the
   preliminary schema/instance walk, Draft 2020-12 meta-validation, validator
-  construction, local-reference fan-out, and actual instance access. String,
+  construction, local-reference fan-out, and actual instance access. Local
+  anchor searches, fragment decoding, pointer lookups, anchor comparisons, and
+  reference-depth analysis consume that same allowance before their work
+  starts; snapshot preprocessing and generation charge their existing work
+  counters through the same bounded resolver. String,
   pattern, equality, collection, combinator, and uniqueness work must fit that
   budget before the affected tool call. Preliminary structural or work excess
   is `MCP-LIMIT-001`. Exhaustion during meta-validation or validator
@@ -173,8 +212,9 @@ diagnostic evidence.
 - Capability discovery reports only fixed compiled facts under 64 KiB and
   reads no configuration, host inventory, credentials, files, process,
   network, target, retrieval, or tool data.
-- Local commands bypass the shell. Before exit, `mcp-doctor` closes, stops when
-  needed, and waits for every child process.
+- Local commands bypass the shell. Before exit, `mcp-doctor` closes input,
+  requests termination of the configured process-control scope when needed,
+  drains owned pipes, and reaps the direct child within the cleanup bounds.
 
 See the [diagnostic command guide](commands.md) for each active authorization
 contract and [SECURITY.md](../SECURITY.md) to report a suspected vulnerability

@@ -9,6 +9,7 @@ use super::model::{
     CheckId, CheckOutcome, CheckResult, Finding, FindingCode, FindingEvidence,
     GeneratedCaseReproduction, Location, Requirement, RuleViolation, Severity, StructuralInput,
 };
+use super::process_cleanup::ProcessCleanupEvidence;
 use super::protocol::{KnownRevision, ProtocolSelectionEvidence, SupportedRevision};
 use super::redaction::REDACTION_MARKER;
 
@@ -279,6 +280,7 @@ pub(super) struct DiagnosticReport {
     revision: SupportedRevision,
     negotiated_revision: Option<KnownRevision>,
     protocol_selection: Option<ProtocolSelectionEvidence>,
+    process_cleanup: Option<ProcessCleanupEvidence>,
     limit_profile: DiagnosticLimitProfile,
     limits: DiagnosticLimits,
     checks: Vec<CheckResult>,
@@ -371,6 +373,7 @@ impl DiagnosticReport {
             revision,
             negotiated_revision: None,
             protocol_selection: None,
+            process_cleanup: None,
             limit_profile: DiagnosticLimitProfile::Default,
             limits,
             checks,
@@ -395,6 +398,15 @@ impl DiagnosticReport {
     pub(super) fn with_protocol_selection(mut self, selection: ProtocolSelectionEvidence) -> Self {
         self.protocol_selection = Some(selection);
         self
+    }
+
+    pub(super) fn with_process_cleanup(mut self, evidence: Option<ProcessCleanupEvidence>) -> Self {
+        self.process_cleanup = evidence;
+        self
+    }
+
+    pub(super) const fn process_cleanup(&self) -> Option<ProcessCleanupEvidence> {
+        self.process_cleanup
     }
 
     pub(super) fn with_limit_profile(mut self, profile: DiagnosticLimitProfile) -> Self {
@@ -763,6 +775,10 @@ impl HumanReporter {
         }
         output.push('\n');
 
+        if let Some(cleanup) = report.process_cleanup() {
+            write_process_cleanup(&mut output, cleanup);
+            output.push('\n');
+        }
         write_human_diagnosis(&mut output, report);
         output.push('\n');
         write_human_limits(
@@ -983,6 +999,16 @@ fn write_human_reproduction(
         input.object_members(),
     )
     .expect("the bounded report writer records limit failures");
+}
+
+fn write_process_cleanup(output: &mut BoundedOutput, cleanup: ProcessCleanupEvidence) {
+    writeln!(
+        output,
+        "process cleanup · mechanism=process_group · scope=direct_child_and_original_process_group · process_launches={} · direct_children_reaped={} · descendant_containment=false · detached_descendants=unverified",
+        cleanup.process_launches(),
+        cleanup.direct_children_reaped()
+    )
+    .expect("typed cleanup evidence must fit the bounded writer");
 }
 
 fn write_human_diagnosis(output: &mut BoundedOutput, report: &DiagnosticReport) {
@@ -1325,6 +1351,10 @@ impl MarkdownReporter {
         write_markdown_summary(&mut output, report.summary());
         output.push('\n');
         write_markdown_protocol_selection(&mut output, report);
+        if let Some(cleanup) = report.process_cleanup() {
+            output.push('\n');
+            write_process_cleanup(&mut output, cleanup);
+        }
         output.push('\n');
         write_markdown_diagnosis(&mut output, report);
         output.push('\n');
@@ -1987,6 +2017,28 @@ fn write_junit_metadata(
         )
         .expect("the bounded report writer records limit failures");
     }
+    if let Some(cleanup) = report.process_cleanup() {
+        write_xml_line(output, "process_cleanup.mechanism", "process_group");
+        write_xml_line(
+            output,
+            "process_cleanup.scope",
+            "direct_child_and_original_process_group",
+        );
+        writeln!(
+            output,
+            "process_cleanup.process_launches={}",
+            cleanup.process_launches()
+        )
+        .expect("typed cleanup evidence must fit the bounded writer");
+        writeln!(
+            output,
+            "process_cleanup.direct_children_reaped={}",
+            cleanup.direct_children_reaped()
+        )
+        .expect("typed cleanup evidence must fit the bounded writer");
+        write_xml_line(output, "process_cleanup.descendant_containment", "false");
+        write_xml_line(output, "process_cleanup.detached_descendants", "unverified");
+    }
     write_xml_line(output, "report_outcome", report.outcome().as_str());
     writeln!(output, "exit_code={}", report.exit_status().code())
         .expect("the bounded report writer records limit failures");
@@ -2437,6 +2489,8 @@ struct JsonReport {
     negotiated_protocol_revision: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol_selection: Option<ProtocolSelectionEvidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_cleanup: Option<ProcessCleanupEvidence>,
     primary_diagnosis: Option<JsonDiagnosis>,
     independent_findings: Vec<JsonIndependentFinding>,
     outcome: &'static str,
@@ -2454,6 +2508,7 @@ impl From<&DiagnosticReport> for JsonReport {
             protocol_revision: report.revision().as_str(),
             negotiated_protocol_revision: report.negotiated_revision().map(KnownRevision::as_str),
             protocol_selection: report.protocol_selection(),
+            process_cleanup: report.process_cleanup(),
             primary_diagnosis: report.primary_diagnosis().map(JsonDiagnosis::from),
             independent_findings: report
                 .independent_findings()
@@ -2996,6 +3051,60 @@ mod tests {
             ],
         )
         .expect("synthetic report should satisfy the contract")
+    }
+
+    #[test]
+    fn process_cleanup_is_optional_and_reporters_preserve_observed_scope() {
+        let original = synthetic_failed_report();
+        let json = JsonReporter::render(&original).expect("typed report should serialize");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("report is JSON");
+        assert!(value.get("process_cleanup").is_none());
+        assert!(!HumanReporter::render(&original).contains("process cleanup"));
+        assert!(
+            !MarkdownReporter::render(&original)
+                .unwrap()
+                .contains("process cleanup")
+        );
+        assert!(
+            !JunitReporter::render(&original)
+                .unwrap()
+                .contains("process_cleanup")
+        );
+        assert_stable_report(&value);
+
+        for (launches, reaped) in [(0, 0), (1, 0), (1, 1), (2, 1), (2, 2)] {
+            let report = original.clone().with_process_cleanup(Some(
+                super::ProcessCleanupEvidence::process_group(launches, reaped),
+            ));
+            let json = JsonReporter::render(&report).expect("typed evidence should serialize");
+            let mut value: serde_json::Value = serde_json::from_str(&json).expect("report is JSON");
+            assert_stable_report(&value);
+            assert_eq!(value["process_cleanup"]["process_launches"], launches);
+            assert_eq!(value["process_cleanup"]["direct_children_reaped"], reaped);
+            let human = HumanReporter::render(&report);
+            let markdown = MarkdownReporter::render(&report).expect("Markdown should render");
+            let junit = JunitReporter::render(&report).expect("JUnit should render");
+            for (field, expected) in [
+                ("mechanism", "process_group".to_owned()),
+                (
+                    "scope",
+                    "direct_child_and_original_process_group".to_owned(),
+                ),
+                ("process_launches", launches.to_string()),
+                ("direct_children_reaped", reaped.to_string()),
+                ("descendant_containment", "false".to_owned()),
+                ("detached_descendants", "unverified".to_owned()),
+            ] {
+                assert!(human.contains(&format!("{field}={expected}")));
+                assert!(markdown.contains(&format!("{field}={expected}")));
+                assert!(junit.contains(&format!("process_cleanup.{field}={expected}")));
+            }
+            value["process_cleanup"]["direct_children_reaped"] = serde_json::json!(launches + 1);
+            assert!(
+                !stable_report_validator().is_valid(&value),
+                "unowned reaps must fail the schema"
+            );
+        }
     }
 
     #[test]

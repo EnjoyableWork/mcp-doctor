@@ -43,14 +43,16 @@ or sequential guessing.
 
 For STDIO, a non-modern well-formed JSON-RPC error, clean pre-response exit, or
 the exact discovery deadline is finite legacy-era evidence. `mcp-doctor` first
-closes, terminates when needed, and reaps that process tree. It may then start
+closes input, completes cleanup of the direct child and original process group,
+and reaps the direct child. Descendants that change group or session are outside
+that signal scope and their termination remains unverified. It may then start
 the byte-for-byte selected command once more and send one `initialize` offering
 `2025-11-25`; only an exact `2025-11-25` response or supported `2025-06-18`
 counter-offer is accepted. Invalid framing or JSON, start or I/O failure,
 resource or total limit, and cleanup failure are terminal and never authorize
-the second launch. The two non-overlapping phases share one original total
-deadline and the existing cumulative byte, message, stdout, stderr, output,
-and finding budgets.
+the second launch. The two directly owned child lifecycles never overlap and
+share one original total deadline and the existing cumulative byte, message,
+stdout, stderr, output, and finding budgets.
 
 For Streamable HTTP, `auto` prepares the canonical endpoint, network and
 credential gates, trust, bounded DNS answer set, and peer authority once. It

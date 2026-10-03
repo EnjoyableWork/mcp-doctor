@@ -491,6 +491,34 @@
         },
         "file_identity": {
           "$ref": "#/$defs/name"
+        },
+        "process_cleanup": {
+          "$ref": "#/$defs/process_cleanup"
+        }
+      },
+      "additionalProperties": true
+    },
+    "process_cleanup": {
+      "description": "Optional compiled Unix STDIO process-control scope. These fixed facts do not inspect the host or assert termination of detached descendants.",
+      "type": "object",
+      "required": [
+        "mechanism",
+        "scope",
+        "descendant_containment",
+        "detached_descendants"
+      ],
+      "properties": {
+        "mechanism": {
+          "const": "process_group"
+        },
+        "scope": {
+          "const": "direct_child_and_original_process_group"
+        },
+        "descendant_containment": {
+          "const": false
+        },
+        "detached_descendants": {
+          "const": "unverified"
         }
       },
       "additionalProperties": true

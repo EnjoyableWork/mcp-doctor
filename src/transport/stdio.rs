@@ -245,6 +245,7 @@ pub(crate) struct StdioRun {
     cleanup_failed: bool,
     interrupted: bool,
     process_started: bool,
+    process_reaped: bool,
     lifecycle_interactions: LifecycleInteractionCounts,
 }
 
@@ -271,6 +272,10 @@ impl StdioRun {
 
     pub(crate) const fn process_started(&self) -> bool {
         self.process_started
+    }
+
+    pub(crate) const fn process_reaped(&self) -> bool {
+        self.process_reaped
     }
 
     pub(crate) const fn lifecycle_request_count(&self) -> u64 {
@@ -348,6 +353,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: false,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -365,6 +371,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: false,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -376,6 +383,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: true,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -399,6 +407,7 @@ impl StdioTransport {
                     cleanup_failed: false,
                     interrupted: false,
                     process_started: false,
+                    process_reaped: false,
                     lifecycle_interactions: LifecycleInteractionCounts::default(),
                 };
             }
@@ -555,6 +564,7 @@ impl StdioTransport {
             cleanup_failed: shutdown.cleanup_failed,
             interrupted,
             process_started: true,
+            process_reaped: process.cleaned,
             lifecycle_interactions,
         }
     }
@@ -905,11 +915,7 @@ impl ManagedProcess {
             }
         }
 
-        match self.child.start_kill() {
-            Ok(()) => {}
-            Err(_) if child_done => {}
-            Err(_) => cleanup_failed = true,
-        }
+        cleanup_failed |= termination_failed(self.child.as_mut(), child_done);
 
         while !(child_done && self.stdout.is_none() && self.stderr.is_none()) {
             if Instant::now() >= total_deadline.at {
@@ -973,11 +979,7 @@ impl ManagedProcess {
             }
         }
 
-        match self.child.start_kill() {
-            Ok(()) => {}
-            Err(_) if child_done => {}
-            Err(_) => cleanup_failed = true,
-        }
+        cleanup_failed |= termination_failed(self.child.as_mut(), child_done);
 
         let reap_deadline = StageDeadline::after(Instant::now(), REAP_MS, StdioLimit::TotalTime);
         while !(child_done && self.stdout.is_none() && self.stderr.is_none()) {
@@ -1087,6 +1089,26 @@ impl Drop for ManagedProcess {
         if !self.cleaned {
             let _ = self.child.start_kill();
         }
+    }
+}
+
+fn termination_failed(child: &mut dyn ChildWrapper, child_done: bool) -> bool {
+    match child.start_kill() {
+        Ok(()) => false,
+        Err(error) if child_done => {
+            #[cfg(unix)]
+            {
+                // Reaping the direct child does not prove its process group is absent.
+                // Only ESRCH confirms there is no group left to signal.
+                error.raw_os_error() != Some(libc::ESRCH)
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = error;
+                false
+            }
+        }
+        Err(_) => true,
     }
 }
 
@@ -1514,6 +1536,89 @@ mod tests {
             stderr_bytes: 32,
             aggregate_output_bytes: 128,
             message_count: 2,
+        }
+    }
+
+    #[cfg(unix)]
+    mod unix_cleanup {
+        use std::future::Future;
+        use std::io;
+        use std::os::unix::process::ExitStatusExt as _;
+        use std::pin::Pin;
+        use std::process::ExitStatus;
+
+        use crate::transport::stdio::termination_failed;
+        use process_wrap::tokio::ChildWrapper;
+
+        #[derive(Debug)]
+        struct ExitedChild {
+            termination_errno: Option<i32>,
+            wait_observed: bool,
+        }
+
+        impl ChildWrapper for ExitedChild {
+            fn inner(&self) -> &dyn ChildWrapper {
+                self
+            }
+
+            fn inner_mut(&mut self) -> &mut dyn ChildWrapper {
+                self
+            }
+
+            fn into_inner(self: Box<Self>) -> Box<dyn ChildWrapper> {
+                self
+            }
+
+            fn wait(
+                &mut self,
+            ) -> Pin<Box<dyn Future<Output = io::Result<ExitStatus>> + Send + '_>> {
+                self.wait_observed = true;
+                Box::pin(std::future::ready(Ok(ExitStatus::from_raw(0))))
+            }
+
+            fn start_kill(&mut self) -> io::Result<()> {
+                assert!(
+                    self.wait_observed,
+                    "the direct child must already be reaped"
+                );
+                Err(self.termination_errno.map_or_else(
+                    || io::Error::other("synthetic-private-termination-error"),
+                    io::Error::from_raw_os_error,
+                ))
+            }
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn unix_group_termination_preserves_errors_after_child_reap() {
+            for (termination_errno, expected_failure) in [
+                (Some(libc::ESRCH), false),
+                (Some(libc::EPERM), true),
+                (Some(libc::EACCES), true),
+                (Some(libc::EIO), true),
+                (None, true),
+            ] {
+                let mut child = ExitedChild {
+                    termination_errno,
+                    wait_observed: false,
+                };
+                let status = child.wait().await.expect("the synthetic child should exit");
+                assert!(status.success());
+                assert_eq!(
+                    termination_failed(&mut child, true),
+                    expected_failure,
+                    "Unix group termination must preserve real wrapper failures"
+                );
+            }
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn absent_group_does_not_override_unconfirmed_child_exit() {
+            let mut child = ExitedChild {
+                termination_errno: Some(libc::ESRCH),
+                wait_observed: false,
+            };
+            let _status = child.wait().await.expect("the synthetic child should exit");
+            assert!(termination_failed(&mut child, false));
         }
     }
 

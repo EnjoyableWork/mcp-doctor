@@ -35,6 +35,10 @@
       "description": "Bounded, value-free evidence describing how passive inspection selected or attempted its protocol revision.",
       "$ref": "#/$defs/protocol_selection"
     },
+    "process_cleanup": {
+      "description": "Observed Unix direct-child cleanup and the original process-group signal scope; never proof of detached-descendant containment or termination. Omitted for other transports and platforms.",
+      "$ref": "#/$defs/process_cleanup"
+    },
     "primary_diagnosis": {
       "oneOf": [
         {
@@ -86,6 +90,62 @@
   },
   "additionalProperties": true,
   "$defs": {
+    "process_cleanup": {
+      "type": "object",
+      "required": [
+        "mechanism",
+        "scope",
+        "process_launches",
+        "direct_children_reaped",
+        "descendant_containment",
+        "detached_descendants"
+      ],
+      "properties": {
+        "mechanism": {
+          "const": "process_group"
+        },
+        "scope": {
+          "const": "direct_child_and_original_process_group"
+        },
+        "process_launches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "direct_children_reaped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "descendant_containment": {
+          "const": false
+        },
+        "detached_descendants": {
+          "const": "unverified"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "process_launches": { "const": 0 },
+            "direct_children_reaped": { "const": 0 }
+          }
+        },
+        {
+          "properties": {
+            "process_launches": { "const": 1 },
+            "direct_children_reaped": { "enum": [0, 1] }
+          }
+        },
+        {
+          "properties": {
+            "process_launches": { "const": 2 },
+            "direct_children_reaped": { "enum": [0, 1, 2] }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
     "bounded_count": {
       "type": "integer",
       "minimum": 0,

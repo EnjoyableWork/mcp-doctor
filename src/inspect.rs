@@ -137,6 +137,7 @@ async fn run_stdio_exact(
         revision,
         capture_snapshot,
         selection,
+        0,
     )
     .map(Interruptible::completed)
 }
@@ -185,6 +186,7 @@ async fn run_stdio_auto(
             ProtocolRevision::CURRENT,
             capture_snapshot,
             selection,
+            0,
         )
         .map(Interruptible::completed);
     }
@@ -221,6 +223,7 @@ async fn run_stdio_auto(
         legacy.revision(),
         capture_snapshot,
         selection,
+        u64::from(modern_run.process_reaped()),
     )
     .map(Interruptible::completed)
 }
@@ -242,14 +245,20 @@ fn finish_stdio(
     revision: ProtocolRevision,
     capture_snapshot: bool,
     selection: ProtocolSelectionEvidence,
+    prior_reaps: u64,
 ) -> Result<InspectOutput, InspectError> {
     debug_assert!(result.failure().is_some() || result.response().is_some());
     let cleanup_failed = result.cleanup_failed() || internal_test_cleanup_failure();
+    let process_cleanup = crate::contract::stdio_cleanup_evidence(
+        selection.process_launches(),
+        prior_reaps + u64::from(result.process_reaped()),
+    );
     let diagnostic = stdio_diagnostic(result.failure(), cleanup_failed);
     if result.failure().is_some() {
         Ok(InspectOutput {
             diagnostic: render_stdio_diagnostic_for_revision(diagnostic, revision)
-                .with_protocol_selection(selection),
+                .with_protocol_selection(selection)
+                .with_process_cleanup(process_cleanup),
             snapshot: None,
         })
     } else {
@@ -262,7 +271,9 @@ fn finish_stdio(
             result.responses(),
         )?;
         Ok(InspectOutput {
-            diagnostic: diagnostic.with_protocol_selection(selection),
+            diagnostic: diagnostic
+                .with_protocol_selection(selection)
+                .with_process_cleanup(process_cleanup),
             snapshot,
         })
     }

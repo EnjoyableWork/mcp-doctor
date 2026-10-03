@@ -297,6 +297,15 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
         assert_eq!(platform["family"], "unix");
         assert_eq!(platform["process_tree_control"], "process_group");
         assert_eq!(platform["file_identity"], "device_inode");
+        assert_eq!(
+            platform["process_cleanup"],
+            json!({
+                "mechanism": "process_group",
+                "scope": "direct_child_and_original_process_group",
+                "descendant_containment": false,
+                "detached_descendants": "unverified"
+            })
+        );
     }
     #[cfg(windows)]
     {
@@ -304,7 +313,14 @@ fn json_manifest_is_schema_valid_deterministic_bounded_and_golden() {
         assert_eq!(platform["family"], "windows");
         assert_eq!(platform["process_tree_control"], "job_object");
         assert_eq!(platform["file_identity"], "volume_file_id");
+        assert!(platform.get("process_cleanup").is_none());
     }
+    #[cfg(not(any(unix, windows)))]
+    assert!(
+        parse_and_validate_capabilities(&first.stdout)["platform"]
+            .get("process_cleanup")
+            .is_none()
+    );
 }
 
 #[test]
@@ -369,6 +385,70 @@ fn human_manifest_is_a_deterministic_summary_of_the_same_contract() {
     ));
     assert!(stdout.contains("Runtime shutdown: timeout_ms=100 · scope=after_command_completion"));
     assert!(stdout.contains("Exit semantics: mcp-doctor.exit/v1"));
+    #[cfg(unix)]
+    {
+        let json_output = run_capabilities(&environment);
+        assert!(json_output.status.success());
+        assert!(json_output.stderr.is_empty());
+        let platform = parse_and_validate_capabilities(&json_output.stdout)["platform"].clone();
+        assert!(stdout.contains(&format!(
+            "Platform: unix · process control {} · file identity {}",
+            platform["process_tree_control"].as_str().unwrap(),
+            platform["file_identity"].as_str().unwrap()
+        )));
+        let cleanup = &platform["process_cleanup"];
+        assert!(stdout.contains(&format!(
+            "Process cleanup: mechanism {} · scope {} · descendant_containment={} · detached_descendants={}",
+            cleanup["mechanism"].as_str().unwrap(),
+            cleanup["scope"].as_str().unwrap(),
+            cleanup["descendant_containment"].as_bool().unwrap(),
+            cleanup["detached_descendants"].as_str().unwrap(),
+        )));
+    }
+    #[cfg(not(unix))]
+    assert!(!stdout.contains("Process cleanup:"));
+}
+
+#[test]
+fn process_cleanup_schema_is_optional_and_rejects_stronger_containment_claims() {
+    let environment = TestEnvironment::new();
+    let output = run_capabilities(&environment);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let mut manifest = parse_and_validate_capabilities(&output.stdout);
+    manifest["platform"]
+        .as_object_mut()
+        .unwrap()
+        .remove("process_cleanup");
+    parse_and_validate_capabilities(&serde_json::to_vec(&manifest).unwrap());
+
+    let schema = serde_json::from_str(include_str!(
+        "../schemas/mcp-doctor.capabilities.v1.schema.json"
+    ))
+    .expect("the capabilities schema should be JSON");
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .expect("the capabilities schema should compile");
+    manifest["platform"]["process_cleanup"] = json!({
+        "mechanism": "process_group",
+        "scope": "direct_child_and_original_process_group",
+        "descendant_containment": false,
+        "detached_descendants": "unverified"
+    });
+    assert!(validator.is_valid(&manifest));
+
+    for (field, stronger_claim) in [
+        ("scope", json!("all_descendants")),
+        ("descendant_containment", json!(true)),
+        ("detached_descendants", json!("terminated")),
+    ] {
+        let mut invalid = manifest.clone();
+        invalid["platform"]["process_cleanup"][field] = stronger_claim;
+        assert!(
+            !validator.is_valid(&invalid),
+            "the schema accepted an unsupported process cleanup claim"
+        );
+    }
 }
 
 #[test]

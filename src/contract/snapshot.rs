@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
-use super::catalog::{DRAFT_2020_12, resolve_local_reference};
+use super::catalog::{DRAFT_2020_12, resolve_local_reference_with_work};
 use super::limits::DiagnosticLimits;
 use super::protocol::{KnownRevision, SupportedRevision};
 use crate::bound_file::BoundFile;
@@ -1136,18 +1136,32 @@ fn validate_schema(schema: &Value) -> Result<(), SnapshotInputError> {
 
     let mut stack = vec![(schema, 0_u64)];
     let mut nodes = 0_u64;
+    let mut work = 0_u64;
     let mut references = Vec::new();
     while let Some((value, depth)) = stack.pop() {
+        charge_snapshot_work(&mut work, 1, values.schema_evaluation_steps)?;
         nodes = nodes.saturating_add(1);
         if nodes > values.schema_nodes || depth > values.schema_depth {
             return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
         }
         match value {
             Value::Array(items) => {
+                charge_snapshot_work(
+                    &mut work,
+                    u64::try_from(items.len()).unwrap_or(u64::MAX),
+                    values.schema_evaluation_steps,
+                )?;
                 stack.extend(items.iter().map(|item| (item, depth.saturating_add(1))))
             }
             Value::Object(fields) => {
                 for (key, value) in fields {
+                    charge_snapshot_work(
+                        &mut work,
+                        u64::try_from(key.len())
+                            .unwrap_or(u64::MAX)
+                            .saturating_add(1),
+                        values.schema_evaluation_steps,
+                    )?;
                     if matches!(key.as_str(), "$ref" | "$dynamicRef") {
                         let reference = value
                             .as_str()
@@ -1157,24 +1171,27 @@ fn validate_schema(schema: &Value) -> Result<(), SnapshotInputError> {
                                 SnapshotInputKind::ExternalReference,
                             ));
                         }
-                        references.push(reference.to_owned());
+                        charge_snapshot_work(&mut work, 1, values.schema_evaluation_steps)?;
+                        references.push(reference);
                     }
+                    charge_snapshot_work(&mut work, 1, values.schema_evaluation_steps)?;
                     stack.push((value, depth.saturating_add(1)));
                 }
             }
             _ => {}
         }
     }
-    validate_reference_depth(schema, &references, values.schema_ref_depth)?;
+    validate_reference_depth(schema, &references, values.schema_ref_depth, work)?;
     Ok(())
 }
 
-fn validate_reference_depth(
-    schema: &Value,
-    references: &[String],
+fn validate_reference_depth<'a>(
+    schema: &'a Value,
+    references: &[&'a str],
     maximum: u64,
+    initial_work: u64,
 ) -> Result<(), SnapshotInputError> {
-    let mut work = 0_u64;
+    let mut work = initial_work;
     let maximum_work = DiagnosticLimits::DEFAULTS.values().schema_evaluation_steps;
     for reference in references {
         let mut active = BTreeSet::new();
@@ -1191,23 +1208,27 @@ fn validate_reference_depth(
     Ok(())
 }
 
-fn follow_reference(
-    schema: &Value,
-    reference: &str,
+fn follow_reference<'a>(
+    schema: &'a Value,
+    reference: &'a str,
     depth: u64,
     maximum_depth: u64,
-    active: &mut BTreeSet<String>,
+    active: &mut BTreeSet<&'a str>,
     work: &mut u64,
     maximum_work: u64,
 ) -> Result<(), SnapshotInputError> {
-    *work = work.saturating_add(1);
-    if *work > maximum_work || depth > maximum_depth {
+    charge_snapshot_work(work, 1, maximum_work)?;
+    if depth > maximum_depth {
         return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
     }
-    if !active.insert(reference.to_owned()) {
+    charge_reference_identity(reference, active.len(), work, maximum_work)?;
+    if !active.insert(reference) {
         return Ok(());
     }
-    let Some(target) = resolve_local_reference(schema, reference) else {
+    let Some(target) = resolve_local_reference_with_work(schema, reference, work, maximum_work)
+        .map_err(|_| SnapshotInputError::new(SnapshotInputKind::Limit))?
+    else {
+        charge_reference_identity(reference, active.len(), work, maximum_work)?;
         active.remove(reference);
         return Ok(());
     };
@@ -1216,7 +1237,7 @@ fn follow_reference(
     for reference in nested {
         follow_reference(
             schema,
-            &reference,
+            reference,
             depth.saturating_add(1),
             maximum_depth,
             active,
@@ -1224,32 +1245,79 @@ fn follow_reference(
             maximum_work,
         )?;
     }
+    charge_reference_identity(reference, active.len(), work, maximum_work)?;
     active.remove(reference);
     Ok(())
 }
 
-fn collect_references(
-    value: &Value,
-    references: &mut Vec<String>,
+fn charge_reference_identity(
+    reference: &str,
+    active_count: usize,
+    work: &mut u64,
+    maximum_work: u64,
+) -> Result<(), SnapshotInputError> {
+    let bytes = u64::try_from(reference.len())
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let comparisons = u64::try_from(active_count)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    charge_snapshot_work(work, bytes.saturating_mul(comparisons), maximum_work)
+}
+
+fn charge_snapshot_work(
+    work: &mut u64,
+    additional: u64,
+    maximum_work: u64,
+) -> Result<(), SnapshotInputError> {
+    if *work > maximum_work {
+        return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
+    }
+    *work = work
+        .saturating_add(additional)
+        .min(maximum_work.saturating_add(1));
+    if *work > maximum_work {
+        Err(SnapshotInputError::new(SnapshotInputKind::Limit))
+    } else {
+        Ok(())
+    }
+}
+
+fn collect_references<'a>(
+    value: &'a Value,
+    references: &mut Vec<&'a str>,
     work: &mut u64,
     maximum_work: u64,
 ) -> Result<(), SnapshotInputError> {
     let mut stack = vec![value];
     while let Some(value) = stack.pop() {
-        *work = work.saturating_add(1);
-        if *work > maximum_work {
-            return Err(SnapshotInputError::new(SnapshotInputKind::Limit));
-        }
+        charge_snapshot_work(work, 1, maximum_work)?;
         match value {
-            Value::Array(values) => stack.extend(values),
+            Value::Array(values) => {
+                charge_snapshot_work(
+                    work,
+                    u64::try_from(values.len()).unwrap_or(u64::MAX),
+                    maximum_work,
+                )?;
+                stack.extend(values);
+            }
             Value::Object(object) => {
                 for (key, value) in object {
+                    charge_snapshot_work(
+                        work,
+                        u64::try_from(key.len())
+                            .unwrap_or(u64::MAX)
+                            .saturating_add(1),
+                        maximum_work,
+                    )?;
                     if matches!(key.as_str(), "$ref" | "$dynamicRef")
                         && let Some(reference) = value.as_str()
                     {
-                        references.push(reference.to_owned());
+                        charge_snapshot_work(work, 1, maximum_work)?;
+                        references.push(reference);
                     }
                     if !matches!(key.as_str(), "$defs" | "definitions") {
+                        charge_snapshot_work(work, 1, maximum_work)?;
                         stack.push(value);
                     }
                 }
@@ -2570,8 +2638,53 @@ mod tests {
     use super::{
         DRAFT_2020_12, DiffClassification, SchemaChange, SnapshotInputKind, SnapshotSchemaDialect,
         SupportedRevision, artifact_schema_dialect, classify_input_schema,
-        classify_input_schema_with_dialects, normalize_schema, normalize_schema_value,
+        classify_input_schema_with_dialects, collect_references, normalize_schema,
+        normalize_schema_value, validate_schema,
     };
+
+    #[test]
+    fn snapshot_reference_collection_charges_keys_before_retaining_reference_members() {
+        let value = json!([{"$ref": "#node"}]);
+        let mut references = Vec::new();
+        let mut work = 0;
+        let error = collect_references(&value, &mut references, &mut work, 3)
+            .expect_err("node counts alone cannot pay for member and key processing");
+        assert_eq!(error.kind, SnapshotInputKind::Limit);
+        assert_eq!(work, 4);
+        assert!(references.is_empty());
+    }
+
+    #[test]
+    fn snapshot_array_collection_prepays_all_child_admissions() {
+        let value = json!([null, null, null, null]);
+        let mut references = Vec::new();
+        let mut work = 0;
+        let error = collect_references(&value, &mut references, &mut work, 5)
+            .expect_err("the array must charge stack admissions as well as popped nodes");
+        assert_eq!(error.kind, SnapshotInputKind::Limit);
+        assert_eq!(work, 6);
+        assert!(references.is_empty());
+        let mut work = 0;
+        assert_eq!(
+            collect_references(&value, &mut references, &mut work, 1)
+                .unwrap_err()
+                .kind,
+            SnapshotInputKind::Limit
+        );
+        assert_eq!(work, 2);
+    }
+
+    #[test]
+    fn snapshot_reference_preprocessing_stops_repeated_anchor_scans() {
+        let schema = json!({
+            "type": "object",
+            "allOf": (0..100).map(|index| json!({"$ref": format!("#missing{index}")})).collect::<Vec<_>>(),
+            "x-padding": vec![0; 1_000]
+        });
+        let error = validate_schema(&schema)
+            .expect_err("snapshot reference preprocessing must enforce its work allowance");
+        assert_eq!(error.kind, SnapshotInputKind::Limit);
+    }
 
     #[test]
     fn normalization_removes_only_selected_schema_annotations_and_sorts_sets() {

@@ -42,7 +42,7 @@ No passive selection evidence is present.
 
 ## Independent safety findings
 
-- `MCP-SAFETY-001` in `transport.stdio` at `process`: Make the server and descendants exit when STDIN closes or termination is requested.
+- `MCP-SAFETY-001` in `transport.stdio` at `process`: Make the target close its output streams and exit when STDIN closes or termination is requested; use external containment for descendants that can detach.
 
 ## Causal skips
 
@@ -74,11 +74,11 @@ No passive selection evidence is present.
 - Severity: `critical`
 - Protocol revision: `2026-07-28`
 - Location: `process`
-- What: The managed target could not be fully cleaned up.
+- What: Cleanup of the managed process-control scope did not complete.
 - Why: A surviving process can keep consuming resources or running after inspection.
 - Evidence: None.
-- Expected: The managed process tree must terminate and be reaped before mcp-doctor returns.
-- Corrective action: Make the server and descendants exit when STDIN closes or termination is requested.
+- Expected: The direct child must be reaped and cleanup of the configured process-control scope must finish within its bounds before mcp-doctor returns.
+- Corrective action: Make the target close its output streams and exit when STDIN closes or termination is requested; use external containment for descendants that can detach.
 - Reference: mcp-doctor bounded local STDIO safety contract
 - Primary diagnosis: `false`
 - Independent safety finding: `true`

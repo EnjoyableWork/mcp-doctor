@@ -2408,8 +2408,22 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     assert_eq!(json_output.status.code(), Some(1), "{json}");
     assert!(human_stderr.is_empty());
     assert!(json_stderr.is_empty());
-    assert_eq!(human, REPORT_ONLY_HUMAN);
-    assert_eq!(json, REPORT_ONLY_JSON);
+    let mut expected_human = REPORT_ONLY_HUMAN.to_owned();
+    let mut expected_json = REPORT_ONLY_JSON.to_owned();
+    if cfg!(unix) {
+        expected_human = expected_human.replacen(
+            "\nPRIMARY DIAGNOSIS",
+            "\nprocess cleanup · mechanism=process_group · scope=direct_child_and_original_process_group · process_launches=1 · direct_children_reaped=1 · descendant_containment=false · detached_descendants=unverified\n\nPRIMARY DIAGNOSIS",
+            1,
+        );
+        expected_json = expected_json.replacen(
+            "  \"primary_diagnosis\":",
+            "  \"process_cleanup\": {\n    \"mechanism\": \"process_group\",\n    \"scope\": \"direct_child_and_original_process_group\",\n    \"process_launches\": 1,\n    \"direct_children_reaped\": 1,\n    \"descendant_containment\": false,\n    \"detached_descendants\": \"unverified\"\n  },\n  \"primary_diagnosis\":",
+            1,
+        );
+    }
+    assert_eq!(human, expected_human);
+    assert_eq!(json, expected_json);
 
     // From this point onward the assertions consume only the checked-in reports;
     // they do not inspect the fixture response, target stderr, or implementation.
@@ -2802,6 +2816,54 @@ fn schema_depth_and_catalog_item_bounds_stop_with_named_findings() {
         assert!(stdout.contains("maximum"), "{mode}: {stdout}");
         assert!(!stdout.contains("synthetic-private-property"), "{stdout}");
     }
+}
+
+#[test]
+fn passive_anchor_work_limit_reports_agree_without_untrusted_fragments_or_activity() {
+    let human_output = run_mode("schema-anchor-work-limit");
+    let json_output = run_json_mode("schema-anchor-work-limit");
+    let (human, human_stderr) = text(&human_output);
+    let (json, json_stderr) = text(&json_output);
+    for sentinel in [
+        "synthetic-private-anchor-never-report-7f2c",
+        "synthetic-private-schema-never-report-7f2c",
+    ] {
+        assert!(!human.contains(sentinel));
+        assert!(!json.contains(sentinel));
+        assert!(!human_stderr.contains(sentinel));
+        assert!(!json_stderr.contains(sentinel));
+    }
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert_eq!(human_output.status.code(), Some(1));
+    assert_eq!(json_output.status.code(), Some(1));
+    let report = json_report(&json_output);
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    let finding = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("schema findings should be an array")
+        .iter()
+        .find(|finding| finding["code"] == "MCP-LIMIT-001")
+        .expect("anchor work exhaustion must have a typed limit finding");
+    assert_eq!(finding["evidence"]["limit"], "schema_evaluation_steps");
+    assert_eq!(finding["evidence"]["observed"], 100_001);
+    assert_eq!(finding["evidence"]["maximum"], 100_000);
+    assert!(
+        report["primary_diagnosis"]["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["code"] == "MCP-LIMIT-001")
+    );
+    assert!(human.contains("PRIMARY DIAGNOSIS · schema.contracts"));
+    assert!(human.contains("MCP-LIMIT-001"));
+    let runtime = find_json_check(&report, "runtime.tools");
+    assert_eq!(runtime["state"], "skipped");
+    assert_eq!(runtime["skip_reason"], "not_authorized");
+    assert!(runtime.get("blocked_by").is_none());
+    assert_human_json_summary_and_limits_match(human, &report);
+    assert_report_findings_are_actionable(&report, human);
 }
 
 #[test]

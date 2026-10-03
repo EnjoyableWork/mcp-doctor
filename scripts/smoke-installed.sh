@@ -164,9 +164,15 @@ jq -e --arg version "${smoke_version}" '
   .exit_semantics.version == "mcp-doctor.exit/v1" and
   ([.exit_semantics.codes[].code] == [0, 1, 2, 3, 4]) and
   .platform == {
-    family: "unix",
-    process_tree_control: "process_group",
-    file_identity: "device_inode"
+    "family": "unix",
+    "process_tree_control": "process_group",
+    "file_identity": "device_inode",
+    "process_cleanup": {
+      "mechanism": "process_group",
+      "scope": "direct_child_and_original_process_group",
+      "descendant_containment": false,
+      "detached_descendants": "unverified"
+    }
   } and
   ([.limit_profiles[] | select(.hard == true)] | length) == 4 and
   ([.limit_profiles[] |
@@ -197,6 +203,14 @@ jq -e '
   .schema_version == "mcp-doctor.report/v1" and
   .schema_stability == "stable" and
   .protocol_revision == "2026-07-28" and
+  .process_cleanup == {
+    "mechanism": "process_group",
+    "scope": "direct_child_and_original_process_group",
+    "process_launches": 1,
+    "direct_children_reaped": 1,
+    "descendant_containment": false,
+    "detached_descendants": "unverified"
+  } and
   .primary_diagnosis == null and
   .independent_findings == [] and
   .outcome == "passed" and

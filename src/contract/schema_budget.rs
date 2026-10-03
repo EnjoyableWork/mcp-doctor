@@ -14,6 +14,7 @@ use jsonschema::{Draft, Keyword, PatternOptions, Retrieve, Uri, ValidationError,
 use regex_syntax::hir::{Class, Hir, HirKind};
 use serde_json::{Map, Number, Value};
 
+use super::catalog::resolve_local_reference;
 use super::limits::{LimitKind, LimitViolation};
 
 // Inject one always-true custom validator at every schema location. The pinned
@@ -869,10 +870,10 @@ fn estimate_evaluation_work(
     }
 }
 
-fn estimate_schema_node(
-    root: &Value,
-    schema: &Value,
-    active_references: &mut BTreeSet<String>,
+fn estimate_schema_node<'a>(
+    root: &'a Value,
+    schema: &'a Value,
+    active_references: &mut BTreeSet<&'a str>,
     pattern_cache: &mut BTreeMap<(usize, usize), u64>,
     budget: &SchemaWorkBudget,
     maximum: u64,
@@ -904,13 +905,16 @@ fn estimate_schema_node(
         let Some(reference) = object.get(keyword).and_then(Value::as_str) else {
             continue;
         };
-        if !reference.starts_with('#') || !active_references.insert(reference.to_owned()) {
+        if !reference.starts_with('#') {
             continue;
         }
-        if !budget.observe(u64::try_from(reference.len()).unwrap_or(u64::MAX)) {
-            return None;
+        // Identity operations compare server-controlled bytes even when a
+        // cycle was already visited. Admit that work before touching the set.
+        charge_reference_identity(reference, active_references.len(), budget)?;
+        if !active_references.insert(reference) {
+            continue;
         }
-        if let Some(target) = resolve_local_reference(root, reference, budget) {
+        if let Some(target) = resolve_local_reference(root, reference, budget).ok()? {
             estimate = checked_estimate_add(
                 estimate,
                 estimate_schema_node(
@@ -925,6 +929,7 @@ fn estimate_schema_node(
                 budget,
             )?;
         }
+        charge_reference_identity(reference, active_references.len(), budget)?;
         active_references.remove(reference);
     }
 
@@ -1000,6 +1005,22 @@ fn estimate_schema_node(
         }
     }
     Some(estimate)
+}
+
+fn charge_reference_identity(
+    reference: &str,
+    active_count: usize,
+    budget: &SchemaWorkBudget,
+) -> Option<()> {
+    let bytes = u64::try_from(reference.len())
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let comparisons = u64::try_from(active_count)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    budget
+        .observe(bytes.saturating_mul(comparisons))
+        .then_some(())
 }
 
 fn add_pattern_work(
@@ -1255,73 +1276,6 @@ fn checked_work_add(left: u64, right: u64, maximum: u64, budget: &SchemaWorkBudg
     }
 }
 
-fn resolve_local_reference<'a>(
-    schema: &'a Value,
-    reference: &str,
-    budget: &SchemaWorkBudget,
-) -> Option<&'a Value> {
-    let fragment = reference.strip_prefix('#')?;
-    if fragment.is_empty() {
-        return Some(schema);
-    }
-    if fragment.starts_with('/') {
-        let decoded = percent_decode(fragment)?;
-        return schema.pointer(&decoded);
-    }
-
-    let anchor = percent_decode(fragment)?;
-    let mut stack = vec![schema];
-    while let Some(value) = stack.pop() {
-        if !budget.observe(1) {
-            return None;
-        }
-        match value {
-            Value::Object(object) => {
-                if object.get("$anchor").and_then(Value::as_str) == Some(anchor.as_str())
-                    || object.get("$dynamicAnchor").and_then(Value::as_str) == Some(anchor.as_str())
-                {
-                    return Some(value);
-                }
-                stack.extend(object.values());
-            }
-            Value::Array(values) => stack.extend(values),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-        }
-    }
-    None
-}
-
-fn percent_decode(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let high = *bytes.get(index.saturating_add(1))?;
-            let low = *bytes.get(index.saturating_add(2))?;
-            decoded.push(
-                hex_value(high)?
-                    .checked_mul(16)?
-                    .checked_add(hex_value(low)?)?,
-            );
-            index = index.saturating_add(3);
-        } else {
-            decoded.push(bytes[index]);
-            index = index.saturating_add(1);
-        }
-    }
-    String::from_utf8(decoded).ok()
-}
-
-const fn hex_value(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
-    }
-}
-
 fn instrument_schema(schema: &Value) -> Value {
     match schema {
         Value::Bool(true) => Value::Object(marker_object()),
@@ -1424,13 +1378,14 @@ fn marker_object() -> Map<String, Value> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
     use std::sync::Arc;
 
     use serde_json::{Map, Value, json};
 
     use super::{
         BudgetedValidator, NoExternalRetrieval, SchemaWorkBudget, SchemaWorkIssue,
-        validate_meta_schema,
+        estimate_schema_node, validate_meta_schema,
     };
 
     fn instance_work(instance: &Value) -> (u64, u64) {
@@ -1462,6 +1417,49 @@ mod tests {
             }
         }
         (nodes, text)
+    }
+
+    #[test]
+    fn reference_identity_work_is_admitted_before_set_insertion_and_for_cycles() {
+        let schema = json!({"$ref": "#node"});
+        let reference = schema["$ref"].as_str().unwrap();
+        for already_active in [false, true] {
+            let mut active = BTreeSet::new();
+            if already_active {
+                active.insert(reference);
+            }
+            let initial = active.clone();
+            let mut cache = BTreeMap::new();
+            let maximum = if already_active { 1 } else { 5 };
+            let budget = SchemaWorkBudget::new(maximum);
+            assert!(
+                estimate_schema_node(&schema, &schema, &mut active, &mut cache, &budget, maximum)
+                    .is_none()
+            );
+            assert_eq!(budget.violation().observed(), maximum + 1);
+            assert_eq!(
+                active, initial,
+                "denied identity work must not mutate the set"
+            );
+        }
+    }
+
+    #[test]
+    fn reference_identity_removal_is_admitted_after_bounded_cycle_resolution() {
+        let schema = json!({"$ref": "#"});
+        let reference = schema["$ref"].as_str().unwrap();
+        let mut active = BTreeSet::new();
+        let mut cache = BTreeMap::new();
+        let budget = SchemaWorkBudget::new(14);
+        assert!(
+            estimate_schema_node(&schema, &schema, &mut active, &mut cache, &budget, 14).is_none()
+        );
+        assert_eq!(budget.violation().observed(), 15);
+        assert_eq!(active.len(), 1);
+        assert!(
+            active.contains(reference),
+            "a denied removal must not perform its key comparison"
+        );
     }
 
     #[test]
@@ -1722,12 +1720,44 @@ mod tests {
             assert_eq!(budget.attempts(), 0);
         }
 
-        let fanout = reference_fanout_schema(10);
+        // Reference decoding and lookups now consume construction work too.
+        // The larger fan-out must stop before compilation; the smaller one
+        // still exercises the independent instance-evaluation admission gate.
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(9), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(10), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(8), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(7), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        let fanout = reference_fanout_schema(6);
         let validator = BudgetedValidator::compile(&fanout, 100_000).unwrap();
+        assert!(validator.evaluation_width.saturating_mul(4) > 1_000);
         let budget = SchemaWorkBudget::new(1_000);
         assert!(
             validator
-                .error_count_with_budget(&json!(999), Arc::clone(&budget), 1, 0, 100)
+                .error_count_with_budget(&json!([999, 999, 999]), Arc::clone(&budget), 4, 0, 100)
                 .is_err()
         );
         assert_eq!(budget.observed(), 1_001);

@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{self, Write};
 
+use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde_json::{Map, Number, Value};
 
-use super::catalog::{InstanceValidationIssue, LocalValidator, resolve_local_reference};
+use super::catalog::{InstanceValidationIssue, LocalValidator, resolve_local_reference_with_work};
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{GeneratedCaseReproduction, JsonKind, StructuralInput};
 
@@ -60,6 +62,173 @@ pub(super) enum GenerationFailure {
     Unavailable,
 }
 
+struct InputByteBudget {
+    used: u64,
+    maximum: u64,
+}
+
+impl InputByteBudget {
+    const fn new(maximum: u64) -> Self {
+        Self { used: 0, maximum }
+    }
+
+    fn check(&self, additional: u64) -> Result<u64, GenerationFailure> {
+        let observed = self.used.saturating_add(additional);
+        if observed > self.maximum {
+            return Err(instance_byte_limit(observed, self.maximum));
+        }
+        Ok(observed)
+    }
+
+    fn reserve(&mut self, additional: u64) -> Result<(), GenerationFailure> {
+        self.used = self.check(additional)?;
+        Ok(())
+    }
+
+    fn reserve_json<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), GenerationFailure> {
+        let remaining = self.maximum.saturating_sub(self.used);
+        let measured = measure_json(value, remaining, false).map_err(|failure| match failure {
+            GenerationFailure::Limit(violation) => {
+                instance_byte_limit(self.used.saturating_add(violation.observed()), self.maximum)
+            }
+            failure => failure,
+        })?;
+        self.reserve(measured.bytes)
+    }
+
+    fn clone_value(&mut self, value: &Value) -> Result<Value, GenerationFailure> {
+        // Schema-owned const, enum, and example values can be large aggregates.
+        // Count them without allocation before cloning any member.
+        self.reserve_json(value)?;
+        Ok(value.clone())
+    }
+
+    fn reserve_member(&mut self, name: &str, has_members: bool) -> Result<(), GenerationFailure> {
+        self.reserve_json(name)?;
+        self.reserve(1 + u64::from(has_members))
+    }
+}
+
+fn instance_byte_limit(observed: u64, maximum: u64) -> GenerationFailure {
+    GenerationFailure::Limit(
+        LimitViolation::new(LimitKind::InstanceBytes, observed, maximum)
+            .expect("generated input bytes exceed their maximum"),
+    )
+}
+
+struct JsonMeasurement {
+    bytes: u64,
+    maximum: u64,
+    violation: Option<LimitViolation>,
+    hash: Option<(u64, u64)>,
+}
+
+impl JsonMeasurement {
+    fn identity(&self) -> (u64, u64) {
+        let (first, second) = self.hash.expect("identity measurement enables hashing");
+        (first ^ self.bytes, second ^ self.bytes.rotate_left(32))
+    }
+}
+
+impl Write for JsonMeasurement {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let next = self
+            .bytes
+            .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
+        if next > self.maximum {
+            self.violation = Some(
+                LimitViolation::new(LimitKind::InstanceBytes, next, self.maximum)
+                    .expect("serialized generated input exceeds its maximum"),
+            );
+            return Err(io::Error::other("generated input byte allowance exhausted"));
+        }
+        if let Some((first, second)) = &mut self.hash {
+            for byte in bytes {
+                *first ^= u64::from(*byte);
+                *first = first.wrapping_mul(0x0000_0100_0000_01b3);
+                *second = stable_mix(*second ^ u64::from(*byte));
+            }
+        }
+        self.bytes = next;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn measure_json<T: Serialize + ?Sized>(
+    value: &T,
+    maximum: u64,
+    identity: bool,
+) -> Result<JsonMeasurement, GenerationFailure> {
+    let mut measurement = JsonMeasurement {
+        bytes: 0,
+        maximum,
+        violation: None,
+        hash: identity.then_some((0xcbf2_9ce4_8422_2325, 0x6a09_e667_f3bc_c909)),
+    };
+    if serde_json::to_writer(&mut measurement, value).is_err() {
+        return Err(measurement
+            .violation
+            .map_or(GenerationFailure::Unavailable, GenerationFailure::Limit));
+    }
+    Ok(measurement)
+}
+
+struct MutatedObject<'a> {
+    object: &'a Map<String, Value>,
+    name: &'a str,
+    replacement: Option<&'a Value>,
+}
+
+impl Serialize for MutatedObject<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        for (name, value) in self.object {
+            if name != self.name {
+                map.serialize_entry(name, value)?;
+            }
+        }
+        if let Some(value) = self.replacement {
+            map.serialize_entry(self.name, value)?;
+        }
+        map.end()
+    }
+}
+
+fn mutated_object(
+    base: &Value,
+    name: &str,
+    replacement: Option<&Value>,
+    maximum: u64,
+) -> Result<Value, GenerationFailure> {
+    let object = base.as_object().ok_or(GenerationFailure::Unavailable)?;
+    // Measure the final mutation through borrowed members before cloning any
+    // retained payload, property name, or replacement. JSON member order does
+    // not affect this exact size check; replaced payloads are never cloned.
+    measure_json(
+        &MutatedObject {
+            object,
+            name,
+            replacement,
+        },
+        maximum,
+        false,
+    )?;
+    let mut output = Map::new();
+    for (key, value) in object {
+        if key != name {
+            output.insert(key.clone(), value.clone());
+        }
+    }
+    if let Some(value) = replacement {
+        output.insert(name.to_owned(), value.clone());
+    }
+    Ok(Value::Object(output))
+}
+
 pub(super) fn generate_inputs(
     schema: &Value,
     validator: &LocalValidator,
@@ -102,15 +271,13 @@ pub(super) fn generate_inputs(
         if !candidate.is_object() {
             continue;
         }
-        let encoded = serde_json::to_vec(&candidate).map_err(|_| GenerationFailure::Unavailable)?;
-        let observed = u64::try_from(encoded.len()).unwrap_or(u64::MAX);
-        if observed > limits.instance_bytes {
-            return Err(GenerationFailure::Limit(
-                LimitViolation::new(LimitKind::InstanceBytes, observed, limits.instance_bytes)
-                    .expect("an oversized generated input exceeds its maximum"),
-            ));
-        }
-        if !identities.insert(candidate_identity(&encoded)) {
+        // Stream the bounded candidate into its fixed-size identity. Retaining
+        // a second complete serialization would spend the instance allowance
+        // again solely for deduplication.
+        let measured = measure_json(&candidate, limits.instance_bytes, true)?;
+        let observed = measured.bytes;
+        debug_assert_eq!(observed, synthesizer.bytes.used);
+        if !identities.insert(measured.identity()) {
             continue;
         }
         match validator.validate(&candidate) {
@@ -196,19 +363,8 @@ pub(super) fn generate_invalid_inputs(
             generated.push(None);
             continue;
         };
-        let bytes = u64::try_from(
-            serde_json::to_vec(&arguments)
-                .map_err(|_| GenerationFailure::Unavailable)?
-                .len(),
-        )
-        .unwrap_or(u64::MAX);
         let limits = DiagnosticLimits::DEFAULTS.values();
-        if bytes > limits.instance_bytes {
-            return Err(GenerationFailure::Limit(
-                LimitViolation::new(LimitKind::InstanceBytes, bytes, limits.instance_bytes)
-                    .expect("an oversized invalid input exceeds its maximum"),
-            ));
-        }
+        let bytes = measure_json(&arguments, limits.instance_bytes, false)?.bytes;
         aggregate_bytes = aggregate_bytes.saturating_add(bytes);
         if aggregate_bytes > limits.aggregate_output_bytes {
             return Err(GenerationFailure::Limit(
@@ -276,11 +432,19 @@ fn omitted_required_property(
     };
     for name in required.iter().filter_map(Value::as_str) {
         for base in pool {
-            let mut arguments = base.arguments.clone();
-            let Some(object) = arguments.as_object_mut() else {
+            let Some(object) = base.arguments.as_object() else {
                 continue;
             };
-            if object.remove(name).is_some() && exact_mismatch(validator, &arguments)? {
+            if !object.contains_key(name) {
+                continue;
+            }
+            let arguments = mutated_object(
+                &base.arguments,
+                name,
+                None,
+                DiagnosticLimits::DEFAULTS.values().instance_bytes,
+            )?;
+            if exact_mismatch(validator, &arguments)? {
                 return Ok(Some((arguments, false)));
             }
         }
@@ -322,11 +486,12 @@ fn wrong_property_type(
                 if declared_type_allows(property_schema, replacement) != Some(false) {
                     continue;
                 }
-                let mut arguments = base.arguments.clone();
-                arguments
-                    .as_object_mut()
-                    .expect("generated root inputs are objects")
-                    .insert(name.clone(), replacement.clone());
+                let arguments = mutated_object(
+                    &base.arguments,
+                    name,
+                    Some(replacement),
+                    DiagnosticLimits::DEFAULTS.values().instance_bytes,
+                )?;
                 if exact_mismatch(validator, &arguments)? {
                     return Ok(Some((arguments, false)));
                 }
@@ -360,11 +525,12 @@ fn forbidden_null(
             {
                 continue;
             }
-            let mut arguments = base.arguments.clone();
-            arguments
-                .as_object_mut()
-                .expect("generated root inputs are objects")
-                .insert(name.clone(), Value::Null);
+            let arguments = mutated_object(
+                &base.arguments,
+                name,
+                Some(&Value::Null),
+                DiagnosticLimits::DEFAULTS.values().instance_bytes,
+            )?;
             if exact_mismatch(validator, &arguments)? {
                 return Ok(Some((arguments, false)));
             }
@@ -420,11 +586,12 @@ fn invalid_enum(
                 for replacement in alternatives.iter().filter(|value| {
                     json_kind(value) == json_kind(example) && !values.contains(value)
                 }) {
-                    let mut arguments = base.arguments.clone();
-                    arguments
-                        .as_object_mut()
-                        .expect("generated root inputs are objects")
-                        .insert(name.clone(), replacement.clone());
+                    let arguments = mutated_object(
+                        &base.arguments,
+                        name,
+                        Some(replacement),
+                        DiagnosticLimits::DEFAULTS.values().instance_bytes,
+                    )?;
                     if exact_mismatch(validator, &arguments)? {
                         return Ok(Some((arguments, false)));
                     }
@@ -452,8 +619,7 @@ fn unexpected_property(
         .and_then(|object| object.get("properties"))
         .and_then(Value::as_object);
     for base in pool {
-        let mut arguments = base.arguments.clone();
-        let Some(object) = arguments.as_object_mut() else {
+        let Some(object) = base.arguments.as_object() else {
             continue;
         };
         let mut index = 0_u64;
@@ -469,7 +635,12 @@ fn unexpected_property(
                 return Ok(None);
             }
         };
-        object.insert(name, Value::Bool(false));
+        let arguments = mutated_object(
+            &base.arguments,
+            &name,
+            Some(&Value::Bool(false)),
+            DiagnosticLimits::DEFAULTS.values().instance_bytes,
+        )?;
         if exact_mismatch(validator, &arguments)? {
             return Ok(Some((arguments, false)));
         }
@@ -511,7 +682,8 @@ struct Synthesizer<'root, 'budget> {
     root: &'root Value,
     random: StableRandom,
     steps: &'budget mut u64,
-    active_references: BTreeSet<String>,
+    active_references: BTreeSet<&'root str>,
+    bytes: InputByteBudget,
 }
 
 impl<'root, 'budget> Synthesizer<'root, 'budget> {
@@ -521,6 +693,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             random: StableRandom(seed),
             steps,
             active_references: BTreeSet::new(),
+            bytes: InputByteBudget::new(DiagnosticLimits::DEFAULTS.values().instance_bytes),
         }
     }
 
@@ -540,37 +713,42 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
 
         match schema {
             Value::Bool(false) => return Ok(None),
-            Value::Bool(true) => return Ok(Some(self.generic_value())),
+            Value::Bool(true) => return self.generic_value().map(Some),
             Value::Object(object) => {
                 if let Some(value) = object.get("const") {
-                    return Ok(Some(value.clone()));
+                    return self.bytes.clone_value(value).map(Some);
                 }
                 if let Some(values) = object.get("enum").and_then(Value::as_array) {
                     if values.is_empty() {
                         return Ok(None);
                     }
-                    return Ok(Some(values[self.choose(values.len())].clone()));
+                    let selected = &values[self.choose(values.len())];
+                    return self.bytes.clone_value(selected).map(Some);
                 }
                 if self.choose(4) == 0
                     && let Some(value) = declared_example(object, self.next_u64())
                 {
-                    return Ok(Some(value.clone()));
+                    return self.bytes.clone_value(value).map(Some);
                 }
 
                 if let Some(reference) = object
                     .get("$ref")
                     .or_else(|| object.get("$dynamicRef"))
                     .and_then(Value::as_str)
-                    && self.active_references.insert(reference.to_owned())
                 {
-                    let resolved = resolve_local_reference(self.root, reference);
-                    let generated = match resolved {
-                        Some(target) => self.value(target, depth.saturating_add(1))?,
-                        None => None,
-                    };
-                    self.active_references.remove(reference);
-                    if generated.is_some() {
-                        return Ok(generated);
+                    charge_reference_set(reference, self.active_references.len(), self.steps)?;
+                    if self.active_references.insert(reference) {
+                        let resolved =
+                            resolve_generation_reference(self.root, reference, self.steps)?;
+                        let generated = match resolved {
+                            Some(target) => self.value(target, depth.saturating_add(1))?,
+                            None => None,
+                        };
+                        charge_reference_set(reference, self.active_references.len(), self.steps)?;
+                        self.active_references.remove(reference);
+                        if generated.is_some() {
+                            return Ok(generated);
+                        }
                     }
                 }
 
@@ -587,8 +765,15 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
                     .copied()
                     .unwrap_or(ValueKind::Object);
                 return match kind {
-                    ValueKind::Null => Ok(Some(Value::Null)),
-                    ValueKind::Boolean => Ok(Some(Value::Bool(self.choose(2) == 1))),
+                    ValueKind::Null => {
+                        self.bytes.reserve(4)?;
+                        Ok(Some(Value::Null))
+                    }
+                    ValueKind::Boolean => {
+                        let value = self.choose(2) == 1;
+                        self.bytes.reserve(if value { 4 } else { 5 })?;
+                        Ok(Some(Value::Bool(value)))
+                    }
                     ValueKind::Integer => self.number(object, true).map(Some),
                     ValueKind::Number => self.number(object, false).map(Some),
                     ValueKind::String => {
@@ -612,6 +797,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
         schema: &'root Value,
         depth: u64,
     ) -> Result<Map<String, Value>, GenerationFailure> {
+        self.bytes.reserve(2)?;
         let mut plan = ObjectPlan::default();
         let mut references = BTreeSet::new();
         collect_object_plan(
@@ -630,12 +816,12 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
                 continue;
             }
             if include_mode == 1 || (include_mode == 2 && self.choose(2) == 1) {
-                selected.insert(name.clone());
+                selected.insert(*name);
             }
         }
         for (trigger, dependents) in &plan.dependent_required {
             if selected.contains(trigger) {
-                selected.extend(dependents.iter().cloned());
+                selected.extend(dependents.iter().copied());
             }
         }
 
@@ -644,7 +830,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             if selected.len() >= minimum {
                 break;
             }
-            selected.insert(name.clone());
+            selected.insert(*name);
         }
         if let Some(maximum) = plan.maximum_properties {
             let maximum = usize::try_from(maximum).unwrap_or(usize::MAX);
@@ -657,16 +843,20 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
         let mut output = Map::new();
         for name in selected {
             self.tick()?;
-            let generated = if let Some(schemas) = plan.properties.get(&name) {
+            let before_member = self.bytes.used;
+            self.bytes.reserve_member(name, !output.is_empty())?;
+            let generated = if let Some(schemas) = plan.properties.get(name) {
                 let selected_schema = schemas[self.choose(schemas.len())];
                 self.value(selected_schema, depth.saturating_add(1))?
             } else if let Some(schema) = plan.additional_schema {
                 self.value(schema, depth.saturating_add(1))?
             } else {
-                Some(self.generic_value())
+                Some(self.generic_value()?)
             };
             if let Some(value) = generated {
-                output.insert(name, value);
+                output.insert(name.to_owned(), value);
+            } else {
+                self.bytes.used = before_member;
             }
         }
 
@@ -676,16 +866,26 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             if plan.additional_forbidden {
                 break;
             }
+            let before_member = self.bytes.used;
+            // This ASCII name has no escaping expansion. Reserve its quotes,
+            // colon, separator, and digits before formatting it.
+            let name_bytes = u64::try_from("mcp_doctor_generated_".len()).unwrap()
+                + decimal_digits(generated_index);
+            self.bytes
+                .reserve(name_bytes + 3 + u64::from(!output.is_empty()))?;
             let name = format!("mcp_doctor_generated_{generated_index}");
             generated_index = generated_index.saturating_add(1);
-            if output.contains_key(&name) || plan.properties.contains_key(&name) {
+            if output.contains_key(&name) || plan.properties.contains_key(name.as_str()) {
+                self.bytes.used = before_member;
                 continue;
             }
             let value = if let Some(schema) = plan.additional_schema {
-                self.value(schema, depth.saturating_add(1))?
-                    .unwrap_or_else(|| self.generic_value())
+                match self.value(schema, depth.saturating_add(1))? {
+                    Some(value) => value,
+                    None => self.generic_value()?,
+                }
             } else {
-                self.generic_value()
+                self.generic_value()?
             };
             output.insert(name, value);
         }
@@ -732,15 +932,24 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             .unwrap_or_default();
         let item_schema = object.get("items");
         let capacity = usize::try_from(length).unwrap_or(usize::MAX);
-        let mut output = Vec::with_capacity(capacity);
+        // Every JSON item takes at least one byte, plus a separator after the
+        // first. Reject an impossible collection before allocating its vector,
+        // then reserve each actual member before construction and insertion.
+        self.bytes.check(2 + length + length.saturating_sub(1))?;
+        self.bytes.reserve(2)?;
+        let mut output = Vec::new();
         for index in 0..capacity {
             self.tick()?;
+            if index > 0 {
+                self.bytes.reserve(1)?;
+            }
             let schema = prefix.get(index).or(item_schema);
             let value = match schema {
-                Some(schema) => self
-                    .value(schema, depth.saturating_add(1))?
-                    .unwrap_or_else(|| self.generic_value()),
-                None => self.generic_value(),
+                Some(schema) => match self.value(schema, depth.saturating_add(1))? {
+                    Some(value) => value,
+                    None => self.generic_value()?,
+                },
+                None => self.generic_value()?,
             };
             output.push(value);
         }
@@ -793,6 +1002,10 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
         )
         .unwrap_or(usize::MAX);
         let example = examples[self.choose(examples.len())];
+        // Every generated character is unescaped ASCII, so this is the exact
+        // JSON string length. Charge the shared candidate allowance first.
+        self.bytes
+            .reserve(u64::try_from(length).unwrap_or(u64::MAX).saturating_add(2))?;
         let mut value = String::with_capacity(length);
         value.extend(example.chars().take(length));
         let remaining = length.saturating_sub(value.chars().count());
@@ -845,11 +1058,21 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             .get(self.choose(values.len()))
             .cloned()
             .ok_or(GenerationFailure::Unavailable)?;
+        self.bytes.reserve_json(&selected)?;
         Ok(Value::Number(selected))
     }
 
-    fn generic_value(&mut self) -> Value {
-        match self.choose(7) {
+    fn generic_value(&mut self) -> Result<Value, GenerationFailure> {
+        let selected = self.choose(7);
+        let bytes = match selected {
+            0 => 4,
+            1 => 5,
+            2 => 1,
+            3..=5 => 2,
+            _ => 20,
+        };
+        self.bytes.reserve(bytes)?;
+        Ok(match selected {
             0 => Value::Null,
             1 => Value::Bool(false),
             2 => Value::Number(Number::from(0)),
@@ -857,7 +1080,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
             4 => Value::Array(Vec::new()),
             5 => Value::Object(Map::new()),
             _ => Value::String("synthetic-boundary".to_owned()),
-        }
+        })
     }
 
     fn tick(&mut self) -> Result<(), GenerationFailure> {
@@ -875,9 +1098,9 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
 
 #[derive(Default)]
 struct ObjectPlan<'root> {
-    properties: BTreeMap<String, Vec<&'root Value>>,
-    required: BTreeSet<String>,
-    dependent_required: BTreeMap<String, BTreeSet<String>>,
+    properties: BTreeMap<&'root str, Vec<&'root Value>>,
+    required: BTreeSet<&'root str>,
+    dependent_required: BTreeMap<&'root str, BTreeSet<&'root str>>,
     minimum_properties: u64,
     maximum_properties: Option<u64>,
     additional_forbidden: bool,
@@ -888,7 +1111,7 @@ fn collect_object_plan<'root>(
     root: &'root Value,
     schema: &'root Value,
     plan: &mut ObjectPlan<'root>,
-    active_references: &mut BTreeSet<String>,
+    active_references: &mut BTreeSet<&'root str>,
     random: &mut StableRandom,
     steps: &mut u64,
 ) -> Result<(), GenerationFailure> {
@@ -900,29 +1123,24 @@ fn collect_object_plan<'root>(
         for (name, schema) in properties {
             tick(steps)?;
             plan.properties
-                .entry(name.clone())
+                .entry(name.as_str())
                 .or_default()
                 .push(schema);
         }
     }
     if let Some(required) = object.get("required").and_then(Value::as_array) {
-        plan.required.extend(
-            required
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned),
-        );
+        plan.required
+            .extend(required.iter().filter_map(Value::as_str));
     }
     if let Some(dependencies) = object.get("dependentRequired").and_then(Value::as_object) {
         for (trigger, values) in dependencies {
-            let target = plan.dependent_required.entry(trigger.clone()).or_default();
+            let target = plan.dependent_required.entry(trigger.as_str()).or_default();
             target.extend(
                 values
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .filter_map(Value::as_str)
-                    .map(ToOwned::to_owned),
+                    .filter_map(Value::as_str),
             );
         }
     }
@@ -947,12 +1165,15 @@ fn collect_object_plan<'root>(
         .get("$ref")
         .or_else(|| object.get("$dynamicRef"))
         .and_then(Value::as_str)
-        && active_references.insert(reference.to_owned())
     {
-        if let Some(target) = resolve_local_reference(root, reference) {
-            collect_object_plan(root, target, plan, active_references, random, steps)?;
+        charge_reference_set(reference, active_references.len(), steps)?;
+        if active_references.insert(reference) {
+            if let Some(target) = resolve_generation_reference(root, reference, steps)? {
+                collect_object_plan(root, target, plan, active_references, random, steps)?;
+            }
+            charge_reference_set(reference, active_references.len(), steps)?;
+            active_references.remove(reference);
         }
-        active_references.remove(reference);
     }
     if let Some(branches) = object.get("allOf").and_then(Value::as_array) {
         for branch in branches {
@@ -1091,9 +1312,46 @@ fn integer_keyword(object: &Map<String, Value>, keyword: &str) -> Option<u64> {
     object.get(keyword).and_then(Value::as_u64)
 }
 
-fn tick(steps: &mut u64) -> Result<(), GenerationFailure> {
+fn resolve_generation_reference<'a>(
+    root: &'a Value,
+    reference: &str,
+    steps: &mut u64,
+) -> Result<Option<&'a Value>, GenerationFailure> {
     let maximum = DiagnosticLimits::DEFAULTS.values().generation_steps;
-    *steps = steps.saturating_add(1);
+    resolve_local_reference_with_work(root, reference, steps, maximum).map_err(|violation| {
+        GenerationFailure::Limit(
+            LimitViolation::new(LimitKind::GenerationSteps, violation.observed(), maximum)
+                .expect("local reference resolution exhausted the generation work allowance"),
+        )
+    })
+}
+
+const fn decimal_digits(mut value: u64) -> u64 {
+    let mut digits = 1;
+    while value >= 10 {
+        digits += 1;
+        value /= 10;
+    }
+    digits
+}
+
+fn tick(steps: &mut u64) -> Result<(), GenerationFailure> {
+    charge_generation_steps(steps, 1)
+}
+
+fn charge_reference_set(
+    reference: &str,
+    members: usize,
+    steps: &mut u64,
+) -> Result<(), GenerationFailure> {
+    let comparison_bytes = u64::try_from(reference.len()).unwrap_or(u64::MAX);
+    let comparisons = u64::try_from(members).unwrap_or(u64::MAX).saturating_add(1);
+    charge_generation_steps(steps, comparison_bytes.saturating_mul(comparisons))
+}
+
+fn charge_generation_steps(steps: &mut u64, additional: u64) -> Result<(), GenerationFailure> {
+    let maximum = DiagnosticLimits::DEFAULTS.values().generation_steps;
+    *steps = steps.saturating_add(additional);
     if *steps > maximum {
         return Err(GenerationFailure::Limit(
             LimitViolation::new(LimitKind::GenerationSteps, *steps, maximum)
@@ -1196,6 +1454,7 @@ fn bounded_index(value: u64, length: usize) -> usize {
     usize::try_from(value % length).unwrap_or(0)
 }
 
+#[cfg(test)]
 fn candidate_identity(bytes: &[u8]) -> (u64, u64) {
     // The fixed-size identity bounds deduplication memory. A collision can
     // reduce coverage, but can never admit an unvalidated candidate.
@@ -1221,10 +1480,224 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        GenerationFailure, generate_inputs, generate_invalid_inputs, select_generated_inputs,
+        GenerationFailure, InputByteBudget, StableRandom, Synthesizer, candidate_identity,
+        declared_example, generate_inputs, generate_invalid_inputs, measure_json, mutated_object,
+        resolve_generation_reference, select_generated_inputs,
     };
     use crate::contract::catalog::{InstanceValidationIssue, LocalValidator};
     use crate::contract::limits::LimitKind;
+
+    #[test]
+    fn reference_resolution_stops_at_the_existing_generation_work_ceiling() {
+        let schema = json!({"$anchor": "node", "type": "object"});
+        let maximum = crate::contract::limits::DiagnosticLimits::DEFAULTS
+            .values()
+            .generation_steps;
+        let mut steps = maximum - 10;
+        assert!(matches!(
+            resolve_generation_reference(&schema, "#node", &mut steps),
+            Err(GenerationFailure::Limit(violation))
+                if violation.kind() == LimitKind::GenerationSteps
+                    && violation.observed() == maximum + 1
+                    && violation.maximum() == maximum
+        ));
+        assert_eq!(steps, maximum + 1);
+    }
+
+    #[test]
+    fn aggregate_candidate_bytes_stop_before_another_string_is_constructed() {
+        let schema = json!({
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {"type": "string", "minLength": 8, "maxLength": 8}
+        });
+        let mut steps = 0;
+        let mut synthesizer = Synthesizer::new(&schema, 7, &mut steps);
+        synthesizer.bytes = InputByteBudget::new(25);
+        let result = synthesizer.value(&schema, 0);
+        assert!(matches!(
+            result,
+            Err(GenerationFailure::Limit(violation))
+                if violation.kind() == LimitKind::InstanceBytes
+                    && violation.observed() == 34
+                    && violation.maximum() == 25
+        ));
+        // Two eight-byte strings, quotes, the array delimiters, and both
+        // separators fit. The third string's reservation fails before its
+        // String allocation; traversal stops at that member.
+        assert_eq!(synthesizer.bytes.used, 24);
+        assert_eq!(steps, 7);
+    }
+
+    #[test]
+    fn required_collection_lower_bound_stops_before_vector_allocation() {
+        let schema = json!({
+            "type": "array",
+            "minItems": 20,
+            "maxItems": 20,
+            "items": {"type": "null"}
+        });
+        let mut steps = 0;
+        let mut synthesizer = Synthesizer::new(&schema, 7, &mut steps);
+        synthesizer.bytes = InputByteBudget::new(32);
+        assert!(matches!(
+            synthesizer.value(&schema, 0),
+            Err(GenerationFailure::Limit(violation))
+                if violation.kind() == LimitKind::InstanceBytes
+                    && violation.observed() == 41
+        ));
+        assert_eq!(synthesizer.bytes.used, 0);
+        assert_eq!(steps, 1);
+    }
+
+    #[test]
+    fn borrowed_values_are_counted_exactly_before_const_enum_and_example_clones() {
+        let value = json!({"escaped\"key\n": ["quote\" slash\\ line\n", "é🦀", {"nested": null}]});
+        let encoded = serde_json::to_vec(&value).unwrap();
+        let exact = u64::try_from(encoded.len()).unwrap();
+        let schemas = [
+            json!({"const": value}),
+            json!({"enum": [value]}),
+            json!({"examples": [value]}),
+            json!({"default": value}),
+        ];
+        for schema in &schemas {
+            let seed = if schema.get("const").is_some() || schema.get("enum").is_some() {
+                7
+            } else {
+                (0..128)
+                    .find(|seed| {
+                        let mut random = StableRandom(*seed);
+                        random.choose(4) == 0
+                            && declared_example(schema.as_object().unwrap(), random.next())
+                                .is_some()
+                    })
+                    .expect("one fixed bounded seed should select the declared example")
+            };
+            let mut steps = 0;
+            let mut exact_synthesizer = Synthesizer::new(schema, seed, &mut steps);
+            exact_synthesizer.bytes = InputByteBudget::new(exact);
+            let generated = exact_synthesizer.value(schema, 0).unwrap().unwrap();
+            assert_eq!(generated, value);
+            assert_eq!(exact_synthesizer.bytes.used, exact);
+            let mut steps = 0;
+            let mut limited = Synthesizer::new(schema, seed, &mut steps);
+            limited.bytes = InputByteBudget::new(exact - 1);
+            assert!(matches!(
+                limited.value(schema, 0),
+                Err(GenerationFailure::Limit(violation))
+                    if violation.kind() == LimitKind::InstanceBytes
+                        && violation.maximum() == exact - 1
+            ));
+            assert_eq!(limited.bytes.used, 0);
+        }
+    }
+
+    #[test]
+    fn object_keys_and_nested_members_share_one_exact_byte_allowance() {
+        let key = "escaped\"key\n\\é";
+        let schema = json!({
+            "type": "object",
+            "properties": {key: {"const": ["é", {"nested": true}]}},
+            "required": [key],
+            "additionalProperties": false
+        });
+        let expected = json!({key: ["é", {"nested": true}]});
+        let exact = u64::try_from(serde_json::to_vec(&expected).unwrap().len()).unwrap();
+        let mut steps = 0;
+        let mut synthesizer = Synthesizer::new(&schema, 7, &mut steps);
+        synthesizer.bytes = InputByteBudget::new(exact);
+        assert_eq!(synthesizer.value(&schema, 0).unwrap().unwrap(), expected);
+        assert_eq!(synthesizer.bytes.used, exact);
+        let mut steps = 0;
+        let mut limited = Synthesizer::new(&schema, 7, &mut steps);
+        limited.bytes = InputByteBudget::new(exact - 1);
+        assert!(matches!(
+            limited.value(&schema, 0),
+            Err(GenerationFailure::Limit(_))
+        ));
+        assert!(limited.bytes.used < exact);
+    }
+
+    #[test]
+    fn generated_string_and_budget_zero_and_overflow_boundaries_are_checked_first() {
+        let schema = json!({"type": "string", "minLength": 30, "maxLength": 30});
+        let mut steps = 0;
+        let mut synthesizer = Synthesizer::new(&schema, 7, &mut steps);
+        synthesizer.bytes = InputByteBudget::new(32);
+        assert_eq!(
+            synthesizer
+                .value(&schema, 0)
+                .unwrap()
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .len(),
+            30
+        );
+        assert_eq!(synthesizer.bytes.used, 32);
+
+        for (maximum, additional) in [(0, 1), (32, u64::MAX)] {
+            let mut budget = InputByteBudget::new(maximum);
+            assert!(matches!(
+                budget.reserve(additional),
+                Err(GenerationFailure::Limit(_))
+            ));
+            assert_eq!(budget.used, 0);
+        }
+        let mut budget = InputByteBudget::new(32);
+        budget.reserve(1).unwrap();
+        assert!(matches!(
+            budget.reserve(u64::MAX),
+            Err(GenerationFailure::Limit(_))
+        ));
+        assert_eq!(budget.used, 1);
+        assert!(matches!(
+            measure_json(&json!(null), 0, false),
+            Err(GenerationFailure::Limit(_))
+        ));
+    }
+
+    #[test]
+    fn mutations_preflight_final_members_without_cloning_replaced_payloads() {
+        let base = json!({"payload": "a".repeat(512), "keep": true});
+        let replacement = json!("quote\"\n");
+        let expected = json!({"payload": replacement, "keep": true});
+        let exact = u64::try_from(serde_json::to_vec(&expected).unwrap().len()).unwrap();
+        let mutated = mutated_object(&base, "payload", Some(&replacement), exact).unwrap();
+        assert_eq!(mutated, expected);
+        assert!(matches!(
+            mutated_object(&base, "payload", Some(&replacement), exact - 1),
+            Err(GenerationFailure::Limit(violation)) if violation.maximum() == exact - 1
+        ));
+        assert_eq!(
+            mutated_object(&base, "payload", None, 13).unwrap(),
+            json!({"keep": true})
+        );
+        assert!(matches!(
+            mutated_object(&json!({}), "escaped\"key", Some(&replacement), 8),
+            Err(GenerationFailure::Limit(_))
+        ));
+    }
+
+    #[test]
+    fn streaming_candidate_identity_matches_the_existing_generator_identity() {
+        for value in [
+            json!({}),
+            json!({"escaped\"key\n": ["é🦀", true, 3.5, null]}),
+        ] {
+            let encoded = serde_json::to_vec(&value).unwrap();
+            let exact = u64::try_from(encoded.len()).unwrap();
+            let measured = measure_json(&value, exact, true).unwrap();
+            assert_eq!(measured.bytes, exact);
+            assert_eq!(measured.identity(), candidate_identity(&encoded));
+            assert!(matches!(
+                measure_json(&value, exact - 1, true),
+                Err(GenerationFailure::Limit(_))
+            ));
+        }
+    }
 
     #[test]
     fn generated_inputs_are_deterministic_schema_valid_and_value_free_in_reproduction() {

@@ -366,7 +366,7 @@ impl FindingCode {
                 "The server advertises a feature deprecated by this protocol revision."
             }
             Self::LimitExceeded => "A configured diagnostic safety limit was exceeded.",
-            Self::CleanupFailed => "The managed target could not be fully cleaned up.",
+            Self::CleanupFailed => "Cleanup of the managed process-control scope did not complete.",
             Self::SessionCleanupFailed => {
                 "The remote MCP session could not be terminated within its cleanup bound."
             }
@@ -667,7 +667,7 @@ impl FindingCode {
                 "Every diagnostic path must remain within its reported safety limit."
             }
             Self::CleanupFailed => {
-                "The managed process tree must terminate and be reaped before mcp-doctor returns."
+                "The direct child must be reaped and cleanup of the configured process-control scope must finish within its bounds before mcp-doctor returns."
             }
             Self::SessionCleanupFailed => {
                 "A stateful legacy HTTP diagnostic must attempt one bounded DELETE and receive a successful, unsupported, or already-absent response."
@@ -823,7 +823,7 @@ impl FindingCode {
                 "Reduce the reported data or work below the maximum, then rerun the same command."
             }
             Self::CleanupFailed => {
-                "Make the server and descendants exit when STDIN closes or termination is requested."
+                "Make the target close its output streams and exit when STDIN closes or termination is requested; use external containment for descendants that can detach."
             }
             Self::SessionCleanupFailed => {
                 "Make session DELETE complete within the bound, or return 405 when termination is unsupported."
