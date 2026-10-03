@@ -1689,8 +1689,6 @@ fn security_policy_defines_private_reporting_support_and_coordination() {
         "GitHub Security Advisory",
         "request a CVE through GitHub when warranted",
         "does not operate\na bug-bounty program",
-        "| `0.4.x` | Supported |",
-        "| `0.3.x` and earlier | Unsupported |",
         "| `main` | Development only; no release or backport guarantee |",
         "## Safe research boundary",
         "Test only systems you own or are explicitly authorized to assess.",
@@ -1714,6 +1712,70 @@ fn security_policy_defines_private_reporting_support_and_coordination() {
 }
 
 #[test]
+fn supported_release_lines_agree_across_policy_inventory_and_verifier() {
+    let security = repository_file("SECURITY.md");
+    let support_table = security
+        .split_once("## Supported versions\n")
+        .expect("security policy should define supported versions")
+        .1
+        .split("\n## ")
+        .next()
+        .expect("supported versions section should be present");
+    let mut supported = Vec::new();
+    let mut unsupported = Vec::new();
+    for row in support_table.lines() {
+        let columns = row.split('|').map(str::trim).collect::<Vec<_>>();
+        if columns.len() != 4 {
+            continue;
+        }
+        let version = columns[1].replace('`', "");
+        match columns[2] {
+            "Supported" => supported.push(version),
+            "Unsupported" => unsupported.push(version),
+            _ => {}
+        }
+    }
+    assert!(!supported.is_empty() && !unsupported.is_empty());
+    let documented = serde_json::json!({
+        "supported_release_lines": supported,
+        "unsupported_release_lines": unsupported,
+    });
+
+    let canonical: serde_json::Value =
+        serde_json::from_str(&repository_file(".github/security-controls.json"))
+            .expect("security controls should be valid JSON");
+    let inventoried = serde_json::json!({
+        "supported_release_lines": canonical["security_policy"]["supported_release_lines"],
+        "unsupported_release_lines": canonical["security_policy"]["unsupported_release_lines"],
+    });
+    let verifier = repository_file("scripts/verify-security-controls.sh");
+    let verifier_lines = |key: &str| {
+        let prefix = format!(".security_policy.{key} == ");
+        let declarations = verifier
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix(prefix.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(declarations.len(), 1);
+        serde_json::from_str::<serde_json::Value>(
+            declarations[0]
+                .strip_suffix(" and")
+                .expect("verifier should retain the support-array comparison"),
+        )
+        .expect("verifier support lines should be JSON arrays")
+    };
+    let verified = serde_json::json!({
+        "supported_release_lines": verifier_lines("supported_release_lines"),
+        "unsupported_release_lines": verifier_lines("unsupported_release_lines"),
+    });
+
+    assert_eq!(
+        [inventoried, verified],
+        [documented.clone(), documented],
+        "current release support must agree across SECURITY.md, the inventory, and its verifier"
+    );
+}
+
+#[test]
 fn security_control_projection_matches_the_live_security_contract() {
     let canonical = repository_file(".github/security-controls.json");
     let canonical: serde_json::Value =
@@ -1728,13 +1790,17 @@ fn security_control_projection_matches_the_live_security_contract() {
     assert_eq!(canonical["repository_visibility"], "public");
     assert_eq!(canonical["organization_plan"], "free");
     assert_eq!(canonical["default_branch"], "main");
+    let mut policy_contract = canonical["security_policy"]
+        .as_object()
+        .expect("security policy contract should be an object")
+        .clone();
+    policy_contract.remove("supported_release_lines");
+    policy_contract.remove("unsupported_release_lines");
     assert_eq!(
-        canonical["security_policy"],
+        serde_json::Value::Object(policy_contract),
         serde_json::json!({
             "path": "SECURITY.md",
             "private_reporting_url": "https://github.com/EnjoyableWork/mcp-doctor/security/advisories/new",
-            "supported_release_lines": ["0.3.x"],
-            "unsupported_release_lines": ["0.2.x and earlier"],
             "acknowledgement_business_days": 3,
             "initial_assessment_calendar_days": 7,
             "update_calendar_days": 14,
