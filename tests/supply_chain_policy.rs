@@ -545,9 +545,7 @@ fn duplicate_dependency_exceptions_remain_exact_and_reviewed() {
         1,
         "the base64 transition must have one exact exception"
     );
-    assert!(deny.contains(
-        "base64@0.22.1\", reason = \"reqwest 0.13.4 and hyper-util 0.1.20 retain base64 0.22"
-    ));
+    assert!(deny.contains("base64@0.22.1\", reason = \"hyper-util 0.1.20 retains base64 0.22"));
     assert!(deny.contains(
         "remove this exact transition when every selected upstream converges or a relevant advisory changes the balance"
     ));
