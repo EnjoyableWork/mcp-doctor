@@ -1053,6 +1053,57 @@ fn target_environment_excludes_user_and_secret_values() {
 }
 
 #[test]
+fn malformed_notification_envelopes_have_matching_redacted_human_and_json_diagnoses() {
+    for case in ["method", "scalar-params", "null-params"] {
+        let human_environment = TestEnvironment::new();
+        let human_output =
+            current_inspect_command(&human_environment, None, "notification-envelope")
+                .arg(case)
+                .output()
+                .expect("the human notification diagnostic should complete");
+        let json_environment = TestEnvironment::new();
+        let json_output =
+            current_inspect_command(&json_environment, Some("json"), "notification-envelope")
+                .arg(case)
+                .output()
+                .expect("the JSON notification diagnostic should complete");
+        let (human, human_stderr) = text(&human_output);
+        let (json, json_stderr) = text(&json_output);
+        let report = json_report(&json_output);
+
+        assert_eq!(human_output.status.code(), Some(1));
+        assert_eq!(json_output.status.code(), Some(1));
+        assert!(human_stderr.is_empty());
+        assert!(json_stderr.is_empty());
+        assert!(human.contains("PRIMARY DIAGNOSIS · transport.stdio"));
+        assert!(human.contains("MCP-TRANSPORT-003 · process.stdout.message[0]"));
+        assert_eq!(report["primary_diagnosis"]["check_id"], "transport.stdio");
+        assert_eq!(
+            report["primary_diagnosis"]["findings"],
+            serde_json::json!([{
+                "code": "MCP-TRANSPORT-003",
+                "location": "process.stdout.message[0]"
+            }])
+        );
+        assert_eq!(report["independent_findings"], serde_json::json!([]));
+        for check_id in [
+            "protocol.envelope",
+            "protocol.revision",
+            "discovery.catalogs",
+            "schema.contracts",
+        ] {
+            let check = find_json_check(&report, check_id);
+            assert_eq!(check["state"], "skipped");
+            assert_eq!(check["blocked_by"]["check_id"], "transport.stdio");
+        }
+        assert!(!human.contains(REDACTION_SENTINEL));
+        assert!(!json.contains(REDACTION_SENTINEL));
+        assert_human_json_summary_and_limits_match(human, &report);
+        assert_report_findings_are_actionable(&report, human);
+    }
+}
+
+#[test]
 fn malformed_server_output_is_distinct_and_redacted() {
     let output = run_mode("malformed");
     let (stdout, stderr) = text(&output);

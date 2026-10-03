@@ -51,21 +51,21 @@
     {
       "name": "clap",
       "scope": "runtime",
-      "version": "4.6.6",
+      "version": "4.6.7",
       "default_features": true,
       "features": ["derive"]
     },
     {
       "name": "jsonschema",
       "scope": "runtime",
-      "version": "0.52.0",
+      "version": "0.57.0",
       "default_features": false,
       "features": []
     },
     {
       "name": "jsonschema-regex",
       "scope": "runtime",
-      "version": "0.52.0",
+      "version": "0.57.0",
       "default_features": false,
       "features": []
     },
@@ -79,14 +79,14 @@
     {
       "name": "process-wrap",
       "scope": "runtime",
-      "version": "10.0.0",
+      "version": "10.0.1",
       "default_features": false,
       "features": ["job-object", "kill-on-drop", "process-group", "tokio1"]
     },
     {
       "name": "referencing",
       "scope": "runtime",
-      "version": "0.52.0",
+      "version": "0.57.0",
       "default_features": false,
       "features": []
     },
@@ -100,14 +100,14 @@
     {
       "name": "reqwest",
       "scope": "runtime",
-      "version": "0.13.4",
+      "version": "0.13.5",
       "default_features": false,
       "features": ["rustls-no-provider"]
     },
     {
       "name": "rustls",
       "scope": "runtime",
-      "version": "0.23.43",
+      "version": "0.23.45",
       "default_features": false,
       "features": ["ring", "std", "tls12"]
     },
@@ -142,7 +142,7 @@
     {
       "name": "rcgen",
       "scope": "development",
-      "version": "0.14.9",
+      "version": "0.14.10",
       "default_features": false,
       "features": ["pem", "ring"]
     },
@@ -300,8 +300,8 @@
       "selection": "direct",
       "uses": "Homebrew/actions/setup-homebrew",
       "repository": "Homebrew/actions",
-      "tag": "2026.08.31.1",
-      "sha": "3cdb78d0f62ad29dd32de765782654f4eedea607",
+      "tag": "2026.09.07.1",
+      "sha": "f8d4222eb633e65c2a0157383cf80861fc7fae7f",
       "runtime": "node24",
       "license": "BSD-2-Clause",
       "license_files": [

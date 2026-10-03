@@ -20,7 +20,7 @@ exceptions = [
   # exact permissive licenses are scoped to that reviewed TLS graph rather than
   # widening the repository-wide allowlist.
   { allow = ["Apache-2.0", "ISC"], crate = "ring@0.17.14" },
-  { allow = ["ISC"], crate = "rustls-webpki@0.103.13" },
+  { allow = ["ISC"], crate = "rustls-webpki@0.103.15" },
   { allow = ["BSD-3-Clause"], crate = "subtle@2.6.1" },
   { allow = ["ISC"], crate = "untrusted@0.9.0" },
   # rustls-platform-verifier embeds Mozilla's root-certificate data on
@@ -37,9 +37,9 @@ highlight = "all"
 allow = []
 deny = []
 skip = [
-  { crate = "base64@0.22.1", reason = "reqwest 0.13.4 and hyper-util 0.1.20 retain base64 0.22 for HTTP support, while development-only rcgen 0.14.9 retains it through pem 3.0.6; the reviewed direct header-sentinel encoder uses base64 0.23.1 with defaults disabled and alloc only; remove this exact transition when every selected upstream converges or a relevant advisory changes the balance" },
+  { crate = "base64@0.22.1", reason = "hyper-util 0.1.20 retains base64 0.22 for HTTP support; reqwest 0.13.5 and development-only pem 4.0.0 now use the same base64 0.23.1 as the reviewed direct header-sentinel encoder with defaults disabled and alloc only; remove this exact transition when every selected upstream converges or a relevant advisory changes the balance" },
   { crate = "getrandom@0.2.17", reason = "ring 0.17.14 retains getrandom 0.2 for its reviewed TLS entropy path while the schema graph uses 0.3 and disposable tests use 0.4" },
-  { crate = "syn@2.0.119", reason = "process-wrap 10.0.0 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
+  { crate = "syn@2.0.119", reason = "process-wrap 10.0.1 still uses syn 2 through its futures and Windows process-tree support while the current CLI derive stack uses syn 3; pin this exact reviewed transition until upstream unifies" },
   { crate = "windows-sys@0.52.0", reason = "ring 0.17.14 retains windows-sys 0.52 for its reviewed Windows entropy path while the current runtime and platform verifier use 0.61" },
 ]
 skip-tree = []

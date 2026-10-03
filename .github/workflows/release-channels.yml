@@ -367,6 +367,12 @@ jobs:
       - name: Verify declared runner tools
         run: ./scripts/verify-ci-tools.sh ${{ matrix.runner }}
 
+      - name: Preserve the current Homebrew runner preparation
+        if: runner.os == 'macOS'
+        run: >-
+          install -m 0755 scripts/prepare-homebrew-runner.sh
+          "$RUNNER_TEMP/mcp-doctor-prepare-homebrew-runner.sh"
+
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -374,10 +380,14 @@ jobs:
           ref: v${{ needs.validate.outputs.version }}
 
       - name: Set up current stable Homebrew
-        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+        uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f # 2026.09.07.1
         with:
           token: ""
           brew-gh-api-token: ""
+
+      - name: Prepare preinstalled Homebrew links on the macOS runner
+        if: runner.os == 'macOS'
+        run: '"$RUNNER_TEMP/mcp-doctor-prepare-homebrew-runner.sh"'
 
       - name: Install the published formula and exercise diagnosis
         run: |

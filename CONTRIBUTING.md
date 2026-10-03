@@ -30,7 +30,8 @@ On macOS or GNU/Linux:
 ./scripts/check.sh
 ```
 
-On Windows:
+On Windows, use PowerShell 7 with `pwsh` on `PATH`. The native test suite also
+uses it to verify quality-gate environment restoration:
 
 ```powershell
 ./scripts/check.ps1

@@ -2568,9 +2568,13 @@ impl SseDecoder {
             .as_object()
             .ok_or(HttpFailure::Response(ResponseFailure::InvalidSse))?;
         if object.get("method").is_some() {
-            if object.contains_key("result")
+            if !object.get("method").is_some_and(Value::is_string)
+                || object.contains_key("result")
                 || object.contains_key("error")
                 || object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+                || !object
+                    .get("params")
+                    .is_none_or(|params| params.is_object() || params.is_array())
             {
                 return Err(HttpFailure::Response(ResponseFailure::InvalidSse));
             }
@@ -3823,6 +3827,44 @@ mod tests {
             assert!(decoder.peak_retained_bytes <= limits().message_bytes);
             assert!(decoder.line.is_empty());
             assert!(decoder.data.is_empty());
+        }
+    }
+
+    #[test]
+    fn notification_envelopes_require_string_methods_and_structured_params() {
+        for notification in [
+            serde_json::json!({"jsonrpc": "2.0", "method": 123}),
+            serde_json::json!({"jsonrpc": "2.0", "method": null}),
+            serde_json::json!({"jsonrpc": "2.0", "method": false}),
+            serde_json::json!({"jsonrpc": "2.0", "method": {}}),
+            serde_json::json!({"jsonrpc": "2.0", "method": []}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": 123}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": null}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": false}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": "synthetic-unreviewed-value"}),
+        ] {
+            let body = format!("data: {notification}\n\n").into_bytes();
+            for accept_server_requests in [false, true] {
+                for widths in [vec![body.len()], vec![1]] {
+                    let (result, _) =
+                        decode_sse_fixture(&body, &widths, false, accept_server_requests, limits());
+                    assert_eq!(
+                        result,
+                        Err(HttpFailure::Response(ResponseFailure::InvalidSse))
+                    );
+                }
+            }
+        }
+
+        for notification in [
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress"}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": {}}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": []}),
+        ] {
+            let body = format!("data: {notification}\n\n").into_bytes();
+            let (result, decoder) = decode_sse_fixture(&body, &[1], false, false, limits());
+            assert_eq!(result, Ok(None));
+            assert_eq!(decoder.message_count(), 1);
         }
     }
 

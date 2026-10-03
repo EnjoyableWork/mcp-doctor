@@ -1,6 +1,6 @@
 {
   "schema_version": "mcp-doctor.ci-tools/v1",
-  "reviewed_on": "2026-08-16",
+  "reviewed_on": "2026-10-02",
   "rust_toolchain": {
     "channel": "1.97.1",
     "source": "rust-toolchain.toml",
@@ -17,6 +17,8 @@
         "gh",
         "git",
         "jq",
+        "readlink",
+        "rm",
         "rustc",
         "rustup",
         "sha256sum",
@@ -48,6 +50,8 @@
         "curl",
         "git",
         "jq",
+        "readlink",
+        "rm",
         "rustc",
         "rustup",
         "shasum",
@@ -69,7 +73,7 @@
     {
       "command": "brew",
       "action": "Homebrew/actions/setup-homebrew",
-      "control": "The full reviewed action commit is pinned in each workflow before brew is used."
+      "control": "The full reviewed action commit is pinned in each workflow before brew is used. scripts/prepare-homebrew-runner.sh verifies brew and the declared readlink/rm commands before the GitHub-hosted macOS-only openssl@1.1 link normalization; it accepts one bounded normalized absolute brew prefix and removes only bin/openssl symlinks with the exact legacy opt target, then verifies absence. Installed-channel jobs preserve that script from the exact current runner-contract checkout before selecting a historical release tag."
     }
   ],
   "container_provided": [
