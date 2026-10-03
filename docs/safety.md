@@ -129,6 +129,14 @@ diagnostic evidence.
 - Active runs name and independently authorize each exact tool and target,
   declare effects and bounded cases, and add a seed for generation. Side
   effects require `--allow-side-effects`.
+- Each generated argument candidate shares one `instance_bytes` allowance
+  across strings, escaped property names, delimiters, and nested members.
+  Construction reserves those bytes before allocating payloads; schema-owned
+  `const`, `enum`, defaults, and examples are measured before cloning. Rejection
+  mutations measure their final members before cloning and omit replaced
+  payloads. Candidate identity and size checks stream into fixed-size state
+  rather than retaining another serialization. Exceeding the allowance yields
+  `MCP-LIMIT-001` at `generation.cases` and skips the dependent tool calls.
 - Remote connections use direct public HTTPS, verified TLS, and pinned bounded
   resolution without redirects, retries, proxies, cookies, or caches.
 - Private targets, loopback cleartext, and environment credentials each require

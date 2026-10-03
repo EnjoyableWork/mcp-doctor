@@ -164,6 +164,7 @@ fn main() -> ExitCode {
         Some("break-impossible") => break_impossible(),
         Some("break-schema-external") => break_schema_external(),
         Some("break-oversized-input") => break_oversized_input(),
+        Some("break-aggregate-input-limit") => aggregate_generated_input_limit(&remaining, false),
         Some("break-shared-schema-input") => break_shared_schema_input(),
         Some("break-generation-steps") => break_generation_steps(),
         Some("break-resistant-child") => break_resistant_child(&remaining),
@@ -179,6 +180,7 @@ fn main() -> ExitCode {
         Some("reject-schema-invalid") => reject_schema_invalid(),
         Some("reject-schema-external") => reject_schema_external(),
         Some("reject-oversized-input") => reject_oversized_input(),
+        Some("reject-aggregate-input-limit") => aggregate_generated_input_limit(&remaining, true),
         Some("reject-impossible") => reject_impossible(),
         Some("reject-passive") => reject_passive(&remaining),
         Some("descendant") => descendant(&remaining),
@@ -3422,6 +3424,42 @@ fn break_shared_schema_input() -> ExitCode {
         }),
     );
     assert_eof(&mut input);
+    ExitCode::SUCCESS
+}
+
+fn aggregate_generated_input_limit(arguments: &[OsString], rejection: bool) -> ExitCode {
+    let Some(marker) = arguments.first().map(PathBuf::from) else {
+        return ExitCode::from(2);
+    };
+    let mut input = io::BufReader::new(io::stdin().lock());
+    // The object fits the schema gate. Its sixteen individually permitted
+    // strings plus JSON delimiters exceed one instance allowance, so active
+    // generation must stop before any tools/call request is transmitted.
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "synthetic_private_values_never_report": {
+                "type": "array",
+                "minItems": 16,
+                "maxItems": 16,
+                "items": {"type": "string", "minLength": 65_536, "maxLength": 65_536}
+            }
+        },
+        "required": ["synthetic_private_values_never_report"],
+        "additionalProperties": false
+    });
+    if rejection {
+        active_begin_with_input_schema(&mut input, schema);
+    } else {
+        generated_begin(&mut input, schema);
+    }
+    let mut unexpected = String::new();
+    let bytes = input
+        .read_line(&mut unexpected)
+        .expect("the generation EOF should be observable");
+    fs::write(marker, if bytes == 0 { b"0" } else { b"1" })
+        .expect("the generated call-count marker should be writable");
+    assert_eq!(bytes, 0, "over-limit generation transmitted a request");
     ExitCode::SUCCESS
 }
 

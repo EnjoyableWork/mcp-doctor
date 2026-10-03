@@ -424,6 +424,70 @@ fn cleanup_failure_remains_a_critical_independent_finding_after_rejections_pass(
 }
 
 #[test]
+fn aggregate_generated_baseline_bytes_refuse_before_transmission_in_both_reporters() {
+    for format in ["human", "json"] {
+        let environment = TestEnvironment::new();
+        let marker = environment.artifact_path("rejection-byte-limit-call-count.txt");
+        let output = stdio_reject_command(&environment, 123)
+            .arg("--format")
+            .arg(format)
+            .arg("--")
+            .arg(fixture())
+            .arg("reject-aggregate-input-limit")
+            .arg(&marker)
+            .output()
+            .expect("the aggregate rejection baseline limit should return");
+        let (stdout, stderr) = text(&output);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(stderr.is_empty());
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "0");
+        if format == "json" {
+            let report = parse_and_validate_report(&output.stdout);
+            assert_eq!(report["primary_diagnosis"]["check_id"], "generation.cases");
+            assert_eq!(
+                report["primary_diagnosis"]["findings"][0]["code"],
+                "MCP-LIMIT-001"
+            );
+            let generation = report["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|check| check["id"] == "generation.cases")
+                .unwrap();
+            assert_eq!(
+                generation["findings"][0]["evidence"]["limit"],
+                "instance_bytes"
+            );
+            assert_eq!(generation["findings"][0]["evidence"]["maximum"], 1_048_576);
+            assert!(
+                generation["findings"][0]["evidence"]["observed"]
+                    .as_u64()
+                    .unwrap()
+                    > 1_048_576
+            );
+            assert!(report["checks"].as_array().unwrap().iter().any(|check| {
+                check["id"] == "runtime.tools.case[0]"
+                    && check["state"] == "skipped"
+                    && check["blocked_by"]["check_id"] == "generation.cases"
+            }));
+        } else {
+            assert!(stdout.contains("PRIMARY DIAGNOSIS · generation.cases"));
+            assert!(stdout.contains("instance_bytes"));
+            assert!(stdout.contains("MCP-LIMIT-001"));
+            assert!(stdout.contains("SKIP  runtime.tools.case[0]"));
+            assert!(stdout.contains("blocked by generation.cases"));
+        }
+        assert_redacted(
+            &output,
+            &[
+                marker.to_str().unwrap(),
+                "synthetic_private_values_never_report",
+            ],
+        );
+    }
+}
+
+#[test]
 fn invalid_schema_generation_and_transport_failures_keep_causal_evidence() {
     let cases = [
         ("reject-schema-invalid", "MCP-SCHEMA-001"),
