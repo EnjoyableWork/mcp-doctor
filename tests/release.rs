@@ -2581,3 +2581,38 @@ fn inspect_text_path(
 fn release_version_constant_matches_the_current_version() {
     assert_eq!(CANDIDATE_RELEASE_VERSION, "0.4.2");
 }
+
+#[cfg(windows)]
+#[test]
+fn windows_quality_gates_restore_the_callers_environment_on_success_and_failure() {
+    let root = tempfile::tempdir().expect("the quality-gate fixture root should exist");
+    let mut command = Command::new("pwsh");
+    command
+        .env_clear()
+        .env("USERPROFILE", root.path())
+        .env("TEMP", root.path())
+        .env("TMP", root.path())
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(repository_root().join("tests/fixtures/quality_environment.ps1"))
+        .arg("-QualityScript")
+        .arg(repository_root().join("scripts/check.ps1"));
+    for name in ["PATH", "SystemRoot"] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    let output = command
+        .output()
+        .expect("the native PowerShell quality-gate fixture should run");
+    assert!(
+        output.status.success(),
+        "the quality gate should restore environment membership and values, location, and cleanup"
+    );
+    assert!(
+        output
+            .stdout
+            .windows(b"Quality environment restoration passed.".len())
+            .any(|window| window == b"Quality environment restoration passed."),
+        "both synthetic gate paths should complete"
+    );
+}

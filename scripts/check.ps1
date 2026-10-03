@@ -22,6 +22,37 @@ $doctorSyntheticRoot = Join-Path $doctorTempParent ("mcp-doctor-quality-" + [gui
 $doctorSyntheticPrefix = Join-Path $doctorTempParent "mcp-doctor-quality-"
 $doctorSyntheticUserRoot = Join-Path $doctorSyntheticRoot "user"
 $doctorLocationPushed = $false
+$doctorIsolatedEnvironment = @{
+    APPDATA = Join-Path $doctorSyntheticUserRoot "AppData/Roaming"
+    CARGO_HOME = $doctorCargoHome
+    CARGO_INCREMENTAL = "0"
+    CARGO_TERM_COLOR = "never"
+    CFFIXED_USER_HOME = $doctorSyntheticUserRoot
+    HOME = $doctorSyntheticUserRoot
+    LANG = "C"
+    LC_ALL = "C"
+    LOCALAPPDATA = Join-Path $doctorSyntheticUserRoot "AppData/Local"
+    MCP_DOCTOR_TEST_MODE = "1"
+    MCP_DOCTOR_TEST_ROOT = $doctorSyntheticRoot
+    NO_COLOR = "1"
+    RUSTUP_HOME = $doctorRustupHome
+    TEMP = Join-Path $doctorSyntheticRoot "tmp"
+    TMP = Join-Path $doctorSyntheticRoot "tmp"
+    TMPDIR = Join-Path $doctorSyntheticRoot "tmp"
+    TZ = "UTC"
+    USERPROFILE = $doctorSyntheticUserRoot
+    XDG_CACHE_HOME = Join-Path $doctorSyntheticUserRoot ".cache"
+    XDG_CONFIG_HOME = Join-Path $doctorSyntheticUserRoot ".config"
+    XDG_DATA_HOME = Join-Path $doctorSyntheticUserRoot ".local/share"
+    XDG_RUNTIME_DIR = Join-Path $doctorSyntheticRoot "runtime"
+    XDG_STATE_HOME = Join-Path $doctorSyntheticUserRoot ".local/state"
+}
+$doctorPreviousEnvironment = @{}
+foreach ($doctorEnvironmentName in $doctorIsolatedEnvironment.Keys) {
+    $doctorPreviousEnvironment[$doctorEnvironmentName] = [Environment]::GetEnvironmentVariable(
+        $doctorEnvironmentName, "Process"
+    )
+}
 
 function Assert-DoctorGate {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -44,29 +75,11 @@ try {
     )
     New-Item -ItemType Directory -Force -Path $doctorDirectories | Out-Null
 
-    $env:APPDATA = Join-Path $doctorSyntheticUserRoot "AppData/Roaming"
-    $env:CARGO_HOME = $doctorCargoHome
-    $env:CARGO_INCREMENTAL = "0"
-    $env:CARGO_TERM_COLOR = "never"
-    $env:CFFIXED_USER_HOME = $doctorSyntheticUserRoot
-    $env:HOME = $doctorSyntheticUserRoot
-    $env:LANG = "C"
-    $env:LC_ALL = "C"
-    $env:LOCALAPPDATA = Join-Path $doctorSyntheticUserRoot "AppData/Local"
-    $env:MCP_DOCTOR_TEST_MODE = "1"
-    $env:MCP_DOCTOR_TEST_ROOT = $doctorSyntheticRoot
-    $env:NO_COLOR = "1"
-    $env:RUSTUP_HOME = $doctorRustupHome
-    $env:TEMP = Join-Path $doctorSyntheticRoot "tmp"
-    $env:TMP = Join-Path $doctorSyntheticRoot "tmp"
-    $env:TMPDIR = Join-Path $doctorSyntheticRoot "tmp"
-    $env:TZ = "UTC"
-    $env:USERPROFILE = $doctorSyntheticUserRoot
-    $env:XDG_CACHE_HOME = Join-Path $doctorSyntheticUserRoot ".cache"
-    $env:XDG_CONFIG_HOME = Join-Path $doctorSyntheticUserRoot ".config"
-    $env:XDG_DATA_HOME = Join-Path $doctorSyntheticUserRoot ".local/share"
-    $env:XDG_RUNTIME_DIR = Join-Path $doctorSyntheticRoot "runtime"
-    $env:XDG_STATE_HOME = Join-Path $doctorSyntheticUserRoot ".local/state"
+    foreach ($doctorEnvironmentName in $doctorIsolatedEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable(
+            $doctorEnvironmentName, $doctorIsolatedEnvironment[$doctorEnvironmentName], "Process"
+        )
+    }
 
     Push-Location $doctorRepositoryRoot
     $doctorLocationPushed = $true
@@ -81,6 +94,16 @@ try {
 
     Write-Output "Formatting, Clippy, and tests passed."
 } finally {
+    foreach ($doctorEnvironmentName in $doctorPreviousEnvironment.Keys) {
+        $doctorEnvironmentPath = "Env:" + $doctorEnvironmentName
+        if ($null -eq $doctorPreviousEnvironment[$doctorEnvironmentName]) {
+            if (Test-Path -LiteralPath $doctorEnvironmentPath) {
+                Remove-Item -LiteralPath $doctorEnvironmentPath
+            }
+        } else {
+            Set-Item -LiteralPath $doctorEnvironmentPath -Value $doctorPreviousEnvironment[$doctorEnvironmentName]
+        }
+    }
     if ($doctorLocationPushed) {
         Pop-Location
     }
