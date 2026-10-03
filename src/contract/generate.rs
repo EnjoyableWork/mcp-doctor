@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Number, Value};
 
-use super::catalog::{InstanceValidationIssue, LocalValidator, resolve_local_reference};
+use super::catalog::{InstanceValidationIssue, LocalValidator, resolve_local_reference_with_work};
 use super::limits::{DiagnosticLimits, LimitKind, LimitViolation};
 use super::model::{GeneratedCaseReproduction, JsonKind, StructuralInput};
 
@@ -563,7 +563,7 @@ impl<'root, 'budget> Synthesizer<'root, 'budget> {
                     .and_then(Value::as_str)
                     && self.active_references.insert(reference.to_owned())
                 {
-                    let resolved = resolve_local_reference(self.root, reference);
+                    let resolved = resolve_generation_reference(self.root, reference, self.steps)?;
                     let generated = match resolved {
                         Some(target) => self.value(target, depth.saturating_add(1))?,
                         None => None,
@@ -949,7 +949,7 @@ fn collect_object_plan<'root>(
         .and_then(Value::as_str)
         && active_references.insert(reference.to_owned())
     {
-        if let Some(target) = resolve_local_reference(root, reference) {
+        if let Some(target) = resolve_generation_reference(root, reference, steps)? {
             collect_object_plan(root, target, plan, active_references, random, steps)?;
         }
         active_references.remove(reference);
@@ -1091,6 +1091,20 @@ fn integer_keyword(object: &Map<String, Value>, keyword: &str) -> Option<u64> {
     object.get(keyword).and_then(Value::as_u64)
 }
 
+fn resolve_generation_reference<'a>(
+    root: &'a Value,
+    reference: &str,
+    steps: &mut u64,
+) -> Result<Option<&'a Value>, GenerationFailure> {
+    let maximum = DiagnosticLimits::DEFAULTS.values().generation_steps;
+    resolve_local_reference_with_work(root, reference, steps, maximum).map_err(|violation| {
+        GenerationFailure::Limit(
+            LimitViolation::new(LimitKind::GenerationSteps, violation.observed(), maximum)
+                .expect("local reference resolution exhausted the generation work allowance"),
+        )
+    })
+}
+
 fn tick(steps: &mut u64) -> Result<(), GenerationFailure> {
     let maximum = DiagnosticLimits::DEFAULTS.values().generation_steps;
     *steps = steps.saturating_add(1);
@@ -1221,10 +1235,28 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        GenerationFailure, generate_inputs, generate_invalid_inputs, select_generated_inputs,
+        GenerationFailure, generate_inputs, generate_invalid_inputs, resolve_generation_reference,
+        select_generated_inputs,
     };
     use crate::contract::catalog::{InstanceValidationIssue, LocalValidator};
     use crate::contract::limits::LimitKind;
+
+    #[test]
+    fn reference_resolution_stops_at_the_existing_generation_work_ceiling() {
+        let schema = json!({"$anchor": "node", "type": "object"});
+        let maximum = crate::contract::limits::DiagnosticLimits::DEFAULTS
+            .values()
+            .generation_steps;
+        let mut steps = maximum - 10;
+        assert!(matches!(
+            resolve_generation_reference(&schema, "#node", &mut steps),
+            Err(GenerationFailure::Limit(violation))
+                if violation.kind() == LimitKind::GenerationSteps
+                    && violation.observed() == maximum + 1
+                    && violation.maximum() == maximum
+        ));
+        assert_eq!(steps, maximum + 1);
+    }
 
     #[test]
     fn generated_inputs_are_deterministic_schema_valid_and_value_free_in_reproduction() {

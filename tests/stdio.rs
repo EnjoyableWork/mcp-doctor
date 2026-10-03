@@ -2805,6 +2805,54 @@ fn schema_depth_and_catalog_item_bounds_stop_with_named_findings() {
 }
 
 #[test]
+fn passive_anchor_work_limit_reports_agree_without_untrusted_fragments_or_activity() {
+    let human_output = run_mode("schema-anchor-work-limit");
+    let json_output = run_json_mode("schema-anchor-work-limit");
+    let (human, human_stderr) = text(&human_output);
+    let (json, json_stderr) = text(&json_output);
+    for sentinel in [
+        "synthetic-private-anchor-never-report-7f2c",
+        "synthetic-private-schema-never-report-7f2c",
+    ] {
+        assert!(!human.contains(sentinel));
+        assert!(!json.contains(sentinel));
+        assert!(!human_stderr.contains(sentinel));
+        assert!(!json_stderr.contains(sentinel));
+    }
+    assert!(human_stderr.is_empty());
+    assert!(json_stderr.is_empty());
+    assert_eq!(human_output.status.code(), Some(1));
+    assert_eq!(json_output.status.code(), Some(1));
+    let report = json_report(&json_output);
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["primary_diagnosis"]["check_id"], "schema.contracts");
+    let finding = find_json_check(&report, "schema.contracts")["findings"]
+        .as_array()
+        .expect("schema findings should be an array")
+        .iter()
+        .find(|finding| finding["code"] == "MCP-LIMIT-001")
+        .expect("anchor work exhaustion must have a typed limit finding");
+    assert_eq!(finding["evidence"]["limit"], "schema_evaluation_steps");
+    assert_eq!(finding["evidence"]["observed"], 100_001);
+    assert_eq!(finding["evidence"]["maximum"], 100_000);
+    assert!(
+        report["primary_diagnosis"]["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["code"] == "MCP-LIMIT-001")
+    );
+    assert!(human.contains("PRIMARY DIAGNOSIS · schema.contracts"));
+    assert!(human.contains("MCP-LIMIT-001"));
+    let runtime = find_json_check(&report, "runtime.tools");
+    assert_eq!(runtime["state"], "skipped");
+    assert_eq!(runtime["skip_reason"], "not_authorized");
+    assert!(runtime.get("blocked_by").is_none());
+    assert_human_json_summary_and_limits_match(human, &report);
+    assert_report_findings_are_actionable(&report, human);
+}
+
+#[test]
 fn representative_schema_work_exhaustion_is_typed_incomplete_across_stdio_artifacts() {
     for case_id in schema_gate_corpus::CASES {
         let schema = schema_gate_corpus::schema(case_id)

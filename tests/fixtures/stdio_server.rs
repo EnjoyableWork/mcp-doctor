@@ -80,6 +80,7 @@ fn main() -> ExitCode {
         Some("schema-node-limit") => schema_node_limit(),
         Some("schema-ref-depth-limit") => schema_ref_depth_limit(),
         Some("schema-evaluation-limit") => schema_evaluation_limit(),
+        Some("schema-anchor-work-limit") => schema_anchor_work_limit(),
         Some("schema-validator-work-limit") => schema_validator_work_limit(),
         Some("schema-gate") => schema_gate(&remaining),
         Some("schema-mixed-failure-incomplete") => schema_mixed_failure_incomplete(),
@@ -2433,6 +2434,18 @@ fn schema_evaluation_limit() -> ExitCode {
     let result = single_tool_result(json!({
         "type": "object",
         "properties": properties
+    }));
+    serve_single_catalog_value("tools", "tools/list", result)
+}
+
+fn schema_anchor_work_limit() -> ExitCode {
+    let result = single_tool_result(json!({
+        "type": "object",
+        "allOf": (0..100).map(|index| json!({
+            "$ref": format!("#synthetic-private-anchor-never-report-7f2c-{index}")
+        })).collect::<Vec<_>>(),
+        "x-padding": vec![0; 1_000],
+        "description": "synthetic-private-schema-never-report-7f2c"
     }));
     serve_single_catalog_value("tools", "tools/list", result)
 }

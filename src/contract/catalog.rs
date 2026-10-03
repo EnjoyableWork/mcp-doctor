@@ -1973,7 +1973,7 @@ impl Analyzer {
                             && let Some(reference) = value.as_str()
                         {
                             if is_local_reference(reference) {
-                                references.push((reference.to_owned(), child_location.clone()));
+                                references.push((reference, child_location.clone()));
                             } else {
                                 external_reference = true;
                                 self.push(
@@ -1992,48 +1992,47 @@ impl Analyzer {
             }
         }
 
+        let budget = SchemaWorkBudget::with_observed(values.schema_evaluation_steps, work);
         let mut unresolved_reference = false;
         for (reference, location) in &references {
-            work = work.saturating_add(1);
-            if work > values.schema_evaluation_steps {
+            if !budget.observe(1) {
+                let limit = budget.violation();
                 self.schema_limit(
                     location.clone(),
-                    LimitKind::SchemaEvaluationSteps,
-                    work,
-                    values.schema_evaluation_steps,
+                    limit.kind(),
+                    limit.observed(),
+                    limit.maximum(),
                 );
                 return None;
             }
-            if resolve_local_reference(schema, reference).is_none() {
-                unresolved_reference = true;
-                self.push(
-                    FindingBucket::Schema,
-                    Finding::schema_contract_invalid(
-                        SupportedRevision::CURRENT,
+            match resolve_local_reference(schema, reference, &budget) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    unresolved_reference = true;
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::schema_contract_invalid(
+                            SupportedRevision::CURRENT,
+                            location.clone(),
+                            RuleViolation::UnresolvedLocalReference,
+                        ),
+                    );
+                }
+                Err(limit) => {
+                    self.schema_limit(
                         location.clone(),
-                        RuleViolation::UnresolvedLocalReference,
-                    ),
-                );
+                        limit.kind(),
+                        limit.observed(),
+                        limit.maximum(),
+                    );
+                    return None;
+                }
             }
         }
-        if let Some((observed, location)) = reference_depth_violation(
-            schema,
-            &references,
-            values.schema_ref_depth,
-            &mut work,
-            values.schema_evaluation_steps,
-        ) {
-            let kind = if work > values.schema_evaluation_steps {
-                LimitKind::SchemaEvaluationSteps
-            } else {
-                LimitKind::SchemaRefDepth
-            };
-            let maximum = if kind == LimitKind::SchemaRefDepth {
-                values.schema_ref_depth
-            } else {
-                values.schema_evaluation_steps
-            };
-            self.schema_limit(location, kind, observed, maximum);
+        if let Some((limit, location)) =
+            reference_depth_violation(schema, &references, values.schema_ref_depth, &budget)
+        {
+            self.schema_limit(location, limit.kind(), limit.observed(), limit.maximum());
             return None;
         }
 
@@ -2045,7 +2044,6 @@ impl Analyzer {
             return None;
         }
 
-        let budget = SchemaWorkBudget::with_observed(values.schema_evaluation_steps, work);
         match validate_meta_schema(schema, budget.clone(), values.validation_errors) {
             Ok(()) => {}
             Err(SchemaWorkIssue::Limit(limit)) => {
@@ -3367,7 +3365,7 @@ impl LegacyAnalyzer {
                                     ),
                                 ),
                                 Some(reference) => {
-                                    references.push((reference.to_owned(), child_location.clone()));
+                                    references.push((reference, child_location.clone()));
                                 }
                                 None => self.expected_shape(
                                     FindingBucket::Schema,
@@ -3392,59 +3390,38 @@ impl LegacyAnalyzer {
                 _ => {}
             }
         }
-        let mut work = nodes;
+        let budget = SchemaWorkBudget::with_observed(values.schema_evaluation_steps, nodes);
         for (reference, location) in &references {
-            work = work.saturating_add(1);
-            if work > values.schema_evaluation_steps {
-                self.push(
-                    FindingBucket::Schema,
-                    Finding::limit_exceeded(
-                        self.revision_kind,
-                        location.clone(),
-                        LimitViolation::new(
-                            LimitKind::SchemaEvaluationSteps,
-                            work,
-                            values.schema_evaluation_steps,
-                        )
-                        .expect("the legacy schema reference work exceeds its maximum"),
-                    ),
-                );
-                return;
-            }
-            if resolve_local_reference(schema, reference).is_none() {
-                self.push(
+            let resolved = if budget.observe(1) {
+                resolve_local_reference(schema, reference, &budget)
+            } else {
+                Err(budget.violation())
+            };
+            match resolved {
+                Ok(Some(_)) => {}
+                Ok(None) => self.push(
                     FindingBucket::Schema,
                     Finding::schema_contract_invalid(
                         self.revision_kind,
                         location.clone(),
                         RuleViolation::UnresolvedLocalReference,
                     ),
-                );
+                ),
+                Err(limit) => {
+                    self.push(
+                        FindingBucket::Schema,
+                        Finding::limit_exceeded(self.revision_kind, location.clone(), limit),
+                    );
+                    return;
+                }
             }
         }
-        if let Some((observed, location)) = reference_depth_violation(
-            schema,
-            &references,
-            values.schema_ref_depth,
-            &mut work,
-            values.schema_evaluation_steps,
-        ) {
-            let (kind, maximum) = if work > values.schema_evaluation_steps {
-                (
-                    LimitKind::SchemaEvaluationSteps,
-                    values.schema_evaluation_steps,
-                )
-            } else {
-                (LimitKind::SchemaRefDepth, values.schema_ref_depth)
-            };
+        if let Some((limit, location)) =
+            reference_depth_violation(schema, &references, values.schema_ref_depth, &budget)
+        {
             self.push(
                 FindingBucket::Schema,
-                Finding::limit_exceeded(
-                    self.revision_kind,
-                    location,
-                    LimitViolation::new(kind, observed, maximum)
-                        .expect("the legacy schema reference bound was exceeded"),
-                ),
+                Finding::limit_exceeded(self.revision_kind, location, limit),
             );
         }
     }
@@ -3761,33 +3738,131 @@ fn is_local_reference(reference: &str) -> bool {
     reference.is_empty() || reference.starts_with('#')
 }
 
-pub(super) fn resolve_local_reference<'a>(schema: &'a Value, reference: &str) -> Option<&'a Value> {
+pub(super) fn resolve_local_reference<'a>(
+    schema: &'a Value,
+    reference: &str,
+    budget: &SchemaWorkBudget,
+) -> Result<Option<&'a Value>, LimitViolation> {
+    bounded_local_reference(schema, reference, &mut |cost| budget.observe(cost))
+        .map_err(|()| budget.violation())
+}
+
+pub(super) fn resolve_local_reference_with_work<'a>(
+    schema: &'a Value,
+    reference: &str,
+    work: &mut u64,
+    maximum_work: u64,
+) -> Result<Option<&'a Value>, LimitViolation> {
+    bounded_local_reference(schema, reference, &mut |cost| {
+        if *work > maximum_work {
+            return false;
+        }
+        *work = work
+            .saturating_add(cost)
+            .min(maximum_work.saturating_add(1));
+        *work <= maximum_work
+    })
+    .map_err(|()| {
+        LimitViolation::new(LimitKind::SchemaEvaluationSteps, *work, maximum_work)
+            .expect("the local reference resolver exhausted its caller's work budget")
+    })
+}
+
+fn bounded_local_reference<'a>(
+    schema: &'a Value,
+    reference: &str,
+    observe: &mut impl FnMut(u64) -> bool,
+) -> Result<Option<&'a Value>, ()> {
+    // Charge decoding and comparison bytes before allocating a fragment or
+    // traversing the document. Every consumer supplies its existing operation
+    // budget; resolving a reference never creates a fresh work allowance.
+    let reference_bytes = u64::try_from(reference.len()).unwrap_or(u64::MAX);
+    charge_reference_work(observe, reference_bytes.saturating_mul(2).saturating_add(1))?;
     if matches!(reference, "" | "#") {
-        return Some(schema);
+        return Ok(Some(schema));
     }
-    let fragment = reference.strip_prefix('#')?;
+    let Some(fragment) = reference.strip_prefix('#') else {
+        return Ok(None);
+    };
+    let Some(decoded) = percent_decode(fragment) else {
+        return Ok(None);
+    };
     if fragment.starts_with('/') {
-        let decoded = percent_decode(fragment)?;
-        return schema.pointer(&decoded);
+        let mut target = schema;
+        for token in decoded.split('/').skip(1) {
+            let bytes = u64::try_from(token.len()).unwrap_or(u64::MAX);
+            charge_reference_work(observe, bytes.saturating_mul(3).saturating_add(1))?;
+            let token = token.replace("~1", "/").replace("~0", "~");
+            let next = match target {
+                Value::Object(object) => reference_member(object, &token, observe)?,
+                Value::Array(values) => {
+                    if token.starts_with('+') || (token.starts_with('0') && token.len() != 1) {
+                        return Ok(None);
+                    }
+                    token
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|index| values.get(index))
+                }
+                _ => None,
+            };
+            let Some(next) = next else {
+                return Ok(None);
+            };
+            target = next;
+        }
+        return Ok(Some(target));
     }
 
-    let anchor = percent_decode(fragment)?;
     let mut stack = vec![schema];
     while let Some(value) = stack.pop() {
+        charge_reference_work(observe, 1)?;
         match value {
             Value::Object(object) => {
-                if object.get("$anchor").and_then(Value::as_str) == Some(anchor.as_str())
-                    || object.get("$dynamicAnchor").and_then(Value::as_str) == Some(anchor.as_str())
-                {
-                    return Some(value);
+                for keyword in ["$anchor", "$dynamicAnchor"] {
+                    if let Some(candidate) =
+                        reference_member(object, keyword, observe)?.and_then(Value::as_str)
+                    {
+                        let bytes =
+                            u64::try_from(candidate.len().min(decoded.len())).unwrap_or(u64::MAX);
+                        charge_reference_work(observe, bytes.saturating_add(1))?;
+                        if candidate == decoded {
+                            return Ok(Some(value));
+                        }
+                    }
                 }
+                charge_reference_work(observe, u64::try_from(object.len()).unwrap_or(u64::MAX))?;
                 stack.extend(object.values());
             }
-            Value::Array(values) => stack.extend(values),
+            Value::Array(values) => {
+                charge_reference_work(observe, u64::try_from(values.len()).unwrap_or(u64::MAX))?;
+                stack.extend(values);
+            }
             _ => {}
         }
     }
-    None
+    Ok(None)
+}
+
+fn charge_reference_work(observe: &mut impl FnMut(u64) -> bool, cost: u64) -> Result<(), ()> {
+    observe(cost).then_some(()).ok_or(())
+}
+
+fn reference_member<'a>(
+    object: &'a Map<String, Value>,
+    key: &str,
+    observe: &mut impl FnMut(u64) -> bool,
+) -> Result<Option<&'a Value>, ()> {
+    // A linear lookup has an explicit comparison boundary independent of the
+    // map implementation. Stop before each untrusted key comparison.
+    for (candidate, value) in object {
+        let bytes = u64::try_from(candidate.len().min(key.len())).unwrap_or(u64::MAX);
+        charge_reference_work(observe, bytes.saturating_add(1))?;
+        if candidate == key {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
 }
 
 fn percent_decode(value: &str) -> Option<String> {
@@ -3821,101 +3896,127 @@ const fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
-fn reference_depth_violation(
-    schema: &Value,
-    references: &[(String, Location)],
+fn reference_depth_violation<'a>(
+    schema: &'a Value,
+    references: &[(&'a str, Location)],
     maximum_depth: u64,
-    work: &mut u64,
-    maximum_work: u64,
-) -> Option<(u64, Location)> {
+    budget: &SchemaWorkBudget,
+) -> Option<(LimitViolation, Location)> {
     for (reference, location) in references {
         let mut active = BTreeSet::new();
-        if let Some(observed) = follow_reference_depth(
-            schema,
-            reference,
-            1,
-            maximum_depth,
-            &mut active,
-            work,
-            maximum_work,
-        ) {
-            return Some((observed, location.clone()));
+        if let Err(limit) =
+            follow_reference_depth(schema, reference, 1, maximum_depth, &mut active, budget)
+        {
+            return Some((limit, location.clone()));
         }
     }
     None
 }
 
-fn follow_reference_depth(
-    schema: &Value,
-    reference: &str,
+fn follow_reference_depth<'a>(
+    schema: &'a Value,
+    reference: &'a str,
     depth: u64,
     maximum_depth: u64,
-    active: &mut BTreeSet<String>,
-    work: &mut u64,
-    maximum_work: u64,
-) -> Option<u64> {
-    *work = work.saturating_add(1);
-    if *work > maximum_work {
-        return Some(*work);
+    active: &mut BTreeSet<&'a str>,
+    budget: &SchemaWorkBudget,
+) -> Result<(), LimitViolation> {
+    if !budget.observe(1) {
+        return Err(budget.violation());
     }
     if depth > maximum_depth {
-        return Some(depth);
+        return Err(
+            LimitViolation::new(LimitKind::SchemaRefDepth, depth, maximum_depth)
+                .expect("the local reference depth exceeds its maximum"),
+        );
     }
-    if !active.insert(reference.to_owned()) {
-        return None;
+    charge_reference_identity(reference, active.len(), budget)?;
+    if !active.insert(reference) {
+        return Ok(());
     }
-    let target = resolve_local_reference(schema, reference)?;
-    let mut nested = Vec::new();
-    collect_local_references(target, &mut nested, work, maximum_work);
-    for nested_reference in nested {
-        if let Some(observed) = follow_reference_depth(
-            schema,
-            &nested_reference,
-            depth.saturating_add(1),
-            maximum_depth,
-            active,
-            work,
-            maximum_work,
-        ) {
-            return Some(observed);
+    if let Some(target) = resolve_local_reference(schema, reference, budget)? {
+        let mut nested = Vec::new();
+        collect_local_references(target, &mut nested, budget)?;
+        for nested_reference in nested {
+            follow_reference_depth(
+                schema,
+                nested_reference,
+                depth.saturating_add(1),
+                maximum_depth,
+                active,
+                budget,
+            )?;
         }
     }
+    charge_reference_identity(reference, active.len(), budget)?;
     active.remove(reference);
-    None
+    Ok(())
 }
 
-fn collect_local_references(
-    value: &Value,
-    references: &mut Vec<String>,
-    work: &mut u64,
-    maximum_work: u64,
-) {
+fn charge_reference_identity(
+    reference: &str,
+    active_count: usize,
+    budget: &SchemaWorkBudget,
+) -> Result<(), LimitViolation> {
+    let comparisons = u64::try_from(active_count)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let bytes = u64::try_from(reference.len())
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    if budget.observe(bytes.saturating_mul(comparisons)) {
+        Ok(())
+    } else {
+        Err(budget.violation())
+    }
+}
+
+fn collect_local_references<'a>(
+    value: &'a Value,
+    references: &mut Vec<&'a str>,
+    budget: &SchemaWorkBudget,
+) -> Result<(), LimitViolation> {
     let mut stack = vec![value];
     while let Some(value) = stack.pop() {
-        *work = work.saturating_add(1);
-        if *work > maximum_work {
-            return;
+        if !budget.observe(1) {
+            return Err(budget.violation());
         }
         match value {
             Value::Object(object) => {
                 for (key, value) in object {
+                    if !budget.observe(
+                        u64::try_from(key.len())
+                            .unwrap_or(u64::MAX)
+                            .saturating_add(1),
+                    ) {
+                        return Err(budget.violation());
+                    }
                     if matches!(key.as_str(), "$ref" | "$dynamicRef")
                         && let Some(reference) = value.as_str()
                         && is_local_reference(reference)
                     {
-                        references.push(reference.to_owned());
+                        references.push(reference);
                     }
                     // Definitions are reached through their references. Skipping their
                     // containers here avoids treating unrelated definitions as nested hops.
                     if !matches!(key.as_str(), "$defs" | "definitions") {
+                        if !budget.observe(1) {
+                            return Err(budget.violation());
+                        }
                         stack.push(value);
                     }
                 }
             }
-            Value::Array(values) => stack.extend(values),
+            Value::Array(values) => {
+                if !budget.observe(u64::try_from(values.len()).unwrap_or(u64::MAX)) {
+                    return Err(budget.violation());
+                }
+                stack.extend(values);
+            }
             _ => {}
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -3923,14 +4024,15 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::{
-        Analyzer, CatalogKind, DRAFT_2020_12, LocalSchemaDialectPolicy, PassiveCatalogConversation,
-        RequestKind, RequestRecord, ToolDescriptionDiagnosis, ToolDescriptionReuseCollector,
-        classify_json_rpc_error, diagnose_tool_description, encode_request,
-        has_credential_identifier_segment, normalize_credential_identifier, percent_decode,
-        resolve_local_reference, scan_credential_literals, scan_required_input_descriptions,
-        schema_child_location, validate_local_schema_with_policy,
+        Analyzer, CatalogKind, DRAFT_2020_12, LegacyAnalyzer, LocalSchemaDialectPolicy,
+        PassiveCatalogConversation, RequestKind, RequestRecord, ToolDescriptionDiagnosis,
+        ToolDescriptionReuseCollector, classify_json_rpc_error, diagnose_tool_description,
+        encode_request, has_credential_identifier_segment, normalize_credential_identifier,
+        percent_decode, reference_depth_violation, resolve_local_reference,
+        resolve_local_reference_with_work, scan_credential_literals,
+        scan_required_input_descriptions, schema_child_location, validate_local_schema_with_policy,
     };
-    use crate::contract::limits::DiagnosticLimits;
+    use crate::contract::limits::{DiagnosticLimits, LimitKind};
     use crate::contract::model::{
         CheckId, Finding, FindingCode, FindingEvidence, JsonRpcErrorKind, Location, LocationField,
         RuleViolation, Severity, SkipReason,
@@ -4593,14 +4695,154 @@ mod tests {
                 "space value": {"$anchor": "node", "type": "string"}
             }
         });
-        assert!(resolve_local_reference(&schema, "#").is_some());
-        assert!(resolve_local_reference(&schema, "#/$defs/space%20value").is_some());
-        assert!(resolve_local_reference(&schema, "#node").is_some());
-        assert!(resolve_local_reference(&schema, "#missing").is_none());
+        let budget = SchemaWorkBudget::new(100_000);
+        assert!(
+            resolve_local_reference(&schema, "#", &budget)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            resolve_local_reference(&schema, "#/$defs/space%20value", &budget)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            resolve_local_reference(&schema, "#node", &budget)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            resolve_local_reference(&schema, "#missing", &budget)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            resolve_local_reference(&schema, "#%6eode", &budget)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            resolve_local_reference(&schema, "#invalid%", &budget)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            resolve_local_reference(&schema, "https://synthetic.invalid/schema", &budget)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             percent_decode("space%20value").as_deref(),
             Some("space value")
         );
+    }
+
+    #[test]
+    fn repeated_local_anchor_scans_stop_at_the_shared_schema_work_limit() {
+        let schema = json!({
+            "type": "object",
+            "allOf": (0..100).map(|index| json!({"$ref": format!("#missing{index}")})).collect::<Vec<_>>(),
+            "x-padding": vec![0; 1_000]
+        });
+        let base = Location::root(LocationField::Tools)
+            .index(0)
+            .field(LocationField::InputSchema);
+        let findings = validate_local_schema_with_policy(
+            &schema,
+            base,
+            LocalSchemaDialectPolicy::RevisionDefaultDraft202012,
+        );
+        let limit = findings
+            .iter()
+            .find(|finding| finding.code() == FindingCode::LimitExceeded)
+            .expect("repeated anchor scans must exhaust the declared operation budget");
+        match limit.evidence() {
+            FindingEvidence::LimitViolation(violation) => {
+                assert_eq!(violation.kind(), LimitKind::SchemaEvaluationSteps);
+                assert_eq!(violation.observed(), 100_001);
+                assert_eq!(violation.maximum(), 100_000);
+            }
+            _ => panic!("anchor work exhaustion must retain a typed limit"),
+        }
+        assert!(
+            findings.len() < 100,
+            "the analyzer must stop resolving later references"
+        );
+    }
+
+    #[test]
+    fn ambiguous_legacy_schema_structure_still_bounds_local_anchor_resolution() {
+        let schema = json!({
+            "type": "object",
+            "allOf": (0..100).map(|index| json!({"$ref": format!("#missing{index}")})).collect::<Vec<_>>(),
+            "x-padding": vec![0; 1_000]
+        });
+        let mut analyzer = LegacyAnalyzer::new(SupportedRevision::V2025_06_18, 0);
+        let location = Location::root(LocationField::Tools)
+            .index(0)
+            .field(LocationField::InputSchema);
+        assert!(analyzer.analyze_legacy_schema(&schema, location).is_none());
+        assert!(
+            analyzer
+                .schema
+                .iter()
+                .any(|finding| finding.code() == FindingCode::AmbiguousSchemaDialect)
+        );
+        let limit = analyzer
+            .schema
+            .iter()
+            .find(|finding| finding.code() == FindingCode::LimitExceeded)
+            .expect("legacy structure-only diagnostics must bound every anchor search");
+        assert_eq!(limit.revision(), SupportedRevision::V2025_06_18);
+        match limit.evidence() {
+            FindingEvidence::LimitViolation(violation) => {
+                assert_eq!(violation.kind(), LimitKind::SchemaEvaluationSteps);
+                assert_eq!(violation.observed(), 100_001);
+                assert_eq!(violation.maximum(), 100_000);
+            }
+            _ => panic!("legacy anchor work exhaustion must retain a typed limit"),
+        }
+    }
+
+    #[test]
+    fn reference_depth_analysis_and_resolution_consume_one_work_allowance() {
+        let schema = json!({"$anchor": "node", "type": "object", "x-padding": vec![0; 100]});
+        let budget = SchemaWorkBudget::new(80);
+        assert!(
+            resolve_local_reference(&schema, "#node", &budget)
+                .unwrap()
+                .is_some()
+        );
+        let location = Location::root(LocationField::Tools)
+            .wildcard()
+            .field(LocationField::InputSchema);
+        let (limit, found_location) =
+            reference_depth_violation(&schema, &[("#node", location.clone())], 32, &budget)
+                .expect("reference-depth preprocessing must share the preceding resolution budget");
+        assert_eq!(limit.kind(), LimitKind::SchemaEvaluationSteps);
+        assert_eq!(limit.observed(), 81);
+        assert_eq!(limit.maximum(), 80);
+        assert_eq!(found_location, location);
+    }
+
+    #[test]
+    fn reference_resolution_preserves_caller_work_and_admits_no_over_limit_decode() {
+        let schema = json!({"type": "object"});
+        let mut work = 97;
+        assert!(
+            resolve_local_reference_with_work(&schema, "#", &mut work, 100)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(work, 100);
+        let limit = resolve_local_reference_with_work(&schema, "", &mut work, 100)
+            .expect_err("a second resolution cannot reset the caller's allowance");
+        assert_eq!(limit.observed(), 101);
+        assert_eq!(work, 101);
+        let large_fragment = format!("#/{}", "x".repeat(1_000));
+        let budget = SchemaWorkBudget::new(100);
+        assert!(resolve_local_reference(&schema, &large_fragment, &budget).is_err());
+        assert_eq!(budget.violation().observed(), 101);
     }
 
     #[test]

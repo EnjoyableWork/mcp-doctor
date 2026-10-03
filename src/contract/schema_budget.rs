@@ -14,6 +14,7 @@ use jsonschema::{Draft, Keyword, PatternOptions, Retrieve, Uri, ValidationError,
 use regex_syntax::hir::{Class, Hir, HirKind};
 use serde_json::{Map, Number, Value};
 
+use super::catalog::resolve_local_reference;
 use super::limits::{LimitKind, LimitViolation};
 
 // Inject one always-true custom validator at every schema location. The pinned
@@ -910,7 +911,7 @@ fn estimate_schema_node(
         if !budget.observe(u64::try_from(reference.len()).unwrap_or(u64::MAX)) {
             return None;
         }
-        if let Some(target) = resolve_local_reference(root, reference, budget) {
+        if let Some(target) = resolve_local_reference(root, reference, budget).ok()? {
             estimate = checked_estimate_add(
                 estimate,
                 estimate_schema_node(
@@ -1252,73 +1253,6 @@ fn checked_work_add(left: u64, right: u64, maximum: u64, budget: &SchemaWorkBudg
         None
     } else {
         Some(work)
-    }
-}
-
-fn resolve_local_reference<'a>(
-    schema: &'a Value,
-    reference: &str,
-    budget: &SchemaWorkBudget,
-) -> Option<&'a Value> {
-    let fragment = reference.strip_prefix('#')?;
-    if fragment.is_empty() {
-        return Some(schema);
-    }
-    if fragment.starts_with('/') {
-        let decoded = percent_decode(fragment)?;
-        return schema.pointer(&decoded);
-    }
-
-    let anchor = percent_decode(fragment)?;
-    let mut stack = vec![schema];
-    while let Some(value) = stack.pop() {
-        if !budget.observe(1) {
-            return None;
-        }
-        match value {
-            Value::Object(object) => {
-                if object.get("$anchor").and_then(Value::as_str) == Some(anchor.as_str())
-                    || object.get("$dynamicAnchor").and_then(Value::as_str) == Some(anchor.as_str())
-                {
-                    return Some(value);
-                }
-                stack.extend(object.values());
-            }
-            Value::Array(values) => stack.extend(values),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-        }
-    }
-    None
-}
-
-fn percent_decode(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let high = *bytes.get(index.saturating_add(1))?;
-            let low = *bytes.get(index.saturating_add(2))?;
-            decoded.push(
-                hex_value(high)?
-                    .checked_mul(16)?
-                    .checked_add(hex_value(low)?)?,
-            );
-            index = index.saturating_add(3);
-        } else {
-            decoded.push(bytes[index]);
-            index = index.saturating_add(1);
-        }
-    }
-    String::from_utf8(decoded).ok()
-}
-
-const fn hex_value(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
     }
 }
 
@@ -1722,8 +1656,26 @@ mod tests {
             assert_eq!(budget.attempts(), 0);
         }
 
-        let fanout = reference_fanout_schema(10);
+        // Reference decoding and lookups now consume construction work too.
+        // The larger fan-out must stop before compilation; the smaller one
+        // still exercises the independent instance-evaluation admission gate.
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(9), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        assert!(matches!(
+            BudgetedValidator::compile(&reference_fanout_schema(10), 100_000),
+            Err(SchemaWorkIssue::Limit(violation))
+                if violation.kind() == crate::contract::limits::LimitKind::SchemaEvaluationSteps
+                    && violation.observed() == 100_001
+                    && violation.maximum() == 100_000
+        ));
+        let fanout = reference_fanout_schema(8);
         let validator = BudgetedValidator::compile(&fanout, 100_000).unwrap();
+        assert!(validator.evaluation_width > 1_000);
         let budget = SchemaWorkBudget::new(1_000);
         assert!(
             validator

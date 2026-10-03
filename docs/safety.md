@@ -142,7 +142,11 @@ diagnostic evidence.
   aggregate-output limits.
 - `schema_evaluation_steps` is one deterministic operation budget spanning the
   preliminary schema/instance walk, Draft 2020-12 meta-validation, validator
-  construction, local-reference fan-out, and actual instance access. String,
+  construction, local-reference fan-out, and actual instance access. Local
+  anchor searches, fragment decoding, pointer lookups, anchor comparisons, and
+  reference-depth analysis consume that same allowance before their work
+  starts; snapshot preprocessing and generation charge their existing work
+  counters through the same bounded resolver. String,
   pattern, equality, collection, combinator, and uniqueness work must fit that
   budget before the affected tool call. Preliminary structural or work excess
   is `MCP-LIMIT-001`. Exhaustion during meta-validation or validator
