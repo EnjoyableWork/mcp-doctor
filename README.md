@@ -189,7 +189,9 @@ Homebrew operations, dependencies, unlisted assets, or future releases.
 - `inspect` never calls a tool; active commands require exact redundant
   authorization and a declared effect boundary.
 - Processes, network activity, schema work, messages, reports, and cleanup are
-  bounded. Local commands bypass the shell and managed children are reaped.
+  bounded. Local commands bypass the shell. Unix STDIO cleanup owns the direct
+  child and its original process group; detached descendant termination is
+  unverified. Native execution provides no OS sandbox or descendant containment.
 - Optional `plain` or schema-backed JSONL status keeps long diagnostics
   observable on stderr without changing the final stdout report or target
   activity.

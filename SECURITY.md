@@ -123,10 +123,18 @@ Security-sensitive invariants include:
 - no implicit active tool execution;
 - literal process arguments without a shell;
 - bounded process, message, schema, network, and generation work;
-- complete child-process cleanup and reap;
+- bounded cleanup of the configured process-control scope and direct-child reap;
 - redaction of credentials and untrusted values from reports and errors;
 - no default external schema retrieval; and
 - explicit remote-target, redirect, proxy, and authentication policy.
 
 A defect in any of these boundaries should be treated as a potential security
 issue even when it appears to be only a diagnostic-quality problem.
+
+Unix STDIO cleanup owns the direct child and its original process group.
+Descendants that change process group or session are outside that signal scope;
+their termination is unverified. Native command execution provides no OS
+sandbox or descendant containment. Run targets that need stronger isolation
+inside an externally managed containment boundary. A successful diagnostic
+does not establish that every descendant has exited, and an observed cleanup
+failure remains a diagnostic failure.

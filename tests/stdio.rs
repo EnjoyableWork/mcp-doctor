@@ -2408,8 +2408,22 @@ fn ordinary_report_alone_identifies_the_unsupported_revision_correction() {
     assert_eq!(json_output.status.code(), Some(1), "{json}");
     assert!(human_stderr.is_empty());
     assert!(json_stderr.is_empty());
-    assert_eq!(human, REPORT_ONLY_HUMAN);
-    assert_eq!(json, REPORT_ONLY_JSON);
+    let mut expected_human = REPORT_ONLY_HUMAN.to_owned();
+    let mut expected_json = REPORT_ONLY_JSON.to_owned();
+    if cfg!(unix) {
+        expected_human = expected_human.replacen(
+            "\nPRIMARY DIAGNOSIS",
+            "\nprocess cleanup · mechanism=process_group · scope=direct_child_and_original_process_group · process_launches=1 · direct_children_reaped=1 · descendant_containment=false · detached_descendants=unverified\n\nPRIMARY DIAGNOSIS",
+            1,
+        );
+        expected_json = expected_json.replacen(
+            "  \"primary_diagnosis\":",
+            "  \"process_cleanup\": {\n    \"mechanism\": \"process_group\",\n    \"scope\": \"direct_child_and_original_process_group\",\n    \"process_launches\": 1,\n    \"direct_children_reaped\": 1,\n    \"descendant_containment\": false,\n    \"detached_descendants\": \"unverified\"\n  },\n  \"primary_diagnosis\":",
+            1,
+        );
+    }
+    assert_eq!(human, expected_human);
+    assert_eq!(json, expected_json);
 
     // From this point onward the assertions consume only the checked-in reports;
     // they do not inspect the fixture response, target stderr, or implementation.

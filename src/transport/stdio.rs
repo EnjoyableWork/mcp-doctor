@@ -245,6 +245,7 @@ pub(crate) struct StdioRun {
     cleanup_failed: bool,
     interrupted: bool,
     process_started: bool,
+    process_reaped: bool,
     lifecycle_interactions: LifecycleInteractionCounts,
 }
 
@@ -271,6 +272,10 @@ impl StdioRun {
 
     pub(crate) const fn process_started(&self) -> bool {
         self.process_started
+    }
+
+    pub(crate) const fn process_reaped(&self) -> bool {
+        self.process_reaped
     }
 
     pub(crate) const fn lifecycle_request_count(&self) -> u64 {
@@ -348,6 +353,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: false,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -365,6 +371,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: false,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -376,6 +383,7 @@ impl StdioTransport {
                 cleanup_failed: false,
                 interrupted: true,
                 process_started: false,
+                process_reaped: false,
                 lifecycle_interactions: LifecycleInteractionCounts::default(),
             };
         }
@@ -399,6 +407,7 @@ impl StdioTransport {
                     cleanup_failed: false,
                     interrupted: false,
                     process_started: false,
+                    process_reaped: false,
                     lifecycle_interactions: LifecycleInteractionCounts::default(),
                 };
             }
@@ -555,6 +564,7 @@ impl StdioTransport {
             cleanup_failed: shutdown.cleanup_failed,
             interrupted,
             process_started: true,
+            process_reaped: process.cleaned,
             lifecycle_interactions,
         }
     }

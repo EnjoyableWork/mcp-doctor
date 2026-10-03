@@ -10,6 +10,7 @@ mod generate;
 mod http_headers;
 mod limits;
 mod model;
+mod process_cleanup;
 mod protocol;
 mod redaction;
 mod report;
@@ -41,6 +42,7 @@ pub(crate) use active::{
 pub(crate) use catalog::{AutoDiscoveryOutcome, PassiveCatalogConversation};
 pub(crate) use generate::GENERATOR_VERSION;
 pub(crate) use limits::DiagnosticLimitProfile;
+pub(crate) use process_cleanup::ProcessCleanupEvidence;
 pub(crate) use protocol::{
     ActiveProtocolRevision, KnownRevision, PassiveProtocolSelection, ProtocolSelectionEvidence,
     ProtocolSelectionMode, ProtocolSelectionPath, SupportedRevision as ProtocolRevision,
@@ -286,6 +288,11 @@ impl Diagnostic {
         self
     }
 
+    pub(crate) fn with_process_cleanup(mut self, evidence: Option<ProcessCleanupEvidence>) -> Self {
+        self.report = self.report.with_process_cleanup(evidence);
+        self
+    }
+
     pub(crate) fn render(self, request: ReportRequest) -> RenderedDiagnostic {
         match render_reports(&self.report, request) {
             Ok(reports) => RenderedDiagnostic {
@@ -301,6 +308,18 @@ impl Diagnostic {
                 error: Some(error.to_string()),
             },
         }
+    }
+}
+
+pub(crate) fn stdio_cleanup_evidence(launches: u64, reaped: u64) -> Option<ProcessCleanupEvidence> {
+    #[cfg(unix)]
+    {
+        Some(ProcessCleanupEvidence::process_group(launches, reaped))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (launches, reaped);
+        None
     }
 }
 

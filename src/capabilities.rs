@@ -501,6 +501,16 @@ struct PlatformCapabilities<'a> {
     family: &'a str,
     process_tree_control: &'a str,
     file_identity: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_cleanup: Option<ProcessCleanupCapability<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProcessCleanupCapability<'a> {
+    mechanism: &'a str,
+    scope: &'a str,
+    descendant_containment: bool,
+    detached_descendants: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -761,12 +771,28 @@ fn render_human(manifest: &CapabilitiesManifest<'_>) -> Result<String, Capabilit
     .map_err(|_| CapabilitiesError::Render)?;
     writeln!(
         output,
-        "Platform: {} · process tree {} · file identity {}",
+        "Platform: {} · {} {} · file identity {}",
         manifest.platform.family,
+        if manifest.platform.process_cleanup.is_some() {
+            "process control"
+        } else {
+            "process tree"
+        },
         manifest.platform.process_tree_control,
         manifest.platform.file_identity
     )
     .map_err(|_| CapabilitiesError::Render)?;
+    if let Some(cleanup) = &manifest.platform.process_cleanup {
+        writeln!(
+            output,
+            "Process cleanup: mechanism {} · scope {} · descendant_containment={} · detached_descendants={}",
+            cleanup.mechanism,
+            cleanup.scope,
+            cleanup.descendant_containment,
+            cleanup.detached_descendants,
+        )
+        .map_err(|_| CapabilitiesError::Render)?;
+    }
     writeln!(output, "Commands:").map_err(|_| CapabilitiesError::Render)?;
     for command in manifest.commands {
         writeln!(
@@ -924,6 +950,12 @@ const fn platform_capabilities() -> PlatformCapabilities<'static> {
         family: "unix",
         process_tree_control: "process_group",
         file_identity: "device_inode",
+        process_cleanup: Some(ProcessCleanupCapability {
+            mechanism: "process_group",
+            scope: "direct_child_and_original_process_group",
+            descendant_containment: false,
+            detached_descendants: "unverified",
+        }),
     }
 }
 
@@ -933,6 +965,7 @@ const fn platform_capabilities() -> PlatformCapabilities<'static> {
         family: "windows",
         process_tree_control: "job_object",
         file_identity: "volume_file_id",
+        process_cleanup: None,
     }
 }
 
@@ -942,6 +975,7 @@ const fn platform_capabilities() -> PlatformCapabilities<'static> {
         family: "other",
         process_tree_control: "kill_on_drop",
         file_identity: "canonical_path",
+        process_cleanup: None,
     }
 }
 
@@ -979,6 +1013,18 @@ mod tests {
             serde_json::json!(["2026-07-28"])
         );
         assert!(first.stdout.contains("mcp-doctor.limits/capabilities/v1"));
+        #[cfg(unix)]
+        assert_eq!(
+            document["platform"]["process_cleanup"],
+            serde_json::json!({
+                "mechanism": "process_group",
+                "scope": "direct_child_and_original_process_group",
+                "descendant_containment": false,
+                "detached_descendants": "unverified"
+            })
+        );
+        #[cfg(not(unix))]
+        assert!(document["platform"].get("process_cleanup").is_none());
     }
 
     #[test]
@@ -1027,5 +1073,16 @@ mod tests {
                 .stdout
                 .contains("Passive selection: inspect · default auto")
         );
+        #[cfg(unix)]
+        {
+            assert!(rendered.stdout.contains(
+                "Platform: unix · process control process_group · file identity device_inode"
+            ));
+            assert!(rendered.stdout.contains(
+                "Process cleanup: mechanism process_group · scope direct_child_and_original_process_group · descendant_containment=false · detached_descendants=unverified"
+            ));
+        }
+        #[cfg(not(unix))]
+        assert!(!rendered.stdout.contains("Process cleanup:"));
     }
 }

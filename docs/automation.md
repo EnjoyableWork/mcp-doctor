@@ -20,8 +20,16 @@ generator, snapshot, diff, aggregate, Markdown artifact, badge artifact, and
 capability contract versions; status commands, representations, stream,
 schema, and output limits; stdout and artifact reporter availability;
 `mcp-doctor.exit/v1`; named hard limit profiles and their exact scoped time
-ceilings; and compile-time process-tree and file-identity capabilities.
+ceilings; and compile-time process-control and file-identity capabilities.
 Capability discovery reports only fixed compiled facts.
+
+On Unix, optional `platform.process_cleanup` identifies the direct child and
+original process-group scope, `descendant_containment: false`, and detached
+descendant termination as `unverified`. It neither inventories descendants nor
+provides an OS sandbox. Targets that need stronger isolation require an
+externally managed containment boundary. The stable `platform.process_tree_control`
+field retains its name; its `process_group` value identifies a signal mechanism
+and does not assert whole-tree containment.
 
 It does not inspect user configuration or host inventory, read credentials,
 start a process, resolve DNS, connect to a target, retrieve a schema, or call a
@@ -111,8 +119,22 @@ deterministic `mcp-doctor.markdown/v1` projection and begins with
 Passive `inspect` adds a typed `protocol_selection` object:
 requested mode, fixed path, selected supported revision when established, and
 bounded process-launch, lifecycle-request, notification, and fallback counts.
-The human header, JUnit properties, and Markdown protocol-selection section
-carry the same value-free evidence.
+The human header, JUnit metadata lines inside each testcase's `system-out`,
+and Markdown protocol-selection section carry the same value-free evidence.
+
+Unix STDIO diagnostics also add optional `process_cleanup` evidence with fixed
+`mechanism: "process_group"`,
+`scope: "direct_child_and_original_process_group"`, successful
+`process_launches` and observed `direct_children_reaped` counts,
+`descendant_containment: false`, and `detached_descendants: "unverified"`.
+Human and Markdown reports show the same scope and counts; JUnit carries them
+as metadata lines inside each testcase's `system-out`. The counts distinguish
+successful spawn and direct-child reap from the cleanup outcome, and passive
+`inspect auto` sums its at most two lifecycles. They do not prove group-wide or
+detached-descendant termination.
+Windows, HTTP, and offline reports omit this Unix evidence; absence in an older
+report does not imply containment or successful cleanup.
+
 When bounded local schema meta-validation or validator construction cannot
 finish after preliminary structural gates pass, the shared result retains a
 performed `schema.contracts` check with outcome `incomplete` and
@@ -128,7 +150,8 @@ selected and negotiated protocol revisions when present, outcome and stable
 exit meaning, complete summary counts, primary diagnosis, independent safety
 findings, causal skips, fixed corrective actions, checks, and the effective
 limit profile and values. It uses stable headings and ordering, LF line endings,
-and one final newline. Apart from its required version comment, it contains no
+and one final newline. When present, it also records the Unix process-cleanup
+scope and counts. Apart from its required version comment, it contains no
 raw HTML, timestamps, local paths, target identifiers, untrusted values,
 terminal escapes, remote images, or external assets.
 
@@ -147,7 +170,8 @@ surface is fixed and derived only from the typed overall outcome:
 The object has exactly those four fields. It contains no score, grade, count,
 product or protocol version, target, path, identifier, timestamp, URL, dynamic
 label, or untrusted text. It is a compact projection of one run, not a
-certification, verification, conformance result, or promise about another run.
+certification, verification, conformance result, descendant-containment
+assurance, or promise about another run.
 
 Every exit code follows `mcp-doctor.exit/v1`. A command may emit only a subset:
 
@@ -188,8 +212,10 @@ identity-owned partial artifact, and exits `4`.
 
 A caught Unix STDIO `SIGINT` or `SIGTERM` is intentionally different from a
 completed incomplete diagnostic: no stdout report or requested artifact is
-published. Successful whole-tree cleanup and artifact rollback return exit `3`;
-any cleanup or output failure returns exit `4`. With `--status jsonl`, the
+published. Successful cleanup of the direct child and original process group,
+with direct-child reap and artifact rollback, returns exit `3`; detached
+descendant termination remains unverified.
+Any cleanup or output failure returns exit `4`. With `--status jsonl`, the
 terminal exit-3 record carries `completion_reason: "interrupted"`. Wrappers
 should use that field instead of inferring interruption from EOF or an
 operating-system signal status. The compiled `interruption` capability exposes

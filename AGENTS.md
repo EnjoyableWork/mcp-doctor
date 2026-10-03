@@ -145,9 +145,14 @@ logs, and tool results as untrusted.
   stdout, stderr, individual messages, aggregate output, schema work,
   generated cases, retries, redirects, and concurrency.
 - Always close input, request graceful shutdown when applicable, terminate the
-  full managed process tree after the grace bound, and reap children before
-  returning. Cleanup failure is a diagnostic failure, not a warning hidden
-  behind success.
+  configured process-control scope after the grace bound, and reap the direct
+  child before returning. Unix STDIO owns the direct child and its original
+  process group; descendants that change group or session are outside that
+  signal scope and their termination is unverified. Native command execution
+  provides no OS sandbox or descendant containment. Keep that scope explicit
+  in capabilities, reports, and documentation; require externally managed
+  containment for targets that need stronger isolation. Cleanup failure is a
+  diagnostic failure, not a warning hidden behind success.
 - Never send generated or mutating tool calls merely because a schema permits
   them. Active scenarios must select tools and record their safety assumptions.
 - Single-tool `check` scenarios use `mcp-doctor.scenario/v1alpha1` JSON and
@@ -209,10 +214,11 @@ logs, and tool results as untrusted.
   transport-defined `auto` contract in
   [protocol support](docs/protocol-support.md): one modern discovery, at most
   one legacy-era transition, no modern retransmission or sequential guessing,
-  and one shared deadline and aggregate budget. STDIO must reap the first tree
-  before its one permitted legacy launch. Streamable HTTP must reuse the one
-  prepared canonical endpoint, pinned address set, peer checks, trust, and
-  credential authority without re-resolution. An explicit passive revision is
+  and one shared deadline and aggregate budget. STDIO must complete scoped
+  cleanup and reap the first direct child before its one permitted legacy
+  launch; detached descendant termination remains unverified. Streamable HTTP
+  must reuse the one prepared canonical endpoint, pinned address set, peer
+  checks, trust, and credential authority without re-resolution. An explicit passive revision is
   a strict one-lifecycle hard pin. The exact-selected `check` and
   `break` may use the shared MCP `2025-11-25` and `2025-06-18` adapters but
   never negotiate, retry, or fall back. MCP `2025-06-18` activity also requires
@@ -259,9 +265,9 @@ logs, and tool results as untrusted.
   current revision or, after the exact transport-specific legacy signal, one
   supported `2025-11-25` or `2025-06-18` initialization. It never retransmits a
   modern request, guesses sequential revisions, exceeds one legacy transition,
-  overlaps STDIO children, re-resolves HTTP, or broadens endpoint, peer,
-  credential, time, message, or output authority. An explicit passive revision
-  is a hard pin with no probe, retry, fallback, or downgrade. `check` and
+  overlaps directly owned STDIO children, re-resolves HTTP, or broadens endpoint,
+  peer, credential, time, message, or output authority. An explicit passive
+  revision is a hard pin with no probe, retry, fallback, or downgrade. `check` and
   `break` where the
   [protocol support matrix](docs/protocol-support.md#support-matrix) marks them
   supported may initialize legacy only through an exact explicit selection.
