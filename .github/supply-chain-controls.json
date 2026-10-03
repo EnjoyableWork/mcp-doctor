@@ -300,8 +300,8 @@
       "selection": "direct",
       "uses": "Homebrew/actions/setup-homebrew",
       "repository": "Homebrew/actions",
-      "tag": "2026.08.31.1",
-      "sha": "3cdb78d0f62ad29dd32de765782654f4eedea607",
+      "tag": "2026.09.07.1",
+      "sha": "f8d4222eb633e65c2a0157383cf80861fc7fae7f",
       "runtime": "node24",
       "license": "BSD-2-Clause",
       "license_files": [
