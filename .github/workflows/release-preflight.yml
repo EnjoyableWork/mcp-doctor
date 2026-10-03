@@ -179,6 +179,10 @@ jobs:
           token: ""
           brew-gh-api-token: ""
 
+      - name: Prepare preinstalled Homebrew links on the macOS runner
+        if: runner.os == 'macOS'
+        run: scripts/prepare-homebrew-runner.sh
+
       - name: Install the exact source formula and exercise diagnosis
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"

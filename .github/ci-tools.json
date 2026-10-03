@@ -69,7 +69,7 @@
     {
       "command": "brew",
       "action": "Homebrew/actions/setup-homebrew",
-      "control": "The full reviewed action commit is pinned in each workflow before brew is used."
+      "control": "The full reviewed action commit is pinned in each workflow before brew is used. scripts/prepare-homebrew-runner.sh verifies brew before the GitHub-hosted macOS-only preinstalled openssl@1.1 link normalization; installed-channel jobs preserve that script from the exact current runner-contract checkout before selecting a historical release tag."
     }
   ],
   "container_provided": [
