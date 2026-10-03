@@ -3279,6 +3279,81 @@ fn v2025_06_active_http_cleanup_failure_remains_independent() {
 }
 
 #[test]
+fn malformed_notification_envelopes_have_matching_redacted_human_and_json_diagnoses() {
+    const SENTINEL: &str = "synthetic-notification-value-never-report-4a91";
+    for notification in [
+        json!({"jsonrpc": "2.0", "method": 123, "unreviewedValue": SENTINEL}),
+        json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": SENTINEL}),
+        json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": null, "unreviewedValue": SENTINEL}),
+    ] {
+        for format in [None, Some("json")] {
+            let discovery = discovery_response(json!({}));
+            let mut body = format!("data: {notification}\n\ndata: ").into_bytes();
+            body.extend_from_slice(&discovery.body);
+            body.extend_from_slice(b"\n\n");
+            let server = FixtureServer::spawn(
+                WireMode::Http,
+                vec![PlannedExchange::reply(
+                    ExpectedRequest::method("server/discover"),
+                    FixtureResponse::sse(body),
+                )],
+                true,
+            );
+            let endpoint = server.endpoint();
+            let environment = TestEnvironment::new();
+            let mut command = remote_command(&environment, "inspect", &endpoint);
+            command.arg("--protocol-version").arg("2026-07-28");
+            if let Some(format) = format {
+                command.arg("--format").arg(format);
+            }
+            let output = run(&mut command);
+            let outcome = server.finish();
+            let (stdout, stderr) = text(&output);
+
+            assert_eq!(output.status.code(), Some(1));
+            assert!(stderr.is_empty());
+            assert_eq!(outcome.accepted_connections, 1);
+            assert_eq!(outcome.valid_requests, 1);
+            assert_eq!(outcome.unexpected_connections, 0);
+            match format {
+                None => {
+                    assert!(stdout.contains("PRIMARY DIAGNOSIS · transport.http"));
+                    assert!(stdout.contains("MCP-HTTP-002 · http.event"));
+                    assert!(stdout.contains("invalid_sse_event"));
+                    assert!(stdout.contains("Fix:"));
+                    assert!(stdout.contains("blocked by transport.http"));
+                }
+                Some("json") => {
+                    let report = parse_and_validate_report(&output.stdout);
+                    assert_eq!(report["primary_diagnosis"]["check_id"], "transport.http");
+                    assert_eq!(
+                        report["primary_diagnosis"]["findings"],
+                        json!([{"code": "MCP-HTTP-002", "location": "http.event"}])
+                    );
+                    assert_eq!(report["independent_findings"], json!([]));
+                    for check in report["checks"].as_array().unwrap() {
+                        if matches!(
+                            check["id"].as_str(),
+                            Some(
+                                "protocol.envelope"
+                                    | "protocol.revision"
+                                    | "discovery.catalogs"
+                                    | "schema.contracts"
+                            )
+                        ) {
+                            assert_eq!(check["state"], "skipped");
+                            assert_eq!(check["blocked_by"]["check_id"], "transport.http");
+                        }
+                    }
+                }
+                Some(_) => unreachable!("the fixture selects only human and JSON reports"),
+            }
+            assert_redacted(&output, &endpoint, &[SENTINEL]);
+        }
+    }
+}
+
+#[test]
 fn loopback_http_requires_exact_gates_and_accepts_json_and_sse() {
     for response in [
         discovery_response(json!({})),
