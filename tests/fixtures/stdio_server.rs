@@ -33,6 +33,7 @@ fn main() -> ExitCode {
         Some("literal-arguments") => literal_arguments(&remaining),
         Some("environment") => environment(),
         Some("malformed") => malformed(),
+        Some("notification-envelope") => notification_envelope(&remaining),
         Some("oversized-message") => oversized_message(),
         Some("stdout-oversize") => stdout_oversize(),
         Some("stderr-oversize") => stderr_oversize(),
@@ -303,6 +304,44 @@ fn malformed() -> ExitCode {
         .expect("the malformed frame should be writable");
     stdout.flush().expect("STDOUT should flush");
     wait_forever()
+}
+
+fn notification_envelope(arguments: &[OsString]) -> ExitCode {
+    let mut input = io::BufReader::new(io::stdin().lock());
+    read_discover_request(&mut input);
+    let mut notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/progress",
+        "unreviewedValue": REDACTION_SENTINEL
+    });
+    match arguments.first().and_then(|argument| argument.to_str()) {
+        Some("method") => notification["method"] = json!(123),
+        Some("scalar-params") => notification["params"] = json!(REDACTION_SENTINEL),
+        Some("null-params") => notification["params"] = Value::Null,
+        _ => return ExitCode::from(2),
+    }
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {},
+            "ttlMs": 0,
+            "cacheScope": "private"
+        }
+    });
+    let frames = format!("{notification}\n{response}\n");
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(frames.as_bytes())
+        .expect("the bounded notification frames should be writable");
+    stdout
+        .flush()
+        .expect("the notification frames should flush");
+    drop(stdout);
+    assert_eof(&mut input);
+    ExitCode::SUCCESS
 }
 
 fn oversized_message() -> ExitCode {

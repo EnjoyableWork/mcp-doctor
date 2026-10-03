@@ -1318,7 +1318,12 @@ impl ProtocolTracker {
         }
 
         if let Some(method) = object.get("method") {
-            if !method.is_string() || object.contains_key("result") || object.contains_key("error")
+            if !method.is_string()
+                || object.contains_key("result")
+                || object.contains_key("error")
+                || !object
+                    .get("params")
+                    .is_none_or(|params| params.is_object() || params.is_array())
             {
                 return Err(invalid());
             }
@@ -1656,6 +1661,50 @@ mod tests {
             })
         );
         assert_eq!(budget.started, original_start);
+    }
+
+    #[test]
+    fn notification_envelopes_require_string_methods_and_structured_params() {
+        for notification in [
+            serde_json::json!({"jsonrpc": "2.0", "method": 123}),
+            serde_json::json!({"jsonrpc": "2.0", "method": null}),
+            serde_json::json!({"jsonrpc": "2.0", "method": false}),
+            serde_json::json!({"jsonrpc": "2.0", "method": {}}),
+            serde_json::json!({"jsonrpc": "2.0", "method": []}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": 123}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": null}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": false}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": "synthetic-unreviewed-value"}),
+        ] {
+            let bytes = serde_json::to_vec(&notification).expect("the fixture should serialize");
+            for accept_server_requests in [false, true] {
+                let mut tracker = ProtocolTracker::new(accept_server_requests);
+                tracker.begin(1, "tools/call");
+                assert!(matches!(
+                    tracker.observe(super::Frame {
+                        bytes: bytes.clone(),
+                        index: 0,
+                    }),
+                    Err(StdioFailure::InvalidMessage { index: 0, .. })
+                ));
+                assert_eq!(tracker.active_request, Some(1));
+            }
+        }
+
+        for notification in [
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress"}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": {}}),
+            serde_json::json!({"jsonrpc": "2.0", "method": "notifications/progress", "params": []}),
+        ] {
+            let mut tracker = ProtocolTracker::default();
+            tracker.begin(1, "server/discover");
+            let result = tracker.observe(super::Frame {
+                bytes: serde_json::to_vec(&notification).expect("the fixture should serialize"),
+                index: 0,
+            });
+            assert!(matches!(result, Ok(None)));
+            assert_eq!(tracker.active_request, Some(1));
+        }
     }
 
     #[test]
