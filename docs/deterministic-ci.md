@@ -66,7 +66,7 @@ outer watchdogs. A watchdog firing fails the case; it cannot make a case pass.
 | `scripts/install-syft.sh` and `scripts/rehearse-syft-acquisition.sh` | The sole accepted acquisition exception permits at most three attempts for the enumerated transient curl/HTTP failures against one immutable asset, with a one-second delay, deletion of partial bytes, and identical size/digest/layout/version/platform verification. Curl's own retry is zero. The rehearsal replaces both curl and sleep with deterministic fakes and proves attempt counts; no correctness step is retried. |
 | `scripts/generate-release-sbom.sh` | The standalone `timeout` process is an outer watchdog around one exact repository-acquired Syft invocation. A timeout fails generation and is never retried. |
 | `scripts/verify-ci-tools.sh` and `scripts/verify-ci-tools.ps1` | The POSIX and Windows bootstrap uses only its selected shell's built-ins until it verifies the inventory parser, requires one exact runner contract, rejects unsafe command names, and checks every declared command before evidence work. It has no clock, sleep, retry, polling, concurrency, download, or fallback. |
-| `scripts/prepare-homebrew-runner.sh` | After pinned Homebrew setup, only GitHub-hosted macOS runners read the installed formula inventory once and unlink exactly `openssl@1.1` when present. This prevents its preinstalled links from blocking the `openssl@3` dependency installation. An inventory or unlink failure stops the job without retry or overwrite. Disposable stub-brew regressions cover installed, absent, unrelated, unavailable, and failed states; no test invokes the host Homebrew installation. |
+| `scripts/prepare-homebrew-runner.sh` | After pinned Homebrew setup, only GitHub-hosted macOS runners accept one bounded normalized absolute Homebrew prefix, read the installed formula inventory once, and unlink exactly `openssl@1.1` when present. Runner-created `bin/openssl` links can survive keg unlink; the script removes only a symlink whose literal target equals that prefix's `opt/openssl@1.1/bin/openssl`, including a dangling legacy link or an absent keg, then requires the path to be absent and not a symlink. Every other file or link remains intact. The declared `readlink` and `rm` commands are checked before use; prefix, inventory, unlink, readlink, removal, and postcondition failures stop the job without retry or overwrite. Disposable-prefix regressions reproduce a successful unlink that leaves the exact conflicting link, preserve unrelated and unrelated dangling links and regular files, and force a false-success removal to fail. No test invokes host Homebrew or mutates host files. |
 | `scripts/verify-release-repository-controls.sh` | The release correction replaces the legacy broad retry with one request under explicit connection and total deadlines. A failed request fails verification; it cannot become a second correctness or publication attempt. |
 | Remaining tracked scripts | No operational clock, fixed sleep, timeout, polling loop, positive retry, or concurrent process occurs. Script-local `command -v` checks, exact hash-tool alternatives, and `.github/ci-tools.json` declare the non-standard execution surface. Strings used to generate a Ruby formula or run Node/PHP inside digest-pinned compatibility containers do not grant ambient host-tool authority. |
 
@@ -104,6 +104,12 @@ The 2026-08-16 review adds `gh` to the Ubuntu ARM64 contract because its
 installed-channel archive job already uses that command; the new preflight now
 proves its presence instead of continuing to assume the runner image supplies
 it.
+The 2026-10-02 review adds `readlink` and `rm` to the macOS contract for exact
+legacy OpenSSL symlink cleanup and to Ubuntu x64 for the disposable filesystem
+regression. The script verifies both commands before use, and the fixture
+verifies its absolute system executables before wrappers permit operations on
+only the owned disposable link. Ubuntu ARM64 source-install jobs do not need
+these test-only commands.
 
 Adding a command, runner, Action-provided tool, container runtime, standalone
 executable, sleep, positive retry, or timing primitive requires this inventory,

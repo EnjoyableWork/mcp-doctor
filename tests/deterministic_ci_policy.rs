@@ -167,11 +167,24 @@ fn nonstandard_ci_commands_are_declared_and_incidental_tools_are_rejected() {
     let inventory: Value =
         serde_json::from_str(CI_TOOLS).expect("CI tool inventory should be JSON");
     assert_eq!(inventory["schema_version"], "mcp-doctor.ci-tools/v1");
-    assert_eq!(inventory["reviewed_on"], "2026-08-16");
+    assert_eq!(inventory["reviewed_on"], "2026-10-02");
     assert_eq!(inventory["rust_toolchain"]["channel"], "1.97.1");
     assert!(RUST_TOOLCHAIN.contains("channel = \"1.97.1\""));
 
     let declared = declared_commands(&inventory);
+    for runner in ["macos-15", "ubuntu-24.04"] {
+        let filesystem_commands = inventory["runner_contracts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|contract| contract["runner"] == runner)
+            .unwrap()["commands"]
+            .as_array()
+            .unwrap();
+        for command in ["readlink", "rm"] {
+            assert!(filesystem_commands.iter().any(|entry| entry == command));
+        }
+    }
     let automation = automation_source();
     for command in [
         "brew",
