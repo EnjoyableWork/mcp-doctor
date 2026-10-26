@@ -89,7 +89,7 @@ jobs:
           install -m 0644 "$first_agent_skill" release-source-assets/
 
       - name: Retain the source outputs briefly
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-preflight-source
           path: release-source-assets/*
@@ -130,7 +130,7 @@ jobs:
         run: ./scripts/verify-ci-tools.sh '${{ matrix.runner }}'
 
       - name: Download the exact source outputs
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-preflight-source
           path: release-source-assets
@@ -174,7 +174,7 @@ jobs:
             target/release/mcp-doctor-stdio-fixture
 
       - name: Set up current stable Homebrew
-        uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f # 2026.09.07.1
+        uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878 # 2026.10.19.1
         with:
           token: ""
           brew-gh-api-token: ""
@@ -268,7 +268,7 @@ jobs:
 
       - name: Retain the represented GNU/Linux payload briefly
         if: matrix.publish_linux
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-preflight-${{ matrix.rust_target }}
           path: release-assets/*
@@ -294,7 +294,7 @@ jobs:
         run: ./scripts/verify-ci-tools.ps1 -RunnerLabel windows-2025
 
       - name: Download the exact source outputs
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-preflight-source
           path: release-source-assets
@@ -372,7 +372,7 @@ jobs:
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
       - name: Download every represented payload
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-preflight-*
           path: release-assets
@@ -392,7 +392,7 @@ jobs:
             synthetic-rehearsal
 
       - name: Retain the complete dry-run payload briefly
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-preflight-complete
           path: release-assets/*

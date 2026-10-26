@@ -380,7 +380,7 @@ jobs:
           ref: v${{ needs.validate.outputs.version }}
 
       - name: Set up current stable Homebrew
-        uses: Homebrew/actions/setup-homebrew@f8d4222eb633e65c2a0157383cf80861fc7fae7f # 2026.09.07.1
+        uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878 # 2026.10.19.1
         with:
           token: ""
           brew-gh-api-token: ""
